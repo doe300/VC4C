@@ -81,8 +81,6 @@ namespace vc4c
 
         Local& operator=(const Local&) = delete;
         Local& operator=(Local&&) noexcept = delete;
-        bool operator<(const Local& other) const;
-        bool operator==(const Local& other) const;
 
         /*
          * Creates a Value referencing this Local at the given index (e.g. for compound-types).
@@ -380,6 +378,50 @@ namespace vc4c
     struct order_by_alignment_and_name
     {
         bool operator()(const StackAllocation& sa1, const StackAllocation& sa2) const;
+    };
+
+    /**
+     * Type for special locals which are not under the control of the source program but are inserted by the VC4C
+     * compiler to access e.g. work-group information and global data locations.
+     */
+    class BuiltinLocal final : public Local
+    {
+    public:
+        /**
+         * Constants for the different types of builtin (e.g. work-group related) locals
+         */
+        enum class Type : unsigned char
+        {
+            WORK_DIMENSIONS = 0,
+            LOCAL_SIZES,
+            LOCAL_IDS,
+            NUM_GROUPS_X,
+            NUM_GROUPS_Y,
+            NUM_GROUPS_Z,
+            GROUP_ID_X,
+            GROUP_ID_Y,
+            GROUP_ID_Z,
+            GLOBAL_OFFSET_X,
+            GLOBAL_OFFSET_Y,
+            GLOBAL_OFFSET_Z,
+            GLOBAL_DATA_ADDRESS,
+            UNIFORM_ADDRESS,
+            MAX_GROUP_ID_X,
+            MAX_GROUP_ID_Y,
+            MAX_GROUP_ID_Z,
+            // NOTE: This must be last!!
+            NUM_ENTRIES
+        };
+        static constexpr auto NUM_LOCALS = static_cast<std::size_t>(Type::NUM_ENTRIES);
+
+        BuiltinLocal(const std::string& name, DataType dataType, Type builtinType);
+        BuiltinLocal(BuiltinLocal&&) noexcept = delete;
+        ~BuiltinLocal() noexcept override;
+
+        /**
+         * The type of builtin represented by this local
+         */
+        const Type builtinType;
     };
 
 } /* namespace vc4c */

@@ -111,37 +111,37 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                 else if(move->getSource().hasRegister(REG_UNIFORM) && !move->signal.hasSideEffects())
                 {
                     // if the added work-group info UNIFORMs are never read, we can remove then (and their flag)
-                    const Local* dest = instr->getOutput()->local();
-                    bool isRead = !dest->getUsers(LocalUse::Type::READER).empty();
-                    if(!isRead)
+                    auto dest = instr->getOutput()->local()->as<BuiltinLocal>();
+                    if(dest && dest->getUsers(LocalUse::Type::READER).empty())
                     {
+                        using Type = BuiltinLocal::Type;
                         using FuncType = decltype(&KernelUniforms::setGlobalDataAddressUsed);
                         FuncType disableFunc = nullptr;
-                        if(dest->name == Method::WORK_DIMENSIONS)
+                        if(dest->builtinType == Type::WORK_DIMENSIONS)
                             disableFunc = &KernelUniforms::setWorkDimensionsUsed;
-                        else if(dest->name == Method::GLOBAL_DATA_ADDRESS)
+                        else if(dest->builtinType == Type::GLOBAL_DATA_ADDRESS)
                             disableFunc = &KernelUniforms::setGlobalDataAddressUsed;
-                        else if(dest->name == Method::GLOBAL_OFFSET_X)
+                        else if(dest->builtinType == Type::GLOBAL_OFFSET_X)
                             disableFunc = &KernelUniforms::setGlobalOffsetXUsed;
-                        else if(dest->name == Method::GLOBAL_OFFSET_Y)
+                        else if(dest->builtinType == Type::GLOBAL_OFFSET_Y)
                             disableFunc = &KernelUniforms::setGlobalOffsetYUsed;
-                        else if(dest->name == Method::GLOBAL_OFFSET_Z)
+                        else if(dest->builtinType == Type::GLOBAL_OFFSET_Z)
                             disableFunc = &KernelUniforms::setGlobalOffsetZUsed;
-                        else if(dest->name == Method::GROUP_ID_X)
+                        else if(dest->builtinType == Type::GROUP_ID_X)
                             disableFunc = &KernelUniforms::setGroupIDXUsed;
-                        else if(dest->name == Method::GROUP_ID_Y)
+                        else if(dest->builtinType == Type::GROUP_ID_Y)
                             disableFunc = &KernelUniforms::setGroupIDYUsed;
-                        else if(dest->name == Method::GROUP_ID_Z)
+                        else if(dest->builtinType == Type::GROUP_ID_Z)
                             disableFunc = &KernelUniforms::setGroupIDZUsed;
-                        else if(dest->name == Method::LOCAL_IDS)
+                        else if(dest->builtinType == Type::LOCAL_IDS)
                             disableFunc = &KernelUniforms::setLocalIDsUsed;
-                        else if(dest->name == Method::LOCAL_SIZES)
+                        else if(dest->builtinType == Type::LOCAL_SIZES)
                             disableFunc = &KernelUniforms::setLocalSizesUsed;
-                        else if(dest->name == Method::NUM_GROUPS_X)
+                        else if(dest->builtinType == Type::NUM_GROUPS_X)
                             disableFunc = &KernelUniforms::setNumGroupsXUsed;
-                        else if(dest->name == Method::NUM_GROUPS_Y)
+                        else if(dest->builtinType == Type::NUM_GROUPS_Y)
                             disableFunc = &KernelUniforms::setNumGroupsYUsed;
-                        else if(dest->name == Method::NUM_GROUPS_Z)
+                        else if(dest->builtinType == Type::NUM_GROUPS_Z)
                             disableFunc = &KernelUniforms::setNumGroupsZUsed;
 
                         if(disableFunc)

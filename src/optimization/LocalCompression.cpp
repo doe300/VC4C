@@ -20,13 +20,14 @@ using namespace vc4c;
 using namespace vc4c::optimizations;
 using namespace vc4c::operators;
 
-static const std::vector<std::string> workGroupLocalNames = {Method::LOCAL_IDS, Method::LOCAL_SIZES, Method::GROUP_ID_X,
-    Method::GROUP_ID_Y, Method::GROUP_ID_Z, Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z,
-    Method::GLOBAL_OFFSET_X, Method::GLOBAL_OFFSET_Y, Method::GLOBAL_OFFSET_Z, Method::WORK_DIMENSIONS,
-    Method::GLOBAL_DATA_ADDRESS};
+static const std::vector<BuiltinLocal::Type> workGroupLocalNames = {BuiltinLocal::Type::LOCAL_IDS,
+    BuiltinLocal::Type::LOCAL_SIZES, BuiltinLocal::Type::GROUP_ID_X, BuiltinLocal::Type::GROUP_ID_Y,
+    BuiltinLocal::Type::GROUP_ID_Z, BuiltinLocal::Type::NUM_GROUPS_X, BuiltinLocal::Type::NUM_GROUPS_Y,
+    BuiltinLocal::Type::NUM_GROUPS_Z, BuiltinLocal::Type::GLOBAL_OFFSET_X, BuiltinLocal::Type::GLOBAL_OFFSET_Y,
+    BuiltinLocal::Type::GLOBAL_OFFSET_Z, BuiltinLocal::Type::WORK_DIMENSIONS, BuiltinLocal::Type::GLOBAL_DATA_ADDRESS};
 
 static NODISCARD InstructionWalker compressLocalWrite(
-    Method& method, InstructionWalker it, const Local& local, const Local& container, unsigned char index)
+    Method& method, InstructionWalker it, const BuiltinLocal& local, const Local& container, unsigned char index)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Compressing write of local '" << local.name << "' into container '" << container.name
@@ -65,7 +66,7 @@ static NODISCARD InstructionWalker compressLocalWrite(
 }
 
 static NODISCARD InstructionWalker compressLocalRead(
-    Method& method, InstructionWalker it, const Local& local, const Local& container, unsigned char index)
+    Method& method, InstructionWalker it, const BuiltinLocal& local, const Local& container, unsigned char index)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Compressing read of local '" << local.name << "' from container '" << container.name << "' at position "
@@ -80,7 +81,8 @@ static NODISCARD InstructionWalker compressLocalRead(
     return it;
 }
 
-static void compressLocalIntoRegister(Method& method, const Local& local, const Local& container, unsigned char index)
+static void compressLocalIntoRegister(
+    Method& method, const BuiltinLocal& local, const Local& container, unsigned char index)
 {
     if(index > 15)
         throw CompilationError(CompilationStep::OPTIMIZER, "Container index out of bounds", std::to_string(index));
@@ -112,9 +114,9 @@ bool optimizations::compressWorkGroupLocals(const Module& module, Method& method
     unsigned char index = 0;
     const Value container = method.addNewLocal(TYPE_INT32.toVectorType(16), "%work_group_info");
     method.begin()->walk().nextInBlock().emplace(new intermediate::MoveOperation(container, INT_ZERO));
-    for(const std::string& name : workGroupLocalNames)
+    for(auto type : workGroupLocalNames)
     {
-        if(auto local = method.findLocal(name))
+        if(auto local = method.findBuiltin(type))
         {
             compressLocalIntoRegister(method, *local, *container.local(), index);
             ++index;

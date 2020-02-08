@@ -1198,7 +1198,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
 }
 
 static NODISCARD InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, InstructionWalker it, const Value& arg,
-    const std::vector<std::string>& locals, const Value& defaultValue, const InstructionDecorations decoration)
+    const std::vector<BuiltinLocal::Type>& locals, const Value& defaultValue, const InstructionDecorations decoration)
 {
     if(auto lit = arg.getLiteralValue())
     {
@@ -1206,13 +1206,13 @@ static NODISCARD InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, I
         switch(lit->unsignedInt())
         {
         case 0:
-            src = method.findOrCreateLocal(TYPE_INT32, locals.at(0))->createReference();
+            src = method.findOrCreateBuiltin(locals.at(0))->createReference();
             break;
         case 1:
-            src = method.findOrCreateLocal(TYPE_INT32, locals.at(1))->createReference();
+            src = method.findOrCreateBuiltin(locals.at(1))->createReference();
             break;
         case 2:
-            src = method.findOrCreateLocal(TYPE_INT32, locals.at(2))->createReference();
+            src = method.findOrCreateBuiltin(locals.at(2))->createReference();
             break;
         default:
             src = defaultValue;
@@ -1224,25 +1224,25 @@ static NODISCARD InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, I
     // dim == 0 -> return first value
     assign(it, NOP_REGISTER) = (arg ^ 0_val, SetFlag::SET_FLAGS);
     it.emplace(new MoveOperation(
-        it->getOutput().value(), method.findOrCreateLocal(TYPE_INT32, locals.at(0))->createReference(), COND_ZERO_SET));
+        it->getOutput().value(), method.findOrCreateBuiltin(locals.at(0))->createReference(), COND_ZERO_SET));
     it->addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION));
     it.nextInBlock();
     // dim == 1 -> return second value
     assign(it, NOP_REGISTER) = (arg ^ 1_val, SetFlag::SET_FLAGS);
     it.emplace(new MoveOperation(
-        it->getOutput().value(), method.findOrCreateLocal(TYPE_INT32, locals.at(1))->createReference(), COND_ZERO_SET));
+        it->getOutput().value(), method.findOrCreateBuiltin(locals.at(1))->createReference(), COND_ZERO_SET));
     it->addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION));
     it.nextInBlock();
     // dim == 2 -> return third value
     assign(it, NOP_REGISTER) = (arg ^ 2_val, SetFlag::SET_FLAGS);
-    it.reset((new MoveOperation(it->getOutput().value(),
-        method.findOrCreateLocal(TYPE_INT32, locals.at(2))->createReference(), COND_ZERO_SET)));
+    it.reset((new MoveOperation(
+        it->getOutput().value(), method.findOrCreateBuiltin(locals.at(2))->createReference(), COND_ZERO_SET)));
     it->addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION));
     return it;
 }
 
 static NODISCARD InstructionWalker intrinsifyReadWorkItemInfo(Method& method, InstructionWalker it, const Value& arg,
-    const std::string& local, const InstructionDecorations decoration)
+    BuiltinLocal::Type local, const InstructionDecorations decoration)
 {
     /*
      * work-item infos (id, size) are stored within a single UNIFORM:
@@ -1250,7 +1250,7 @@ static NODISCARD InstructionWalker intrinsifyReadWorkItemInfo(Method& method, In
      * 00 | 3.dim | 2.dim | 1.dim
      * -> res = (UNIFORM >> (dim * 8)) & 0xFF
      */
-    const Local* itemInfo = method.findOrCreateLocal(TYPE_INT32, local);
+    const Local* itemInfo = method.findOrCreateBuiltin(local);
     if(auto literalDim = (arg.getConstantValue() & &Value::getLiteralValue))
     {
         // NOTE: This forces the local_ids/local_sizes values to be on register-file A, but safes an instruction per
@@ -1324,7 +1324,7 @@ static NODISCARD InstructionWalker intrinsifyReadLocalSize(Method& method, Instr
         }
     }
     // TODO needs to have a size of 1 for all higher dimensions (instead of currently implicit 0)
-    return intrinsifyReadWorkItemInfo(method, it, arg, Method::LOCAL_SIZES, decorations);
+    return intrinsifyReadWorkItemInfo(method, it, arg, BuiltinLocal::Type::LOCAL_SIZES, decorations);
 }
 
 static NODISCARD InstructionWalker intrinsifyReadLocalID(Method& method, InstructionWalker it, const Value& arg)
@@ -1338,7 +1338,7 @@ static NODISCARD InstructionWalker intrinsifyReadLocalID(Method& method, Instruc
                             ->addDecorations(add_flag(
                                 InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT)));
     }
-    return intrinsifyReadWorkItemInfo(method, it, arg, Method::LOCAL_IDS,
+    return intrinsifyReadWorkItemInfo(method, it, arg, BuiltinLocal::Type::LOCAL_IDS,
         add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT));
 }
 
@@ -1357,7 +1357,8 @@ static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, I
         Value out = callSite->getOutput().value();
         out.type = TYPE_INT8;
         return it.reset(
-            (new MoveOperation(out, method.findOrCreateLocal(TYPE_INT32, Method::WORK_DIMENSIONS)->createReference()))
+            (new MoveOperation(
+                 out, method.findOrCreateBuiltin(BuiltinLocal::Type::WORK_DIMENSIONS)->createReference()))
                 ->copyExtrasFrom(callSite)
                 ->addDecorations(add_flag(callSite->decoration,
                     add_flag(add_flag(InstructionDecorations::BUILTIN_WORK_DIMENSIONS,
@@ -1369,7 +1370,8 @@ static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, I
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Intrinsifying reading of the number of work-groups" << logging::endl);
         return intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
-            {Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z}, INT_ONE,
+            {BuiltinLocal::Type::NUM_GROUPS_X, BuiltinLocal::Type::NUM_GROUPS_Y, BuiltinLocal::Type::NUM_GROUPS_Z},
+            INT_ONE,
             add_flag(add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT),
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
     }
@@ -1377,7 +1379,7 @@ static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, I
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of the work-group ids" << logging::endl);
         return intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
-            {Method::GROUP_ID_X, Method::GROUP_ID_Y, Method::GROUP_ID_Z}, INT_ZERO,
+            {BuiltinLocal::Type::GROUP_ID_X, BuiltinLocal::Type::GROUP_ID_Y, BuiltinLocal::Type::GROUP_ID_Z}, INT_ZERO,
             add_flag(add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT),
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
     }
@@ -1385,7 +1387,9 @@ static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, I
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of the global offsets" << logging::endl);
         return intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
-            {Method::GLOBAL_OFFSET_X, Method::GLOBAL_OFFSET_Y, Method::GLOBAL_OFFSET_Z}, INT_ZERO,
+            {BuiltinLocal::Type::GLOBAL_OFFSET_X, BuiltinLocal::Type::GLOBAL_OFFSET_Y,
+                BuiltinLocal::Type::GLOBAL_OFFSET_Z},
+            INT_ZERO,
             add_flag(add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT),
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
     }
@@ -1412,8 +1416,8 @@ static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, I
         it.nextInBlock();
         it.emplace(new MoveOperation(tmpNumGroups, NOP_REGISTER));
         it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
-            {Method::NUM_GROUPS_X, Method::NUM_GROUPS_Y, Method::NUM_GROUPS_Z}, INT_ONE,
-            add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT));
+            {BuiltinLocal::Type::NUM_GROUPS_X, BuiltinLocal::Type::NUM_GROUPS_Y, BuiltinLocal::Type::NUM_GROUPS_Z},
+            INT_ONE, add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT));
         it.nextInBlock();
         return it.reset((new Operation(OP_MUL24, callSite->getOutput().value(), tmpLocalSize, tmpNumGroups))
                             ->copyExtrasFrom(callSite)
@@ -1436,7 +1440,7 @@ static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, I
         // emplace dummy instructions to be replaced
         it.emplace(new MoveOperation(tmpGroupID, NOP_REGISTER));
         it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
-            {Method::GROUP_ID_X, Method::GROUP_ID_Y, Method::GROUP_ID_Z}, INT_ZERO,
+            {BuiltinLocal::Type::GROUP_ID_X, BuiltinLocal::Type::GROUP_ID_Y, BuiltinLocal::Type::GROUP_ID_Z}, INT_ZERO,
             add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT));
         it.nextInBlock();
         it.emplace(new MoveOperation(tmpLocalSize, NOP_REGISTER));
@@ -1444,8 +1448,9 @@ static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, I
         it.nextInBlock();
         it.emplace(new MoveOperation(tmpGlobalOffset, NOP_REGISTER));
         it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
-            {Method::GLOBAL_OFFSET_X, Method::GLOBAL_OFFSET_Y, Method::GLOBAL_OFFSET_Z}, INT_ZERO,
-            add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT));
+            {BuiltinLocal::Type::GLOBAL_OFFSET_X, BuiltinLocal::Type::GLOBAL_OFFSET_Y,
+                BuiltinLocal::Type::GLOBAL_OFFSET_Z},
+            INT_ZERO, add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT));
         it.nextInBlock();
         it.emplace(new MoveOperation(tmpLocalID, NOP_REGISTER));
         it = intrinsifyReadLocalID(method, it, callSite->assertArgument(0));

@@ -18,24 +18,6 @@
 
 using namespace vc4c;
 
-const std::string Method::WORK_DIMENSIONS("%work_dim");
-const std::string Method::LOCAL_SIZES("%local_sizes");
-const std::string Method::LOCAL_IDS("%local_ids");
-const std::string Method::NUM_GROUPS_X("%num_groups_x");
-const std::string Method::NUM_GROUPS_Y("%num_groups_y");
-const std::string Method::NUM_GROUPS_Z("%num_groups_z");
-const std::string Method::GROUP_ID_X("%group_id_x");
-const std::string Method::GROUP_ID_Y("%group_id_y");
-const std::string Method::GROUP_ID_Z("%group_id_z");
-const std::string Method::GLOBAL_OFFSET_X("%global_offset_x");
-const std::string Method::GLOBAL_OFFSET_Y("%global_offset_y");
-const std::string Method::GLOBAL_OFFSET_Z("%global_offset_z");
-const std::string Method::GLOBAL_DATA_ADDRESS("%global_data_address");
-const std::string Method::UNIFORM_ADDRESS("%uniform_address");
-const std::string Method::MAX_GROUP_ID_X("%max_group_id_x");
-const std::string Method::MAX_GROUP_ID_Y("%max_group_id_y");
-const std::string Method::MAX_GROUP_ID_Z("%max_group_id_z");
-
 // TODO track locals via thread-not-safe shared_ptr. Method itself tracks as weak_ptr,
 // so local is erased when there is no more use. Local#reference also is shared_ptr
 
@@ -57,6 +39,15 @@ const Local* Method::findLocal(const std::string& name) const
     if(it != locals.end())
         return &(it->second);
     return nullptr;
+}
+
+const BuiltinLocal* Method::findBuiltin(BuiltinLocal::Type type) const
+{
+    if(builtinLocals.size() <= static_cast<std::size_t>(type))
+        return nullptr;
+    using Type = BuiltinLocal::Type;
+    auto& entry = builtinLocals[static_cast<std::size_t>(type)];
+    return entry.get();
 }
 
 const Parameter* Method::findParameter(const std::string& name) const
@@ -97,6 +88,73 @@ const Local* Method::findOrCreateLocal(DataType type, const std::string& name)
         return loc;
     auto it = locals.emplace(name, Local(type, name));
     return &(it.first->second);
+}
+
+const BuiltinLocal* Method::findOrCreateBuiltin(BuiltinLocal::Type type)
+{
+    using Type = BuiltinLocal::Type;
+    if(builtinLocals.size() < BuiltinLocal::NUM_LOCALS)
+        builtinLocals.resize(BuiltinLocal::NUM_LOCALS);
+    auto& entry = builtinLocals.at(static_cast<std::size_t>(type));
+    if(entry)
+        return entry.get();
+    switch(type)
+    {
+    case Type::WORK_DIMENSIONS:
+        entry.reset(new BuiltinLocal("%work_dim", TYPE_INT32, type));
+        return entry.get();
+    case Type::LOCAL_SIZES:
+        entry.reset(new BuiltinLocal("%local_sizes", TYPE_INT32, type));
+        return entry.get();
+    case Type::LOCAL_IDS:
+        entry.reset(new BuiltinLocal("%local_ids", TYPE_INT32, type));
+        return entry.get();
+    case Type::NUM_GROUPS_X:
+        entry.reset(new BuiltinLocal("%num_groups_x", TYPE_INT32, type));
+        return entry.get();
+    case Type::NUM_GROUPS_Y:
+        entry.reset(new BuiltinLocal("%num_groups_y", TYPE_INT32, type));
+        return entry.get();
+    case Type::NUM_GROUPS_Z:
+        entry.reset(new BuiltinLocal("%num_groups_z", TYPE_INT32, type));
+        return entry.get();
+    case Type::GROUP_ID_X:
+        entry.reset(new BuiltinLocal("%group_id_x", TYPE_INT32, type));
+        return entry.get();
+    case Type::GROUP_ID_Y:
+        entry.reset(new BuiltinLocal("%group_id_y", TYPE_INT32, type));
+        return entry.get();
+    case Type::GROUP_ID_Z:
+        entry.reset(new BuiltinLocal("%group_id_z", TYPE_INT32, type));
+        return entry.get();
+    case Type::GLOBAL_OFFSET_X:
+        entry.reset(new BuiltinLocal("%global_offset_x", TYPE_INT32, type));
+        return entry.get();
+    case Type::GLOBAL_OFFSET_Y:
+        entry.reset(new BuiltinLocal("%global_offset_y", TYPE_INT32, type));
+        return entry.get();
+    case Type::GLOBAL_OFFSET_Z:
+        entry.reset(new BuiltinLocal("%global_offset_z", TYPE_INT32, type));
+        return entry.get();
+    case Type::GLOBAL_DATA_ADDRESS:
+        entry.reset(new BuiltinLocal("%global_data_address", TYPE_INT32, type));
+        return entry.get();
+    case Type::UNIFORM_ADDRESS:
+        entry.reset(new BuiltinLocal("%uniform_address", TYPE_INT32, type));
+        return entry.get();
+    case Type::MAX_GROUP_ID_X:
+        entry.reset(new BuiltinLocal("%max_group_id_x", TYPE_INT32, type));
+        return entry.get();
+    case Type::MAX_GROUP_ID_Y:
+        entry.reset(new BuiltinLocal("%max_group_id_y", TYPE_INT32, type));
+        return entry.get();
+    case Type::MAX_GROUP_ID_Z:
+        entry.reset(new BuiltinLocal("%max_group_id_z", TYPE_INT32, type));
+        return entry.get();
+    default:;
+    }
+    throw CompilationError(
+        CompilationStep::GENERAL, "Unhandled built-in type", std::to_string(static_cast<unsigned>(type)));
 }
 
 static NODISCARD bool removeUsagesInBasicBlock(const Method& method, const BasicBlock& bb, const Local* locale,

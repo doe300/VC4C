@@ -911,10 +911,12 @@ static void generateStopSegment(Method& method)
     method.appendToEnd(new intermediate::Nop(intermediate::DelayType::THREAD_END));
 }
 
-static bool isLocalUsed(Method& method, const std::string& name)
+static const Local* isLocalUsed(Method& method, BuiltinLocal::Type type)
 {
-    auto loc = method.findLocal(name);
-    return loc != nullptr && !loc->getUsers(LocalUse::Type::READER).empty();
+    auto loc = method.findBuiltin(type);
+    if(loc != nullptr && !loc->getUsers(LocalUse::Type::READER).empty())
+        return loc;
+    return nullptr;
 }
 
 void optimizations::addStartStopSegment(const Module& module, Method& method, const Configuration& config)
@@ -964,84 +966,71 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     method.metaData.uniformsUsed.value = 0;
     auto workInfoDecorations =
         add_flag(InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
-    if(isLocalUsed(method, Method::WORK_DIMENSIONS))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::WORK_DIMENSIONS))
     {
         method.metaData.uniformsUsed.setWorkDimensionsUsed(true);
-        assign(it, method.findOrCreateLocal(TYPE_INT8, Method::WORK_DIMENSIONS)->createReference()) =
-            (Value(REG_UNIFORM, TYPE_INT8), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT8), workInfoDecorations);
     }
-    if(isLocalUsed(method, Method::LOCAL_SIZES))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::LOCAL_SIZES))
     {
         method.metaData.uniformsUsed.setLocalSizesUsed(true);
-        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_SIZES)->createReference()) =
-            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
-    if(isLocalUsed(method, Method::LOCAL_IDS))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::LOCAL_IDS))
     {
         method.metaData.uniformsUsed.setLocalIDsUsed(true);
-        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::LOCAL_IDS)->createReference()) =
-            (Value(REG_UNIFORM, TYPE_INT32),
-                remove_flag(workInfoDecorations, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32),
+            remove_flag(workInfoDecorations, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
     }
-    if(isLocalUsed(method, Method::NUM_GROUPS_X))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::NUM_GROUPS_X))
     {
         method.metaData.uniformsUsed.setNumGroupsXUsed(true);
-        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_X)->createReference()) =
-            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
-    if(isLocalUsed(method, Method::NUM_GROUPS_Y))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::NUM_GROUPS_Y))
     {
         method.metaData.uniformsUsed.setNumGroupsYUsed(true);
-        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Y)->createReference()) =
-            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
-    if(isLocalUsed(method, Method::NUM_GROUPS_Z))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::NUM_GROUPS_Z))
     {
         method.metaData.uniformsUsed.setNumGroupsZUsed(true);
-        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::NUM_GROUPS_Z)->createReference()) =
-            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
-    if(isLocalUsed(method, Method::GROUP_ID_X))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GROUP_ID_X))
     {
         method.metaData.uniformsUsed.setGroupIDXUsed(true);
-        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_X)->createReference()) =
-            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
-    if(isLocalUsed(method, Method::GROUP_ID_Y))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GROUP_ID_Y))
     {
         method.metaData.uniformsUsed.setGroupIDYUsed(true);
-        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Y)->createReference()) =
-            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
-    if(isLocalUsed(method, Method::GROUP_ID_Z))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GROUP_ID_Z))
     {
         method.metaData.uniformsUsed.setGroupIDZUsed(true);
-        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::GROUP_ID_Z)->createReference()) =
-            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
-    if(isLocalUsed(method, Method::GLOBAL_OFFSET_X))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GLOBAL_OFFSET_X))
     {
         method.metaData.uniformsUsed.setGlobalOffsetXUsed(true);
-        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_X)->createReference()) =
-            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
-    if(isLocalUsed(method, Method::GLOBAL_OFFSET_Y))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GLOBAL_OFFSET_Y))
     {
         method.metaData.uniformsUsed.setGlobalOffsetYUsed(true);
-        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Y)->createReference()) =
-            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
-    if(isLocalUsed(method, Method::GLOBAL_OFFSET_Z))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GLOBAL_OFFSET_Z))
     {
         method.metaData.uniformsUsed.setGlobalOffsetZUsed(true);
-        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_OFFSET_Z)->createReference()) =
-            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
-    if(isLocalUsed(method, Method::GLOBAL_DATA_ADDRESS))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GLOBAL_DATA_ADDRESS))
     {
         method.metaData.uniformsUsed.setGlobalDataAddressUsed(true);
-        assign(it, method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference()) =
-            (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
 
     // load arguments to locals (via reading from uniform)
@@ -1373,10 +1362,12 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 // Clear processed instructions
                 insts->second.clear();
 
-                if(headBlock->getLabel()->getLabel()->name == BasicBlock::DEFAULT_BLOCK)
+                auto headLabel = headBlock->getLabel()->getLabel();
+                auto insertedLabel = insertedBlock->getLabel()->getLabel();
+                if(headLabel && insertedLabel && headLabel->name == BasicBlock::DEFAULT_BLOCK)
                 {
                     // swap labels because DEFAULT_BLOCK is treated as head block.
-                    headBlock->getLabel()->getLabel()->name.swap(insertedBlock->getLabel()->getLabel()->name);
+                    headLabel->name.swap(insertedLabel->name);
                 }
             }
         }
@@ -1875,9 +1866,9 @@ static bool moveGroupIdInitializers(Method& method, BasicBlock& defaultBlock, Ba
     auto insertIt = newStartBlock.walkEnd();
     // whether the group id locals are not written and therefore not used inside the "real" kernel code
     bool groupIdsOnlyRead = true;
-    for(const auto& id : {Method::GROUP_ID_X, Method::GROUP_ID_Y, Method::GROUP_ID_Z})
+    for(auto type : {BuiltinLocal::Type::GROUP_ID_X, BuiltinLocal::Type::GROUP_ID_Y, BuiltinLocal::Type::GROUP_ID_Z})
     {
-        auto loc = method.findOrCreateLocal(TYPE_INT32, id);
+        auto loc = method.findOrCreateBuiltin(type);
         if(auto writer = loc->getSingleWriter())
         {
             groupIdsOnlyRead = false;
@@ -1973,20 +1964,20 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
 
 static void insertRepetitionBlocks(Method& method, const BasicBlock& defaultBlock, BasicBlock& lastBlock)
 {
-    auto maxGroupIdX = method.findOrCreateLocal(TYPE_INT32, Method::MAX_GROUP_ID_X)->createReference();
-    auto maxGroupIdY = method.findOrCreateLocal(TYPE_INT32, Method::MAX_GROUP_ID_Y)->createReference();
-    auto maxGroupIdZ = method.findOrCreateLocal(TYPE_INT32, Method::MAX_GROUP_ID_Z)->createReference();
+    auto maxGroupIdX = method.findOrCreateBuiltin(BuiltinLocal::Type::MAX_GROUP_ID_X)->createReference();
+    auto maxGroupIdY = method.findOrCreateBuiltin(BuiltinLocal::Type::MAX_GROUP_ID_Y)->createReference();
+    auto maxGroupIdZ = method.findOrCreateBuiltin(BuiltinLocal::Type::MAX_GROUP_ID_Z)->createReference();
 
     auto it = lastBlock.walk();
     it = insertAddressResetBlock(method, it, maxGroupIdX, maxGroupIdY, maxGroupIdZ);
 
-    auto groupIdX = method.findLocal(Method::GROUP_ID_X)->createReference();
+    auto groupIdX = method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_ID_X)->createReference();
     it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdX, maxGroupIdX, it, nullptr);
 
-    auto groupIdY = method.findLocal(Method::GROUP_ID_Y)->createReference();
+    auto groupIdY = method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_ID_Y)->createReference();
     it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdY, maxGroupIdY, it, maxGroupIdX.local());
 
-    auto groupIdZ = method.findLocal(Method::GROUP_ID_Z)->createReference();
+    auto groupIdZ = method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_ID_Z)->createReference();
     it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdZ, maxGroupIdZ, it, maxGroupIdY.local());
 }
 

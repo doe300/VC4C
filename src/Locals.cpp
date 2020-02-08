@@ -12,16 +12,6 @@ using namespace vc4c;
 
 Local::Local(DataType type, const std::string& name) : type(type), name(name), reference(nullptr, ANY_ELEMENT) {}
 
-bool Local::operator<(const Local& other) const
-{
-    return name < other.name;
-}
-
-bool Local::operator==(const Local& other) const
-{
-    return this == &other || name == other.name;
-}
-
 Value Local::createReference(int index) const
 {
     if(index != WHOLE_OBJECT)
@@ -237,5 +227,12 @@ bool order_by_alignment_and_name::operator()(const StackAllocation& sa1, const S
 {
     if(sa1.alignment > sa2.alignment)
         return true;
-    return sa1 < sa2;
+    return sa1.name < sa2.name;
 }
+
+BuiltinLocal::BuiltinLocal(const std::string& name, DataType dataType, Type builtinType) :
+    Local(dataType, name), builtinType(builtinType)
+{
+}
+
+BuiltinLocal::~BuiltinLocal() noexcept = default;

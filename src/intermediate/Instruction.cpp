@@ -370,9 +370,10 @@ Value IntermediateInstruction::renameValue(Method& method, const Value& orig, co
 {
     if(!orig.checkLocal())
         return orig;
-    if(orig.local()->is<Global>())
+    auto origLocal = orig.local();
+    if(origLocal->is<Global>())
         return orig;
-    if(auto alloc = orig.local()->as<StackAllocation>())
+    if(auto alloc = origLocal->as<StackAllocation>())
     {
         if(method.findStackAllocation(prefix + alloc->name) != nullptr)
             return method.findStackAllocation(prefix + alloc->name)->createReference();
@@ -380,12 +381,12 @@ Value IntermediateInstruction::renameValue(Method& method, const Value& orig, co
             StackAllocation(prefix + alloc->name, alloc->type, alloc->size, alloc->alignment));
         return pos.first->createReference();
     }
-    const Local* copy = method.findOrCreateLocal(orig.type, prefix + orig.local()->name);
-    if(orig.local()->reference.first != nullptr)
+    const Local* copy = method.findOrCreateLocal(orig.type, prefix + origLocal->name);
+    if(origLocal->reference.first != nullptr)
         // re-reference the copied local to the (original) source
         const_cast<std::pair<Local*, int>&>(copy->reference) =
-            std::make_pair(renameValue(method, orig.local()->reference.first->createReference(), prefix).local(),
-                orig.local()->reference.second);
+            std::make_pair(renameValue(method, origLocal->reference.first->createReference(), prefix).local(),
+                origLocal->reference.second);
     return copy->createReference();
 }
 

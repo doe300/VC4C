@@ -210,14 +210,16 @@ static bool findMemoryObjectAndBaseAddressAdd(
         const auto& arg1 = trackInst->assertArgument(1);
         if(arg0.checkLocal() &&
             (arg0.local()->is<Parameter>() || arg0.local()->residesInMemory() ||
-                arg0.local()->name == Method::GLOBAL_DATA_ADDRESS))
+                (arg0.local()->is<BuiltinLocal>() &&
+                    arg0.local()->as<BuiltinLocal>()->builtinType == BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)))
         {
             range.memoryObject = arg0.local();
             varArg = arg1;
         }
         else if(arg1.checkLocal() &&
             (arg1.local()->is<Parameter>() || arg1.local()->residesInMemory() ||
-                arg1.local()->name == Method::GLOBAL_DATA_ADDRESS))
+                (arg1.local()->is<BuiltinLocal>() &&
+                    arg1.local()->as<BuiltinLocal>()->builtinType == BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)))
         {
             range.memoryObject = arg1.local();
             varArg = arg0;
@@ -267,7 +269,8 @@ static bool findMemoryObjectAndBaseAddressAdd(
                 auto secondLoc = expr->arg1.checkLocal();
                 if(firstLoc &&
                     (firstLoc->is<Parameter>() || firstLoc->residesInMemory() ||
-                        firstLoc->name == Method::GLOBAL_DATA_ADDRESS))
+                        (firstLoc->is<BuiltinLocal>() &&
+                            firstLoc->as<BuiltinLocal>()->builtinType == BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)))
                 {
                     range.memoryObject = firstLoc;
                     varArg = arg1;
@@ -275,7 +278,8 @@ static bool findMemoryObjectAndBaseAddressAdd(
                 }
                 else if(secondLoc &&
                     (secondLoc->is<Parameter>() || secondLoc->residesInMemory() ||
-                        secondLoc->name == Method::GLOBAL_DATA_ADDRESS))
+                        (secondLoc->is<BuiltinLocal>() &&
+                            secondLoc->as<BuiltinLocal>()->builtinType == BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)))
                 {
                     range.memoryObject = secondLoc;
                     varArg = arg0;
@@ -286,7 +290,9 @@ static bool findMemoryObjectAndBaseAddressAdd(
             else if(expr && expr->isMoveExpression() && expr->arg0.checkValue() & &Value::checkLocal)
             {
                 auto loc = expr->arg0.checkValue()->local();
-                if(loc->is<Parameter>() || loc->residesInMemory() || loc->name == Method::GLOBAL_DATA_ADDRESS)
+                if(loc->is<Parameter>() || loc->residesInMemory() ||
+                    (loc->is<BuiltinLocal>() &&
+                        loc->as<BuiltinLocal>()->builtinType == BuiltinLocal::Type::GLOBAL_DATA_ADDRESS))
                 {
                     range.memoryObject = loc;
                     range.constantOffset = INT_ZERO;

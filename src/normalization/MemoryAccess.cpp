@@ -584,13 +584,13 @@ InstructionWalker normalization::accessGlobalData(
                 Value tmp = UNDEFINED_VALUE;
                 if(globalOffset.value() == 0)
                 {
-                    tmp = method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference();
+                    tmp = method.findOrCreateBuiltin(BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)->createReference();
                 }
                 else
                 {
                     // emplace calculation of global-data pointer and replace argument
                     tmp = assign(it, TYPE_INT32, "%global_data_offset") =
-                        method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference() +
+                        method.findOrCreateBuiltin(BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)->createReference() +
                         Value(Literal(globalOffset.value()), TYPE_INT32);
                 }
                 it->setArgument(i, std::move(tmp));
@@ -745,7 +745,7 @@ void normalization::resolveStackAllocation(
                 auto qpuOffset = assign(it, TYPE_INT32, "%stack_offset") = mul24(Value(REG_QPU_NUMBER, TYPE_INT8),
                     Value(Literal(static_cast<uint32_t>(maximumStackSize)), TYPE_INT32));
                 auto addrTemp = assign(it, arg.type, "%stack_addr") =
-                    qpuOffset + method.findOrCreateLocal(TYPE_INT32, Method::GLOBAL_DATA_ADDRESS)->createReference();
+                    qpuOffset + method.findOrCreateBuiltin(BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)->createReference();
                 auto finalAddr = assign(it, arg.type, "%stack_addr") = addrTemp +
                     Value(Literal(static_cast<uint32_t>(arg.local()->as<StackAllocation>()->offset + stackBaseOffset)),
                         TYPE_INT32);

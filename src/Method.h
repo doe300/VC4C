@@ -29,24 +29,6 @@ namespace vc4c
         using BasicBlockList = FastModificationList<BasicBlock>;
 
     public:
-        static const std::string WORK_DIMENSIONS;
-        static const std::string LOCAL_SIZES;
-        static const std::string LOCAL_IDS;
-        static const std::string NUM_GROUPS_X;
-        static const std::string NUM_GROUPS_Y;
-        static const std::string NUM_GROUPS_Z;
-        static const std::string GROUP_ID_X;
-        static const std::string GROUP_ID_Y;
-        static const std::string GROUP_ID_Z;
-        static const std::string GLOBAL_OFFSET_X;
-        static const std::string GLOBAL_OFFSET_Y;
-        static const std::string GLOBAL_OFFSET_Z;
-        static const std::string GLOBAL_DATA_ADDRESS;
-        static const std::string UNIFORM_ADDRESS;
-        static const std::string MAX_GROUP_ID_X;
-        static const std::string MAX_GROUP_ID_Y;
-        static const std::string MAX_GROUP_ID_Z;
-
         /*
          * Whether this function is a kernel-function
          */
@@ -101,6 +83,10 @@ namespace vc4c
          * Looks for a local with the given name and returns it.
          */
         const Local* findLocal(const std::string& name) const;
+        /**
+         * Looks for a builtin local with the given name and returns it.
+         */
+        const BuiltinLocal* findBuiltin(BuiltinLocal::Type type) const;
         /*
          * Looks for a parameter with the given name and returns it.
          */
@@ -120,6 +106,7 @@ namespace vc4c
          * Otherwise a new local is created
          */
         const Local* findOrCreateLocal(DataType type, const std::string& name) __attribute__((returns_nonnull));
+        const BuiltinLocal* findOrCreateBuiltin(BuiltinLocal::Type type) __attribute__((returns_nonnull));
 
         /*!
          * Checks if all usages of this local are within a certain range from the current instruction, but following
@@ -294,6 +281,11 @@ namespace vc4c
          * The list of locals
          */
         FastMap<std::string, Local> locals;
+
+        /*
+         * The builtin locals which are statically named
+         */
+        std::vector<std::unique_ptr<BuiltinLocal>> builtinLocals;
         /*
          * The currently valid CFG
          *
