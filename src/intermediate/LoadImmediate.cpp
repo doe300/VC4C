@@ -66,17 +66,18 @@ std::string LoadImmediate::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* LoadImmediate::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* LoadImmediate::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     switch(type)
     {
     case LoadType::REPLICATE_INT32:
-        return (new LoadImmediate(renameValue(method, getOutput().value(), localPrefix), assertArgument(0).literal(),
-                    conditional, setFlags))
+        return (new LoadImmediate(renameValue(method, getOutput().value(), localPrefix, localMapping),
+                    assertArgument(0).literal(), conditional, setFlags))
             ->copyExtrasFrom(this);
     case LoadType::PER_ELEMENT_SIGNED:
     case LoadType::PER_ELEMENT_UNSIGNED:
-        return (new LoadImmediate(renameValue(method, getOutput().value(), localPrefix),
+        return (new LoadImmediate(renameValue(method, getOutput().value(), localPrefix, localMapping),
                     assertArgument(0).literal().unsignedInt(), type, conditional, setFlags))
             ->copyExtrasFrom(this);
     }

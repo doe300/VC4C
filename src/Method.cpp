@@ -33,19 +33,10 @@ Method::~Method()
     basicBlocks.clear();
 }
 
-const Local* Method::findLocal(const std::string& name) const
-{
-    auto it = locals.find(name);
-    if(it != locals.end())
-        return &(it->second);
-    return nullptr;
-}
-
 const BuiltinLocal* Method::findBuiltin(BuiltinLocal::Type type) const
 {
     if(builtinLocals.size() <= static_cast<std::size_t>(type))
         return nullptr;
-    using Type = BuiltinLocal::Type;
     auto& entry = builtinLocals[static_cast<std::size_t>(type)];
     return entry.get();
 }
@@ -75,19 +66,10 @@ const StackAllocation* Method::findStackAllocation(const std::string& name) cons
     return nullptr;
 }
 
-const Local* Method::findOrCreateLocal(DataType type, const std::string& name)
+const Local* Method::createLocal(DataType type, const std::string& name)
 {
-    const Local* loc = findLocal(name);
-    if(loc == nullptr)
-        loc = findParameter(name);
-    if(loc == nullptr)
-        loc = findGlobal(name);
-    if(loc == nullptr)
-        loc = findStackAllocation(name);
-    if(loc != nullptr)
-        return loc;
-    auto it = locals.emplace(name, Local(type, name));
-    return &(it.first->second);
+    auto it = locals.emplace(Local(type, name));
+    return &(*it.first);
 }
 
 const BuiltinLocal* Method::findOrCreateBuiltin(BuiltinLocal::Type type)
@@ -214,11 +196,8 @@ static std::atomic_size_t tmpIndex{0};
 const Value Method::addNewLocal(DataType type, const std::string& prefix, const std::string& postfix)
 {
     const std::string name = createLocalName(prefix, postfix);
-    if(findLocal(name) != nullptr)
-        throw CompilationError(
-            CompilationStep::GENERAL, "Local with this name already exists", findLocal(name)->to_string());
-    auto it = locals.emplace(name, Local(type, name));
-    return it.first->second.createReference();
+    auto it = locals.emplace(Local(type, name));
+    return it.first->createReference();
 }
 
 std::string Method::createLocalName(const std::string& prefix, const std::string& postfix)
@@ -403,6 +382,28 @@ const BasicBlock* Method::findBasicBlock(const Local* label) const
     return nullptr;
 }
 
+BasicBlock* Method::findBasicBlock(const std::string& label)
+{
+    for(BasicBlock& bb : *this)
+    {
+        auto branchLabel = dynamic_cast<const intermediate::BranchLabel*>(bb.begin()->get());
+        if(branchLabel && branchLabel->getLabel()->name == label)
+            return &bb;
+    }
+    return nullptr;
+}
+
+const BasicBlock* Method::findBasicBlock(const std::string& label) const
+{
+    for(const BasicBlock& bb : *this)
+    {
+        auto branchLabel = dynamic_cast<const intermediate::BranchLabel*>(bb.begin()->get());
+        if(branchLabel && branchLabel->getLabel()->name == label)
+            return &bb;
+    }
+    return nullptr;
+}
+
 bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
 {
     if(!overwriteUsages)
@@ -442,8 +443,8 @@ bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
 
 BasicBlock& Method::createAndInsertNewBlock(BasicBlockList::iterator position, const std::string& labelName)
 {
-    auto newLabel = locals.emplace(labelName, Local(TYPE_LABEL, labelName));
-    auto& block = *basicBlocks.emplace(position, *this, new intermediate::BranchLabel(newLabel.first->second));
+    auto newLabel = locals.emplace(Local(TYPE_LABEL, labelName));
+    auto& block = *basicBlocks.emplace(position, *this, new intermediate::BranchLabel(*newLabel.first));
     updateCFGOnBlockInsertion(&block);
     return block;
 }
@@ -623,7 +624,7 @@ void Method::checkAndCreateDefaultBasicBlock()
     {
         // in case the input code does not always add a label to the start of a function
         basicBlocks.emplace_back(
-            *this, new intermediate::BranchLabel(*findOrCreateLocal(TYPE_LABEL, BasicBlock::DEFAULT_BLOCK)));
+            *this, new intermediate::BranchLabel(*createLocal(TYPE_LABEL, BasicBlock::DEFAULT_BLOCK)));
         updateCFGOnBlockInsertion(&basicBlocks.back());
     }
 }

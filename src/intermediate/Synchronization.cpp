@@ -48,7 +48,8 @@ SideEffectType SemaphoreAdjustment::getSideEffects() const
     return add_flag(IntermediateInstruction::getSideEffects(), SideEffectType::SEMAPHORE);
 }
 
-IntermediateInstruction* SemaphoreAdjustment::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* SemaphoreAdjustment::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     return (new SemaphoreAdjustment(semaphore, increase))->copyExtrasFrom(this)->setOutput(getOutput());
 }
@@ -126,7 +127,8 @@ bool MemoryBarrier::isNormalized() const
     return true;
 }
 
-IntermediateInstruction* MemoryBarrier::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* MemoryBarrier::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     return (new MemoryBarrier(scope, semantics))->copyExtrasFrom(this);
 }
@@ -172,9 +174,10 @@ bool LifetimeBoundary::isNormalized() const
     return true;
 }
 
-IntermediateInstruction* LifetimeBoundary::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* LifetimeBoundary::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new LifetimeBoundary(renameValue(method, getStackAllocation(), localPrefix), isLifetimeEnd))
+    return (new LifetimeBoundary(renameValue(method, getStackAllocation(), localPrefix, localMapping), isLifetimeEnd))
         ->copyExtrasFrom(this);
 }
 
@@ -231,7 +234,8 @@ SideEffectType MutexLock::getSideEffects() const
         locksMutex() ? SideEffectType::REGISTER_READ : SideEffectType::REGISTER_WRITE);
 }
 
-IntermediateInstruction* MutexLock::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* MutexLock::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     return new MutexLock(accessType);
 }

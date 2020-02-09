@@ -65,15 +65,16 @@ std::string Operation::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* Operation::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* Operation::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     if(!getSecondArg())
-        return (new Operation(op, renameValue(method, getOutput().value(), localPrefix),
-                    renameValue(method, getFirstArg(), localPrefix), conditional, setFlags))
+        return (new Operation(op, renameValue(method, getOutput().value(), localPrefix, localMapping),
+                    renameValue(method, getFirstArg(), localPrefix, localMapping), conditional, setFlags))
             ->copyExtrasFrom(this);
-    return (new Operation(op, renameValue(method, getOutput().value(), localPrefix),
-                renameValue(method, getFirstArg(), localPrefix), renameValue(method, assertArgument(1), localPrefix),
-                conditional, setFlags))
+    return (new Operation(op, renameValue(method, getOutput().value(), localPrefix, localMapping),
+                renameValue(method, getFirstArg(), localPrefix, localMapping),
+                renameValue(method, assertArgument(1), localPrefix, localMapping), conditional, setFlags))
         ->copyExtrasFrom(this);
 }
 
@@ -435,15 +436,18 @@ std::string IntrinsicOperation::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* IntrinsicOperation::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* IntrinsicOperation::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     if(!getSecondArg())
-        return (new IntrinsicOperation(std::string(opCode), renameValue(method, getOutput().value(), localPrefix),
-                    renameValue(method, getFirstArg(), localPrefix), conditional, setFlags))
+        return (new IntrinsicOperation(std::string(opCode),
+                    renameValue(method, getOutput().value(), localPrefix, localMapping),
+                    renameValue(method, getFirstArg(), localPrefix, localMapping), conditional, setFlags))
             ->copyExtrasFrom(this);
-    return (new IntrinsicOperation(std::string(opCode), renameValue(method, getOutput().value(), localPrefix),
-                renameValue(method, getFirstArg(), localPrefix), renameValue(method, assertArgument(1), localPrefix),
-                conditional, setFlags))
+    return (
+        new IntrinsicOperation(std::string(opCode), renameValue(method, getOutput().value(), localPrefix, localMapping),
+            renameValue(method, getFirstArg(), localPrefix, localMapping),
+            renameValue(method, assertArgument(1), localPrefix, localMapping), conditional, setFlags))
         ->copyExtrasFrom(this);
 }
 
@@ -511,10 +515,11 @@ std::string MoveOperation::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* MoveOperation::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* MoveOperation::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new MoveOperation(renameValue(method, getOutput().value(), localPrefix),
-                renameValue(method, getSource(), localPrefix), conditional, setFlags))
+    return (new MoveOperation(renameValue(method, getOutput().value(), localPrefix, localMapping),
+                renameValue(method, getSource(), localPrefix, localMapping), conditional, setFlags))
         ->copyExtrasFrom(this);
 }
 
@@ -638,10 +643,11 @@ std::string VectorRotation::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* VectorRotation::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* VectorRotation::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new VectorRotation(renameValue(method, getOutput().value(), localPrefix),
-                renameValue(method, getSource(), localPrefix), getOffset(), type, conditional, setFlags))
+    return (new VectorRotation(renameValue(method, getOutput().value(), localPrefix, localMapping),
+                renameValue(method, getSource(), localPrefix, localMapping), getOffset(), type, conditional, setFlags))
         ->copyExtrasFrom(this);
 }
 
@@ -754,7 +760,7 @@ std::string Nop::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* Nop::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* Nop::copyFor(Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     return (new Nop(type))->copyExtrasFrom(this);
 }
@@ -784,10 +790,12 @@ Comparison::Comparison(std::string&& comp, Value&& dest, Value&& val0, Value&& v
 {
 }
 
-IntermediateInstruction* Comparison::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* Comparison::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new Comparison(std::string(opCode), renameValue(method, getOutput().value(), localPrefix),
-                renameValue(method, getFirstArg(), localPrefix), renameValue(method, assertArgument(1), localPrefix)))
+    return (new Comparison(std::string(opCode), renameValue(method, getOutput().value(), localPrefix, localMapping),
+                renameValue(method, getFirstArg(), localPrefix, localMapping),
+                renameValue(method, assertArgument(1), localPrefix, localMapping)))
         ->copyExtrasFrom(this);
 }
 
@@ -921,10 +929,11 @@ SideEffectType CombinedOperation::getSideEffects() const
         op1 ? op1->getSideEffects() : SideEffectType::NONE, op2 ? op2->getSideEffects() : SideEffectType::NONE);
 }
 
-IntermediateInstruction* CombinedOperation::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* CombinedOperation::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new CombinedOperation(dynamic_cast<Operation*>(op1->copyFor(method, localPrefix)),
-                dynamic_cast<Operation*>(op2->copyFor(method, localPrefix))))
+    return (new CombinedOperation(dynamic_cast<Operation*>(op1->copyFor(method, localPrefix, localMapping)),
+                dynamic_cast<Operation*>(op2->copyFor(method, localPrefix, localMapping))))
         ->copyExtrasFrom(this);
 }
 

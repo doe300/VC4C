@@ -366,7 +366,8 @@ PrecalculatedValue IntermediateInstruction::precalculate(const std::size_t numIt
     return PrecalculatedValue{NO_VALUE, {}};
 }
 
-Value IntermediateInstruction::renameValue(Method& method, const Value& orig, const std::string& prefix) const
+Value IntermediateInstruction::renameValue(
+    Method& method, const Value& orig, const std::string& prefix, InlineMapping& localMapping) const
 {
     if(!orig.checkLocal())
         return orig;
@@ -381,12 +382,16 @@ Value IntermediateInstruction::renameValue(Method& method, const Value& orig, co
             StackAllocation(prefix + alloc->name, alloc->type, alloc->size, alloc->alignment));
         return pos.first->createReference();
     }
-    const Local* copy = method.findOrCreateLocal(orig.type, prefix + origLocal->name);
+    auto it = localMapping.find(origLocal);
+    if(it != localMapping.end())
+        return it->second->createReference();
+    const Local* copy = method.createLocal(orig.type, prefix + origLocal->name);
+    localMapping.emplace(origLocal, copy);
     if(origLocal->reference.first != nullptr)
         // re-reference the copied local to the (original) source
-        const_cast<std::pair<Local*, int>&>(copy->reference) =
-            std::make_pair(renameValue(method, origLocal->reference.first->createReference(), prefix).local(),
-                origLocal->reference.second);
+        const_cast<std::pair<Local*, int>&>(copy->reference) = std::make_pair(
+            renameValue(method, origLocal->reference.first->createReference(), prefix, localMapping).local(),
+            origLocal->reference.second);
     return copy->createReference();
 }
 

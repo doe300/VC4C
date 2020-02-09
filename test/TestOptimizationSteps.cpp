@@ -948,24 +948,26 @@ void TestOptimizationSteps::testSimplifyBranches()
     Method outputMethod(module);
 
     // test simplification of successive branches to some label (inclusive fall-throughs in between)
+    auto& oneIn = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one");
+    auto& oneOut = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one");
     {
-        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one").walkEnd();
-        auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one").walkEnd();
+        auto inIt = oneIn.walkEnd();
+        auto outIt = oneOut.walkEnd();
 
-        inIt.emplace(new Branch(inputMethod.findLocal("%one"), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(oneIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one.remove1").walkEnd();
-        inIt.emplace(new Branch(inputMethod.findLocal("%one"), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(oneIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one.remove2").walkEnd();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one.remove3").walkEnd();
-        inIt.emplace(new Branch(inputMethod.findLocal("%one"), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(oneIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         inIt.nextInBlock();
 
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one.remove1").walkEnd();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one.remove2").walkEnd();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one.remove3").walkEnd();
-        outIt.emplace(new Branch(outputMethod.findLocal("%one"), COND_ALWAYS, BOOL_TRUE));
+        outIt.emplace(new Branch(oneOut.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         outIt.nextInBlock();
     }
 
@@ -983,100 +985,110 @@ void TestOptimizationSteps::testSimplifyBranches()
 
     // test removal of if-else branch, if second branch points to next label
     {
-        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse").walkEnd();
-        auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse").walkEnd();
+        auto& ifIn = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse");
+        auto& ifOut = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse");
+        auto inIt = ifIn.walkEnd();
+        auto outIt = ifOut.walkEnd();
 
         auto inNextLabel =
             inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse.next").getLabel()->getLabel();
         outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse.next");
 
-        inIt.emplace(new Branch(inputMethod.findLocal("%ifelse"), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        inIt.emplace(new Branch(ifIn.getLabel()->getLabel(), COND_ZERO_CLEAR, UNIFORM_REGISTER));
         inIt.nextInBlock();
         inIt.emplace(new Branch(inNextLabel, COND_ZERO_SET, UNIFORM_REGISTER));
         inIt.nextInBlock();
 
-        outIt.emplace(new Branch(outputMethod.findLocal("%ifelse"), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        outIt.emplace(new Branch(ifOut.getLabel()->getLabel(), COND_ZERO_CLEAR, UNIFORM_REGISTER));
         outIt.nextInBlock();
     }
 
     // test not simplify of successive conditional branches to some label
     {
-        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third").walkEnd();
-        auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third").walkEnd();
+        auto& thirdIn = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third");
+        auto& thirdOut = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third");
+        auto inIt = thirdIn.walkEnd();
+        auto outIt = thirdOut.walkEnd();
 
-        inIt.emplace(new Branch(inputMethod.findLocal("%third"), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), COND_ZERO_CLEAR, UNIFORM_REGISTER));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove1").walkEnd();
-        inIt.emplace(new Branch(inputMethod.findLocal("%third"), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), COND_ZERO_CLEAR, UNIFORM_REGISTER));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove2").walkEnd();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove3").walkEnd();
-        inIt.emplace(new Branch(inputMethod.findLocal("%third"), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         inIt.nextInBlock();
 
-        outIt.emplace(new Branch(outputMethod.findLocal("%third"), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), COND_ZERO_CLEAR, UNIFORM_REGISTER));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove1").walkEnd();
-        outIt.emplace(new Branch(outputMethod.findLocal("%third"), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), COND_ZERO_CLEAR, UNIFORM_REGISTER));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove2").walkEnd();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove3").walkEnd();
-        outIt.emplace(new Branch(outputMethod.findLocal("%third"), COND_ALWAYS, BOOL_TRUE));
+        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         outIt.nextInBlock();
     }
 
     // test not simplify with different branch in between
     {
-        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%other").walkEnd();
-        auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%other").walkEnd();
+        auto& otherIn = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%other");
+        auto& otherOut = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%other");
+        auto inIt = otherIn.walkEnd();
+        auto outIt = otherOut.walkEnd();
 
-        inIt.emplace(new Branch(inputMethod.findLocal("%other"), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(otherIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%other.notremove1").walkEnd();
-        inIt.emplace(new Branch(inputMethod.findLocal("%one"), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(oneIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%other.notremove2").walkEnd();
-        inIt.emplace(new Branch(inputMethod.findLocal("%other"), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(otherIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         inIt.nextInBlock();
 
-        outIt.emplace(new Branch(outputMethod.findLocal("%other"), COND_ALWAYS, BOOL_TRUE));
+        outIt.emplace(new Branch(otherOut.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%other.notremove1").walkEnd();
-        outIt.emplace(new Branch(outputMethod.findLocal("%one"), COND_ALWAYS, BOOL_TRUE));
+        outIt.emplace(new Branch(oneOut.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%other.notremove2").walkEnd();
-        outIt.emplace(new Branch(outputMethod.findLocal("%other"), COND_ALWAYS, BOOL_TRUE));
+        outIt.emplace(new Branch(otherOut.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         outIt.nextInBlock();
     }
 
     // test not simplify with different instruction in between
     {
-        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%some").walkEnd();
-        auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%some").walkEnd();
+        auto& someIn = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%some");
+        auto& someOut = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%some");
+        auto inIt = someIn.walkEnd();
+        auto outIt = someOut.walkEnd();
 
-        inIt.emplace(new Branch(inputMethod.findLocal("%some"), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(someIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%some.notremove1").walkEnd();
         inIt.emplace(new MoveOperation(UNIFORM_REGISTER, INT_ONE));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%some.notremove2").walkEnd();
-        inIt.emplace(new Branch(inputMethod.findLocal("%some"), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(someIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         inIt.nextInBlock();
 
-        outIt.emplace(new Branch(outputMethod.findLocal("%some"), COND_ALWAYS, BOOL_TRUE));
+        outIt.emplace(new Branch(someOut.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%some.notremove1").walkEnd();
         outIt.emplace(new MoveOperation(UNIFORM_REGISTER, INT_ONE));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%some.notremove2").walkEnd();
-        outIt.emplace(new Branch(outputMethod.findLocal("%some"), COND_ALWAYS, BOOL_TRUE));
+        outIt.emplace(new Branch(someOut.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
         outIt.nextInBlock();
     }
 
     // test not removal of if-else branch, if first branch points to next label
     {
-        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse2").walkEnd();
-        auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse2").walkEnd();
+        auto& ifElseIn = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse2");
+        auto& ifElseOut = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse2");
+        auto inIt = ifElseIn.walkEnd();
+        auto outIt = ifElseOut.walkEnd();
 
         auto inNextLabel =
             inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse2.next").getLabel()->getLabel();
@@ -1085,12 +1097,12 @@ void TestOptimizationSteps::testSimplifyBranches()
 
         inIt.emplace(new Branch(inNextLabel, COND_ZERO_CLEAR, UNIFORM_REGISTER));
         inIt.nextInBlock();
-        inIt.emplace(new Branch(inputMethod.findLocal("%ifelse2"), COND_ZERO_SET, UNIFORM_REGISTER));
+        inIt.emplace(new Branch(ifElseIn.getLabel()->getLabel(), COND_ZERO_SET, UNIFORM_REGISTER));
         inIt.nextInBlock();
 
         outIt.emplace(new Branch(outNextLabel, COND_ZERO_CLEAR, UNIFORM_REGISTER));
         outIt.nextInBlock();
-        outIt.emplace(new Branch(outputMethod.findLocal("%ifelse2"), COND_ZERO_SET, UNIFORM_REGISTER));
+        outIt.emplace(new Branch(ifElseOut.getLabel()->getLabel(), COND_ZERO_SET, UNIFORM_REGISTER));
         outIt.nextInBlock();
     }
 

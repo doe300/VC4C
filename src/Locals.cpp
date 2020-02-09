@@ -12,6 +12,16 @@ using namespace vc4c;
 
 Local::Local(DataType type, const std::string& name) : type(type), name(name), reference(nullptr, ANY_ELEMENT) {}
 
+bool Local::operator<(const Local& other) const noexcept
+{
+    return name < other.name;
+}
+
+bool Local::operator==(const Local& other) const noexcept
+{
+    return this == &other || name == other.name;
+}
+
 Value Local::createReference(int index) const
 {
     if(index != WHOLE_OBJECT)

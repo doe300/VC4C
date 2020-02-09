@@ -80,9 +80,13 @@ namespace vc4c
             DataType type, const std::string& prefix = "", const std::string& postfix = "");
 
         /*
-         * Looks for a local with the given name and returns it.
+         * Returns a newly created local with the given type and name.
+         *
+         * NOTE: In contrast to #addNewLocal(...), this does not create an unique name, but takes the given name as-is!
+         * NOTE: The name of a local must be unique within a method (for parameter, globals, stack-allocations too)
          */
-        const Local* findLocal(const std::string& name) const;
+        const Local* createLocal(DataType type, const std::string& name) __attribute__((returns_nonnull));
+
         /**
          * Looks for a builtin local with the given name and returns it.
          */
@@ -99,13 +103,9 @@ namespace vc4c
          * Looks for a stack-allocation with the given name and returns it.
          */
         const StackAllocation* findStackAllocation(const std::string& name) const;
-        /*
-         * Returns a local with the given type and name.
-         *
-         * If a local, parameter, global or stack-allocation with such a name already exists, it is returned.
-         * Otherwise a new local is created
+        /**
+         * Looks for a builtin local for the given type. Create the builtin local if it does not exists yet.
          */
-        const Local* findOrCreateLocal(DataType type, const std::string& name) __attribute__((returns_nonnull));
         const BuiltinLocal* findOrCreateBuiltin(BuiltinLocal::Type type) __attribute__((returns_nonnull));
 
         /*!
@@ -188,6 +188,8 @@ namespace vc4c
          */
         BasicBlock* findBasicBlock(const Local* label);
         const BasicBlock* findBasicBlock(const Local* label) const;
+        BasicBlock* findBasicBlock(const std::string& label);
+        const BasicBlock* findBasicBlock(const std::string& label) const;
 
         /*
          * Clears and removes the given basic block.
@@ -279,8 +281,10 @@ namespace vc4c
         BasicBlockList basicBlocks;
         /*
          * The list of locals
+         *
+         * This is a sorted set, since a hashset somehow a very bad performance!
          */
-        FastMap<std::string, Local> locals;
+        SortedSet<Local> locals;
 
         /*
          * The builtin locals which are statically named

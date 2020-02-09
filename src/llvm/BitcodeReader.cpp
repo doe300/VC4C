@@ -1218,7 +1218,7 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
     }
     // locals of any kind have no name (most of the time)
     if(!val->getName().empty())
-        loc = method.findOrCreateLocal(type, valueName);
+        loc = method.createLocal(type, valueName);
     else
         loc = method.addNewLocal(type).local();
     localMap.emplace(val, loc);

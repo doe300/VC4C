@@ -67,17 +67,21 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                             call->getOutput()->local()->name :
                             std::string("%") + (calledMethod->name + ".") + std::to_string(rand())) +
                     '.';
-                const Local* methodEndLabel = currentMethod.findOrCreateLocal(TYPE_LABEL, newLocalPrefix + "after");
+                const Local* methodEndLabel = currentMethod.createLocal(TYPE_LABEL, newLocalPrefix + "after");
                 inlineMethod(newLocalPrefix, methods, functionAliases, const_cast<Method&>(*calledMethod));
                 // at this point, the called method has already inlined all other methods
 
+                intermediate::InlineMapping mapping;
+                // the number of instructions is a good guess for the number of locals used
+                mapping.reserve(calledMethod->countInstructions());
                 // Starting at lowest level (here), insert in parent
                 // map parameters to arguments
                 for(std::size_t i = 0; i < call->getArguments().size(); ++i)
                 {
                     const Parameter& param = calledMethod->parameters.at(i);
                     const Value ref =
-                        currentMethod.findOrCreateLocal(param.type, newLocalPrefix + param.name)->createReference();
+                        currentMethod.createLocal(param.type, newLocalPrefix + param.name)->createReference();
+                    mapping.emplace(&param, ref.local());
                     if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
                     {
                         it = intermediate::insertSignExtension(
@@ -100,21 +104,25 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                 // add parameters and locals to locals of parent
                 for(const Parameter& arg : calledMethod->parameters)
                 {
-                    currentMethod.findOrCreateLocal(arg.type, newLocalPrefix + arg.name);
+                    if(mapping.find(&arg) == mapping.end())
+                        mapping.emplace(&arg, currentMethod.createLocal(arg.type, newLocalPrefix + arg.name));
                 }
                 // insert instructions
-                calledMethod->forAllInstructions([&it, &currentMethod, &methodEndLabel, &newLocalPrefix, &call](
-                                                     const intermediate::IntermediateInstruction& instr) -> void {
+                calledMethod->forAllInstructions([&](const intermediate::IntermediateInstruction& instr) -> void {
                     if(auto ret = dynamic_cast<const intermediate::Return*>(&instr))
                     {
                         if(auto retVal = ret->getReturnValue())
                         {
                             // prefix locals with destination of call
                             // map return-value to destination
-                            if(retVal->checkLocal())
+                            if(auto retLoc = retVal->checkLocal())
                             {
-                                retVal->local() = const_cast<Local*>(currentMethod.findOrCreateLocal(
-                                    retVal->type, newLocalPrefix + retVal->local()->name));
+                                auto it = mapping.find(retLoc);
+                                if(it != mapping.end())
+                                    retVal->local() = const_cast<Local*>(it->second);
+                                else
+                                    retVal->local() = const_cast<Local*>(
+                                        currentMethod.createLocal(retVal->type, newLocalPrefix + retLoc->name));
                             }
                             it.emplace(new intermediate::MoveOperation(call->getOutput().value(), *retVal));
                             it.nextInMethod();
@@ -129,9 +137,10 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                         // copy instructions
                         if(dynamic_cast<const intermediate::BranchLabel*>(&instr) != nullptr)
                             it = currentMethod.emplaceLabel(it,
-                                dynamic_cast<intermediate::BranchLabel*>(instr.copyFor(currentMethod, newLocalPrefix)));
+                                dynamic_cast<intermediate::BranchLabel*>(
+                                    instr.copyFor(currentMethod, newLocalPrefix, mapping)));
                         else
-                            it.emplace(instr.copyFor(currentMethod, newLocalPrefix));
+                            it.emplace(instr.copyFor(currentMethod, newLocalPrefix, mapping));
                     }
                     it.nextInMethod();
                 });

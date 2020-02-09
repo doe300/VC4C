@@ -144,6 +144,7 @@ void SPIRVParser::parse(Module& module)
                 param.origTypeName = parameterType;
 
             m.second.method->parameters.emplace_back(std::move(param));
+            memoryAllocatedData.emplace(pair.first, &m.second.method->parameters.back());
         }
 
         // to support OpenCL built-in operations, we need to demangle all VC4CL std-lib definitions of the OpenCL C
@@ -896,10 +897,6 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
     {
         currentMethod = &getOrCreateMethod(*module, methods, parsed_instruction->result_id);
         currentMethod->method->returnType = typeMappings.at(parsed_instruction->type_id);
-        // add label %0 to the beginning of the method
-        // XXX maybe this is not necessary? If so, it is removed anyway
-        typeMappings.emplace(0, TYPE_LABEL);
-        instructions.emplace_back(new SPIRVLabel(0, *currentMethod));
         auto it = names.find(parsed_instruction->result_id);
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Reading function: %" << parsed_instruction->result_id << " ("

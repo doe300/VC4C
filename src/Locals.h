@@ -82,6 +82,9 @@ namespace vc4c
         Local& operator=(const Local&) = delete;
         Local& operator=(Local&&) noexcept = delete;
 
+        bool operator<(const Local& other) const noexcept;
+        bool operator==(const Local& other) const noexcept;
+
         /*
          * Creates a Value referencing this Local at the given index (e.g. for compound-types).
          *

@@ -925,8 +925,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     if(it.isEndOfMethod() || !it.get<intermediate::BranchLabel>() ||
         BasicBlock::DEFAULT_BLOCK != it.get<intermediate::BranchLabel>()->getLabel()->name)
     {
-        it = method.emplaceLabel(
-            it, new intermediate::BranchLabel(*method.findOrCreateLocal(TYPE_LABEL, BasicBlock::DEFAULT_BLOCK)));
+        it = method.createAndInsertNewBlock(method.begin(), BasicBlock::DEFAULT_BLOCK).walk();
     }
     it.nextInBlock();
 
@@ -2000,7 +1999,7 @@ bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const
     auto& startBlock = *startIt.getBasicBlock();
 
     // The old and new tail block which indicates kernel execution finished
-    auto lastBlock = method.findBasicBlock(method.findLocal(BasicBlock::LAST_BLOCK));
+    auto lastBlock = method.findBasicBlock(BasicBlock::LAST_BLOCK);
     if(!lastBlock)
     {
         CPPLOG_LAZY(

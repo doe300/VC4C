@@ -40,7 +40,7 @@ namespace vc4c
         using ConstantMapping = std::map<uint32_t, CompoundConstant>;
         using LocalTypeMapping = std::map<uint32_t, uint32_t>;
         using MethodMapping = std::map<uint32_t, SPIRVMethod>;
-        using AllocationMapping = std::map<uint32_t, Local*>;
+        using LocalMapping = std::map<uint32_t, const Local*>;
 
         class SPIRVOperation
         {
@@ -49,9 +49,9 @@ namespace vc4c
             virtual ~SPIRVOperation();
 
             virtual void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) = 0;
+                MethodMapping& methods, LocalMapping& localMapping) = 0;
             virtual Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const = 0;
+                const LocalMapping& memoryAllocated) const = 0;
 
         protected:
             const uint32_t id;
@@ -69,9 +69,9 @@ namespace vc4c
             ~SPIRVInstruction() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         protected:
             uint32_t typeID;
@@ -87,9 +87,9 @@ namespace vc4c
             ~SPIRVComparison() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
         };
 
         class SPIRVCallSite : public SPIRVOperation
@@ -103,9 +103,9 @@ namespace vc4c
             ~SPIRVCallSite() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         protected:
             Optional<uint32_t> methodID;
@@ -127,7 +127,7 @@ namespace vc4c
             ~SPIRVBoolCallSite() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
         };
 
         class SPIRVReturn final : public SPIRVOperation
@@ -138,9 +138,9 @@ namespace vc4c
             ~SPIRVReturn() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         private:
             Optional<uint32_t> returnValue;
@@ -154,9 +154,9 @@ namespace vc4c
             ~SPIRVBranch() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         private:
             const uint32_t defaultLabelID;
@@ -170,11 +170,10 @@ namespace vc4c
             SPIRVLabel(uint32_t id, SPIRVMethod& method);
             ~SPIRVLabel() override = default;
 
-            void mapInstruction(std::map<uint32_t, DataType>& types, ConstantMapping& constants,
-                std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods,
-                std::map<uint32_t, Local*>& memoryAllocated) override;
+            void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
         };
 
         enum class ConversionType : unsigned char
@@ -195,9 +194,9 @@ namespace vc4c
             ~SPIRVConversion() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         private:
             const uint32_t typeID;
@@ -221,9 +220,9 @@ namespace vc4c
                 MemoryAccess memoryAccess = MemoryAccess::NONE, uint32_t size = UNDEFINED_ID);
             ~SPIRVCopy() override = default;
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         private:
             const uint32_t typeID;
@@ -243,9 +242,9 @@ namespace vc4c
                 std::vector<uint32_t>&& indices, bool literalIndices);
             ~SPIRVInsertionExtraction() override = default;
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         private:
             const uint32_t typeID;
@@ -265,9 +264,9 @@ namespace vc4c
             ~SPIRVShuffle() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         private:
             const uint32_t typeID;
@@ -285,9 +284,9 @@ namespace vc4c
             ~SPIRVIndexOf() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         private:
             const uint32_t typeID;
@@ -304,9 +303,9 @@ namespace vc4c
             ~SPIRVPhi() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         private:
             const uint32_t typeID;
@@ -321,9 +320,9 @@ namespace vc4c
             ~SPIRVSelect() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         private:
             const uint32_t typeID;
@@ -340,9 +339,9 @@ namespace vc4c
             ~SPIRVSwitch() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         private:
             const uint32_t selectorID;
@@ -368,9 +367,9 @@ namespace vc4c
             ~SPIRVImageQuery() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         private:
             const uint32_t typeID;
@@ -386,9 +385,9 @@ namespace vc4c
             ~SPIRVMemoryBarrier() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         private:
             const uint32_t scopeID;
@@ -403,9 +402,9 @@ namespace vc4c
             ~SPIRVLifetimeInstruction() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         private:
             const uint32_t sizeInBytes;
@@ -420,9 +419,9 @@ namespace vc4c
             ~SPIRVFoldInstruction() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-                MethodMapping& methods, AllocationMapping& memoryAllocated) override;
+                MethodMapping& methods, LocalMapping& localMapping) override;
             Optional<Value> precalculate(const TypeMapping& types, const ConstantMapping& constants,
-                const AllocationMapping& memoryAllocated) const override;
+                const LocalMapping& memoryAllocated) const override;
 
         private:
             const uint32_t typeID;

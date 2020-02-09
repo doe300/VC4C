@@ -142,11 +142,12 @@ SideEffectType MemoryInstruction::getSideEffects() const
     return add_flag(IntermediateInstruction::getSideEffects(), SideEffectType::MEMORY_ACCESS);
 }
 
-IntermediateInstruction* MemoryInstruction::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* MemoryInstruction::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new MemoryInstruction(op, renameValue(method, getDestination(), localPrefix),
-                renameValue(method, getSource(), localPrefix), renameValue(method, getNumEntries(), localPrefix),
-                guardAccess))
+    return (new MemoryInstruction(op, renameValue(method, getDestination(), localPrefix, localMapping),
+                renameValue(method, getSource(), localPrefix, localMapping),
+                renameValue(method, getNumEntries(), localPrefix, localMapping), guardAccess))
         ->copyExtrasFrom(this);
 }
 

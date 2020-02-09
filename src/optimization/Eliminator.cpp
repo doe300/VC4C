@@ -490,15 +490,13 @@ InstructionWalker optimizations::eliminateReturn(
 {
     if(it.get<intermediate::Return>())
     {
-        const Local* target = method.findLocal(BasicBlock::LAST_BLOCK);
-        if(target == nullptr)
-        {
-            target = method.findOrCreateLocal(TYPE_LABEL, BasicBlock::LAST_BLOCK);
-            method.appendToEnd(new intermediate::BranchLabel(*target));
-        }
+        auto target = method.findBasicBlock(BasicBlock::LAST_BLOCK);
+        if(!target)
+            target = &method.createAndInsertNewBlock(method.end(), BasicBlock::LAST_BLOCK);
+
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Replacing return in kernel-function with branch to end-label" << logging::endl);
-        it.reset(new intermediate::Branch(target, COND_ALWAYS, BOOL_TRUE));
+        it.reset(new intermediate::Branch(target->getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
     }
     return it;
 }

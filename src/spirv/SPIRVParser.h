@@ -63,7 +63,7 @@ namespace vc4c
             // the global mapping of ID -> constants
             ConstantMapping constantMappings;
             // the mapping of ID -> global/stack allocated data
-            AllocationMapping memoryAllocatedData;
+            LocalMapping memoryAllocatedData;
             // the global mapping of ID -> type
             TypeMapping typeMappings;
             // the global mapping of ID -> sampled images

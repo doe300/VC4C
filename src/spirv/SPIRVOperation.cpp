@@ -22,14 +22,16 @@ using namespace vc4c;
 using namespace vc4c::spirv;
 
 static Value toNewLocal(Method& method, const uint32_t id, const uint32_t typeID, const TypeMapping& typeMappings,
-    LocalTypeMapping& localTypes)
+    LocalTypeMapping& localTypes, LocalMapping& localMapping)
 {
     localTypes[id] = typeID;
-    return method.findOrCreateLocal(typeMappings.at(typeID), std::string("%") + std::to_string(id))->createReference();
+    auto loc = method.createLocal(typeMappings.at(typeID), std::string("%") + std::to_string(id));
+    localMapping.emplace(id, loc);
+    return loc->createReference();
 }
 
 static DataType getType(const uint32_t id, const TypeMapping& types, const ConstantMapping& constants,
-    const AllocationMapping& memoryAllocated, const LocalTypeMapping& localTypes)
+    const LocalTypeMapping& localTypes, const LocalMapping& localMapping)
 {
     auto tit = types.find(id);
     if(tit != types.end())
@@ -37,27 +39,26 @@ static DataType getType(const uint32_t id, const TypeMapping& types, const Const
     auto cit = constants.find(id);
     if(cit != constants.end())
         return cit->second.type;
-    auto mit = memoryAllocated.find(id);
-    if(mit != memoryAllocated.end())
+    auto mit = localMapping.find(id);
+    if(mit != localMapping.end())
         return mit->second->type;
     return types.at(localTypes.at(id));
 }
 
 static Value getValue(const uint32_t id, Method& method, const TypeMapping& types, const ConstantMapping& constants,
-    const AllocationMapping& memoryAllocated, const LocalTypeMapping& localTypes)
+    const LocalTypeMapping& localTypes, LocalMapping& localMapping)
 {
     if(id == UNDEFINED_ID)
         return UNDEFINED_VALUE;
     auto cit = constants.find(id);
     if(cit != constants.end())
         return cit->second.toValue().value_or(Value(cit->second.type));
-    auto mit = memoryAllocated.find(id);
-    if(mit != memoryAllocated.end())
-        return mit->second->createReference();
-    return method
-        .findOrCreateLocal(
-            getType(id, types, constants, memoryAllocated, localTypes), std::string("%") + std::to_string(id))
-        ->createReference();
+    auto it = localMapping.find(id);
+    if(it != localMapping.end())
+        return it->second->createReference();
+    auto loc = method.createLocal(getType(id, types, constants, localTypes, localMapping), "%" + std::to_string(id));
+    localMapping.emplace(id, loc);
+    return loc->createReference();
 }
 
 SPIRVOperation::SPIRVOperation(
@@ -78,10 +79,10 @@ SPIRVInstruction::SPIRVInstruction(const uint32_t id, SPIRVMethod& method, const
 }
 
 void SPIRVInstruction::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
-    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
-    Value arg0 = getValue(operands.at(0), *method.method, types, constants, memoryAllocated, localTypes);
+    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
+    Value arg0 = getValue(operands.at(0), *method.method, types, constants, localTypes, localMapping);
     Optional<Value> arg1(NO_VALUE);
     std::string opCode = opcode;
     if(OP_NEGATE == opCode)
@@ -92,7 +93,7 @@ void SPIRVInstruction::mapInstruction(TypeMapping& types, ConstantMapping& const
     }
     else if(operands.size() > 1)
     {
-        arg1 = getValue(operands[1], *method.method, types, constants, memoryAllocated, localTypes);
+        arg1 = getValue(operands[1], *method.method, types, constants, localTypes, localMapping);
     }
     if(!arg1) // unary
     {
@@ -126,7 +127,7 @@ void SPIRVInstruction::mapInstruction(TypeMapping& types, ConstantMapping& const
 }
 
 Optional<Value> SPIRVInstruction::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     const Value op1 = constants.at(operands.at(0)).toValue().value_or(UNDEFINED_VALUE);
     const Value op2 =
@@ -203,11 +204,11 @@ SPIRVComparison::SPIRVComparison(const uint32_t id, SPIRVMethod& method, const s
 }
 
 void SPIRVComparison::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
-    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
-    Value arg0 = getValue(operands.at(0), *method.method, types, constants, memoryAllocated, localTypes);
-    Value arg1 = getValue(operands.at(1), *method.method, types, constants, memoryAllocated, localTypes);
+    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
+    Value arg0 = getValue(operands.at(0), *method.method, types, constants, localTypes, localMapping);
+    Value arg1 = getValue(operands.at(1), *method.method, types, constants, localTypes, localMapping);
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating intermediate comparison '" << opcode << "' of " << arg0.to_string(false) << " and "
             << arg1.to_string(false) << " into " << dest.to_string(true) << logging::endl);
@@ -217,7 +218,7 @@ void SPIRVComparison::mapInstruction(TypeMapping& types, ConstantMapping& consta
 }
 
 Optional<Value> SPIRVComparison::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     const Value op1 = constants.at(operands.at(0)).toValue().value_or(UNDEFINED_VALUE);
     const Value op2 = constants.at(operands.at(1)).toValue().value_or(UNDEFINED_VALUE);
@@ -271,16 +272,17 @@ SPIRVCallSite::SPIRVCallSite(SPIRVMethod& method, const std::string& methodName,
 }
 
 void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
-    Value dest = id == UNDEFINED_ID ? UNDEFINED_VALUE : toNewLocal(*method.method, id, typeID, types, localTypes);
+    Value dest =
+        id == UNDEFINED_ID ? UNDEFINED_VALUE : toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
     std::string calledFunction = methodName.value_or("");
     if(methodID)
         calledFunction = methods.at(methodID.value()).method->name;
     std::vector<Value> args;
     for(const uint32_t op : arguments)
     {
-        args.push_back(getValue(op, *method.method, types, constants, memoryAllocated, localTypes));
+        args.push_back(getValue(op, *method.method, types, constants, localTypes, localMapping));
     }
     // For some built-in OpenCL instruction, we need some special fix-up.
     // E.g. for vector load/stores the SPIR-V OpenCL built-in operations are called vloadn/vstoren, but the function
@@ -334,7 +336,7 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
 }
 
 Optional<Value> SPIRVCallSite::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     return NO_VALUE;
 }
@@ -352,16 +354,16 @@ SPIRVBoolCallSite::SPIRVBoolCallSite(uint32_t id, SPIRVMethod& method, const std
 }
 
 void SPIRVBoolCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
-    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
+    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
     std::string calledFunction = methodName.value_or("");
     if(methodID)
         calledFunction = methods.at(methodID.value()).method->name;
     std::vector<Value> args;
     for(const uint32_t op : arguments)
     {
-        args.push_back(getValue(op, *method.method, types, constants, memoryAllocated, localTypes));
+        args.push_back(getValue(op, *method.method, types, constants, localTypes, localMapping));
     }
 
     // Simply emitting a call-site/method-call would not be correct, since the SPIR-V operations being mapped return
@@ -400,11 +402,11 @@ SPIRVReturn::SPIRVReturn(const uint32_t returnValue, SPIRVMethod& method) :
 }
 
 void SPIRVReturn::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
     if(returnValue)
     {
-        Value value = getValue(returnValue.value(), *method.method, types, constants, memoryAllocated, localTypes);
+        Value value = getValue(returnValue.value(), *method.method, types, constants, localTypes, localMapping);
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating intermediate return of value: " << value.to_string(false) << logging::endl);
         method.method->appendToEnd(new intermediate::Return(std::move(value)));
@@ -417,7 +419,7 @@ void SPIRVReturn::mapInstruction(TypeMapping& types, ConstantMapping& constants,
 }
 
 Optional<Value> SPIRVReturn::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     if(returnValue && constants.find(returnValue.value()) != constants.end())
         return constants.at(returnValue.value()).toValue();
@@ -437,33 +439,31 @@ SPIRVBranch::SPIRVBranch(
 }
 
 void SPIRVBranch::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
+    auto trueLabel = getValue(defaultLabelID, *method.method, types, constants, localTypes, localMapping);
     if(conditionID)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating intermediate conditional branch on %" << conditionID.value() << " to either %"
                 << defaultLabelID << " or %" << falseLabelID.value() << logging::endl);
-        const Value cond = getValue(conditionID.value(), *method.method, types, constants, memoryAllocated, localTypes);
-        const Local* trueLabel =
-            method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(defaultLabelID));
-        const Local* falseLabel =
-            method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(falseLabelID.value()));
-        method.method->appendToEnd(new intermediate::Branch(trueLabel, COND_ZERO_CLEAR /* condition is true */, cond));
-        method.method->appendToEnd(new intermediate::Branch(falseLabel, COND_ZERO_SET /* condition is false */, cond));
+        const Value cond = getValue(conditionID.value(), *method.method, types, constants, localTypes, localMapping);
+        auto falseLabel = getValue(falseLabelID.value(), *method.method, types, constants, localTypes, localMapping);
+        method.method->appendToEnd(
+            new intermediate::Branch(trueLabel.local(), COND_ZERO_CLEAR /* condition is true */, cond));
+        method.method->appendToEnd(
+            new intermediate::Branch(falseLabel.local(), COND_ZERO_SET /* condition is false */, cond));
     }
     else
     {
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Generating intermediate branch to %" << defaultLabelID << logging::endl);
-        const Local* label =
-            method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(defaultLabelID));
-        method.method->appendToEnd(new intermediate::Branch(label, COND_ALWAYS, BOOL_TRUE));
+        method.method->appendToEnd(new intermediate::Branch(trueLabel.local(), COND_ALWAYS, BOOL_TRUE));
     }
 }
 
 Optional<Value> SPIRVBranch::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     return NO_VALUE;
 }
@@ -473,17 +473,16 @@ SPIRVLabel::SPIRVLabel(const uint32_t id, SPIRVMethod& method) :
 {
 }
 
-void SPIRVLabel::mapInstruction(std::map<uint32_t, DataType>& types, ConstantMapping& constants,
-    std::map<uint32_t, uint32_t>& localTypes, std::map<uint32_t, SPIRVMethod>& methods,
-    std::map<uint32_t, Local*>& memoryAllocated)
+void SPIRVLabel::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
+    MethodMapping& methods, LocalMapping& localMapping)
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating intermediate label %" << id << logging::endl);
-    method.method->appendToEnd(new intermediate::BranchLabel(
-        *method.method->findOrCreateLocal(TYPE_LABEL, std::string("%") + std::to_string(id))));
+    auto label = getValue(id, *method.method, types, constants, localTypes, localMapping);
+    method.method->appendToEnd(new intermediate::BranchLabel(*label.local()));
 }
 
 Optional<Value> SPIRVLabel::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     return NO_VALUE;
 }
@@ -496,10 +495,10 @@ SPIRVConversion::SPIRVConversion(const uint32_t id, SPIRVMethod& method, const u
 }
 
 void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
-    Value source = getValue(sourceID, *method.method, types, constants, memoryAllocated, localTypes);
-    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
+    Value source = getValue(sourceID, *method.method, types, constants, localTypes, localMapping);
+    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
     bool isSaturated = has_flag(decorations, intermediate::InstructionDecorations::SATURATED_CONVERSION);
 
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -591,7 +590,7 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
 }
 
 Optional<Value> SPIRVConversion::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     auto it = constants.find(sourceID);
     if(it != constants.end())
@@ -632,26 +631,28 @@ SPIRVCopy::SPIRVCopy(const uint32_t id, SPIRVMethod& method, const uint32_t resu
 }
 
 void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
-    Value source = getValue(sourceID, *method.method, types, constants, memoryAllocated, localTypes);
+    Value source = getValue(sourceID, *method.method, types, constants, localTypes, localMapping);
     Value dest(UNDEFINED_VALUE);
     if(typeID == UNDEFINED_ID)
     {
         // globals may have other names than their ID, so check them first
-        AllocationMapping::iterator it;
+        LocalMapping::iterator it;
         if(memoryAccess == MemoryAccess::READ)
-            it = memoryAllocated.find(sourceID);
+            it = localMapping.find(sourceID);
         else
-            it = memoryAllocated.find(id);
-        if(it != memoryAllocated.end())
+            it = localMapping.find(id);
+        if(it != localMapping.end())
             dest = it->second->createReference(ANY_ELEMENT);
         else
-            dest =
-                method.method->findOrCreateLocal(source.type, std::string("%") + std::to_string(id))->createReference();
+        {
+            dest = method.method->createLocal(source.type, std::string("%") + std::to_string(id))->createReference();
+            localMapping.emplace(id, dest.local());
+        }
     }
     else
-        dest = toNewLocal(*method.method, id, typeID, types, localTypes);
+        dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
     if(auto builtin = dynamic_cast<SPIRVBuiltin*>(source.checkLocal()))
     {
         // this is a "load" from a built-in variable -> convert to move which will then be handled by
@@ -697,7 +698,7 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
             else
             {
                 // copy area of memory
-                Value size = getValue(sizeID.value(), *method.method, types, constants, memoryAllocated, localTypes);
+                Value size = getValue(sizeID.value(), *method.method, types, constants, localTypes, localMapping);
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Generating copying of " << size.to_string() << " bytes from " << source.to_string()
                         << " into " << dest.to_string() << logging::endl);
@@ -734,7 +735,7 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
 }
 
 Optional<Value> SPIRVCopy::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     auto it = constants.find(sourceID);
     if(it != constants.end())
@@ -758,19 +759,18 @@ SPIRVInsertionExtraction::SPIRVInsertionExtraction(uint32_t id, SPIRVMethod& met
 }
 
 void SPIRVInsertionExtraction::mapInstruction(TypeMapping& types, ConstantMapping& constants,
-    LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated)
+    LocalTypeMapping& localTypes, MethodMapping& methods, LocalMapping& localMapping)
 {
-    Value container = getValue(containerId, *method.method, types, constants, memoryAllocated, localTypes);
-    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
+    Value container = getValue(containerId, *method.method, types, constants, localTypes, localMapping);
+    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
     auto element =
-        elementId ? getValue(*elementId, *method.method, types, constants, memoryAllocated, localTypes) : NO_VALUE;
+        elementId ? getValue(*elementId, *method.method, types, constants, localTypes, localMapping) : NO_VALUE;
 
     if(indices.size() != 1)
         throw CompilationError(CompilationStep::LLVM_2_IR, "Multi level indices are not implemented yet");
 
-    auto index = indicesAreLiteral ?
-        Value(Literal(indices[0]), TYPE_INT8) :
-        getValue(indices[0], *method.method, types, constants, memoryAllocated, localTypes);
+    auto index = indicesAreLiteral ? Value(Literal(indices[0]), TYPE_INT8) :
+                                     getValue(indices[0], *method.method, types, constants, localTypes, localMapping);
 
     if(element) // we have source element -> insertions
     {
@@ -794,7 +794,7 @@ void SPIRVInsertionExtraction::mapInstruction(TypeMapping& types, ConstantMappin
 }
 
 Optional<Value> SPIRVInsertionExtraction::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     return NO_VALUE;
 }
@@ -814,17 +814,17 @@ SPIRVShuffle::SPIRVShuffle(const uint32_t id, SPIRVMethod& method, const uint32_
 }
 
 void SPIRVShuffle::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
     // shuffling = iteration over all elements in both vectors and re-ordering in order given
-    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
-    Value src0 = getValue(source0, *method.method, types, constants, memoryAllocated, localTypes);
-    Value src1 = getValue(source1, *method.method, types, constants, memoryAllocated, localTypes);
+    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
+    Value src0 = getValue(source0, *method.method, types, constants, localTypes, localMapping);
+    Value src1 = getValue(source1, *method.method, types, constants, localTypes, localMapping);
     Value index(UNDEFINED_VALUE);
     if(compositeIndex)
     {
         // there is just one index, which is a composite
-        index = getValue(indices.at(0), *method.method, types, constants, memoryAllocated, localTypes);
+        index = getValue(indices.at(0), *method.method, types, constants, localTypes, localMapping);
     }
     else // all indices are literal values
     {
@@ -864,8 +864,8 @@ void SPIRVShuffle::mapInstruction(TypeMapping& types, ConstantMapping& constants
         intermediate::insertVectorShuffle(method.method->appendToEnd(), *method.method, dest, src0, src1, index));
 }
 
-Optional<Value> SPIRVShuffle::precalculate(const std::map<uint32_t, DataType>& types, const ConstantMapping& constants,
-    const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVShuffle::precalculate(
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     return NO_VALUE;
 }
@@ -878,17 +878,17 @@ SPIRVIndexOf::SPIRVIndexOf(const uint32_t id, SPIRVMethod& method, const uint32_
 }
 
 void SPIRVIndexOf::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
     // need to get pointer/address -> reference to content
     // a[i] of type t is at position &a + i * sizeof(t)
-    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
-    Value container = getValue(this->container, *method.method, types, constants, memoryAllocated, localTypes);
+    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
+    Value container = getValue(this->container, *method.method, types, constants, localTypes, localMapping);
 
     std::vector<Value> indexValues;
     indexValues.reserve(indices.size());
     for(const uint32_t indexID : indices)
-        indexValues.push_back(getValue(indexID, *method.method, types, constants, memoryAllocated, localTypes));
+        indexValues.push_back(getValue(indexID, *method.method, types, constants, localTypes, localMapping));
 
     // TODO for some reason, now it passes a lot more tests with this set to false by default...
     bool ptrAccessChain = false; // FIXME isPtrAcessChain;
@@ -935,7 +935,7 @@ void SPIRVIndexOf::mapInstruction(TypeMapping& types, ConstantMapping& constants
 }
 
 Optional<Value> SPIRVIndexOf::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     Value container(UNDEFINED_VALUE);
     auto cit = constants.find(this->container);
@@ -1020,9 +1020,9 @@ SPIRVPhi::SPIRVPhi(const uint32_t id, SPIRVMethod& method, const uint32_t result
 }
 
 void SPIRVPhi::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
-    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
+    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating Phi-Node with " << sources.size() << " options into " << dest.to_string() << logging::endl);
@@ -1032,15 +1032,15 @@ void SPIRVPhi::mapInstruction(TypeMapping& types, ConstantMapping& constants, Lo
     labelPairs.reserve(sources.size());
     for(const std::pair<uint32_t, uint32_t>& option : sources)
     {
-        const Value source = getValue(option.second, *method.method, types, constants, memoryAllocated, localTypes);
-        const Value val = getValue(option.first, *method.method, types, constants, memoryAllocated, localTypes);
+        const Value source = getValue(option.second, *method.method, types, constants, localTypes, localMapping);
+        const Value val = getValue(option.first, *method.method, types, constants, localTypes, localMapping);
         labelPairs.emplace_back(val, source.local());
     }
     method.method->appendToEnd(new intermediate::PhiNode(std::move(dest), std::move(labelPairs)));
 }
 
 Optional<Value> SPIRVPhi::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     return NO_VALUE;
 }
@@ -1053,12 +1053,12 @@ SPIRVSelect::SPIRVSelect(const uint32_t id, SPIRVMethod& method, const uint32_t 
 }
 
 void SPIRVSelect::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
-    const Value sourceTrue = getValue(trueID, *method.method, types, constants, memoryAllocated, localTypes);
-    const Value sourceFalse = getValue(falseID, *method.method, types, constants, memoryAllocated, localTypes);
-    const Value condition = getValue(condID, *method.method, types, constants, memoryAllocated, localTypes);
-    const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
+    const Value sourceTrue = getValue(trueID, *method.method, types, constants, localTypes, localMapping);
+    const Value sourceFalse = getValue(falseID, *method.method, types, constants, localTypes, localMapping);
+    const Value condition = getValue(condID, *method.method, types, constants, localTypes, localMapping);
+    const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating intermediate select on " << condition.to_string() << " whether to write "
@@ -1080,8 +1080,8 @@ void SPIRVSelect::mapInstruction(TypeMapping& types, ConstantMapping& constants,
     method.method->appendToEnd(new intermediate::MoveOperation(dest, sourceFalse, COND_ZERO_SET));
 }
 
-Optional<Value> SPIRVSelect::precalculate(const std::map<uint32_t, DataType>& types, const ConstantMapping& constants,
-    const std::map<uint32_t, Local*>& memoryAllocated) const
+Optional<Value> SPIRVSelect::precalculate(
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     auto it = constants.find(condID);
     if(it != constants.end())
@@ -1106,10 +1106,10 @@ SPIRVSwitch::SPIRVSwitch(const uint32_t id, SPIRVMethod& method, const uint32_t 
 }
 
 void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
-    const Value selector = getValue(selectorID, *method.method, types, constants, memoryAllocated, localTypes);
-    const Value defaultLabel = getValue(defaultID, *method.method, types, constants, memoryAllocated, localTypes);
+    const Value selector = getValue(selectorID, *method.method, types, constants, localTypes, localMapping);
+    const Value defaultLabel = getValue(defaultID, *method.method, types, constants, localTypes, localMapping);
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating intermediate switched jump on " << selector.to_string() << " to " << destinations.size()
@@ -1119,7 +1119,7 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
     {
         // comparison value is a literal
         Value comparison(Literal(pair.first), selector.type);
-        const Value destination = getValue(pair.second, *method.method, types, constants, memoryAllocated, localTypes);
+        const Value destination = getValue(pair.second, *method.method, types, constants, localTypes, localMapping);
         // for every case, if equal,branch to given label
         const Value tmp = method.method->addNewLocal(TYPE_BOOL, "%switch");
         method.method->appendToEnd(
@@ -1131,7 +1131,7 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
 }
 
 Optional<Value> SPIRVSwitch::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     auto it = constants.find(selectorID);
     if(it != constants.end())
@@ -1160,14 +1160,14 @@ SPIRVImageQuery::SPIRVImageQuery(const uint32_t id, SPIRVMethod& method, const u
 }
 
 void SPIRVImageQuery::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
-    const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
-    const Value image = getValue(imageID, *method.method, types, constants, memoryAllocated, localTypes);
+    const Value dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
+    const Value image = getValue(imageID, *method.method, types, constants, localTypes, localMapping);
     Value param(UNDEFINED_VALUE);
     if(lodOrCoordinate != UNDEFINED_ID)
     {
-        param = getValue(lodOrCoordinate, *method.method, types, constants, memoryAllocated, localTypes);
+        param = getValue(lodOrCoordinate, *method.method, types, constants, localTypes, localMapping);
     }
 
     switch(valueID)
@@ -1213,7 +1213,7 @@ void SPIRVImageQuery::mapInstruction(TypeMapping& types, ConstantMapping& consta
 }
 
 Optional<Value> SPIRVImageQuery::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     return NO_VALUE;
 }
@@ -1226,10 +1226,10 @@ vc4c::spirv::SPIRVMemoryBarrier::SPIRVMemoryBarrier(
 }
 
 void vc4c::spirv::SPIRVMemoryBarrier::mapInstruction(TypeMapping& types, ConstantMapping& constants,
-    LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated)
+    LocalTypeMapping& localTypes, MethodMapping& methods, LocalMapping& localMapping)
 {
-    const Value scope = getValue(scopeID, *method.method, types, constants, memoryAllocated, localTypes);
-    const Value semantics = getValue(semanticsID, *method.method, types, constants, memoryAllocated, localTypes);
+    const Value scope = getValue(scopeID, *method.method, types, constants, localTypes, localMapping);
+    const Value semantics = getValue(semanticsID, *method.method, types, constants, localTypes, localMapping);
 
     if(!scope.getLiteralValue() || !semantics.getLiteralValue())
         throw CompilationError(CompilationStep::LLVM_2_IR,
@@ -1242,7 +1242,7 @@ void vc4c::spirv::SPIRVMemoryBarrier::mapInstruction(TypeMapping& types, Constan
 }
 
 Optional<Value> vc4c::spirv::SPIRVMemoryBarrier::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     return NO_VALUE;
 }
@@ -1255,9 +1255,9 @@ SPIRVLifetimeInstruction::SPIRVLifetimeInstruction(const uint32_t id, SPIRVMetho
 }
 
 void SPIRVLifetimeInstruction::mapInstruction(TypeMapping& types, ConstantMapping& constants,
-    LocalTypeMapping& localTypes, MethodMapping& methods, AllocationMapping& memoryAllocated)
+    LocalTypeMapping& localTypes, MethodMapping& methods, LocalMapping& localMapping)
 {
-    Value pointer = getValue(id, *method.method, types, constants, memoryAllocated, localTypes);
+    Value pointer = getValue(id, *method.method, types, constants, localTypes, localMapping);
 
     if(pointer.checkLocal())
     {
@@ -1279,7 +1279,7 @@ void SPIRVLifetimeInstruction::mapInstruction(TypeMapping& types, ConstantMappin
 }
 
 Optional<Value> SPIRVLifetimeInstruction::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     return NO_VALUE;
 }
@@ -1292,17 +1292,17 @@ SPIRVFoldInstruction::SPIRVFoldInstruction(uint32_t id, SPIRVMethod& method, uin
 }
 
 void SPIRVFoldInstruction::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
-    MethodMapping& methods, AllocationMapping& memoryAllocated)
+    MethodMapping& methods, LocalMapping& localMapping)
 {
-    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes);
-    Value src = getValue(sourceID, *method.method, types, constants, memoryAllocated, localTypes);
+    Value dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
+    Value src = getValue(sourceID, *method.method, types, constants, localTypes, localMapping);
     auto code = OpCode::toOpCode(foldOperation);
     ignoreReturnValue(
         intermediate::insertFoldVector(method.method->appendToEnd(), *method.method, dest, src, code, decorations));
 }
 
 Optional<Value> SPIRVFoldInstruction::precalculate(
-    const TypeMapping& types, const ConstantMapping& constants, const AllocationMapping& memoryAllocated) const
+    const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
     // XXX could implement for all-constant operand
     return NO_VALUE;

@@ -1767,7 +1767,9 @@ void TestInstructions::testInstructionEquality()
     op1.setSignaling(SIGNAL_LOAD_COLOR_END);
     op1.setUnpackMode(UNPACK_16B_32);
 
-    std::unique_ptr<intermediate::IntermediateInstruction> op2(op1.copyFor(method, "test"));
+    intermediate::InlineMapping mapping;
+
+    std::unique_ptr<intermediate::IntermediateInstruction> op2(op1.copyFor(method, "test", mapping));
 
     TEST_ASSERT_EQUALS(op1, *op2)
     op1.setCondition(COND_ALWAYS);
@@ -1805,7 +1807,7 @@ void TestInstructions::testInstructionEquality()
 
     {
         intermediate::IntrinsicOperation inst("dummy", Value(NOP_REGISTER), Value(INT_ONE), Value(INT_MINUS_ONE));
-        op2.reset(inst.copyFor(method, ""));
+        op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
         inst.opCode = "another";
         TEST_ASSERT(inst != *op2)
@@ -1813,7 +1815,7 @@ void TestInstructions::testInstructionEquality()
 
     {
         intermediate::MethodCall inst(Value(NOP_REGISTER), "dummy", {INT_ONE, INT_MINUS_ONE});
-        op2.reset(inst.copyFor(method, ""));
+        op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
         inst.methodName = "another";
         TEST_ASSERT(inst != *op2)
@@ -1827,7 +1829,7 @@ void TestInstructions::testInstructionEquality()
 
     {
         intermediate::MoveOperation inst{Value(NOP_REGISTER), Value(INT_MINUS_ONE)};
-        op2.reset(inst.copyFor(method, ""));
+        op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
         inst.setSource(Value(INT_ZERO));
         TEST_ASSERT(inst != *op2)
@@ -1836,7 +1838,7 @@ void TestInstructions::testInstructionEquality()
     {
         intermediate::VectorRotation inst(
             Value(NOP_REGISTER), INT_ONE, SmallImmediate::fromRotationOffset(11), intermediate::RotationType::FULL);
-        op2.reset(inst.copyFor(method, ""));
+        op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
         inst.setSource(Value(FLOAT_NAN));
         TEST_ASSERT(inst != *op2)
@@ -1844,13 +1846,13 @@ void TestInstructions::testInstructionEquality()
 
     {
         intermediate::BranchLabel inst(*method.addNewLocal(TYPE_LABEL).local());
-        op2.reset(inst.copyFor(method, ""));
+        op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
     }
 
     {
         intermediate::Branch inst(method.addNewLocal(TYPE_LABEL).local(), COND_ZERO_CLEAR, UNIFORM_REGISTER);
-        op2.reset(inst.copyFor(method, ""));
+        op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
         inst.setCondition(COND_ZERO_SET);
         TEST_ASSERT(inst != *op2)
@@ -1858,7 +1860,7 @@ void TestInstructions::testInstructionEquality()
 
     {
         intermediate::Nop inst(intermediate::DelayType::WAIT_SFU);
-        op2.reset(inst.copyFor(method, ""));
+        op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
         inst.type = intermediate::DelayType::WAIT_UNIFORM;
         TEST_ASSERT(inst != *op2)
@@ -1867,7 +1869,7 @@ void TestInstructions::testInstructionEquality()
     {
         intermediate::Comparison inst(
             intermediate::COMP_FALSE, Value(NOP_REGISTER), Value(INT_ONE), Value(INT_MINUS_ONE));
-        op2.reset(inst.copyFor(method, ""));
+        op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
         inst.opCode = "another";
         TEST_ASSERT(inst != *op2)
@@ -1875,7 +1877,7 @@ void TestInstructions::testInstructionEquality()
 
     {
         intermediate::LoadImmediate inst(Value(NOP_REGISTER), Literal(16));
-        op2.reset(inst.copyFor(method, ""));
+        op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
         inst.setImmediate(Literal(42u));
         TEST_ASSERT(inst != *op2)
@@ -1883,7 +1885,7 @@ void TestInstructions::testInstructionEquality()
 
     {
         intermediate::SemaphoreAdjustment inst(Semaphore::BARRIER_WORK_ITEM_9, true);
-        op2.reset(inst.copyFor(method, ""));
+        op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
     }
 
@@ -1891,13 +1893,13 @@ void TestInstructions::testInstructionEquality()
         intermediate::PhiNode inst(Value(NOP_REGISTER),
             {{Value(INT_ONE), method.addNewLocal(TYPE_LABEL).local()},
                 {Value(INT_MINUS_ONE), method.addNewLocal(TYPE_LABEL).local()}});
-        op2.reset(inst.copyFor(method, ""));
+        op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
     }
 
     {
         intermediate::MemoryBarrier inst(intermediate::MemoryScope::WORK_GROUP, intermediate::MemorySemantics::ACQUIRE);
-        op2.reset(inst.copyFor(method, ""));
+        op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
         inst.scope = intermediate::MemoryScope::DEVICE;
         TEST_ASSERT(inst != *op2)
@@ -1911,7 +1913,7 @@ void TestInstructions::testInstructionEquality()
 
     {
         intermediate::MutexLock inst(intermediate::MutexAccess::LOCK);
-        op2.reset(inst.copyFor(method, ""));
+        op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
     }
 }

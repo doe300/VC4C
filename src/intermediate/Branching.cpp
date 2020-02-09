@@ -23,9 +23,10 @@ std::string BranchLabel::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* BranchLabel::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* BranchLabel::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return new BranchLabel(*method.findOrCreateLocal(TYPE_LABEL, localPrefix + getLabel()->name));
+    return new BranchLabel(*renameValue(method, assertArgument(0), localPrefix, localMapping).local());
 }
 
 qpu_asm::DecoratedInstruction BranchLabel::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
@@ -84,10 +85,11 @@ std::string Branch::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* Branch::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* Branch::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new Branch(method.findOrCreateLocal(TYPE_LABEL, localPrefix + getTarget()->name), conditional,
-                renameValue(method, getCondition(), localPrefix)))
+    return (new Branch(renameValue(method, assertArgument(0), localPrefix, localMapping).local(), conditional,
+                renameValue(method, getCondition(), localPrefix, localMapping)))
         ->setOutput(getOutput())
         ->copyExtrasFrom(this);
 }
@@ -197,14 +199,15 @@ bool PhiNode::isNormalized() const
     return false;
 }
 
-IntermediateInstruction* PhiNode::copyFor(Method& method, const std::string& localPrefix) const
+IntermediateInstruction* PhiNode::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     IntermediateInstruction* tmp =
-        (new PhiNode(renameValue(method, getOutput().value(), localPrefix), {}, conditional, setFlags))
+        (new PhiNode(renameValue(method, getOutput().value(), localPrefix, localMapping), {}, conditional, setFlags))
             ->copyExtrasFrom(this);
     for(std::size_t i = 0; i < getArguments().size(); ++i)
     {
-        tmp->setArgument(i, renameValue(method, assertArgument(i), localPrefix));
+        tmp->setArgument(i, renameValue(method, assertArgument(i), localPrefix, localMapping));
     }
     return tmp;
 }
