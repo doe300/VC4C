@@ -51,3 +51,10 @@ const Global* Module::findGlobal(const std::string& name) const
     }
     return nullptr;
 }
+
+void Module::dropNonKernels()
+{
+    auto it = std::remove_if(
+        methods.begin(), methods.end(), [](const auto& method) -> bool { return !method || !method->isKernel; });
+    methods.erase(it, methods.end());
+}

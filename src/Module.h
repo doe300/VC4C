@@ -48,6 +48,8 @@ namespace vc4c
          */
         FastMap<std::string, std::string> functionAliases;
 
+        const Configuration& compilationConfig;
+
         inline MethodList::iterator begin()
         {
             return methods.begin();
@@ -87,7 +89,10 @@ namespace vc4c
          */
         const Global* findGlobal(const std::string& name) const;
 
-        const Configuration& compilationConfig;
+        /**
+         * Removes all functions which are not marked as kernels to free up some memory
+         */
+        void dropNonKernels();
     };
 } // namespace vc4c
 

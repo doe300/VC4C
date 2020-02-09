@@ -87,10 +87,13 @@ std::size_t Compiler::convert()
 {
     Module module(config);
 
-    std::unique_ptr<Parser> parser = getParser(input);
-    PROFILE_START(Parser);
-    parser->parse(module);
-    PROFILE_END(Parser);
+    {
+        std::unique_ptr<Parser> parser = getParser(input);
+        PROFILE_START(Parser);
+        parser->parse(module);
+        PROFILE_END(Parser);
+        // early clean up the parser, since we do not need it anymore and it may use a lot of memory
+    }
 
     normalization::Normalizer norm(config);
     optimizations::Optimizer opt(config);
@@ -99,6 +102,9 @@ std::size_t Compiler::convert()
     PROFILE_START(Normalizer);
     norm.normalize(module);
     PROFILE_END(Normalizer);
+
+    // remove all non-kernel functions, since we do not handle them anymore, to free up some memory
+    module.dropNonKernels();
 
     PROFILE_START(Optimizer);
     opt.optimize(module);
