@@ -240,9 +240,8 @@ intermediate::InstructionDecorations SPIRVParser::toInstructionDecorations(const
     {
         return intermediate::InstructionDecorations::NONE;
     }
-    const auto decoration = getDecoration(decoIt->second, spv::Decoration::FPFastMathMode);
-    if(decoration)
-        deco = add_flag(deco, toInstructionDecoration(static_cast<spv::FPFastMathModeMask>(decoration.value())));
+    for(auto decoration : getDecorations(decoIt->second, spv::Decoration::FPFastMathMode))
+        deco = add_flag(deco, toInstructionDecoration(static_cast<spv::FPFastMathModeMask>(decoration)));
     if(getDecoration(decoIt->second, spv::Decoration::SaturatedConversion))
         deco = add_flag(deco, intermediate::InstructionDecorations::SATURATED_CONVERSION);
     // these are provided by the SPV_KHR_no_integer_wrap_decoration extension

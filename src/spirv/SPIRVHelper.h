@@ -29,6 +29,8 @@ namespace vc4c
         spv_result_t checkExtension(const std::string& extension);
         Optional<uint32_t> getDecoration(
             const std::vector<std::pair<spv::Decoration, uint32_t>>& decorations, spv::Decoration deco);
+        std::vector<uint32_t> getDecorations(
+            const std::vector<std::pair<spv::Decoration, uint32_t>>& decorations, spv::Decoration deco);
         void setParameterDecorations(
             Parameter& param, const std::vector<std::pair<spv::Decoration, uint32_t>>& decorations);
         DataType getIntegerType(uint32_t bitWidth, uint32_t signedness);

@@ -645,6 +645,18 @@ Optional<uint32_t> spirv::getDecoration(
     return Optional<uint32_t>{};
 }
 
+std::vector<uint32_t> spirv::getDecorations(
+    const std::vector<std::pair<spv::Decoration, uint32_t>>& decorations, spv::Decoration deco)
+{
+    std::vector<uint32_t> result;
+    for(const auto& pair : decorations)
+    {
+        if(pair.first == deco)
+            result.emplace_back(pair.second);
+    }
+    return result;
+}
+
 static ParameterDecorations toDecoration(spv::FunctionParameterAttribute attribute)
 {
     switch(attribute)
@@ -667,9 +679,9 @@ static ParameterDecorations toDecoration(spv::FunctionParameterAttribute attribu
 void spirv::setParameterDecorations(
     Parameter& param, const std::vector<std::pair<spv::Decoration, uint32_t>>& decorations)
 {
-    if(auto decoration = getDecoration(decorations, spv::Decoration::FuncParamAttr))
+    for(auto decoration : getDecorations(decorations, spv::Decoration::FuncParamAttr))
         param.decorations =
-            add_flag(param.decorations, toDecoration(static_cast<spv::FunctionParameterAttribute>(decoration.value())));
+            add_flag(param.decorations, toDecoration(static_cast<spv::FunctionParameterAttribute>(decoration)));
     if(auto decoration = getDecoration(decorations, spv::Decoration::MaxByteOffset))
         param.maxByteOffset = decoration.value();
 
