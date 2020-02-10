@@ -125,7 +125,8 @@ std::string Return::to_string() const
         createAdditionalInfoString();
 }
 
-IntermediateInstruction* Return::copyFor(Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
+IntermediateInstruction* Return::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     throw CompilationError(CompilationStep::OPTIMIZER, "Return should never be inlined in calling method", to_string());
 }

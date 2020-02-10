@@ -18,7 +18,7 @@
 using namespace vc4c;
 
 // LCOV_EXCL_START
-static std::string to_sting(const CompilationStep step)
+static std::string to_string(const CompilationStep step)
 {
     switch(step)
     {
@@ -50,13 +50,13 @@ static std::string to_sting(const CompilationStep step)
 }
 
 CompilationError::CompilationError(const CompilationStep step, const std::string& message) :
-    std::runtime_error((to_sting(step) + ": ") + message)
+    std::runtime_error((to_string(step) + ": ") + message)
 {
     logBacktrace();
 }
 
 CompilationError::CompilationError(const CompilationStep step, const std::string& message, const std::string& object) :
-    std::runtime_error((to_sting(step) + ": ") + (message + ": ") + object)
+    std::runtime_error((to_string(step) + ": ") + (message + ": ") + object)
 {
     logBacktrace();
 }

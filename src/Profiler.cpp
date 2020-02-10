@@ -9,9 +9,14 @@
 #include "log.h"
 
 #include <chrono>
+#include <cstring>
+#include <fstream>
 #include <iomanip>
 #include <map>
 #include <set>
+#include <sys/resource.h>
+#include <sys/time.h>
+#include <unistd.h>
 #include <unordered_map>
 
 #ifdef MULTI_THREADED
@@ -79,6 +84,62 @@ void profiler::endFunctionCall(ProfilingResult&& result)
     entry.lineNumber = result.lineNumber;
 }
 
+static void printResourceUsage(bool writeAsWarning)
+{
+    auto logFunc = writeAsWarning ? logging::warn : logging::info;
+    static const auto pageSizeInKb = static_cast<uint64_t>(sysconf(_SC_PAGESIZE)) / 1024;
+    rusage usage{};
+    if(getrusage(RUSAGE_SELF, &usage) < 0)
+    {
+        logging::warn() << "Error gathering resource usage: " << strerror(errno) << logging::endl;
+        return;
+    }
+    uint64_t virtualSize = 0;
+    uint64_t residentSize = 0;
+    uint64_t sharedSize = 0;
+    {
+        // htop uses this one, see https://github.com/hishamhm/htop/blob/master/linux/LinuxProcessList.c#L480
+        std::ifstream fis{"/proc/self/statm"};
+        fis >> virtualSize;
+        fis >> residentSize;
+        fis >> sharedSize;
+        if(!fis)
+        {
+            logging::warn() << "Error reading memory usage: " << strerror(errno) << logging::endl;
+            return;
+        }
+        // next ones are text segment, library (loaded *.so files) and data segment (incl. stack)
+    }
+
+    CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
+        logFunc() << "Resource usage: " << logging::endl;
+        logFunc() << "\tCPU time (user):   " << std::setfill(L' ') << std::setw(3) << usage.ru_utime.tv_sec << '.'
+                  << std::setfill(L'0') << std::setw(6) << usage.ru_utime.tv_usec << " s" << logging::endl;
+        logFunc() << "\tCPU time (kernel): " << std::setfill(L' ') << std::setw(3) << usage.ru_stime.tv_sec << '.'
+                  << std::setfill(L'0') << std::setw(6) << usage.ru_stime.tv_usec << " s" << logging::endl;
+        logFunc() << "\tVirtual RAM usage: " << std::setfill(L' ') << std::setw(6) << (virtualSize * pageSizeInKb)
+                  << " kB" << logging::endl;
+        logFunc() << "\tCurrent RAM usage: " << std::setfill(L' ') << std::setw(6) << (residentSize * pageSizeInKb)
+                  << " kB" << logging::endl;
+        logFunc() << "\tShared RAM usage:  " << std::setfill(L' ') << std::setw(6) << (sharedSize * pageSizeInKb)
+                  << " kB" << logging::endl;
+        logFunc() << "\tPeek RAM usage:    " << std::setfill(L' ') << std::setw(6) << usage.ru_maxrss << " kB"
+                  << logging::endl;
+        logFunc() << "\tPage faults (minor/major): " << usage.ru_minflt << '/' << usage.ru_majflt << logging::endl;
+    });
+
+    {
+        std::ifstream fis{"/proc/meminfo"};
+        std::string line;
+        if(std::getline(fis, line))
+            // first line is: MemTotal
+            logFunc() << line << logging::endl;
+        if(std::getline(fis, line) && std::getline(fis, line))
+            // third line is: MemAvailable (free + file cache + buffers) -> everything which could be requested
+            logFunc() << line << logging::endl;
+    }
+}
+
 void profiler::dumpProfileResults(bool writeAsWarning)
 {
     logging::logLazy(writeAsWarning ? logging::Level::WARNING : logging::Level::DEBUG, [&]() {
@@ -133,6 +194,7 @@ void profiler::dumpProfileResults(bool writeAsWarning)
     });
     times.clear();
     counters.clear();
+    printResourceUsage(writeAsWarning);
 }
 
 void profiler::increaseCounter(const std::size_t index, std::string name, const std::size_t value, std::string file,

@@ -1278,6 +1278,10 @@ void TestInstructions::testSIMDVector()
 
     v = SIMDVector{};
     TEST_ASSERT(v.isUndefined())
+    TEST_ASSERT_EQUALS(SIMDVector(UNDEFINED_LITERAL), v);
+    TEST_ASSERT(v != SIMDVector(Literal(0)));
+    TEST_ASSERT(SIMDVector(Literal(0)) != v);
+
     v[3] = Literal{3};
     TEST_ASSERT(!v.isUndefined())
     v = ELEMENT_NUMBERS.vector().rotate(4);
@@ -1337,6 +1341,13 @@ void TestInstructions::testValue()
     TEST_ASSERT_EQUALS(ELEMENT_NUMBER_REGISTER, ELEMENT_NUMBER_REGISTER.getConstantValue())
     TEST_ASSERT_EQUALS(ELEMENT_NUMBERS, ELEMENT_NUMBERS.getConstantValue())
     TEST_ASSERT(!UNIFORM_REGISTER.getConstantValue())
+
+    Value v1(UNDEFINED_LITERAL, TYPE_INT32);
+    Value v2(Literal(0), TYPE_INT32);
+    TEST_ASSERT(v1 == v1);
+    TEST_ASSERT(v2 == v2);
+    TEST_ASSERT(v1 != v2);
+    TEST_ASSERT(v2 != v1);
 }
 
 void TestInstructions::testTypes()

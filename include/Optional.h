@@ -105,7 +105,7 @@ namespace vc4c
                 return &storedValue;
             }
 
-            const T& operator*() const &
+            const T& operator*() const&
             {
                 return storedValue;
             }
@@ -115,7 +115,7 @@ namespace vc4c
                 return storedValue;
             }
 
-            const T&& operator*() const &&
+            const T&& operator*() const&&
             {
                 return std::move(storedValue);
             }
@@ -142,7 +142,7 @@ namespace vc4c
                 return storedValue;
             }
 
-            const T& value() const &
+            const T& value() const&
             {
                 if(Traits::isTombstone(storedValue))
                     throw OptionalException{};
@@ -156,7 +156,7 @@ namespace vc4c
                 return std::move(storedValue);
             }
 
-            const T&& value() const &&
+            const T&& value() const&&
             {
                 if(Traits::isTombstone(storedValue))
                     throw OptionalException{};
@@ -286,7 +286,7 @@ namespace vc4c
             return has_value() ? ((**this).*func)() : nullptr;
         }
 
-        const Optional<T>& operator|(const Optional<T>& other) const &
+        const Optional<T>& operator|(const Optional<T>& other) const&
         {
             return has_value() ? *this : other;
         }

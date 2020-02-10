@@ -1357,8 +1357,7 @@ static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, I
         Value out = callSite->getOutput().value();
         out.type = TYPE_INT8;
         return it.reset(
-            (new MoveOperation(
-                 out, method.findOrCreateBuiltin(BuiltinLocal::Type::WORK_DIMENSIONS)->createReference()))
+            (new MoveOperation(out, method.findOrCreateBuiltin(BuiltinLocal::Type::WORK_DIMENSIONS)->createReference()))
                 ->copyExtrasFrom(callSite)
                 ->addDecorations(add_flag(callSite->decoration,
                     add_flag(add_flag(InstructionDecorations::BUILTIN_WORK_DIMENSIONS,

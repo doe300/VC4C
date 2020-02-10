@@ -21,7 +21,7 @@ namespace vc4c
 #define PROFILE_START(name)                                                                                            \
     profiler::ProfilingResult profile##name                                                                            \
     {                                                                                                                  \
-        #name, __FILE__, __LINE__, profiler::Clock::now()                                                              \
+#name, __FILE__, __LINE__, profiler::Clock::now()                                                              \
     }
 #define PROFILE_END(name) profiler::endFunctionCall(std::move(profile##name))
 

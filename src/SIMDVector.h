@@ -138,15 +138,15 @@ namespace vc4c
          */
         bool isUndefined() const;
 
-        SIMDVector transform(const std::function<Literal(Literal)>& transformOp) const &;
+        SIMDVector transform(const std::function<Literal(Literal)>& transformOp) const&;
         SIMDVector transform(const std::function<Literal(Literal)>& transformOp) &&;
 
         /*
          * Rotates the elements of this vector UPWARDS by the given offset.
          */
-        SIMDVector rotate(uint8_t offset) const &;
+        SIMDVector rotate(uint8_t offset) const&;
         SIMDVector rotate(uint8_t offset) &&;
-        SIMDVector rotatePerQuad(uint8_t offset) const &;
+        SIMDVector rotatePerQuad(uint8_t offset) const&;
         SIMDVector rotatePerQuad(uint8_t offset) &&;
 
         std::string to_string(bool withLiterals = false) const;
@@ -174,7 +174,6 @@ namespace vc4c
          * Moves the given temporary vector into the global storage and returns a pointer to the inserted vector or an
          * equivalent vector already stored.
          */
-        // TODO need global synchronization!
         const SIMDVector* storeVector(SIMDVector&& vec);
 
         /**
