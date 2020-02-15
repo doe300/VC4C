@@ -447,6 +447,103 @@ namespace vc4c
         BOTH = 3
     };
 
+    /**
+     * Base for any undirected edge
+     */
+    template <typename Node>
+    class UndirectedEdge
+    {
+    public:
+        FastSet<Node*> getNodes()
+        {
+            return FastSet<Node*>{&first, &second};
+        }
+
+        enum Direction getDirection() const noexcept
+        {
+            return Direction::NONE;
+        }
+
+    protected:
+        UndirectedEdge(Node& f, Node& s) : first(f), second(s) {}
+
+        Node& first;
+        Node& second;
+    };
+
+    /**
+     * Base class for any (bi-)directional edge
+     */
+    template <typename Node>
+    class DirectedEdge
+    {
+    public:
+        bool isInput(const Node& node) const
+        {
+            return (&node == &first && firstInput) || (&node == &second && secondInput);
+        }
+
+        bool isOutput(const Node& node) const
+        {
+            return (&node == &second && firstInput) || (&node == &first && secondInput);
+        }
+
+        enum Direction getDirection() const noexcept
+        {
+            if(firstInput && secondInput)
+                return Direction::BOTH;
+            if(firstInput)
+                return Direction::FIRST_TO_SECOND;
+            return Direction::SECOND_TO_FIRST;
+        }
+
+    protected:
+        DirectedEdge(Node& f, Node& s) : first(f), second(s), firstInput(true), secondInput(false) {}
+
+        Node& first;
+        Node& second;
+        bool firstInput;
+        bool secondInput;
+    };
+
+    /**
+     * Base class for any unidirectional edge
+     */
+    template <typename Node>
+    class UnidirectionalEdge : public DirectedEdge<Node>
+    {
+        using Base = DirectedEdge<Node>;
+
+    public:
+        Node& getInput()
+        {
+            return this->first;
+        }
+
+        const Node& getInput() const
+        {
+            return this->first;
+        }
+
+        Node& getOutput()
+        {
+            return this->second;
+        }
+
+        const Node& getOutput() const
+        {
+            return this->second;
+        }
+
+        enum Direction getDirection() const noexcept
+        {
+            return Direction::FIRST_TO_SECOND;
+        }
+
+    protected:
+        UnidirectionalEdge(Node& f, Node& s) : Base(f, s) {}
+    };
+
     /*
      * An edge represents the connection between two nodes.
      *
@@ -456,15 +553,18 @@ namespace vc4c
      *
      */
     template <typename Node, typename Relation, Directionality Direction>
-    class Edge
+    class Edge : public std::conditional<Direction == Directionality::UNDIRECTED, UndirectedEdge<Node>,
+                     typename std::conditional<Direction == Directionality::DIRECTED, UnidirectionalEdge<Node>,
+                         DirectedEdge<Node>>::type>::type
     {
+        using Base = typename std::conditional<Direction == Directionality::UNDIRECTED, UndirectedEdge<Node>,
+            typename std::conditional<Direction == Directionality::DIRECTED, UnidirectionalEdge<Node>,
+                DirectedEdge<Node>>::type>::type;
+
     public:
         using NodeType = Node;
 
-        Edge(NodeType& first, NodeType& second, Relation&& data) :
-            data(data), first(first), second(second), firstInput(true), secondInput(false)
-        {
-        }
+        Edge(NodeType& first, NodeType& second, Relation&& data) : Base(first, second), data(data) {}
 
         Edge(const Edge&) = delete;
         Edge(Edge&&) noexcept = delete;
@@ -475,89 +575,33 @@ namespace vc4c
 
         bool operator==(const Edge& other) const
         {
-            return &first == &other.first && &second == &other.second;
-        }
-
-        Node& getInput()
-        {
-            static_assert(Direction == Directionality::DIRECTED, "Input is only available for directed edges!");
-            return first;
-        }
-
-        const Node& getInput() const
-        {
-            static_assert(Direction == Directionality::DIRECTED, "Input is only available for directed edges!");
-            return first;
-        }
-
-        NodeType& getOutput()
-        {
-            static_assert(Direction == Directionality::DIRECTED, "Output is only available for directed edges!");
-            return second;
-        }
-
-        const NodeType& getOutput() const
-        {
-            static_assert(Direction == Directionality::DIRECTED, "Output is only available for directed edges!");
-            return second;
-        }
-
-        bool isInput(const Node& node) const
-        {
-            static_assert(Direction != Directionality::UNDIRECTED, "Input is only available for directed edges!");
-            return (&node == &first && firstInput) || (&node == &second && secondInput);
-        }
-
-        bool isOutput(const Node& node) const
-        {
-            static_assert(Direction != Directionality::UNDIRECTED, "Output is only available for directed edges!");
-            return (&node == &second && firstInput) || (&node == &first && secondInput);
-        }
-
-        FastSet<NodeType*> getNodes()
-        {
-            static_assert(Direction == Directionality::UNDIRECTED,
-                "For directed edges, the input and output have different meaning!");
-            return FastSet<NodeType*>{&first, &second};
+            return &this->first == &other.first && &this->second == &other.second;
         }
 
         NodeType& getOtherNode(const NodeType& oneNode)
         {
-            if(&first == &oneNode)
-                return second;
-            return first;
+            if(&this->first == &oneNode)
+                return this->second;
+            return this->first;
         }
 
         const NodeType& getOtherNode(const NodeType& oneNode) const
         {
-            if(&first == &oneNode)
-                return second;
-            return first;
+            if(&this->first == &oneNode)
+                return this->second;
+            return this->first;
         }
 
         Edge& addInput(const NodeType& node)
         {
             static_assert(Direction == Directionality::BIDIRECTIONAL, "Can only add input for bidirectional graphs!");
-            if(&node == &first)
-                firstInput = true;
-            else if(&node == &second)
-                secondInput = true;
+            if(&node == &this->first)
+                this->firstInput = true;
+            else if(&node == &this->second)
+                this->secondInput = true;
             else
                 throw CompilationError(CompilationStep::GENERAL, "Node is not a part of this edge!");
             return *this;
-        }
-
-        enum Direction getDirection() const
-        {
-            if(Direction == Directionality::UNDIRECTED)
-                return Direction::NONE;
-            if(Direction == Directionality::DIRECTED)
-                return Direction::FIRST_TO_SECOND;
-            if(firstInput && secondInput)
-                return Direction::BOTH;
-            if(firstInput)
-                return Direction::FIRST_TO_SECOND;
-            return Direction::SECOND_TO_FIRST;
         }
 
         static constexpr Directionality Directed = Direction;
@@ -565,11 +609,6 @@ namespace vc4c
         Relation data;
 
     protected:
-        NodeType& first;
-        NodeType& second;
-        bool firstInput;
-        bool secondInput;
-
         friend NodeType;
         friend typename NodeType::GraphType;
         friend struct std::hash<Edge<Node, Relation, Directed>>;

@@ -93,7 +93,7 @@ namespace vc4c
             std::string to_string() const;
         };
 
-        Optional<std::vector<ElementSource>> checkVectorCanBeAssembled(DataType type, SIMDVector vector);
+        Optional<std::vector<ElementSource>> checkVectorCanBeAssembled(DataType type, const SIMDVector& vector);
         NODISCARD InstructionWalker insertAssembleVector(
             InstructionWalker it, Method& method, const Value& dest, std::vector<ElementSource>&& sources);
 

@@ -34,10 +34,10 @@ CallSite::CallSite(Value&& dest, std::string&& methodName, std::vector<Value>&& 
 {
 }
 
-CallSite::CallSite(Value&& dest, const Method& method, std::vector<Value>&& args) :
+CallSite::CallSite(Value&& dest, const Method& method, std::vector<Value>&& args, bool isVarArg) :
     dest(dest), methodName(method.name), arguments(args)
 {
-    if(method.parameters.size() != args.size())
+    if(!isVarArg && method.parameters.size() != args.size())
     {
         throw CompilationError(CompilationStep::PARSER, "Invalid numbers of method arguments",
             std::string("Got ") + (std::to_string(args.size()) + ", expected ") +

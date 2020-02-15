@@ -1348,6 +1348,12 @@ void TestInstructions::testValue()
     TEST_ASSERT(v2 == v2);
     TEST_ASSERT(v1 != v2);
     TEST_ASSERT(v2 != v1);
+
+    for(auto type : {TYPE_INT32, TYPE_FLOAT.toVectorType(5), TYPE_INT8.toVectorType(16), TYPE_VOID_POINTER})
+    {
+        auto zero = Value::createZeroInitializer(type);
+        TEST_ASSERT(zero.isZeroInitializer());
+    }
 }
 
 void TestInstructions::testTypes()

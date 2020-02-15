@@ -47,7 +47,7 @@ namespace vc4c
         {
         public:
             CallSite(Value&& dest, std::string&& methodName, std::vector<Value>&& args = {});
-            CallSite(Value&& dest, const Method& method, std::vector<Value>&& args = {});
+            CallSite(Value&& dest, const Method& method, std::vector<Value>&& args, bool isVarArg);
             ~CallSite() noexcept override = default;
 
             bool mapInstruction(Method& method) override;

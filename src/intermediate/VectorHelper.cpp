@@ -738,7 +738,7 @@ static std::vector<std::set<ElementSource>> getElementSources(DataType type, con
         throw CompilationError(CompilationStep::GENERAL, "Invalid input type for vector assembly", type.to_string());
 
     std::vector<std::set<ElementSource>> sources(numElements);
-    for(unsigned char i = 0; i < numElements; ++i)
+    for(std::size_t i = 0; i < numElements; ++i)
     {
         /*
          * x is element in vector:
@@ -761,32 +761,32 @@ static std::vector<std::set<ElementSource>> getElementSources(DataType type, con
              * f(x) = x + const -> y = add const, elem_num
              * f(x) = x * const -> y = mul24 const, elem_num
              */
-            addMatchingElementNumber(vector[i], i, sources[i]);
+            addMatchingElementNumber(vector[i], static_cast<uint8_t>(i), sources[i]);
             /*
              * f(x) = [0,3] -> y = ldui [0,3]
              * f(x) = [0,3] + const -> a = ldui [0,3], y = add const, a
              * f(x) = [0,3] * const -> a = ldsu [0,3], y = mul24 const, a
              */
-            addMatchingLoadUnsignedMask(vector[i], i, sources[i]);
+            addMatchingLoadUnsignedMask(vector[i], static_cast<uint8_t>(i), sources[i]);
             /*
              * f(x) = [-2,1] -> y = ldsi [-2,1]
              * f(x) = [-2,1] + const -> a = ldsi [-2,1], y = add const, a
              * f(x) = [-2,1] * const -> a = ldsi [-2,1], y = mul24 const, a
              */
-            addMatchingLoadSignedMask(vector[i], i, sources[i]);
+            addMatchingLoadSignedMask(vector[i], static_cast<uint8_t>(i), sources[i]);
             /*
              * f(x) = x / 4 -> rep_quad = shr elem_num, 2, y = mov rep_quad
              * f(x) = (x / 4) + const -> rep_quad = shr elem_num, 2, y = add rep_quad, const
              * f(x) = (x / 4) * const -> rep_quad = shr elem_num, 2, y = mul24 rep_quad, const
              */
-            addMatchingReplicateQuadNumber(vector[i], i, sources[i]);
+            addMatchingReplicateQuadNumber(vector[i], static_cast<uint8_t>(i), sources[i]);
             // TODO: could also combine any above, e.g. f(x) = (x + const) * [0,3]
         }
     }
     return sources;
 }
 
-Optional<std::vector<ElementSource>> intermediate::checkVectorCanBeAssembled(DataType type, SIMDVector vector)
+Optional<std::vector<ElementSource>> intermediate::checkVectorCanBeAssembled(DataType type, const SIMDVector& vector)
 {
     PROFILE_START(getElementSources);
     auto sources = getElementSources(type, vector);

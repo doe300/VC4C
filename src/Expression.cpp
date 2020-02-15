@@ -857,19 +857,19 @@ bool Expression::insertInstructions(
     auto leftVal = arg0.checkValue();
     if(auto leftExpr = arg0.checkExpression())
     {
-        auto it = existingExpressions.find(leftExpr);
-        if(it == existingExpressions.end())
+        auto exprIt = existingExpressions.find(leftExpr);
+        if(exprIt == existingExpressions.end())
             return false;
-        leftVal = it->second.first->getOutput();
+        leftVal = exprIt->second.first->getOutput();
     }
 
     auto rightVal = arg0.checkValue();
     if(auto rightExpr = arg0.checkExpression())
     {
-        auto it = existingExpressions.find(rightExpr);
-        if(it == existingExpressions.end())
+        auto exprIt = existingExpressions.find(rightExpr);
+        if(exprIt == existingExpressions.end())
             return false;
-        rightVal = it->second.first->getOutput();
+        rightVal = exprIt->second.first->getOutput();
     }
 
     if(!leftVal || (code.numOperands > 1 && !rightVal))

@@ -1049,7 +1049,7 @@ void BitcodeReader::parseInstruction(
         else
         {
             Method& dest = parseFunction(module, *func);
-            instructions.emplace_back(new CallSite(toValue(method, call), dest, std::move(args)));
+            instructions.emplace_back(new CallSite(toValue(method, call), dest, std::move(args), func->isVarArg()));
         }
 
         instructions.back()->setDecorations(deco);

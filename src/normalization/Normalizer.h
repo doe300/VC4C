@@ -5,6 +5,7 @@
  */
 
 #ifndef VC4C_NORMALIZER_H
+#define VC4C_NORMALIZER_H
 
 #include "config.h"
 
@@ -69,5 +70,4 @@ namespace vc4c
     } /* namespace normalization */
 } /* namespace vc4c */
 
-#define VC4C_NORMALIZER_H
 #endif /* VC4C_NORMALIZER_H */

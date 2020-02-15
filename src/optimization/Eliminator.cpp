@@ -408,16 +408,16 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
                 pair.first->to_string());
         }
         // make sure, moves are inserted before the outgoing branches
-        InstructionWalker it = bb->walkEnd();
+        InstructionWalker blockIt = bb->walkEnd();
         ConditionCode jumpCondition = COND_ALWAYS;
         Value condition(UNDEFINED_VALUE);
-        while(it.copy().previousInBlock().get<intermediate::Branch>())
+        while(blockIt.copy().previousInBlock().get<intermediate::Branch>())
         {
-            it.previousInBlock();
-            if(it.get<intermediate::Branch>()->getTarget() == label)
+            blockIt.previousInBlock();
+            if(blockIt.get<intermediate::Branch>()->getTarget() == label)
             {
-                jumpCondition = it->conditional;
-                condition = it.get<intermediate::Branch>()->getCondition();
+                jumpCondition = blockIt->conditional;
+                condition = blockIt.get<intermediate::Branch>()->getCondition();
             }
         }
         // Since originally the value of the PHI node is set after the jump (at the start of the destination basic
@@ -429,14 +429,15 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
             // Since the correct flags for the branch might not be set, we need to set them here.
             // Also, don't "or" with element number, since we might need to set the flags for more than the first
             // SIMD-element, this way, we set it for all
-            it.emplace(new intermediate::MoveOperation(NOP_REGISTER, condition, COND_ALWAYS, SetFlag::SET_FLAGS));
-            it.nextInBlock();
+            blockIt.emplace(new intermediate::MoveOperation(NOP_REGISTER, condition, COND_ALWAYS, SetFlag::SET_FLAGS));
+            blockIt.nextInBlock();
         }
-        it.emplace((new intermediate::MoveOperation(node.getOutput().value(), pair.second, jumpCondition))
-                       ->copyExtrasFrom(&node)
-                       ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
+        blockIt.emplace(
+            (new intermediate::MoveOperation(node.getOutput().value(), pair.second, jumpCondition))
+                ->copyExtrasFrom(&node)
+                ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Inserting into end of basic-block '" << pair.first->name << "': " << it->to_string()
+            log << "Inserting into end of basic-block '" << pair.first->name << "': " << blockIt->to_string()
                 << logging::endl);
     }
 

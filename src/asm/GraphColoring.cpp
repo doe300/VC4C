@@ -101,18 +101,18 @@ Register ColoredNodeBase::getRegisterFixed() const
         if(availableA.count() != 1)
             throw CompilationError(CompilationStep::LABEL_REGISTER_MAPPING,
                 "Cannot get register of node with multiple available registers on file A", to_string());
-        for(unsigned char i = 0; i < availableA.size(); ++i)
+        for(std::size_t i = 0; i < availableA.size(); ++i)
             if(availableA.test(i))
-                return Register{RegisterFile::PHYSICAL_A, i};
+                return Register{RegisterFile::PHYSICAL_A, static_cast<uint8_t>(i)};
     }
     if(possibleFiles == RegisterFile::PHYSICAL_B)
     {
         if(availableB.count() != 1)
             throw CompilationError(CompilationStep::LABEL_REGISTER_MAPPING,
                 "Cannot get register of node with multiple available registers on file B", to_string());
-        for(unsigned char i = 0; i < availableB.size(); ++i)
+        for(std::size_t i = 0; i < availableB.size(); ++i)
             if(availableB.test(i))
-                return Register{RegisterFile::PHYSICAL_B, i};
+                return Register{RegisterFile::PHYSICAL_B, static_cast<uint8_t>(i)};
     }
     if(possibleFiles == RegisterFile::ACCUMULATOR)
     {
