@@ -27,6 +27,7 @@
 
 using namespace vc4c;
 using namespace vc4c::intermediate;
+using namespace vc4c::intrinsics;
 using namespace vc4c::operators;
 
 // TODO need to add sign extension to some more intrinsics?
@@ -128,12 +129,12 @@ static IntrinsicFunction intrinsifySemaphoreAccess(bool increment)
 {
     return [increment](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker {
         if(!callSite->assertArgument(0).getLiteralValue())
-            throw CompilationError(CompilationStep::OPTIMIZER, "Semaphore-number needs to be a compile-time constant",
+            throw CompilationError(CompilationStep::NORMALIZER, "Semaphore-number needs to be a compile-time constant",
                 callSite->to_string());
         if(callSite->assertArgument(0).getLiteralValue()->signedInt() < 0 ||
             callSite->assertArgument(0).getLiteralValue()->signedInt() >= 16)
             throw CompilationError(
-                CompilationStep::OPTIMIZER, "Semaphore-number needs to be between 0 and 15", callSite->to_string());
+                CompilationStep::NORMALIZER, "Semaphore-number needs to be between 0 and 15", callSite->to_string());
 
         if(increment)
         {
@@ -475,37 +476,38 @@ const static std::map<std::string, std::pair<Intrinsic, Optional<Value>>, std::g
                  [](const Value& val) { return Value(Literal(val.literal()), TYPE_INT32); }},
                 NO_VALUE}}};
 
-static NODISCARD InstructionWalker intrinsifyNoArgs(Method& method, InstructionWalker it)
+static bool intrinsifyNoArgs(Method& method, InstructionWalker it)
 {
     MethodCall* callSite = it.get<MethodCall>();
     if(callSite == nullptr)
     {
-        return it;
+        return false;
     }
     if(callSite->getArguments().size() > 1 /* check for sign-flag too*/)
     {
-        return it;
+        return false;
     }
     for(const auto& pair : nonaryInstrinsics)
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-            return pair.second.func(method, it, callSite);
+            pair.second.func(method, it, callSite);
+            return true;
         }
     }
-    return it;
+    return false;
 }
 
-static NODISCARD InstructionWalker intrinsifyUnary(Method& method, InstructionWalker it)
+static bool intrinsifyUnary(Method& method, InstructionWalker it)
 {
     MethodCall* callSite = it.get<MethodCall>();
     if(callSite == nullptr)
     {
-        return it;
+        return false;
     }
     if(callSite->getArguments().empty() || callSite->getArguments().size() > 2 /* check for sign-flag too*/)
     {
-        return it;
+        return false;
     }
     const Value& arg = callSite->assertArgument(0);
     Optional<Value> result = NO_VALUE;
@@ -523,10 +525,8 @@ static NODISCARD InstructionWalker intrinsifyUnary(Method& method, InstructionWa
                     callSite->getOutput().value(), result.value(), callSite->conditional, callSite->setFlags));
             }
             else
-            {
-                return pair.second.func(method, it, callSite);
-            }
-            return it;
+                pair.second.func(method, it, callSite);
+            return true;
         }
     }
     for(const auto& pair : typeCastIntrinsics)
@@ -556,24 +556,24 @@ static NODISCARD InstructionWalker intrinsifyUnary(Method& method, InstructionWa
                     log << "Intrinsifying '" << callSite->to_string() << "' to operation with constant "
                         << pair.second.second.to_string() << logging::endl);
                 callSite->setArgument(1, pair.second.second.value());
-                return pair.second.first.func(method, it, callSite);
+                pair.second.first.func(method, it, callSite);
             }
-            return it;
+            return true;
         }
     }
-    return it;
+    return false;
 }
 
-static NODISCARD InstructionWalker intrinsifyBinary(Method& method, InstructionWalker it)
+static bool intrinsifyBinary(Method& method, InstructionWalker it)
 {
     MethodCall* callSite = it.get<MethodCall>();
     if(callSite == nullptr)
     {
-        return it;
+        return false;
     }
     if(callSite->getArguments().size() < 2 || callSite->getArguments().size() > 3 /* check for sign-flag too*/)
     {
-        return it;
+        return false;
     }
     for(const auto& pair : binaryIntrinsicMapping)
     {
@@ -591,34 +591,33 @@ static NODISCARD InstructionWalker intrinsifyBinary(Method& method, InstructionW
                     callSite->conditional, callSite->setFlags));
             }
             else
-            {
-                return pair.second.func(method, it, callSite);
-            }
-            return it;
+                pair.second.func(method, it, callSite);
+            return true;
         }
     }
-    return it;
+    return false;
 }
 
-static NODISCARD InstructionWalker intrinsifyTernary(Method& method, InstructionWalker it)
+static bool intrinsifyTernary(Method& method, InstructionWalker it)
 {
     MethodCall* callSite = it.get<MethodCall>();
     if(callSite == nullptr)
     {
-        return it;
+        return false;
     }
     if(callSite->getArguments().size() < 3 || callSite->getArguments().size() > 4 /* check for sign-flag too*/)
     {
-        return it;
+        return false;
     }
     for(const auto& pair : ternaryIntrinsicMapping)
     {
         if(callSite->methodName.find(pair.first) != std::string::npos)
         {
-            return pair.second.func(method, it, callSite);
+            pair.second.func(method, it, callSite);
+            return true;
         }
     }
-    return it;
+    return false;
 }
 
 static constexpr uint32_t getMaximumUnsignedValue(uint8_t numBits)
@@ -648,12 +647,12 @@ static_assert(getMinimumSignedValue(32) == std::numeric_limits<int32_t>::min(), 
 static_assert(getMinimumSignedValue(16) == std::numeric_limits<int16_t>::min(), "");
 static_assert(getMinimumSignedValue(8) == std::numeric_limits<int8_t>::min(), "");
 
-static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, InstructionWalker it, const MathType& mathType)
+static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const MathType& mathType)
 {
     IntrinsicOperation* op = it.get<IntrinsicOperation>();
     if(op == nullptr)
     {
-        return it;
+        return false;
     }
     const Value& arg0 = op->getFirstArg();
     const Value& arg1 = op->getSecondArg().value_or(UNDEFINED_VALUE);
@@ -750,9 +749,8 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             it = intrinsifyUnsignedIntegerMultiplication(method, it, *op);
         }
         else
-        {
             it = intrinsifySignedIntegerMultiplication(method, it, *op);
-        }
+        return true;
     }
     // unsigned division
     else if(op->opCode == "udiv")
@@ -789,9 +787,8 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, *op);
         }
         else
-        {
             it = intrinsifyUnsignedIntegerDivision(method, it, *op);
-        }
+        return true;
     }
     // signed division
     else if(op->opCode == "sdiv")
@@ -856,9 +853,8 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                 }
         */
         else
-        {
             it = intrinsifySignedIntegerDivision(method, it, *op);
-        }
+        return true;
     }
     // unsigned modulo
     // LLVM IR calls it urem, SPIR-V umod
@@ -891,9 +887,8 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, *op, true);
         }
         else
-        {
             it = intrinsifyUnsignedIntegerDivision(method, it, *op, true);
-        }
+        return true;
     }
     // signed modulo
     else if(op->opCode == "srem")
@@ -936,9 +931,8 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             it = intrinsifySignedIntegerDivisionByConstant(method, it, *op, true);
         }
         else
-        {
             it = intrinsifySignedIntegerDivision(method, it, *op, true);
-        }
+        return true;
     }
     // floating division
     else if(op->opCode == "fdiv")
@@ -979,6 +973,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                     << logging::endl);
             it = intrinsifyFloatingDivision(method, it, *op);
         }
+        return true;
     }
     // truncate bits
     else if(op->opCode == "trunc")
@@ -999,9 +994,10 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         // -> This can occur if original is i33 already truncated to i32 in front-end
         else if(op->getFirstArg().type.getScalarBitCount() >= 32 && op->getOutput()->type.getScalarBitCount() == 32)
         {
-            // do nothing, is just a move, since we truncate the 64-bit integers anyway
+            // do nothing, is just a move of the lower part
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Intrinsifying truncate from unsupported type with move: " << op->to_string() << logging::endl);
+                log << "Intrinsifying truncate from 64-bit to 32-bit with move of lower part: " << op->to_string()
+                    << logging::endl);
             it.reset((new MoveOperation(op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags))
                          ->copyExtrasFrom(op));
         }
@@ -1015,20 +1011,20 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
                          ->copyExtrasFrom(it.get()));
         }
         else
-            throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled truncation", op->to_string());
+            throw CompilationError(CompilationStep::NORMALIZER, "Unhandled truncation", op->to_string());
+        return true;
     }
     else if(op->opCode == "fptrunc")
     {
         if(saturateResult)
         {
-            throw CompilationError(CompilationStep::OPTIMIZER,
+            throw CompilationError(CompilationStep::NORMALIZER,
                 "Saturation on floating-point conversion is not supported", op->to_string());
         }
         it = insertFloatingPointConversion(it, method, arg0, op->getOutput().value());
         // remove 'fptrunc'
         it.erase();
-        // so next instruction is not skipped
-        it.previousInBlock();
+        return true;
     }
     // arithmetic shift right
     else if(op->opCode == "ashr")
@@ -1048,13 +1044,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             it.reset((new Operation(OP_ASR, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1),
                           op->conditional, op->setFlags))
                          ->copyExtrasFrom(it.get()));
-    }
-    else if(op->opCode == "lshr")
-    {
-        // TODO only if type <= i32 and/or offset <= 32
-        it.reset((new Operation(OP_SHR, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1),
-                      op->conditional, op->setFlags))
-                     ->copyExtrasFrom(it.get()));
+        return true;
     }
     // integer to float
     else if(op->opCode == "sitofp")
@@ -1067,6 +1057,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             it = insertSignExtension(it, method, op->getFirstArg(), tmp, true, op->conditional);
         }
         it.reset(new Operation(OP_ITOF, op->getOutput().value(), tmp, op->conditional, op->setFlags));
+        return true;
     }
     else if(op->opCode == "uitofp")
     {
@@ -1080,7 +1071,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         }
         else if(op->getFirstArg().type.getScalarBitCount() > 32)
         {
-            throw CompilationError(CompilationStep::OPTIMIZER,
+            throw CompilationError(CompilationStep::NORMALIZER,
                 "Can't convert long to floating value, since long is not supported", op->to_string());
         }
         else // 32-bits
@@ -1098,6 +1089,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             it.nextInBlock();
             it.reset(new Operation(OP_FADD, op->getOutput().value(), tmpFloat2, tmpFloat3));
         }
+        return true;
     }
     // float to integer
     else if(op->opCode == "fptosi")
@@ -1113,6 +1105,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
         else
             it.reset((new Operation(OP_FTOI, op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags))
                          ->copyExtrasFrom(it.get()));
+        return true;
     }
     // float to unsigned integer
     else if(op->opCode == "fptoui")
@@ -1149,6 +1142,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             it.reset(new Operation(OP_FTOI, op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
+        return true;
     }
     // sign extension
     else if(op->opCode == "sext")
@@ -1159,8 +1153,7 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             it, method, op->getFirstArg(), op->getOutput().value(), true, op->conditional, op->setFlags);
         // remove 'sext'
         it.erase();
-        // so next instruction is not skipped
-        it.previousInBlock();
+        return true;
     }
     // zero extension
     else if(op->opCode == "zext")
@@ -1171,30 +1164,29 @@ static NODISCARD InstructionWalker intrinsifyArithmetic(Method& method, Instruct
             it, method, op->getFirstArg(), op->getOutput().value(), true, op->conditional, op->setFlags);
         // remove 'zext'
         it.erase();
-        // so next instruction is not skipped
-        it.previousInBlock();
+        return true;
     }
     // floating point conversion
     else if(op->opCode == "fpext")
     {
         if(saturateResult)
         {
-            throw CompilationError(CompilationStep::OPTIMIZER,
+            throw CompilationError(CompilationStep::NORMALIZER,
                 "Saturation on floating-point conversion is not supported", op->to_string());
         }
         it = insertFloatingPointConversion(it, method, op->getFirstArg(), op->getOutput().value());
         // remove 'fpext'
         it.erase();
-        // so next instruction is not skipped
-        it.previousInBlock();
+        return true;
     }
     else if(op->opCode == "fneg")
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying unary floating-point negation to binary operation" << logging::endl);
         it.reset((new Operation(OP_FSUB, op->getOutput().value(), FLOAT_ZERO, op->getFirstArg()))->copyExtrasFrom(op));
+        return true;
     }
-    return it;
+    return false;
 }
 
 static NODISCARD InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, InstructionWalker it, const Value& arg,
@@ -1342,13 +1334,13 @@ static NODISCARD InstructionWalker intrinsifyReadLocalID(Method& method, Instruc
         add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT));
 }
 
-static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, InstructionWalker it)
+static bool intrinsifyWorkItemFunctions(Method& method, InstructionWalker it)
 {
     MethodCall* callSite = it.get<MethodCall>();
     if(callSite == nullptr)
-        return it;
+        return false;
     if(callSite->getArguments().size() > 1)
-        return it;
+        return false;
 
     if(callSite->methodName == "vc4cl_work_dimensions" && callSite->getArguments().empty())
     {
@@ -1356,51 +1348,57 @@ static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, I
         // setting the type to int8 allows us to optimize e.g. multiplications with work-item values
         Value out = callSite->getOutput().value();
         out.type = TYPE_INT8;
-        return it.reset(
+        it.reset(
             (new MoveOperation(out, method.findOrCreateBuiltin(BuiltinLocal::Type::WORK_DIMENSIONS)->createReference()))
                 ->copyExtrasFrom(callSite)
                 ->addDecorations(add_flag(callSite->decoration,
                     add_flag(add_flag(InstructionDecorations::BUILTIN_WORK_DIMENSIONS,
                                  InstructionDecorations::UNSIGNED_RESULT),
                         InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))));
+        return true;
     }
     if(callSite->methodName == "vc4cl_num_groups" && callSite->getArguments().size() == 1)
     {
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Intrinsifying reading of the number of work-groups" << logging::endl);
-        return intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
+        it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {BuiltinLocal::Type::NUM_GROUPS_X, BuiltinLocal::Type::NUM_GROUPS_Y, BuiltinLocal::Type::NUM_GROUPS_Z},
             INT_ONE,
             add_flag(add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT),
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
+        return true;
     }
     if(callSite->methodName == "vc4cl_group_id" && callSite->getArguments().size() == 1)
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of the work-group ids" << logging::endl);
-        return intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
+        it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {BuiltinLocal::Type::GROUP_ID_X, BuiltinLocal::Type::GROUP_ID_Y, BuiltinLocal::Type::GROUP_ID_Z}, INT_ZERO,
             add_flag(add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT),
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
+        return true;
     }
     if(callSite->methodName == "vc4cl_global_offset" && callSite->getArguments().size() == 1)
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of the global offsets" << logging::endl);
-        return intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
+        it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {BuiltinLocal::Type::GLOBAL_OFFSET_X, BuiltinLocal::Type::GLOBAL_OFFSET_Y,
                 BuiltinLocal::Type::GLOBAL_OFFSET_Z},
             INT_ZERO,
             add_flag(add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT),
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
+        return true;
     }
     if(callSite->methodName == "vc4cl_local_size" && callSite->getArguments().size() == 1)
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of local work-item sizes" << logging::endl);
-        return intrinsifyReadLocalSize(method, it, callSite->assertArgument(0));
+        it = intrinsifyReadLocalSize(method, it, callSite->assertArgument(0));
+        return true;
     }
     if(callSite->methodName == "vc4cl_local_id" && callSite->getArguments().size() == 1)
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of local work-item ids" << logging::endl);
-        return intrinsifyReadLocalID(method, it, callSite->assertArgument(0));
+        it = intrinsifyReadLocalID(method, it, callSite->assertArgument(0));
+        return true;
     }
     if(callSite->methodName == "vc4cl_global_size" && callSite->getArguments().size() == 1)
     {
@@ -1418,12 +1416,13 @@ static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, I
             {BuiltinLocal::Type::NUM_GROUPS_X, BuiltinLocal::Type::NUM_GROUPS_Y, BuiltinLocal::Type::NUM_GROUPS_Z},
             INT_ONE, add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT));
         it.nextInBlock();
-        return it.reset((new Operation(OP_MUL24, callSite->getOutput().value(), tmpLocalSize, tmpNumGroups))
-                            ->copyExtrasFrom(callSite)
-                            ->addDecorations(add_flag(callSite->decoration,
-                                add_flag(add_flag(InstructionDecorations::BUILTIN_GLOBAL_SIZE,
-                                             InstructionDecorations::UNSIGNED_RESULT),
-                                    InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))));
+        it.reset((new Operation(OP_MUL24, callSite->getOutput().value(), tmpLocalSize, tmpNumGroups))
+                     ->copyExtrasFrom(callSite)
+                     ->addDecorations(add_flag(callSite->decoration,
+                         add_flag(add_flag(InstructionDecorations::BUILTIN_GLOBAL_SIZE,
+                                      InstructionDecorations::UNSIGNED_RESULT),
+                             InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))));
+        return true;
     }
     if(callSite->methodName == "vc4cl_global_id" && callSite->getArguments().size() == 1)
     {
@@ -1456,56 +1455,35 @@ static NODISCARD InstructionWalker intrinsifyWorkItemFunctions(Method& method, I
         it.nextInBlock();
         assign(it, tmpRes0) = mul24(tmpGroupID, tmpLocalSize);
         assign(it, tmpRes1) = tmpGlobalOffset + tmpRes0;
-        return it.reset(
+        it.reset(
             (new Operation(OP_ADD, callSite->getOutput().value(), tmpRes1, tmpLocalID))
                 ->copyExtrasFrom(callSite)
                 ->addDecorations(add_flag(callSite->decoration,
                     add_flag(InstructionDecorations::BUILTIN_GLOBAL_ID, InstructionDecorations::UNSIGNED_RESULT))));
+        return true;
     }
-    return it;
+    return false;
 }
 
-InstructionWalker optimizations::intrinsify(
-    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+void intrinsics::intrinsify(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     if(!it.get<IntrinsicOperation>() && !it.get<MethodCall>())
         // fail fast
-        return it;
-    auto newIt = intrinsifyComparison(method, it);
-    if(newIt == it)
-    {
-        // no changes so far
-        newIt = intrinsifyWorkItemFunctions(method, it);
-    }
-    if(newIt == it)
-    {
-        // no changes so far
-        newIt = intrinsifyNoArgs(method, it);
-    }
-    if(newIt == it)
-    {
-        // no changes so far
-        newIt = intrinsifyUnary(method, it);
-    }
-    if(newIt == it)
-    {
-        // no changes so far
-        newIt = intrinsifyBinary(method, it);
-    }
-    if(newIt == it)
-    {
-        // no changes so far
-        newIt = intrinsifyTernary(method, it);
-    }
-    if(newIt == it)
-    {
-        // no changes so far
-        newIt = intrinsifyArithmetic(method, it, config.mathType);
-    }
-    if(newIt == it)
-    {
-        // no changes so far
-        newIt = intrinsifyImageFunction(it, method);
-    }
-    return newIt;
+        return;
+    if(intrinsifyComparison(method, it))
+        return;
+    if(intrinsifyWorkItemFunctions(method, it))
+        return;
+    if(intrinsifyNoArgs(method, it))
+        return;
+    if(intrinsifyUnary(method, it))
+        return;
+    if(intrinsifyBinary(method, it))
+        return;
+    if(intrinsifyTernary(method, it))
+        return;
+    if(intrinsifyArithmetic(method, it, config.mathType))
+        return;
+    if(intrinsifyImageFunction(it, method))
+        return;
 }

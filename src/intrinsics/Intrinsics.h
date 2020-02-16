@@ -15,7 +15,7 @@
 
 namespace vc4c
 {
-    namespace optimizations
+    namespace intrinsics
     {
         /*
          * Replaces calls to intrinsic function with their implementation.
@@ -24,8 +24,7 @@ namespace vc4c
          * behavior (software-implementation of operators) and replaced comparison-operators with instructions executing
          * the comparison
          */
-        InstructionWalker intrinsify(
-            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
-    } // namespace optimizations
+        void intrinsify(const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+    } // namespace intrinsics
 } // namespace vc4c
 #endif /* INTRINSICS_H */

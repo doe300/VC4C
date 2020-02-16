@@ -1006,7 +1006,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
                 static_cast<spv::StorageClass>(getWord(parsed_instruction, 3)) == spv::StorageClass::UniformConstant;
             // replace the '%' and add the leading '@' to match the LLVM front-end
             name = "@" + (name.find('%') == 0 ? name.substr(1) : name);
-            module->globalData.emplace_back(Global(name, type, CompoundConstant(val), isConstant));
+            module->globalData.emplace_back(name, type, CompoundConstant(val), isConstant);
             const_cast<unsigned&>(module->globalData.back().type.getPointerType()->alignment) = alignment;
             memoryAllocatedData.emplace(parsed_instruction->result_id, &module->globalData.back());
         }

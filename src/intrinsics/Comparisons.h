@@ -11,11 +11,11 @@
 
 namespace vc4c
 {
-    namespace intermediate
+    namespace intrinsics
     {
         // relational operators
-        NODISCARD InstructionWalker intrinsifyComparison(Method& method, InstructionWalker it);
-    } // namespace intermediate
+        bool intrinsifyComparison(Method& method, InstructionWalker it);
+    } // namespace intrinsics
 } // namespace vc4c
 
 #endif /* COMPARISONS_H */

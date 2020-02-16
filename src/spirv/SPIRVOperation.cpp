@@ -167,13 +167,13 @@ Optional<Value> SPIRVInstruction::precalculate(
         return Value(
             Literal(op1.literal().unsignedInt() % op2.literal().unsignedInt()), op1.type.getUnionType(op2.type));
     if(opcode == "srem")
-        return Value(intermediate::srem(op1.type, op1.literal(), op2.literal()), op1.type);
+        return Value(intrinsics::srem(op1.type, op1.literal(), op2.literal()), op1.type);
     if(opcode == "smod")
-        return Value(intermediate::smod(op1.type, op1.literal(), op2.literal()), op1.type);
+        return Value(intrinsics::smod(op1.type, op1.literal(), op2.literal()), op1.type);
     if(opcode == "frem")
-        return Value(intermediate::frem(op1.type, op1.literal(), op2.literal()), op1.type);
+        return Value(intrinsics::frem(op1.type, op1.literal(), op2.literal()), op1.type);
     if(opcode == "fmod")
-        return Value(intermediate::fmod(op1.type, op1.literal(), op2.literal()), op1.type);
+        return Value(intrinsics::fmod(op1.type, op1.literal(), op2.literal()), op1.type);
     if(opcode == "or")
         return Value(
             Literal(op1.literal().unsignedInt() | op2.literal().unsignedInt()), op1.type.getUnionType(op2.type));
@@ -189,7 +189,7 @@ Optional<Value> SPIRVInstruction::precalculate(
         // in C++, unsigned right shift is logical (fills with zeroes)
         return Value(Literal(op1.literal().unsignedInt() >> op2.literal().signedInt()), op1.type);
     if(opcode == "asr")
-        return Value(intermediate::asr(op1.literal(), op2.literal()), op1.type);
+        return Value(intrinsics::asr(op1.literal(), op2.literal()), op1.type);
     if(opcode == "shl")
         return Value(Literal(op1.literal().unsignedInt() << op2.literal().signedInt()), op1.type);
 

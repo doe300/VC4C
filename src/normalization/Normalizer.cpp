@@ -134,7 +134,7 @@ const static std::vector<std::pair<std::string, NormalizationStep>> initialNorma
     {"LowerSPIRVBuiltins", spirv::lowerBuiltins},
 #endif
     // intrinsifies calls to built-ins and unsupported operations
-    {"Intrinsics", optimizations::intrinsify},
+    {"Intrinsics", intrinsics::intrinsify},
     // replaces all remaining returns with jumps to the end of the kernel-function
     {"EliminateReturns", optimizations::eliminateReturn},
     // rewrites the use of literal values to either small-immediate values or loading of literals

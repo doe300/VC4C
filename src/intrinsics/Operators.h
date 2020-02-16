@@ -11,29 +11,29 @@
 
 namespace vc4c
 {
-    namespace intermediate
+    namespace intrinsics
     {
         NODISCARD InstructionWalker intrinsifySignedIntegerMultiplication(
-            Method& method, InstructionWalker it, IntrinsicOperation& op);
-        bool canOptimizeMultiplicationWithBinaryMethod(const IntrinsicOperation& op);
+            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op);
+        bool canOptimizeMultiplicationWithBinaryMethod(const intermediate::IntrinsicOperation& op);
         NODISCARD InstructionWalker intrinsifyUnsignedIntegerMultiplication(
-            Method& method, InstructionWalker it, IntrinsicOperation& op);
+            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op);
         // returns full 32-bit mul_high result (the upper 32-bit of the theoretic 64-bit result)
         NODISCARD InstructionWalker intrinsifyIntegerMultiplicationHighPart(
-            Method& method, InstructionWalker it, const MethodCall* call);
+            Method& method, InstructionWalker it, const intermediate::MethodCall* call);
         NODISCARD InstructionWalker intrinsifyIntegerMultiplicationViaBinaryMethod(
-            Method& method, InstructionWalker it, IntrinsicOperation& op);
+            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op);
         NODISCARD InstructionWalker intrinsifySignedIntegerDivision(
-            Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder = false);
+            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder = false);
         NODISCARD InstructionWalker intrinsifyUnsignedIntegerDivision(
-            Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder = false);
+            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder = false);
         NODISCARD InstructionWalker intrinsifySignedIntegerDivisionByConstant(
-            Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder = false);
+            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder = false);
         NODISCARD InstructionWalker intrinsifyUnsignedIntegerDivisionByConstant(
-            Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder = false);
+            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder = false);
 
         NODISCARD InstructionWalker intrinsifyFloatingDivision(
-            Method& method, InstructionWalker it, IntrinsicOperation& op);
+            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op);
 
         /*
          * Implementations for on-host calculations
@@ -62,7 +62,7 @@ namespace vc4c
          */
         Literal frem(DataType type, const Literal& numerator, const Literal& denominator);
 
-    } // namespace intermediate
+    } // namespace intrinsics
 } // namespace vc4c
 
 #endif /* OPERATORS_H */

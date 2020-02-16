@@ -75,7 +75,7 @@ namespace vc4c
     struct Global final : public Local
     {
         Global(const std::string& name, DataType globalType, CompoundConstant&& initialValue, bool isConstant);
-        Global(Global&&) noexcept = default;
+        Global(Global&&) noexcept = delete;
         ~Global() noexcept override = default;
 
         std::string to_string(bool withContent = false) const override;
@@ -94,6 +94,10 @@ namespace vc4c
          * Whether this global value is a constant
          */
         const bool isConstant;
+    protected:
+        // required, since the access to the same global value from multiple kernels could be modified at the same time
+        mutable std::mutex usersLock;
+        RAIILock getUsersLock() const override;
     };
 } /* namespace vc4c */
 

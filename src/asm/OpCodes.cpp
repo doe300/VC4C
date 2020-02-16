@@ -933,7 +933,7 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
         auto offset = secondLit.unsignedInt() & 0x1F;
         // carry is set if bits set are shifted out of the register: val & (2^shift-offset-1) != 0
         auto shiftLoss = firstLit.unsignedInt() & ((1u << offset) - 1u);
-        return setFlags(intermediate::asr(firstLit, secondLit), shiftLoss != 0, false);
+        return setFlags(intrinsics::asr(firstLit, secondLit), shiftLoss != 0, false);
     }
     case OP_ROR.opAdd:
         return setFlags(Literal(rotate_right(firstLit.unsignedInt(), secondLit.signedInt())), false);
@@ -959,7 +959,7 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
     case OP_NOT.opAdd:
         return setFlags(Literal(~firstLit.unsignedInt()), false);
     case OP_CLZ.opAdd:
-        return setFlags(intermediate::clz(firstLit), false, false);
+        return setFlags(intrinsics::clz(firstLit), false, false);
     }
 
     switch(code.opMul)

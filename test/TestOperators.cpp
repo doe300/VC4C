@@ -13,7 +13,7 @@
 #include "intermediate/operators.h"
 
 using namespace vc4c;
-using namespace vc4c::intermediate;
+using namespace vc4c::intrinsics;
 using namespace vc4c::operators;
 
 TestOperators::TestOperators()

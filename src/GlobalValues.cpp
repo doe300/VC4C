@@ -157,3 +157,9 @@ bool Global::residesInMemory() const
 {
     return true;
 }
+
+Local::RAIILock Global::getUsersLock() const
+{
+    usersLock.lock();
+    return RAIILock([&]() { usersLock.unlock(); });
+}

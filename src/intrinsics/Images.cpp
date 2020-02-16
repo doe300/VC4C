@@ -40,11 +40,9 @@ Global* intermediate::reserveImageConfiguration(Module& module, Parameter& image
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Reserving a buffer of " << IMAGE_CONFIG_NUM_UNIFORMS << " UNIFORMs for the image-configuration of "
             << image.to_string() << logging::endl);
-    auto it = module.globalData.emplace(module.globalData.end(),
-        Global(ImageType::toImageConfigurationName(image.name),
-            DataType(
-                module.createPointerType(TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS), AddressSpace::GLOBAL)),
-            CompoundConstant(TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS), Literal(0u)), false));
+    auto it = module.globalData.emplace(module.globalData.end(), ImageType::toImageConfigurationName(image.name),
+        DataType(module.createPointerType(TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS), AddressSpace::GLOBAL)),
+        CompoundConstant(TYPE_INT32.toVectorType(IMAGE_CONFIG_NUM_UNIFORMS), Literal(0u)), false);
     return &(*it);
 }
 
@@ -69,7 +67,7 @@ static NODISCARD InstructionWalker insertLoadArraySizeOrImageDepth(
     return insertLoadImageConfig(it, method, image, dest, IMAGE_CONFIG_ARRAY_SIZE_OFFSET);
 }
 
-InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Method& method)
+bool intermediate::intrinsifyImageFunction(InstructionWalker it, Method& method)
 {
     if(auto callSite = it.get<MethodCall>())
     {
@@ -79,6 +77,7 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
                 log << "Intrinsifying getting normalized-coordinates flag from sampler" << logging::endl);
             it.reset(new Operation(OP_AND, callSite->getOutput().value(), callSite->assertArgument(0),
                 Value(Literal(Sampler::MASK_NORMALIZED_COORDS), TYPE_INT8)));
+            return true;
         }
         else if(callSite->methodName.find("vc4cl_sampler_get_addressing_mode") != std::string::npos)
         {
@@ -86,6 +85,7 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
                 log << "Intrinsifying getting addressing-mode flag from sampler" << logging::endl);
             it.reset(new Operation(OP_AND, callSite->getOutput().value(), callSite->assertArgument(0),
                 Value(Literal(Sampler::MASK_ADDRESSING_MODE), TYPE_INT8)));
+            return true;
         }
         else if(callSite->methodName.find("vc4cl_sampler_get_filter_mode") != std::string::npos)
         {
@@ -93,6 +93,7 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
                 logging::Level::DEBUG, log << "Intrinsifying getting filter-mode flag from sampler" << logging::endl);
             it.reset(new Operation(OP_AND, callSite->getOutput().value(), callSite->assertArgument(0),
                 Value(Literal(Sampler::MASK_FILTER_MODE), TYPE_INT8)));
+            return true;
         }
         else if(callSite->methodName.find("vc4cl_image_basic_setup") != std::string::npos)
         {
@@ -102,8 +103,7 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
             it = insertLoadImageConfig(
                 it, method, callSite->assertArgument(0), callSite->getOutput().value(), IMAGE_CONFIG_BASE_OFFSET);
             it.erase();
-            // to not skip next instruction
-            it.previousInBlock();
+            return true;
         }
         else if(callSite->methodName.find("vc4cl_image_access_setup") != std::string::npos)
         {
@@ -113,8 +113,7 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
             it = insertLoadImageConfig(
                 it, method, callSite->assertArgument(0), callSite->getOutput().value(), IMAGE_CONFIG_ACCESS_OFFSET);
             it.erase();
-            // to not skip next instruction
-            it.previousInBlock();
+            return true;
         }
         else if(callSite->methodName.find("vc4cl_image_extended_setup") != std::string::npos)
         {
@@ -124,8 +123,7 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
             it = insertLoadImageConfig(it, method, callSite->assertArgument(0), callSite->getOutput().value(),
                 IMAGE_CONFIG_CHILD_OFFSET_OFFSET);
             it.erase();
-            // to not skip next instruction
-            it.previousInBlock();
+            return true;
         }
         else if(callSite->methodName.find("get_image_channel_data_type") != std::string::npos)
         {
@@ -134,8 +132,7 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
                     << callSite->assertArgument(0).to_string() << logging::endl);
             it = insertQueryChannelDataType(it, method, callSite->assertArgument(0), callSite->getOutput().value());
             it.erase();
-            // to not skip next instruction
-            it.previousInBlock();
+            return true;
         }
         else if(callSite->methodName.find("get_image_channel_order") != std::string::npos)
         {
@@ -155,8 +152,7 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
             it =
                 insertLoadArraySizeOrImageDepth(it, method, callSite->assertArgument(0), callSite->getOutput().value());
             it.erase();
-            // to not skip next instruction
-            it.previousInBlock();
+            return true;
         }
         else if(callSite->methodName.find("get_image_array_size") != std::string::npos)
         {
@@ -166,8 +162,7 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
             it =
                 insertLoadArraySizeOrImageDepth(it, method, callSite->assertArgument(0), callSite->getOutput().value());
             it.erase();
-            // to not skip next instruction
-            it.previousInBlock();
+            return true;
         }
         else if(callSite->methodName.find("__translate_sampler_initializer") == 0)
         {
@@ -182,11 +177,13 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
             auto out = it->getOutput().value();
             out.type = TYPE_SAMPLER;
             it.reset(new MoveOperation(out, it->assertArgument(0)));
+            return true;
         }
         else if(callSite->methodName.find("vc4cl_set_image_access_setup") != std::string::npos)
         {
             // TODO
             it.erase();
+            return true;
         }
         else if(callSite->methodName.find("vc4cl_image_read") != std::string::npos)
         {
@@ -194,11 +191,10 @@ InstructionWalker intermediate::intrinsifyImageFunction(InstructionWalker it, Me
             it = periphery::insertReadTMU(
                 method, it, callSite->assertArgument(0), callSite->getOutput().value(), callSite->assertArgument(1));
             it.erase();
-            // to not skip next instruction
-            it.previousInBlock();
+            return true;
         }
     }
-    return it;
+    return false;
 }
 
 InstructionWalker intermediate::insertQueryChannelDataType(

@@ -26,7 +26,7 @@ using namespace vc4c::operators;
 // see VC4CLStdLib (_intrinsics.h)
 static constexpr unsigned char VC4CL_UNSIGNED{1};
 
-InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(
+InstructionWalker intrinsics::intrinsifySignedIntegerMultiplication(
     Method& method, InstructionWalker it, IntrinsicOperation& op)
 {
     /*
@@ -47,7 +47,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerMultiplication(
     return it;
 }
 
-InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(
+InstructionWalker intrinsics::intrinsifyUnsignedIntegerMultiplication(
     Method& method, InstructionWalker it, IntrinsicOperation& op)
 {
     const Value& arg0 = op.getFirstArg();
@@ -90,7 +90,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerMultiplication(
     return it;
 }
 
-InstructionWalker intermediate::intrinsifyIntegerMultiplicationHighPart(
+InstructionWalker intrinsics::intrinsifyIntegerMultiplicationHighPart(
     Method& method, InstructionWalker it, const MethodCall* call)
 {
     auto arg0 = call->assertArgument(0);
@@ -186,7 +186,7 @@ InstructionWalker intermediate::intrinsifyIntegerMultiplicationHighPart(
  */
 static constexpr int BINARY_METHOD_OPERATIONS_THRESHOLD = 8;
 
-bool intermediate::canOptimizeMultiplicationWithBinaryMethod(const IntrinsicOperation& op)
+bool intrinsics::canOptimizeMultiplicationWithBinaryMethod(const IntrinsicOperation& op)
 {
     return std::any_of(op.getArguments().begin(), op.getArguments().end(), [](const Value& arg) -> bool {
         if(arg.getLiteralValue() && arg.getLiteralValue()->signedInt() > 0)
@@ -205,7 +205,7 @@ bool intermediate::canOptimizeMultiplicationWithBinaryMethod(const IntrinsicOper
  *
  * NOTE: The constant multiplication factor needs to be unsigned!
  */
-InstructionWalker intermediate::intrinsifyIntegerMultiplicationViaBinaryMethod(
+InstructionWalker intrinsics::intrinsifyIntegerMultiplicationViaBinaryMethod(
     Method& method, InstructionWalker it, IntrinsicOperation& op)
 {
     auto factor = (op.getFirstArg().getLiteralValue() | op.getSecondArg()->getLiteralValue())->signedInt();
@@ -213,7 +213,7 @@ InstructionWalker intermediate::intrinsifyIntegerMultiplicationViaBinaryMethod(
 
     if(factor <= 0)
         throw CompilationError(
-            CompilationStep::OPTIMIZER, "Invalid factor for this multiplication optimization", op.to_string());
+            CompilationStep::NORMALIZER, "Invalid factor for this multiplication optimization", op.to_string());
 
     // tracks the deconstruction of the factor into its parts
     std::bitset<32> deconstruct(static_cast<unsigned>(factor));
@@ -271,7 +271,7 @@ InstructionWalker intermediate::intrinsifyIntegerMultiplicationViaBinaryMethod(
  * - http://flounder.com/multiplicative_inverse.htm
  */
 
-InstructionWalker intermediate::intrinsifySignedIntegerDivision(
+InstructionWalker intrinsics::intrinsifySignedIntegerDivision(
     Method& method, InstructionWalker it, IntrinsicOperation& op, const bool useRemainder)
 {
     Value opDest = op.getOutput().value();
@@ -317,7 +317,7 @@ InstructionWalker intermediate::intrinsifySignedIntegerDivision(
     return it;
 }
 
-InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(
+InstructionWalker intrinsics::intrinsifyUnsignedIntegerDivision(
     Method& method, InstructionWalker it, IntrinsicOperation& op, const bool useRemainder)
 {
     // https://en.wikipedia.org/wiki/Division_algorithm#Integer_division_.28unsigned.29_with_remainder
@@ -408,7 +408,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivision(
     return it;
 }
 
-InstructionWalker intermediate::intrinsifySignedIntegerDivisionByConstant(
+InstructionWalker intrinsics::intrinsifySignedIntegerDivisionByConstant(
     Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder)
 {
     /*
@@ -471,10 +471,10 @@ static std::pair<Literal, Literal> calculateConstant(Literal divisor, unsigned a
     uint32_t factor =
         static_cast<uint32_t>(std::round(std::pow(2.0f, shift) / static_cast<double>(divisor.unsignedInt())));
     if(shift > 31)
-        throw CompilationError(CompilationStep::OPTIMIZER,
+        throw CompilationError(CompilationStep::NORMALIZER,
             "Unsigned division by constant generated invalid shift offset", std::to_string(shift));
     if(factor >= std::numeric_limits<uint16_t>::max())
-        throw CompilationError(CompilationStep::OPTIMIZER,
+        throw CompilationError(CompilationStep::NORMALIZER,
             "Unsigned division by constant generated invalid multiplication factor", std::to_string(factor));
     return std::make_pair(Literal(factor), Literal(shift));
 }
@@ -498,7 +498,7 @@ static std::pair<Value, Value> calculateConstant(Module& module, const Value& di
     return std::make_pair(Value(tmp.first, divisor.type), Value(tmp.second, divisor.type));
 }
 
-InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
+InstructionWalker intrinsics::intrinsifyUnsignedIntegerDivisionByConstant(
     Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder)
 {
     /*
@@ -511,10 +511,10 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
      */
 
     if(op.getFirstArg().type.getScalarBitCount() > 16)
-        throw CompilationError(CompilationStep::OPTIMIZER, "Division by constant may overflow for argument type",
+        throw CompilationError(CompilationStep::NORMALIZER, "Division by constant may overflow for argument type",
             op.getFirstArg().type.to_string());
     if(!(op.getSecondArg() & &Value::isLiteralValue) && !(op.getSecondArg() & &Value::checkVector))
-        throw CompilationError(CompilationStep::OPTIMIZER, "Can only optimize division by constant", op.to_string());
+        throw CompilationError(CompilationStep::NORMALIZER, "Can only optimize division by constant", op.to_string());
 
     /*
      * Relative accuracy, the value is determined by experiment:
@@ -563,7 +563,7 @@ InstructionWalker intermediate::intrinsifyUnsignedIntegerDivisionByConstant(
     return it;
 }
 
-InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, InstructionWalker it, IntrinsicOperation& op)
+InstructionWalker intrinsics::intrinsifyFloatingDivision(Method& method, InstructionWalker it, IntrinsicOperation& op)
 {
     /*
      * https://dspace.mit.edu/bitstream/handle/1721.1/80133/43609668-MIT.pdf
@@ -622,7 +622,7 @@ InstructionWalker intermediate::intrinsifyFloatingDivision(Method& method, Instr
 
 static constexpr unsigned MSB = 31;
 
-Literal intermediate::asr(Literal left, Literal right)
+Literal intrinsics::asr(Literal left, Literal right)
 {
     if(right.signedInt() < 0)
         throw CompilationError(CompilationStep::GENERAL, "ASR with negative numbers is not implemented");
@@ -642,7 +642,7 @@ Literal intermediate::asr(Literal left, Literal right)
     return Literal(static_cast<uint32_t>(tmp.to_ulong()));
 }
 
-Literal intermediate::clz(Literal val)
+Literal intrinsics::clz(Literal val)
 {
 #ifdef __GNUC__
     // __builtin_clz(0) is undefined, so check before
@@ -659,22 +659,22 @@ Literal intermediate::clz(Literal val)
     return Literal(32);
 }
 
-Literal intermediate::smod(DataType type, const Literal& numerator, const Literal& denominator)
+Literal intrinsics::smod(DataType type, const Literal& numerator, const Literal& denominator)
 {
     throw CompilationError(CompilationStep::GENERAL, "SMOD is currently not implemented!");
 }
 
-Literal intermediate::srem(DataType type, const Literal& numerator, const Literal& denominator)
+Literal intrinsics::srem(DataType type, const Literal& numerator, const Literal& denominator)
 {
     throw CompilationError(CompilationStep::GENERAL, "SREM is currently not implemented!");
 }
 
-Literal intermediate::fmod(DataType type, const Literal& numerator, const Literal& denominator)
+Literal intrinsics::fmod(DataType type, const Literal& numerator, const Literal& denominator)
 {
     throw CompilationError(CompilationStep::GENERAL, "FMOD is currently not implemented!");
 }
 
-Literal intermediate::frem(DataType type, const Literal& numerator, const Literal& denominator)
+Literal intrinsics::frem(DataType type, const Literal& numerator, const Literal& denominator)
 {
     throw CompilationError(CompilationStep::GENERAL, "FREM is currently not implemented!");
 }

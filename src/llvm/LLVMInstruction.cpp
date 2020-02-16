@@ -412,6 +412,10 @@ bool BinaryOperator::mapInstruction(Method& method)
     if(op != OP_NOP)
         method.appendToEnd((new intermediate::Operation(op, std::move(dest), std::move(arg), std::move(arg2)))
                                ->addDecorations(decorations));
+    else if(opCode == "lshr")
+        // logical shift right
+        method.appendToEnd((new intermediate::Operation(OP_SHR, std::move(dest), std::move(arg), std::move(arg2)))
+                               ->addDecorations(decorations));
     else
         method.appendToEnd(
             (new intermediate::IntrinsicOperation(std::move(opCode), std::move(dest), std::move(arg), std::move(arg2)))

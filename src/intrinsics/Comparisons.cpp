@@ -45,8 +45,7 @@ static NODISCARD InstructionWalker replaceWithSetBoolean(
     return it;
 }
 
-static InstructionWalker intrinsifyIntegerRelation(
-    Method& method, InstructionWalker it, const Comparison* comp, bool invertResult)
+static void intrinsifyIntegerRelation(Method& method, InstructionWalker it, const Comparison* comp, bool invertResult)
 {
     // http://llvm.org/docs/LangRef.html#icmp-instruction
     auto boolType = TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth());
@@ -163,9 +162,7 @@ static InstructionWalker intrinsifyIntegerRelation(
         it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? cond.invert() : cond);
     }
     else
-        throw CompilationError(CompilationStep::OPTIMIZER, "Unrecognized integer comparison", comp->opCode);
-
-    return it;
+        throw CompilationError(CompilationStep::NORMALIZER, "Unrecognized integer comparison", comp->opCode);
 }
 
 static NODISCARD InstructionWalker insertCheckForNaN(
@@ -186,7 +183,7 @@ static NODISCARD InstructionWalker insertCheckForNaN(
     return it;
 }
 
-static InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionWalker it, const Comparison* comp)
+static void intrinsifyFloatingRelation(Method& method, InstructionWalker it, const Comparison* comp)
 {
     // since we do not support NaNs/Inf and denormals, all ordered comparisons are treated as unordered
     // -> "don't care if value could be Nan/Inf"
@@ -294,9 +291,7 @@ static InstructionWalker intrinsifyFloatingRelation(Method& method, InstructionW
         it.erase();
     }
     else
-        throw CompilationError(CompilationStep::OPTIMIZER, "Unrecognized floating-point comparison", comp->opCode);
-
-    return it;
+        throw CompilationError(CompilationStep::NORMALIZER, "Unrecognized floating-point comparison", comp->opCode);
 }
 
 static void swapComparisons(const std::string& opCode, Comparison* comp)
@@ -307,16 +302,16 @@ static void swapComparisons(const std::string& opCode, Comparison* comp)
     comp->opCode = opCode;
 }
 
-InstructionWalker intermediate::intrinsifyComparison(Method& method, InstructionWalker it)
+bool intrinsics::intrinsifyComparison(Method& method, InstructionWalker it)
 {
     Comparison* comp = it.get<Comparison>();
     if(comp == nullptr)
     {
-        return it;
+        return false;
     }
     if(comp->hasConditionalExecution())
         throw CompilationError(
-            CompilationStep::OPTIMIZER, "Comparisons cannot have conditional execution", comp->to_string());
+            CompilationStep::NORMALIZER, "Comparisons cannot have conditional execution", comp->to_string());
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Intrinsifying comparison '" << comp->opCode << "' to arithmetic operations" << logging::endl);
     bool isFloating = comp->getFirstArg().type.isFloatingType();
@@ -366,8 +361,7 @@ InstructionWalker intermediate::intrinsifyComparison(Method& method, Instruction
             swapComparisons(COMP_SIGNED_LT, comp);
             negateResult = true;
         }
-
-        it = intrinsifyIntegerRelation(method, it, comp, negateResult);
+        intrinsifyIntegerRelation(method, it, comp, negateResult);
     }
     else
     {
@@ -388,9 +382,7 @@ InstructionWalker intermediate::intrinsifyComparison(Method& method, Instruction
         {
             swapComparisons(COMP_UNORDERED_LT, comp);
         }
-
-        it = intrinsifyFloatingRelation(method, it, comp);
+        intrinsifyFloatingRelation(method, it, comp);
     }
-
-    return it;
+    return true;
 }

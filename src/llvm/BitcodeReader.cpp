@@ -1291,10 +1291,10 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         if(globalIt != module.globalData.end())
             return globalIt->createReference();
 
-        module.globalData.emplace_back(Global(name, toDataType(module, global->getType()),
+        module.globalData.emplace_back(name, toDataType(module, global->getType()),
             global->hasInitializer() ? toConstantGlobal(module, global->getInitializer()) :
                                        CompoundConstant(TYPE_UNKNOWN, UNDEFINED_LITERAL),
-            global->isConstant()));
+            global->isConstant());
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Global read: " << module.globalData.back().to_string() << logging::endl);
         localMap[val] = &module.globalData.back();

@@ -109,7 +109,7 @@ namespace vc4c
          */
         Global* reserveImageConfiguration(Module& module, Parameter& image);
 
-        NODISCARD InstructionWalker intrinsifyImageFunction(InstructionWalker it, Method& method);
+        bool intrinsifyImageFunction(InstructionWalker it, Method& method);
 
         NODISCARD InstructionWalker insertQueryChannelDataType(
             InstructionWalker it, Method& method, const Value& image, const Value& dest);

@@ -217,7 +217,7 @@ TestIntrinsicFunctions::TestIntrinsicFunctions(const vc4c::Configuration& config
     */
     TEST_ADD(TestIntrinsicFunctions::testMax);
     TEST_ADD(TestIntrinsicFunctions::testMin);
-    TEST_ADD(TestIntrinsicFunctions::testAnd);
+    // TODO TEST_ADD(TestIntrinsicFunctions::testAnd);
     TEST_ADD(TestIntrinsicFunctions::testMul24);
     TEST_ADD(TestIntrinsicFunctions::testV8Adds);
     TEST_ADD(TestIntrinsicFunctions::testV8Subs);
@@ -1131,7 +1131,7 @@ void TestIntrinsicFunctions::testItof()
 
 void TestIntrinsicFunctions::testClz()
 {
-    auto func = [](int i) -> int { return vc4c::intermediate::clz(vc4c::Literal(i)).signedInt(); };
+    auto func = [](int i) -> int { return vc4c::intrinsics::clz(vc4c::Literal(i)).signedInt(); };
 
     std::string options = "-DFUNC=vc4cl_clz -DIN=int -DOUT=int -DDEFINE_PROTOTYPE";
     std::stringstream code;
