@@ -909,13 +909,13 @@ void VPM::setDMAWriteAddress(const SIMDVector& val)
     if(setup.value == 0)
         throw CompilationError(
             CompilationStep::GENERAL, "VPM DMA write setup was not previously set", setup.to_string());
-    if(!setup.dmaSetup.getHorizontal())
-        throw CompilationError(
-            CompilationStep::GENERAL, "Vertical access to VPM is not yet supported", setup.to_string());
 
     std::pair<uint32_t, uint32_t> vpmBaseAddress =
         std::make_pair(setup.dmaSetup.getWordRow(), setup.dmaSetup.getWordColumn());
     std::pair<uint32_t, uint32_t> sizes = std::make_pair(setup.dmaSetup.getUnits(), setup.dmaSetup.getDepth());
+    if(!setup.dmaSetup.getHorizontal())
+        // invert columns and rows
+        sizes = std::make_pair(setup.dmaSetup.getDepth(), setup.dmaSetup.getUnits());
     uint32_t typeSize =
         setup.dmaSetup.getMode() >= 4 ? 1 /* Byte */ : setup.dmaSetup.getMode() >= 2 ? 2 /* Half-word */ : 4 /* Word */;
     uint32_t byteOffset =
@@ -931,27 +931,56 @@ void VPM::setDMAWriteAddress(const SIMDVector& val)
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Copying " << sizes.first << " rows with " << sizes.second << " elements of " << typeSize
-            << " bytes each from VPM address " << vpmBaseAddress.first << "," << vpmBaseAddress.second
-            << " into RAM at " << address << " with a memory stride of " << stride << logging::endl);
+            << " bytes each " << (setup.dmaSetup.getHorizontal() ? "horizontally" : "vertically")
+            << " from VPM address " << vpmBaseAddress.first << "," << vpmBaseAddress.second << " into RAM at "
+            << address << " with a memory stride of " << stride << logging::endl);
 
     if(vpmBaseAddress.first >= 64)
         throw CompilationError(
             CompilationStep::GENERAL, "VPM row address is out of range: ", std::to_string(vpmBaseAddress.first));
 
-    for(uint32_t i = 0; i < sizes.first; ++i)
+    if(setup.dmaSetup.getHorizontal())
     {
-        if(address + typeSize * sizes.second >= memory.getMaximumAddress())
-            throw CompilationError(CompilationStep::GENERAL,
-                "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
-        memcpy(reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
-            reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first).at(vpmBaseAddress.second)) + byteOffset,
-            typeSize * sizes.second);
-        logging::debug() << "\tVPM row: "
-                         << to_string<unsigned, std::array<unsigned, 16>>(cache.at(vpmBaseAddress.first))
-                         << logging::endl;
-        vpmBaseAddress.first += 1;
-        // write stride is end-to-start, so add size of vector
-        address += stride + (typeSize * sizes.second);
+        for(uint32_t i = 0; i < sizes.first; ++i)
+        {
+            if(address + typeSize * sizes.second >= memory.getMaximumAddress())
+                throw CompilationError(CompilationStep::GENERAL,
+                    "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
+            memcpy(reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
+                reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first).at(vpmBaseAddress.second)) + byteOffset,
+                typeSize * sizes.second);
+            logging::debug() << "\tVPM row: "
+                             << to_string<unsigned, std::array<unsigned, 16>>(cache.at(vpmBaseAddress.first))
+                             << logging::endl;
+            vpmBaseAddress.first += 1;
+            // write stride is end-to-start, so add size of vector
+            address += stride + (typeSize * sizes.second);
+        }
+    }
+    else
+    {
+        for(uint32_t i = 0; i < sizes.second; ++i)
+        {
+            if(address + typeSize * sizes.first >= memory.getMaximumAddress())
+                throw CompilationError(CompilationStep::GENERAL,
+                    "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
+            for(uint32_t k = 0; k < sizes.first; ++k)
+            {
+                memcpy(reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
+                    reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first + k).at(vpmBaseAddress.second + i)) +
+                        byteOffset,
+                    typeSize);
+                address += typeSize;
+            }
+            address += stride;
+        }
+
+        for(uint32_t i = 0; i < sizes.first; ++i)
+        {
+            logging::debug() << "\tVPM row: "
+                             << to_string<unsigned, std::array<unsigned, 16>>(cache.at(vpmBaseAddress.first + i))
+                             << logging::endl;
+        }
     }
 
     lastDMAWriteTrigger = currentCycle;

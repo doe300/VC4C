@@ -124,7 +124,7 @@
 0x15ce7d80, 0x100209e7, //or -, mutex_acq, mutex_acq
 0x00001a00, 0xe0021c67, //ldi vpw_setup, vpm_setup(size: 16 words, stride: 1 rows, address: h32(0))
 0x159e7000, 0x10020c27, //or vpm, r0, r0
-0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, elements: 1 words, address: h32(0,0))
+0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, columns: 1 words, address: h32(0,0))
 0xc0010000, 0xe0021c67, //ldi vpw_setup, vdw_setup(memory stride: 0 bytes)
 0x0c0e7c40, 0x10021ca7, //add vpw_addr, ra3, r1
 0x159f2fc0, 0x100209e7, //or -, vpw_wait, vpw_wait
@@ -183,7 +183,7 @@
 0x15ce7d80, 0x100209e7, //or -, mutex_acq, mutex_acq
 0x00001a00, 0xe0021c67, //ldi vpw_setup, vpm_setup(size: 16 words, stride: 1 rows, address: h32(0))
 0x159e7240, 0x10020c27, //or vpm, r1, r1
-0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, elements: 1 words, address: h32(0,0))
+0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, columns: 1 words, address: h32(0,0))
 0xc0010000, 0xe0021c67, //ldi vpw_setup, vdw_setup(memory stride: 0 bytes)
 0x0c127c00, 0x10021ca7, //add vpw_addr, ra4, r0
 0x159f2fc0, 0x100209e7, //or -, vpw_wait, vpw_wait
@@ -258,7 +258,7 @@
 0x15ce7d80, 0x100209e7, //or -, mutex_acq, mutex_acq
 0x00001a00, 0xe0021c67, //ldi vpw_setup, vpm_setup(size: 16 words, stride: 1 rows, address: h32(0))
 0x159e7240, 0x10020c27, //or vpm, r1, r1
-0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, elements: 1 words, address: h32(0,0))
+0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, columns: 1 words, address: h32(0,0))
 0xc0010000, 0xe0021c67, //ldi vpw_setup, vdw_setup(memory stride: 0 bytes)
 0x0c0e7c00, 0x10021ca7, //add vpw_addr, ra3, r0
 0x159f2fc0, 0x100209e7, //or -, vpw_wait, vpw_wait
@@ -370,7 +370,7 @@
 0x15ce7d80, 0x100209e7, //or -, mutex_acq, mutex_acq
 0x00001a00, 0xe0021c67, //ldi vpw_setup, vpm_setup(size: 16 words, stride: 1 rows, address: h32(0))
 0x159e7240, 0x10020c27, //or vpm, r1, r1
-0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, elements: 1 words, address: h32(0,0))
+0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, columns: 1 words, address: h32(0,0))
 0xc0010000, 0xe0021c67, //ldi vpw_setup, vdw_setup(memory stride: 0 bytes)
 0x0c0a7c00, 0x10021ca7, //add vpw_addr, ra2, r0
 0x159f2fc0, 0x100209e7, //or -, vpw_wait, vpw_wait
@@ -483,7 +483,7 @@
 0x15ce7d80, 0x100209e7, //or -, mutex_acq, mutex_acq
 0x00001a00, 0xe0021c67, //ldi vpw_setup, vpm_setup(size: 16 words, stride: 1 rows, address: h32(0))
 0x159e7240, 0x10020c27, //or vpm, r1, r1
-0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, elements: 1 words, address: h32(0,0))
+0x80814000, 0xe0021c67, //ldi vpw_setup, vdw_setup(rows: 1, columns: 1 words, address: h32(0,0))
 0xc0010000, 0xe0021c67, //ldi vpw_setup, vdw_setup(memory stride: 0 bytes)
 0x0c0e7c00, 0x10021ca7, //add vpw_addr, ra3, r0
 0x159f2fc0, 0x100209e7, //or -, vpw_wait, vpw_wait

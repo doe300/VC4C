@@ -72,6 +72,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testSignedCharUnaryPlus);
     TEST_ADD(TestArithmetic::testUnsignedCharUnaryPlus);
     TEST_ADD(TestArithmetic::testFloatUnaryPlus);
+    TEST_ADD(TestArithmetic::testSignedLongUnaryPlus);
+    TEST_ADD(TestArithmetic::testUnsignedLongUnaryPlus);
 
     TEST_ADD(TestArithmetic::testSignedIntUnaryMinus);
     TEST_ADD(TestArithmetic::testUnsignedIntUnaryMinus);
@@ -80,6 +82,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testSignedCharUnaryMinus);
     TEST_ADD(TestArithmetic::testUnsignedCharUnaryMinus);
     TEST_ADD(TestArithmetic::testFloatUnaryMinus);
+    TEST_ADD(TestArithmetic::testSignedLongUnaryMinus);
+    TEST_ADD(TestArithmetic::testUnsignedLongUnaryMinus);
 
     TEST_ADD(TestArithmetic::testSignedIntAddition);
     TEST_ADD(TestArithmetic::testUnsignedIntAddition);
@@ -88,6 +92,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testSignedCharAddition);
     TEST_ADD(TestArithmetic::testUnsignedCharAddition);
     TEST_ADD(TestArithmetic::testFloatAddition);
+    TEST_ADD(TestArithmetic::testSignedLongAddition);
+    TEST_ADD(TestArithmetic::testUnsignedLongAddition);
 
     TEST_ADD(TestArithmetic::testSignedIntSubtraction);
     TEST_ADD(TestArithmetic::testUnsignedIntSubtraction);
@@ -96,6 +102,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testSignedCharSubtraction);
     TEST_ADD(TestArithmetic::testUnsignedCharSubtraction);
     TEST_ADD(TestArithmetic::testFloatSubtraction);
+    TEST_ADD(TestArithmetic::testSignedLongSubtraction);
+    TEST_ADD(TestArithmetic::testUnsignedLongSubtraction);
 
     TEST_ADD(TestArithmetic::testSignedIntMultiplication);
     TEST_ADD(TestArithmetic::testSignedShortMultiplication);
@@ -126,6 +134,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortIncrement);
     TEST_ADD(TestArithmetic::testSignedCharIncrement);
     TEST_ADD(TestArithmetic::testUnsignedCharIncrement);
+    TEST_ADD(TestArithmetic::testSignedLongIncrement);
+    TEST_ADD(TestArithmetic::testUnsignedLongIncrement);
 
     TEST_ADD(TestArithmetic::testSignedIntDecrement);
     TEST_ADD(TestArithmetic::testUnsignedIntDecrement);
@@ -133,16 +143,20 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortDecrement);
     TEST_ADD(TestArithmetic::testSignedCharDecrement);
     TEST_ADD(TestArithmetic::testUnsignedCharDecrement);
+    TEST_ADD(TestArithmetic::testSignedLongDecrement);
+    TEST_ADD(TestArithmetic::testUnsignedLongDecrement);
 
     TEST_ADD(TestArithmetic::testIntegerEquality);
     TEST_ADD(TestArithmetic::testShortEquality);
     TEST_ADD(TestArithmetic::testCharEquality);
     TEST_ADD(TestArithmetic::testFloatEquality);
+    // TEST_ADD(TestArithmetic::testLongEquality);
 
     TEST_ADD(TestArithmetic::testIntegerInequality);
     TEST_ADD(TestArithmetic::testShortInequality);
     TEST_ADD(TestArithmetic::testCharInequality);
     TEST_ADD(TestArithmetic::testFloatInequality);
+    //    TEST_ADD(TestArithmetic::testLongInequality);
 
     TEST_ADD(TestArithmetic::testSignedIntGreater);
     TEST_ADD(TestArithmetic::testSignedShortGreater);
@@ -151,6 +165,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortGreater);
     TEST_ADD(TestArithmetic::testUnsignedCharGreater);
     TEST_ADD(TestArithmetic::testFloatGreater);
+    // TEST_ADD(TestArithmetic::testSignedLongGreater);
+    // TEST_ADD(TestArithmetic::testUnsignedLongGreater);
 
     TEST_ADD(TestArithmetic::testSignedIntLess);
     TEST_ADD(TestArithmetic::testSignedShortLess);
@@ -159,6 +175,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortLess);
     TEST_ADD(TestArithmetic::testUnsignedCharLess);
     TEST_ADD(TestArithmetic::testFloatLess);
+    // TEST_ADD(TestArithmetic::testSignedLongLess);
+    // TEST_ADD(TestArithmetic::testUnsignedLongLess);
 
     TEST_ADD(TestArithmetic::testSignedIntGreaterEquals);
     TEST_ADD(TestArithmetic::testSignedShortGreaterEquals);
@@ -167,6 +185,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortGreaterEquals);
     TEST_ADD(TestArithmetic::testUnsignedCharGreaterEquals);
     TEST_ADD(TestArithmetic::testFloatGreaterEquals);
+    // TEST_ADD(TestArithmetic::testSignedLongGreaterEquals);
+    // TEST_ADD(TestArithmetic::testUnsignedLongGreaterEquals);
 
     TEST_ADD(TestArithmetic::testSignedIntLessEquals);
     TEST_ADD(TestArithmetic::testSignedShortLessEquals);
@@ -175,6 +195,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortLessEquals);
     TEST_ADD(TestArithmetic::testUnsignedCharLessEquals);
     TEST_ADD(TestArithmetic::testFloatLessEquals);
+    // TEST_ADD(TestArithmetic::testSignedLongLessEquals);
+    // TEST_ADD(TestArithmetic::testUnsignedLongLessEquals);
 
     TEST_ADD(TestArithmetic::testSignedIntSelectScalar);
     TEST_ADD(TestArithmetic::testSignedIntSelectVector);
@@ -188,6 +210,10 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortSelectVector);
     TEST_ADD(TestArithmetic::testUnsignedCharSelectScalar);
     TEST_ADD(TestArithmetic::testUnsignedCharSelectVector);
+    // TEST_ADD(TestArithmetic::testSignedLongSelectScalar);
+    // TEST_ADD(TestArithmetic::testSignedLongSelectVector);
+    // TEST_ADD(TestArithmetic::testUnsignedLongSelectScalar);
+    // TEST_ADD(TestArithmetic::testUnsignedLongSelectVector);
 
     TEST_ADD(TestArithmetic::testSignedIntAnd);
     TEST_ADD(TestArithmetic::testSignedShortAnd);
@@ -196,6 +222,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortAnd);
     TEST_ADD(TestArithmetic::testUnsignedCharAnd);
     TEST_ADD(TestArithmetic::testFloatAnd);
+    // TEST_ADD(TestArithmetic::testSignedLongAnd);
+    // TEST_ADD(TestArithmetic::testUnsignedLongAnd);
 
     TEST_ADD(TestArithmetic::testSignedIntOr);
     TEST_ADD(TestArithmetic::testSignedShortOr);
@@ -204,6 +232,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortOr);
     TEST_ADD(TestArithmetic::testUnsignedCharOr);
     TEST_ADD(TestArithmetic::testFloatOr);
+    // TEST_ADD(TestArithmetic::testSignedLongOr);
+    // TEST_ADD(TestArithmetic::testUnsignedLongOr);
 
     TEST_ADD(TestArithmetic::testSignedIntNot);
     TEST_ADD(TestArithmetic::testSignedShortNot);
@@ -212,6 +242,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortNot);
     TEST_ADD(TestArithmetic::testUnsignedCharNot);
     TEST_ADD(TestArithmetic::testFloatNot);
+    TEST_ADD(TestArithmetic::testSignedLongNot);
+    TEST_ADD(TestArithmetic::testUnsignedLongNot);
 
     TEST_ADD(TestArithmetic::testSignedIntBitNot);
     TEST_ADD(TestArithmetic::testUnsignedIntBitNot);
@@ -219,6 +251,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortBitNot);
     TEST_ADD(TestArithmetic::testSignedCharBitNot);
     TEST_ADD(TestArithmetic::testUnsignedCharBitNot);
+    TEST_ADD(TestArithmetic::testSignedLongBitNot);
+    TEST_ADD(TestArithmetic::testUnsignedLongBitNot);
 
     TEST_ADD(TestArithmetic::testSignedIntBitAnd);
     TEST_ADD(TestArithmetic::testUnsignedIntBitAnd);
@@ -226,6 +260,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortBitAnd);
     TEST_ADD(TestArithmetic::testSignedCharBitAnd);
     TEST_ADD(TestArithmetic::testUnsignedCharBitAnd);
+    TEST_ADD(TestArithmetic::testSignedLongBitAnd);
+    TEST_ADD(TestArithmetic::testUnsignedLongBitAnd);
 
     TEST_ADD(TestArithmetic::testSignedIntBitOr);
     TEST_ADD(TestArithmetic::testUnsignedIntBitOr);
@@ -233,6 +269,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortBitOr);
     TEST_ADD(TestArithmetic::testSignedCharBitOr);
     TEST_ADD(TestArithmetic::testUnsignedCharBitOr);
+    TEST_ADD(TestArithmetic::testSignedLongBitOr);
+    TEST_ADD(TestArithmetic::testUnsignedLongBitOr);
 
     TEST_ADD(TestArithmetic::testSignedIntBitXor);
     TEST_ADD(TestArithmetic::testUnsignedIntBitXor);
@@ -240,6 +278,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortBitXor);
     TEST_ADD(TestArithmetic::testSignedCharBitXor);
     TEST_ADD(TestArithmetic::testUnsignedCharBitXor);
+    TEST_ADD(TestArithmetic::testSignedLongBitXor);
+    TEST_ADD(TestArithmetic::testUnsignedLongBitXor);
 
     TEST_ADD(TestArithmetic::testSignedIntBitShiftLeft);
     TEST_ADD(TestArithmetic::testUnsignedIntBitShiftLeft);
@@ -247,6 +287,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortBitShiftLeft);
     TEST_ADD(TestArithmetic::testSignedCharBitShiftLeft);
     TEST_ADD(TestArithmetic::testUnsignedCharBitShiftLeft);
+    TEST_ADD(TestArithmetic::testSignedLongBitShiftLeft);
+    TEST_ADD(TestArithmetic::testUnsignedLongBitShiftLeft);
 
     TEST_ADD(TestArithmetic::testSignedIntBitShiftRight);
     TEST_ADD(TestArithmetic::testUnsignedIntBitShiftRight);
@@ -254,6 +296,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortBitShiftRight);
     TEST_ADD(TestArithmetic::testSignedCharBitShiftRight);
     TEST_ADD(TestArithmetic::testUnsignedCharBitShiftRight);
+    TEST_ADD(TestArithmetic::testSignedLongBitShiftRight);
+    TEST_ADD(TestArithmetic::testUnsignedLongBitShiftRight);
 
     TEST_ADD(TestArithmetic::testSignedIntTrinaryScalar);
     TEST_ADD(TestArithmetic::testSignedIntTrinaryVector);
@@ -261,6 +305,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testSignedShortTrinaryVector);
     TEST_ADD(TestArithmetic::testSignedCharTrinaryScalar);
     TEST_ADD(TestArithmetic::testSignedCharTrinaryVector);
+    // TEST_ADD(TestArithmetic::testSignedLongTrinaryScalar);
+    // TEST_ADD(TestArithmetic::testSignedLongTrinaryVector);
 
     TEST_ADD(TestArithmetic::testUnsignedIntTrinaryScalar);
     TEST_ADD(TestArithmetic::testUnsignedIntTrinaryVector);
@@ -268,6 +314,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortTrinaryVector);
     TEST_ADD(TestArithmetic::testUnsignedCharTrinaryScalar);
     TEST_ADD(TestArithmetic::testUnsignedCharTrinaryVector);
+    // TEST_ADD(TestArithmetic::testUnsignedLongTrinaryScalar);
+    // TEST_ADD(TestArithmetic::testUnsignedLongTrinaryVector);
 }
 
 TestArithmetic::~TestArithmetic() = default;
@@ -352,27 +400,28 @@ static void testSelectOperation(vc4c::Configuration& config, const std::string& 
     checkBinaryResults<T, T, N * 12, CompareEqual<T>, T>(in0, in1, out, op, "select", onError);
 }
 
-template <typename C, typename T = typename C::first_argument_type>
-static int checkRelation(T arg1, T arg2)
+template <typename C, typename T = typename C::first_argument_type,
+    typename R = typename std::common_type<T, int>::type>
+static R checkRelation(T arg1, T arg2)
 {
     C c{};
     return c(arg1, arg2) ? -1 : 0;
 }
 
-template <typename T>
-static int checkAnd(T arg1, T arg2)
+template <typename T, typename R = typename std::common_type<T, int>::type>
+static R checkAnd(T arg1, T arg2)
 {
     return (arg1 != 0 && arg2 != 0) ? -1 : 0;
 }
 
-template <typename T>
-static int checkOr(T arg1, T arg2)
+template <typename T, typename R = typename std::common_type<T, int>::type>
+static R checkOr(T arg1, T arg2)
 {
     return (arg1 != 0 || arg2 != 0) ? -1 : 0;
 }
 
-template <typename T>
-static int checkNot(T arg)
+template <typename T, typename R = typename std::common_type<T, int>::type>
+static R checkNot(T arg)
 {
     return !arg ? -1 : 0;
 }
@@ -389,16 +438,16 @@ static int checkNot(T arg)
  * see also https://stackoverflow.com/questions/51919757/left-shift-by-negative-value-in-opencl
  */
 
-template <typename T>
-static int checkShiftLeft(T arg1, T arg2)
+template <typename T, typename R = typename std::common_type<T, int>::type>
+static R checkShiftLeft(T arg1, T arg2)
 {
-    return static_cast<int>(arg1 << (vc4c::bit_cast<T, std::make_unsigned_t<T>>(arg2) % (sizeof(T) * CHAR_BIT)));
+    return static_cast<R>(arg1 << (vc4c::bit_cast<T, std::make_unsigned_t<T>>(arg2) % (sizeof(T) * CHAR_BIT)));
 }
 
-template <typename T>
-static int checkShiftRight(T arg1, T arg2)
+template <typename T, typename R = typename std::common_type<T, int>::type>
+static R checkShiftRight(T arg1, T arg2)
 {
-    return static_cast<int>(arg1 >> (vc4c::bit_cast<T, std::make_unsigned_t<T>>(arg2) % (sizeof(T) * CHAR_BIT)));
+    return static_cast<R>(arg1 >> (vc4c::bit_cast<T, std::make_unsigned_t<T>>(arg2) % (sizeof(T) * CHAR_BIT)));
 }
 
 template <typename T>
@@ -473,6 +522,18 @@ void TestArithmetic::testFloatUnaryPlus()
         config, "-DTYPE=float16 -DOP=+", [](float i) -> float { return +i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
+void TestArithmetic::testSignedLongUnaryPlus()
+{
+    testUnaryOperation<int64_t>(
+        config, "-DTYPE=long16 -DOP=+", [](int64_t i) -> int64_t { return +i; },
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedLongUnaryPlus()
+{
+    testUnaryOperation<uint64_t>(
+        config, "-DTYPE=ulong16 -DOP=+", [](uint64_t i) -> uint64_t { return +i; },
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
 void TestArithmetic::testSignedIntUnaryMinus()
 {
@@ -516,6 +577,18 @@ void TestArithmetic::testFloatUnaryMinus()
         config, "-DTYPE=float16 -DOP=-", [](float i) -> float { return -i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
+void TestArithmetic::testSignedLongUnaryMinus()
+{
+    testUnaryOperation<int64_t>(
+        config, "-DTYPE=long16 -DOP=-", [](int64_t i) -> int64_t { return -i; },
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedLongUnaryMinus()
+{
+    testUnaryOperation<uint64_t>(
+        config, "-DTYPE=long16 -DOP=-", [](uint64_t i) -> uint64_t { return -i; },
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
 void TestArithmetic::testSignedIntAddition()
 {
@@ -552,6 +625,16 @@ void TestArithmetic::testFloatAddition()
     testBinaryOperation<float>(config, "-DTYPE=float16 -DOP=+", std::plus<float>{},
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
+void TestArithmetic::testSignedLongAddition()
+{
+    testBinaryOperation<int64_t>(config, "-DTYPE=long16 -DOP=+", std::plus<int64_t>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedLongAddition()
+{
+    testBinaryOperation<uint64_t>(config, "-DTYPE=ulong16 -DOP=+", std::plus<uint64_t>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
 void TestArithmetic::testSignedIntSubtraction()
 {
@@ -586,6 +669,16 @@ void TestArithmetic::testUnsignedCharSubtraction()
 void TestArithmetic::testFloatSubtraction()
 {
     testBinaryOperation<float>(config, "-DTYPE=float16 -DOP=-", std::minus<float>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedLongSubtraction()
+{
+    testBinaryOperation<int64_t>(config, "-DTYPE=long16 -DOP=-", std::minus<int64_t>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedLongSubtraction()
+{
+    testBinaryOperation<uint64_t>(config, "-DTYPE=ulong16 -DOP=-", std::minus<uint64_t>{},
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -745,6 +838,18 @@ void TestArithmetic::testUnsignedCharIncrement()
         config, "-DTYPE=uchar16 -DOP=++", [](unsigned char i) -> unsigned char { return ++i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
+void TestArithmetic::testSignedLongIncrement()
+{
+    testUnaryOperation<int64_t>(
+        config, "-DTYPE=long16 -DOP=++", [](int64_t i) -> int64_t { return ++i; },
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedLongIncrement()
+{
+    testUnaryOperation<uint64_t>(
+        config, "-DTYPE=ulong16 -DOP=++", [](uint64_t i) -> uint64_t { return ++i; },
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
 void TestArithmetic::testSignedIntDecrement()
 {
@@ -782,6 +887,18 @@ void TestArithmetic::testUnsignedCharDecrement()
         config, "-DTYPE=uchar16 -DOP=--", [](unsigned char i) -> unsigned char { return --i; },
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
+void TestArithmetic::testSignedLongDecrement()
+{
+    testUnaryOperation<int64_t>(
+        config, "-DTYPE=long16 -DOP=--", [](int64_t i) -> int64_t { return --i; },
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedLongDecrement()
+{
+    testUnaryOperation<uint64_t>(
+        config, "-DTYPE=ulong16 -DOP=--", [](uint64_t i) -> uint64_t { return --i; },
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
 void TestArithmetic::testIntegerEquality()
 {
@@ -806,6 +923,11 @@ void TestArithmetic::testFloatEquality()
     testRelationalOperation<float>(config, "-DTYPE=float16 -DOP===", checkRelation<std::equal_to<float>>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
+void TestArithmetic::testLongEquality()
+{
+    testRelationalOperation<int64_t>(config, "-DTYPE=long16 -DOP===", checkRelation<std::equal_to<int64_t>>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
 void TestArithmetic::testIntegerInequality()
 {
@@ -828,6 +950,11 @@ void TestArithmetic::testCharInequality()
 void TestArithmetic::testFloatInequality()
 {
     testRelationalOperation<float>(config, "-DTYPE=float16 -DOP=!=", checkRelation<std::not_equal_to<float>>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testLongInequality()
+{
+    testRelationalOperation<int64_t>(config, "-DTYPE=long16 -DOP=!=", checkRelation<std::not_equal_to<int64_t>>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -874,6 +1001,18 @@ void TestArithmetic::testFloatGreater()
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
+void TestArithmetic::testSignedLongGreater()
+{
+    testRelationalOperation<int64_t>(config, "-DTYPE=long16 -DOP=>", checkRelation<std::greater<int64_t>>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedLongGreater()
+{
+    testRelationalOperation<uint64_t>(config, "-DTYPE=ulong16 -DOP=>", checkRelation<std::greater<uint64_t>>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
 void TestArithmetic::testSignedIntLess()
 {
     testRelationalOperation<int>(config, "-DTYPE=int16 -DOP=<", checkRelation<std::less<int>>,
@@ -913,6 +1052,18 @@ void TestArithmetic::testUnsignedCharLess()
 void TestArithmetic::testFloatLess()
 {
     testRelationalOperation<float>(config, "-DTYPE=float16 -DOP=<", checkRelation<std::less<float>>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testSignedLongLess()
+{
+    testRelationalOperation<int64_t>(config, "-DTYPE=long16 -DOP=<", checkRelation<std::less<int64_t>>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedLongLess()
+{
+    testRelationalOperation<uint64_t>(config, "-DTYPE=ulong16 -DOP=<", checkRelation<std::less<uint64_t>>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -961,6 +1112,18 @@ void TestArithmetic::testFloatGreaterEquals()
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
+void TestArithmetic::testSignedLongGreaterEquals()
+{
+    testRelationalOperation<int64_t>(config, "-DTYPE=long16 -DOP=>=", checkRelation<std::greater_equal<int64_t>>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedLongGreaterEquals()
+{
+    testRelationalOperation<uint64_t>(config, "-DTYPE=ulong16 -DOP=>=", checkRelation<std::greater_equal<uint64_t>>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
 void TestArithmetic::testSignedIntLessEquals()
 {
     testRelationalOperation<int>(config, "-DTYPE=int16 -DOP=<=", checkRelation<std::less_equal<int>>,
@@ -1002,6 +1165,18 @@ void TestArithmetic::testUnsignedCharLessEquals()
 void TestArithmetic::testFloatLessEquals()
 {
     testRelationalOperation<float>(config, "-DTYPE=float16 -DOP=<=", checkRelation<std::less_equal<float>>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testSignedLongLessEquals()
+{
+    testRelationalOperation<int64_t>(config, "-DTYPE=long16 -DOP=<=", checkRelation<std::less_equal<int64_t>>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedLongLessEquals()
+{
+    testRelationalOperation<uint64_t>(config, "-DTYPE=ulong16 -DOP=<=", checkRelation<std::less_equal<uint64_t>>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -1077,6 +1252,30 @@ void TestArithmetic::testUnsignedCharSelectVector()
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
+void TestArithmetic::testSignedLongSelectScalar()
+{
+    testSelectOperation<int64_t, 1>(config, "-DTYPE=long", checkSelectScalar<int64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testSignedLongSelectVector()
+{
+    testSelectOperation<int64_t, 16>(config, "-DTYPE=long16", checkSelectVector<int64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedLongSelectScalar()
+{
+    testSelectOperation<uint64_t, 1>(config, "-DTYPE=ulong", checkSelectScalar<uint64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedLongSelectVector()
+{
+    testSelectOperation<uint64_t, 16>(config, "-DTYPE=ulong16", checkSelectVector<uint64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
 void TestArithmetic::testSignedIntAnd()
 {
     testRelationalOperation<int>(config, "-DTYPE=int16 -DOP=&&", checkAnd<int>,
@@ -1116,6 +1315,18 @@ void TestArithmetic::testUnsignedCharAnd()
 void TestArithmetic::testFloatAnd()
 {
     testRelationalOperation<float>(config, "-DTYPE=float16 -DOP=&&", checkAnd<float>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testSignedLongAnd()
+{
+    testRelationalOperation<int64_t>(config, "-DTYPE=long16 -DOP=&&", checkAnd<int64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedLongAnd()
+{
+    testRelationalOperation<uint64_t>(config, "-DTYPE=ulong16 -DOP=&&", checkAnd<uint64_t>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -1161,6 +1372,18 @@ void TestArithmetic::testFloatOr()
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
+void TestArithmetic::testSignedLongOr()
+{
+    testRelationalOperation<int64_t>(config, "-DTYPE=long16 -DOP=||", checkOr<int64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedLongOr()
+{
+    testRelationalOperation<uint64_t>(config, "-DTYPE=ulong16 -DOP=||", checkOr<uint64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
 void TestArithmetic::testSignedIntNot()
 {
     testUnaryOperation<int, int>(config, "-DIN=int16 -DOUT=int16 -DOP=!", checkNot<int>,
@@ -1197,6 +1420,18 @@ void TestArithmetic::testFloatNot()
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
+void TestArithmetic::testSignedLongNot()
+{
+    testUnaryOperation<int64_t, int>(config, "-DIN=long16 -DOUT=long16 -DOP=!", checkNot<int64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedLongNot()
+{
+    testUnaryOperation<uint64_t, int>(config, "-DIN=ulong16 -DOUT=long16 -DOP=!", checkNot<uint64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
 void TestArithmetic::testSignedIntBitNot()
 {
     testUnaryOperation<int>(config, "-DTYPE=int16 -DOP=~", std::bit_not<int>{},
@@ -1225,6 +1460,16 @@ void TestArithmetic::testSignedCharBitNot()
 void TestArithmetic::testUnsignedCharBitNot()
 {
     testUnaryOperation<unsigned char>(config, "-DTYPE=uchar16 -DOP=~", std::bit_not<unsigned char>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedLongBitNot()
+{
+    testUnaryOperation<int64_t, int>(config, "-DTYPE=long16 -DOP=~", std::bit_not<int64_t>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedLongBitNot()
+{
+    testUnaryOperation<uint64_t, int>(config, "-DTYPE=ulong16 -DOP=~", std::bit_not<uint64_t>{},
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -1258,6 +1503,16 @@ void TestArithmetic::testUnsignedCharBitAnd()
     testBinaryOperation<unsigned char>(config, "-DTYPE=uchar16 -DOP=&", std::bit_and<unsigned char>{},
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
+void TestArithmetic::testSignedLongBitAnd()
+{
+    testBinaryOperation<int64_t>(config, "-DTYPE=long16 -DOP=&", std::bit_and<int64_t>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedLongBitAnd()
+{
+    testBinaryOperation<uint64_t>(config, "-DTYPE=ulong16 -DOP=&", std::bit_and<uint64_t>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
 void TestArithmetic::testSignedIntBitOr()
 {
@@ -1287,6 +1542,16 @@ void TestArithmetic::testSignedCharBitOr()
 void TestArithmetic::testUnsignedCharBitOr()
 {
     testBinaryOperation<unsigned char>(config, "-DTYPE=uchar16 -DOP=|", std::bit_or<unsigned char>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedLongBitOr()
+{
+    testBinaryOperation<int64_t>(config, "-DTYPE=long16 -DOP=|", std::bit_or<int64_t>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedLongBitOr()
+{
+    testBinaryOperation<uint64_t>(config, "-DTYPE=ulong16 -DOP=|", std::bit_or<uint64_t>{},
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -1320,6 +1585,16 @@ void TestArithmetic::testUnsignedCharBitXor()
     testBinaryOperation<unsigned char>(config, "-DTYPE=uchar16 -DOP=^", std::bit_xor<unsigned char>{},
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
+void TestArithmetic::testSignedLongBitXor()
+{
+    testBinaryOperation<int64_t>(config, "-DTYPE=long16 -DOP=^", std::bit_xor<int64_t>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedLongBitXor()
+{
+    testBinaryOperation<uint64_t>(config, "-DTYPE=ulong16 -DOP=^", std::bit_xor<uint64_t>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
 void TestArithmetic::testSignedIntBitShiftLeft()
 {
@@ -1349,6 +1624,16 @@ void TestArithmetic::testSignedCharBitShiftLeft()
 void TestArithmetic::testUnsignedCharBitShiftLeft()
 {
     testBinaryOperation<unsigned char>(config, "-DTYPE=uchar16 -DOP=<<", checkShiftLeft<unsigned char>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedLongBitShiftLeft()
+{
+    testBinaryOperation<int64_t>(config, "-DTYPE=long16 -DOP=<<", checkShiftLeft<int64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedLongBitShiftLeft()
+{
+    testBinaryOperation<uint64_t>(config, "-DTYPE=ulong16 -DOP=<<", checkShiftLeft<uint64_t>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -1382,6 +1667,16 @@ void TestArithmetic::testUnsignedCharBitShiftRight()
     testBinaryOperation<unsigned char>(config, "-DTYPE=uchar16 -DOP=>>", checkShiftRight<unsigned char>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
+void TestArithmetic::testSignedLongBitShiftRight()
+{
+    testBinaryOperation<int64_t>(config, "-DTYPE=long16 -DOP=>>", checkShiftRight<int64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedLongBitShiftRight()
+{
+    testBinaryOperation<uint64_t>(config, "-DTYPE=ulong16 -DOP=>>", checkShiftRight<uint64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
 void TestArithmetic::testSignedIntTrinaryScalar()
 {
@@ -1413,6 +1708,16 @@ void TestArithmetic::testSignedCharTrinaryVector()
     testTernaryOperator<char, 16>(config, "-DTYPE=char16 -DOP=-", checkTrinaryVector<char>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
+void TestArithmetic::testSignedLongTrinaryScalar()
+{
+    testTernaryOperator<int64_t, 1>(config, "-DTYPE=long -DOP=<", checkTrinaryScalar<int64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testSignedLongTrinaryVector()
+{
+    testTernaryOperator<int64_t, 16>(config, "-DTYPE=long16 -DOP=-", checkTrinaryVector<int64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
 
 void TestArithmetic::testUnsignedIntTrinaryScalar()
 {
@@ -1442,5 +1747,15 @@ void TestArithmetic::testUnsignedCharTrinaryScalar()
 void TestArithmetic::testUnsignedCharTrinaryVector()
 {
     testTernaryOperator<unsigned char, 16>(config, "-DTYPE=uchar16 -DOP=-", checkTrinaryVector<unsigned char>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedLongTrinaryScalar()
+{
+    testTernaryOperator<uint64_t, 1>(config, "-DTYPE=ulong -DOP=<", checkTrinaryScalar<uint64_t>,
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+void TestArithmetic::testUnsignedLongTrinaryVector()
+{
+    testTernaryOperator<uint64_t, 16>(config, "-DTYPE=ulong16 -DOP=-", checkTrinaryVector<uint64_t>,
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
