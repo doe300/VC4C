@@ -6,6 +6,8 @@ target_sources(${VC4C_LIBRARY_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/Inliner.h
     ${CMAKE_CURRENT_LIST_DIR}/LiteralValues.cpp
     ${CMAKE_CURRENT_LIST_DIR}/LiteralValues.h
+    ${CMAKE_CURRENT_LIST_DIR}/LongOperations.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/LongOperations.h
     ${CMAKE_CURRENT_LIST_DIR}/MemoryAccess.cpp
     ${CMAKE_CURRENT_LIST_DIR}/MemoryAccess.h
     ${CMAKE_CURRENT_LIST_DIR}/MemoryMapChecks.cpp

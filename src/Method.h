@@ -290,6 +290,11 @@ namespace vc4c
          * The builtin locals which are statically named
          */
         std::vector<std::unique_ptr<BuiltinLocal>> builtinLocals;
+
+        /**
+         * The list of specially handled combined/long locals.
+         */
+        StableList<LongLocal> longLocals;
         /*
          * The currently valid CFG
          *

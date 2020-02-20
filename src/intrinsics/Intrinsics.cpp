@@ -998,8 +998,11 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying truncate from 64-bit to 32-bit with move of lower part: " << op->to_string()
                     << logging::endl);
-            it.reset((new MoveOperation(op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags))
-                         ->copyExtrasFrom(op));
+            auto src = op->getFirstArg();
+            if(auto loc = src.checkLocal()->as<LongLocal>())
+                src = loc->lower->createReference();
+            it.reset(
+                (new MoveOperation(op->getOutput().value(), src, op->conditional, op->setFlags))->copyExtrasFrom(op));
         }
         // if dest < i32 -> orig & dest-bits or pack-code
         else if(op->getOutput()->type.getScalarBitCount() < 32)

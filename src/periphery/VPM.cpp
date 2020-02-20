@@ -173,7 +173,8 @@ std::string VPWGenericSetup::to_string() const
 std::string VPWDMASetup::to_string() const
 {
     // TODO byte/half-word offset (VPR too)
-    return std::string("vdw_setup(rows: ") + (std::to_string(demodulo(getUnits(), uint8_t{128})) + ", elements: ") +
+    return "vdw_setup(" + std::string(getHorizontal() ? "rows: " : "columns: ") +
+        std::to_string(demodulo(getUnits(), uint8_t{128})) + ", " + (getHorizontal() ? "columns: " : "rows: ") +
         std::to_string(demodulo(getDepth(), uint8_t{128})) + (getVPMModeName(getMode()) + ", address: ") +
         toDMAAddressAndModeString(getVPMBase(), getHorizontal()) + ")";
 }
@@ -203,7 +204,8 @@ std::string VPRGenericSetup::to_string() const
 std::string VPRDMASetup::to_string() const
 {
     // TODO VPM/memory pitch
-    return std::string("vdr_setup(rows: ") + (std::to_string(demodulo(getNumberRows(), uint8_t{16})) + ", elements: ") +
+    return "vdr_setup(" + std::string(getVertical() ? "columns: " : "rows: ") +
+        std::to_string(demodulo(getNumberRows(), uint8_t{16})) + ", " + (getVertical() ? "rows: " : "columns: ") +
         std::to_string(demodulo(getRowLength(), uint8_t{16})) + (getVPMModeName(getMode()) + ", address: ") +
         toDMAAddressAndModeString(getAddress(), !getVertical()) + ")";
 }
@@ -417,8 +419,8 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
     if(area != nullptr)
         area->checkAreaSize(vpmStorageType.getLogicalWidth());
     else
-        // a single vector can only use a maximum of 1 row
-        updateScratchSize(1);
+        // a single vector can only use a maximum of 2 rows (for 64-bit elements)
+        updateScratchSize(dest.type.getScalarBitCount() > 32 ? 2 : 1);
 
     // try to get constant offset value
     auto internalOffset = inAreaOffset.getConstantValue(true).value_or(inAreaOffset);
@@ -438,6 +440,7 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
     {
         // TODO make sure this block is only used where really really required!
         // TODO if inAreaOffset guaranteed to lie within one row, skip loading of second?!
+        // TODO 64-bit version
         /*
          * In OpenCL, vectors are aligned to the alignment of the element type (e.g. a char16 vector is char aligned).
          * More accurately: they can be loaded/stored from any address aligned to the element type!
@@ -501,7 +504,17 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
             InstructionDecorations::VPM_READ_CONFIGURATION);
     }
     // 2) read value from VPM
-    assign(it, dest) = outputValue;
+    if(dest.type.getScalarBitCount() == 64)
+    {
+        auto loc = dest.checkLocal()->as<LongLocal>();
+        if(!loc)
+            throw CompilationError(
+                CompilationStep::GENERAL, "Can only read 64-bit value from VPM from long local", dest.to_string());
+        assign(it, loc->lower->createReference()) = VPM_IO_REGISTER;
+        assign(it, loc->upper->createReference()) = VPM_IO_REGISTER;
+    }
+    else
+        assign(it, dest) = outputValue;
     it = insertUnlockMutex(it, useMutex);
     return it;
 }
@@ -513,8 +526,8 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
     if(area != nullptr)
         area->checkAreaSize(vpmStorageType.getLogicalWidth());
     else
-        // a single vector can only use a maximum of 1 row
-        updateScratchSize(1);
+        // a single vector can only use a maximum of 2 rows (for 64-bit elements)
+        updateScratchSize(src.type.getScalarBitCount() > 32 ? 2 : 1);
 
     // try to get constant offset value
     auto internalOffset = inAreaOffset.getConstantValue(true).value_or(inAreaOffset);
@@ -533,6 +546,7 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
     {
         // TODO make sure this block is only used where really really required!
         // TODO if inAreaOffset guaranteed to lie within one row, skip loading of second?!
+        // TODO 64-bit version
         /*
          * In OpenCL, vectors are aligned to the alignment of the element type (e.g. a char16 vector is char
          * aligned). More accurately: they can be loaded/stored from any address aligned to the element type! This
@@ -604,7 +618,17 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
             InstructionDecorations::VPM_WRITE_CONFIGURATION);
     }
     // 2. write data to VPM
-    assign(it, VPM_IO_REGISTER) = src;
+    if(src.type.getScalarBitCount() == 64)
+    {
+        auto loc = src.checkLocal()->as<LongLocal>();
+        if(!loc)
+            throw CompilationError(
+                CompilationStep::GENERAL, "Can only write 64-bit value into VPM from long local", src.to_string());
+        assign(it, VPM_IO_REGISTER) = loc->lower->createReference();
+        assign(it, VPM_IO_REGISTER) = loc->upper->createReference();
+    }
+    else
+        assign(it, VPM_IO_REGISTER) = src;
     it = insertUnlockMutex(it, useMutex);
     return it;
 }
@@ -617,8 +641,8 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
         // TODO rename numEntries to numRows or move entry->row handling here?!
         area->checkAreaSize(getVPMStorageType(type).getLogicalWidth());
     else
-        // a single vector can only use a maximum of 1 row
-        updateScratchSize(1);
+        // a single vector can only use a maximum of 2 rows (for 64-bit elements)
+        updateScratchSize(type.getScalarBitCount() > 32 ? 2 : 1);
 
     if(auto local = memoryAddress.checkLocal())
     {
@@ -701,8 +725,8 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
     if(area != nullptr)
         area->checkAreaSize(getVPMStorageType(type).getLogicalWidth());
     else
-        // a single vector can only use a maximum of 1 row
-        updateScratchSize(1);
+        // a single vector can only use a maximum of 2 rows (for 64-bit elements)
+        updateScratchSize(type.getScalarBitCount() > 32 ? 2 : 1);
 
     // TODO is the calculation of the size to copy correct? We are mixing different types (e.g. byte from memory
     // instruction, consecutive memory area) with type for VPM area (rows which might not be filled completely). Same
@@ -882,7 +906,8 @@ InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const
     if(area != nullptr)
         area->checkAreaSize(type.getLogicalWidth());
     else
-        updateScratchSize(1);
+        // a single vector can only use a maximum of 2 rows (for 64-bit elements)
+        updateScratchSize(type.getScalarBitCount() > 32 ? 2 : 1);
 
     it = insertLockMutex(it, useMutex);
     it = insertWriteRAM(method, it, memoryAddress, type, area, false);
@@ -990,9 +1015,33 @@ bool VPMArea::canBePackedIntoRow() const
     return /* !canBeAccessedViaDMA() || */ getElementType().getVectorWidth() == NATIVE_VECTOR_SIZE;
 }
 
+/*
+ * For 64-bit vector writes, the vector of lower words and the vector of upper words are stored in two consecutive
+ * VPM rows.
+ * When writing to RAM, we need to interleave the two rows to alternately write lower and upper word for each
+ * element.
+ *
+ * VPM:
+ * [elem 0 low, elem 1 low, ..., elem N low]
+ * [elem 0 up , elem 1 up , ..., elem N up ]
+ *
+ * RAM:
+ * [elem 0 low, elem0 up, elem 1 low, elem 1 up, ..., elem N low, elem N up]
+ *
+ * This can be achieved by using Vertical mode with a Depth of 2 (rows) and N Units (where N is the vector-width).
+ *
+ * FIXME 64-bit type are now stored laned while the rest is packed, this makes pointer reinterpretation to
+ * different-sized types impossible!
+ */
+
 VPWGenericSetup VPMArea::toWriteSetup(DataType elementType) const
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
+    if(type.getScalarBitCount() > 32)
+    {
+        // 64-bit integer vectors are stored as 2 rows of 32-bit integer vectors in VPM
+        type = DataType{32, type.getVectorWidth(), type.isFloatingType()};
+    }
     if(type.isUnknown())
         throw CompilationError(
             CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
@@ -1010,9 +1059,16 @@ VPWDMASetup VPMArea::toWriteDMASetup(DataType elementType, uint8_t numRows) cons
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
-        // converts e.g. 64.bit integer to 2x 32.bit integer
-        type = DataType{
-            32, static_cast<uint8_t>(type.getVectorWidth() * type.getScalarBitCount() / 32u), type.isFloatingType()};
+    {
+        // 64-bit integer vectors are stored as 2 rows of 32-bit integer vectors in VPM
+        type = DataType{32, type.getVectorWidth(), type.isFloatingType()};
+        if(numRows != 1)
+            // TODO we need to issue multiple setups (unless vector-width is 16 or long vectors are packed, in which
+            // case the Depth can just be set to vector-width * numRows)
+            throw CompilationError(
+                CompilationStep::GENERAL, "Writing multiple rows of 64-bit vectors into DMA is not supported yet");
+        numRows = 2;
+    }
     if(type.isUnknown())
         throw CompilationError(
             CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
@@ -1042,6 +1098,12 @@ VPWDMASetup VPMArea::toWriteDMASetup(DataType elementType, uint8_t numRows) cons
 
     VPWDMASetup setup(getVPMDMAMode(type), rowDepth, numRows);
     setup.setHorizontal(IS_HORIZONTAL);
+    if(elementType.getScalarBitCount() == 64)
+    {
+        // invert Depth and Units, since we also read from VPM vertical
+        setup = VPWDMASetup(getVPMDMAMode(type), numRows, rowDepth);
+        setup.setHorizontal(!IS_HORIZONTAL);
+    }
     setup.setWordRow(rowOffset);
 
     return setup;
@@ -1050,6 +1112,12 @@ VPWDMASetup VPMArea::toWriteDMASetup(DataType elementType, uint8_t numRows) cons
 VPRGenericSetup VPMArea::toReadSetup(DataType elementType, uint8_t numRows) const
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
+    if(type.getScalarBitCount() > 32)
+    {
+        // 64-bit integer vectors are stored as 2 rows of 32-bit integer vectors in VPM
+        type = DataType{32, type.getVectorWidth(), type.isFloatingType()};
+        numRows = 2 * numRows;
+    }
     if(type.isUnknown())
         throw CompilationError(
             CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
@@ -1067,9 +1135,16 @@ VPRDMASetup VPMArea::toReadDMASetup(DataType elementType, uint8_t numRows) const
 {
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
-        // converts e.g. 64.bit integer to 2x 32.bit integer
-        type = DataType{
-            32, static_cast<uint8_t>(type.getVectorWidth() * type.getScalarBitCount() / 32), type.isFloatingType()};
+    {
+        // 64-bit integer vectors are stored as 2 rows of 32-bit integer vectors in VPM
+        type = DataType{32, type.getVectorWidth(), type.isFloatingType()};
+        if(numRows != 1)
+            // TODO we need to issue multiple setups (unless vector-width is 16 or long vectors are packed, in which
+            // case the Depth can just be set to vector-width * numRows)
+            throw CompilationError(
+                CompilationStep::GENERAL, "Writing multiple rows of 64-bit vectors into DMA is not supported yet");
+        numRows = 2;
+    }
     if(type.isUnknown())
         throw CompilationError(
             CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
@@ -1082,8 +1157,15 @@ VPRDMASetup VPMArea::toReadDMASetup(DataType elementType, uint8_t numRows) const
     const uint8_t vpmPitch = canBePackedIntoRow() ? 1 : TYPE_INT32.getScalarBitCount() / type.getScalarBitCount();
     VPRDMASetup setup(getVPMDMAMode(type), type.getVectorWidth() % 16 /* 0 => 16 */, numRows % 16 /* 0 => 16 */,
         vpmPitch % 16 /* 0 => 16 */);
-    setup.setWordRow(rowOffset);
     setup.setVertical(!IS_HORIZONTAL);
+    if(elementType.getScalarBitCount() == 64)
+    {
+        // invert Depth and Units, since we also write to VPM vertically
+        setup = VPRDMASetup(getVPMDMAMode(type), numRows % 16 /* 0 => 16 */, type.getVectorWidth() % 16 /* 0 => 16 */,
+            vpmPitch % 16 /* 0 => 16 */);
+        setup.setVertical(IS_HORIZONTAL);
+    }
+    setup.setWordRow(rowOffset);
     return setup;
 }
 

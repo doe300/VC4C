@@ -131,12 +131,57 @@ static NODISCARD InstructionWalker insertExtractByteElements(
     return it;
 }
 
+/*
+ * For 64-bit read, do the following:
+ * - read 2*N (where N is vector-size) 32-bit elements, if possible (e.g. N <= 8) in one go
+ * - rotate upper parts to "upper" locals, rotate lower parts to "lower" locals
+ *
+ * For 64-bit loads, we do not have the same problem as for bytes/half-words above with the alignment, since all 64-bit
+ * aligned addresses are already correctly aligned for 32-bit addresses.
+ */
+static NODISCARD InstructionWalker insertReadLongVectorFromTMU(
+    Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu)
+{
+    auto outputLocal = dest.checkLocal()->as<LongLocal>();
+    if(!outputLocal)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Can only read 64-bit value from TMU into long local", dest.to_string());
+
+    // load the lower N 32-bit elements (where N is the result vector size)
+    // using the 64-bit destination type, the address offsets guarantee the upper part to be skipped, e.g.
+    // element 0 loads from address + 0, element 1 from address + 8, ..., element N from address + 8 * N
+    Value lowerAddresses(UNDEFINED_VALUE);
+    it = insertCalculateAddressOffsets(method, it, addr, dest.type, lowerAddresses);
+
+    // load the upper N 32-bit elements (where N is the result vector size)
+    // using the 64-bit destination type, the address offsets guarantee the lower part to be skipped, e.g.
+    // element 0 loads from address + 4, element 1 from address + 12, ..., element N from address + 4 + 8 * N
+    auto tmpAddress = assign(it, addr.type, "%tmu_upper_addr") = addr + 4_val;
+    Value upperAddresses(UNDEFINED_VALUE);
+    it = insertCalculateAddressOffsets(method, it, tmpAddress, dest.type, upperAddresses);
+
+    assign(it, tmu.getAddress(addr.type)) = lowerAddresses;
+    nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
+    // TODO do we get more performance when first writing both addresses and then triggering both loads?
+    assign(it, tmu.getAddress(addr.type)) = upperAddresses;
+    nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
+
+    // read the lower and upper elements into the result variables
+    assign(it, outputLocal->lower->createReference()) = TMU_READ_REGISTER;
+    assign(it, outputLocal->upper->createReference()) = TMU_READ_REGISTER;
+
+    return it;
+}
+
 InstructionWalker periphery::insertReadVectorFromTMU(
     Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu)
 {
     if(!dest.type.isSimpleType() && !dest.type.getPointerType())
         throw CompilationError(
             CompilationStep::GENERAL, "Reading of this type via TMU is not (yet) implemented", dest.type.to_string());
+
+    if(dest.type.getScalarBitCount() == 64)
+        return insertReadLongVectorFromTMU(method, it, dest, addr, tmu);
 
     Value addresses(UNDEFINED_VALUE);
     it = insertCalculateAddressOffsets(method, it, addr, dest.type, addresses);

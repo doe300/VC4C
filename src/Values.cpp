@@ -344,6 +344,8 @@ std::string Literal::to_string() const
         return std::to_string(real());
     case LiteralType::TOMBSTONE:
         return "undefined";
+    case LiteralType::LONG_LEADING_ONES:
+        return std::to_string(bit_cast<uint64_t, int64_t>(uint64_t{0xFFFFFFFF00000000} | u));
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled literal type!");
 }
@@ -377,6 +379,21 @@ uint32_t Literal::toImmediate() const noexcept
 bool Literal::isUndefined() const noexcept
 {
     return type == LiteralType::TOMBSTONE;
+}
+
+Optional<Literal> vc4c::toLongLiteral(uint64_t val)
+{
+    auto upper = val >> 32u;
+    auto lower = static_cast<uint32_t>(val & 0xFFFFFFFFu);
+    if(upper == 0)
+        return Literal(lower);
+    if(upper == 0xFFFFFFFF)
+    {
+        Literal tmp(lower);
+        tmp.type = LiteralType::LONG_LEADING_ONES;
+        return tmp;
+    }
+    return {};
 }
 
 LCOV_EXCL_START

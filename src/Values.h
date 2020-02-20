@@ -489,7 +489,9 @@ namespace vc4c
         REAL,
         BOOL,
         // "literal type" indicating no literal present
-        TOMBSTONE
+        TOMBSTONE,
+        // special version of "INTEGER" which indicates that the upper word are all ones
+        LONG_LEADING_ONES,
     };
 
     struct SmallImmediate;
@@ -586,6 +588,13 @@ namespace vc4c
             return val.type == LiteralType::TOMBSTONE;
         }
     };
+
+    /**
+     * Tries to convert the given 64-bit value to a literal.
+     *
+     * Returns an empty optional on failure
+     */
+    Optional<Literal> toLongLiteral(uint64_t val);
 
     /*!
      * A SmallImmediate value is a literal (constant) value which can be loaded directly into an ALU instruction.

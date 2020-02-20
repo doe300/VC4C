@@ -502,8 +502,21 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                 {
                     // split load into 2 loads (upper and lower word), mark stores for conversion
                     auto origLocal = memInstr->getDestination();
-                    auto lowerLocal = method.addNewLocal(TYPE_INT32, origLocal.local()->name + ".lower");
-                    auto upperLocal = method.addNewLocal(TYPE_INT32, origLocal.local()->name + ".upper");
+                    Value lowerLocal = UNDEFINED_VALUE;
+                    Value upperLocal = UNDEFINED_VALUE;
+                    if(auto loc = origLocal.local()->as<LongLocal>())
+                    {
+                        lowerLocal = loc->lower->createReference();
+                        upperLocal = loc->upper->createReference();
+                    }
+                    else
+                    {
+                        // TODO this should never be met, should it?!
+                        // TODO if this is never called, can also replace the rewrite64BitStoresTo32 with just checking
+                        // for LongLocals?
+                        lowerLocal = method.addNewLocal(TYPE_INT32, origLocal.local()->name + ".lower");
+                        upperLocal = method.addNewLocal(TYPE_INT32, origLocal.local()->name + ".upper");
+                    }
 
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Splitting '" << origLocal.to_string() << "' into '" << lowerLocal.to_string()

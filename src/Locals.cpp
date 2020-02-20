@@ -246,3 +246,17 @@ BuiltinLocal::BuiltinLocal(const std::string& name, DataType dataType, Type buil
 }
 
 BuiltinLocal::~BuiltinLocal() noexcept = default;
+
+LongLocal::LongLocal(DataType type, const std::string& name, const Local* upperPart, const Local* lowerPart) :
+    Local(type, name), upper(upperPart), lower(lowerPart)
+{
+}
+
+LongLocal::~LongLocal() noexcept = default;
+
+LCOV_EXCL_START
+std::string LongLocal::to_string(bool withContent) const
+{
+    return Local::to_string(withContent) + " (" + upper->name + ", " + lower->name + ")";
+}
+LCOV_EXCL_STOP

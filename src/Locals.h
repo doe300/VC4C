@@ -427,6 +427,26 @@ namespace vc4c
         const Type builtinType;
     };
 
+    /**
+     * Type for "normal" locals which do not fit into a single registers, e.g. 64-bit values.
+     *
+     * Internally, they will be mapped to an "upper" and a "lower" part which will be used for all the actual
+     * caculations.
+     */
+    struct LongLocal : public Local
+    {
+        LongLocal(DataType type, const std::string& name, const Local* upperPart, const Local* lowerPart);
+        ~LongLocal() noexcept override;
+
+        std::string to_string(bool withContent = false) const override;
+
+        /** The local storing the upper 32 bit of this local value */
+        const Local* upper;
+
+        /** The local storing the lower 32 bit of this local value */
+        const Local* lower;
+    };
+
 } /* namespace vc4c */
 
 #endif /* LOCALS_H */

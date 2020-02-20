@@ -68,6 +68,13 @@ const StackAllocation* Method::findStackAllocation(const std::string& name) cons
 
 const Local* Method::createLocal(DataType type, const std::string& name)
 {
+    if(type.isSimpleType() && type.getScalarBitCount() > 32 && type.getScalarBitCount() <= 64)
+    {
+        auto lower = locals.emplace(Local(TYPE_INT32.toVectorType(type.getVectorWidth()), name + ".lower")).first;
+        auto upper = locals.emplace(Local(TYPE_INT32.toVectorType(type.getVectorWidth()), name + ".upper")).first;
+        longLocals.emplace_back(type, name, &*upper, &*lower);
+        return &longLocals.back();
+    }
     auto it = locals.emplace(Local(type, name));
     return &(*it.first);
 }
@@ -196,8 +203,7 @@ static std::atomic_size_t tmpIndex{0};
 const Value Method::addNewLocal(DataType type, const std::string& prefix, const std::string& postfix)
 {
     const std::string name = createLocalName(prefix, postfix);
-    auto it = locals.emplace(Local(type, name));
-    return it.first->createReference();
+    return createLocal(type, name)->createReference();
 }
 
 std::string Method::createLocalName(const std::string& prefix, const std::string& postfix)

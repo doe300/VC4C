@@ -171,7 +171,31 @@ namespace vc4c
             /*
              * "0,1 = Vertical, Horizontal"
              *
-             * For now, only horizontal mode is used!
+             * If this is set to "Horizontal", the Depth is the vector-width to read from a single VPM row and the Units
+             * is the number of VPM rows to read.
+             *
+             * If this is set to "Vertical", the Depth is the number of VPM rows to read (and store in RAM packed into
+             * consecutive addresses) and the Units is the number of elements to read from the selected VPM rows (and
+             * store in RAM as the next packed consecutive addresses).
+             *
+             * Example:
+             * - Given the following VPM layout (each line represents a row):
+             *   [00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 0A, 0B, 0C, 0D, 0E, 0F]
+             *   [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 1A, 1B, 1C, 1D, 1E, 1F]
+             *   [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 2A, 2B, 2C, 2D, 2E, 2F]
+             *   [30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 3A, 3B, 3C, 3D, 3E, 3F]
+             * - Given a Depth of 4 and a Units of 3:
+             * Using "Horizontal" mode results in the following RAM content:
+             *   [00, 01, 02, 03, 10, 11, 12, 13, 20, 21, 22, 23]
+             * Using "Vertical" mode results in the following RAM content:
+             *   [00, 10, 20, 30, 01, 11, 21, 31, 02, 12, 22, 23]
+             *
+             *
+             * Example:
+             * To write a M vectors of N double-words each, where in VPM the lower words are stored in one row and the
+             * upper words are stored in the next row, set Horizontal to Vertical, Depth to 2 (number of rows in VPM)
+             * and Units to M * N (number of vectors * vector-size in VPM). This will result in the RAM containing the
+             * packed M vectors of N double-word elements.
              */
             BITFIELD_ENTRY(Horizontal, bool, 14, Bit)
             /*
@@ -197,11 +221,14 @@ namespace vc4c
             /*
              * "Number of Rows of 2D block in memory (0 => 128)"
              *
-             * The total number of rows (of length Depth * element-size) to be written into memory.
+             * The total number of rows to be written into memory. If this is larger than 1, the next vector (of length
+             * Depth * element-size) is always taken from the next FULL ROW!
              *
-             * NOTE:
-             * Depending on the layout multiple vectors have been written to into VPM (see Depth), this is either the
-             * number of vectors (for one-vector-per-row) or less (if several vectors are packed into a single row).
+             * Example:
+             * To write 4 vectors of 2 half-words each, each vector stored in ITS OWN row in VPM, set Depth to 2 and
+             * Units to 4. The remaining content of the rows will be skipped.
+             * To write 4 vectors if 2 half-words each, all packed into A SINGLE row in VPM, a Depth of 8 and Units of 1
+             * needs to be used.
              */
             BITFIELD_ENTRY(Units, uint8_t, 23, Septuple)
 
@@ -236,9 +263,10 @@ namespace vc4c
              * wide."
              *
              * This is the distance in MEMORY between two consecutive rows (vectors) written (the distance between end
-             * of one row and start of a new row). With a value of 0, the vectors v1, v2, v3, ... will be in consecutive
-             * addresses: | v1 | v2 | v3 | ... | With a value of 1, there will be space of 1 byte between each vector
-             * witten: | v1 | x | v2 | x | v3 | ... |
+             * of one row and start of a new row). For vertical mode, this is the distance between two consecutive
+             * columns written. With a value of 0, the vectors v1, v2, v3, ... will be in consecutive addresses: | v1 |
+             * v2 | v3 | ... | With a value of 1, there will be space of 1 byte between each vector witten: | v1 | x |
+             * v2 | x | v3 | ... |
              */
             BITFIELD_ENTRY(Stride, uint16_t, 0, Short)
             /*

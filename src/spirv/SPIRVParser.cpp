@@ -387,10 +387,11 @@ static CompoundConstant parseConstant(const spv_parsed_instruction_t* instructio
             //"[...] Larger types take multiple words, with low-order words appearing first."
             // e.g. for long/double constants
             val |= static_cast<uint64_t>(getWord(instruction, 4)) << 32;
-        if((val >> 32) != 0)
+        auto lit = toLongLiteral(val);
+        if(!lit)
             throw CompilationError(
                 CompilationStep::PARSER, "Constant value is out of valid range", std::to_string(val));
-        constant = CompoundConstant(typeMappings.at(instruction->type_id), Literal(static_cast<uint32_t>(val)));
+        constant = CompoundConstant(typeMappings.at(instruction->type_id), *lit);
 
         if(constant.type.isFloatingType())
             // set correct type, just for cosmetic purposes
@@ -637,12 +638,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         else if(getWord(parsed_instruction, 2) == 16)
             typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_HALF);
         else if(getWord(parsed_instruction, 2) == 64)
-        {
-            logging::warn()
-                << "64-bit operations are not supported by the VideoCore IV architecture, further compilation may fail!"
-                << logging::endl;
             typeMappings.emplace(getWord(parsed_instruction, 1), TYPE_DOUBLE);
-        }
         else
             throw CompilationError(CompilationStep::PARSER, "Unsupported floating-point type");
         return SPV_SUCCESS;

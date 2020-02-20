@@ -505,12 +505,7 @@ DataType BitcodeReader::toDataType(Module& module, const llvm::Type* type)
     if(type->isFloatTy())
         return TYPE_FLOAT;
     if(type->isDoubleTy())
-    {
-        logging::warn()
-            << "64-bit operations are not supported by the VideoCore IV architecture, further compilation may fail!"
-            << logging::endl;
         return TYPE_DOUBLE;
-    }
     if(type->isLabelTy())
         return TYPE_LABEL;
     if(type->isIntegerTy(1))
@@ -548,9 +543,6 @@ DataType BitcodeReader::toDataType(Module& module, const llvm::Type* type)
     }
     if(type->isIntegerTy() && type->getIntegerBitWidth() <= 64)
     {
-        logging::warn()
-            << "64-bit operations are not supported by the VideoCore IV architecture, further compilation may fail!"
-            << logging::endl;
         if(type->getIntegerBitWidth() != 64)
             logging::warn() << "Irregular integer type will be extended to next larger regular integer type: i"
                             << type->getIntegerBitWidth() << logging::endl;
@@ -1238,7 +1230,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
                 std::to_string(constant->getSExtValue()));
         }
         if(constant->isNegative())
-            return Value(Literal(static_cast<int32_t>(constant->getSExtValue())), type);
+            return Value(toLongLiteral(bit_cast<int64_t, uint64_t>(constant->getSExtValue())).value(), type);
         return Value(Literal(static_cast<uint32_t>(constant->getZExtValue())), type);
     }
     /*

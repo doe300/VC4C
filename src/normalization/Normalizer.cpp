@@ -18,6 +18,7 @@
 #include "../spirv/SPIRVBuiltins.h"
 #include "Inliner.h"
 #include "LiteralValues.h"
+#include "LongOperations.h"
 #include "MemoryAccess.h"
 #include "Rewrite.h"
 
@@ -124,6 +125,15 @@ static void checkNormalized(Module& module, Method& method, InstructionWalker it
         }
         throw CompilationError(CompilationStep::NORMALIZER, "Not normalized instruction found", it->to_string());
     }
+    if(it.has())
+    {
+        it->forUsedLocals([](const Local* loc, LocalUse::Type type, const auto& inst) {
+            if(loc && loc->is<LongLocal>())
+            {
+                throw CompilationError(CompilationStep::NORMALIZER, "Not lowered 64-bit local found", inst.to_string());
+            }
+        });
+    }
     LCOV_EXCL_STOP
 }
 
@@ -135,6 +145,8 @@ const static std::vector<std::pair<std::string, NormalizationStep>> initialNorma
 #endif
     // intrinsifies calls to built-ins and unsupported operations
     {"Intrinsics", intrinsics::intrinsify},
+    // lowers operations taking or returning 64-bit values
+    {"Lower64BitOperations", lowerLongOperation},
     // replaces all remaining returns with jumps to the end of the kernel-function
     {"EliminateReturns", optimizations::eliminateReturn},
     // rewrites the use of literal values to either small-immediate values or loading of literals
