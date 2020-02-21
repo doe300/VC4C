@@ -310,6 +310,18 @@ void normalization::lowerLongOperation(
             // simple copy move -> copy the parts
             it.emplace(new intermediate::MoveOperation(out->lower->createReference(), src->lower->createReference()));
             it->copyExtrasFrom(move);
+            it.nextInBlock();
+            move->setOutput(out->upper->createReference());
+            move->setSource(src->upper->createReference());
+        }
+        else if(it.get<intermediate::VectorRotation>() && src)
+        {
+            auto rot = it.get<intermediate::VectorRotation>();
+            // split into 2 rotations
+            it.emplace(new intermediate::VectorRotation(
+                out->lower->createReference(), src->lower->createReference(), rot->getOffset(), rot->type));
+            it->copyExtrasFrom(move);
+            it.nextInBlock();
             move->setOutput(out->upper->createReference());
             move->setSource(src->upper->createReference());
         }

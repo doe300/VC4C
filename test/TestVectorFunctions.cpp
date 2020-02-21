@@ -157,6 +157,7 @@ TestVectorFunctions::TestVectorFunctions(const vc4c::Configuration& config) : co
     TEST_ADD(TestVectorFunctions::testVectorReorder4);
     TEST_ADD(TestVectorFunctions::testVectorReorder8);
     TEST_ADD(TestVectorFunctions::testVectorReorder16);
+    TEST_ADD(TestVectorFunctions::testVectorReorderLong);
 
     /*XXX
         TEST_ADD(TestVectorFunctions::testExtractElement);
@@ -637,6 +638,16 @@ void TestVectorFunctions::testVectorReorder16()
     testVectorReorderFunction<short, 16>(
         config, "-DTYPE=short16 -DORDER=s1a0cf568239baf58",
         [](const std::array<short, 16>& in) -> std::array<short, 16> {
+            return checkShuffle(in, {1, 10, 0, 12, 15, 5, 6, 8, 2, 3, 9, 11, 10, 15, 5, 8});
+        },
+        std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestVectorFunctions::testVectorReorderLong()
+{
+    testVectorReorderFunction<int64_t, 16>(
+        config, "-DTYPE=long16 -DORDER=s1a0cf568239baf58",
+        [](const std::array<int64_t, 16>& in) -> std::array<int64_t, 16> {
             return checkShuffle(in, {1, 10, 0, 12, 15, 5, 6, 8, 2, 3, 9, 11, 10, 15, 5, 8});
         },
         std::bind(&TestVectorFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));

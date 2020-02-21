@@ -254,14 +254,16 @@ static IntrinsicFunction intrinsifyCheckNaN(bool checkInfinite)
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying floating point check: " << callSite->to_string() << logging::endl);
         ConditionCode cond = COND_ALWAYS;
-        // Return -1 if value is Inf/NaN, 0 otherwise
-        // NOTE: Needs to be -1, since LLVM expects it that way ?!
+        // Return -1/1 (for vector/scalar) if value is Inf/NaN, 0 otherwise
         if(checkInfinite)
             cond = assignNop(it) = isnaninf(as_float{callSite->assertArgument(0)});
         else
             cond = assignNop(it) = isnan(as_float{callSite->assertArgument(0)});
 
-        assign(it, callSite->getOutput().value()) = (INT_MINUS_ONE, cond);
+        if(callSite->assertArgument(0).type.isScalarType())
+            assign(it, callSite->getOutput().value()) = (INT_ONE, cond);
+        else
+            assign(it, callSite->getOutput().value()) = (INT_MINUS_ONE, cond);
         assign(it, callSite->getOutput().value()) = (INT_ZERO, cond.invert());
 
         it.erase();

@@ -521,14 +521,16 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
         return;
     }
 
-    // convert input value to 32-bit integer type with proper sign
+    // extend input value to 32-bit integer type with proper sign
     Value tmp = source;
-    if(type == ConversionType::SIGNED_TO_SIGNED || type == ConversionType::SIGNED_TO_UNSIGNED)
+    if(!source.checkLocal()->is<LongLocal>() &&
+        (type == ConversionType::SIGNED_TO_SIGNED || type == ConversionType::SIGNED_TO_UNSIGNED))
     {
         tmp = method.method->addNewLocal(TYPE_INT32.toVectorType(source.type.getVectorWidth()));
         method.method->appendToEnd((new intermediate::IntrinsicOperation("sext", Value(tmp), std::move(source))));
     }
-    if(type == ConversionType::UNSIGNED_TO_SIGNED || type == ConversionType::UNSIGNED_TO_UNSIGNED)
+    if(!source.checkLocal()->is<LongLocal>() &&
+        (type == ConversionType::UNSIGNED_TO_SIGNED || type == ConversionType::UNSIGNED_TO_UNSIGNED))
     {
         tmp = method.method->addNewLocal(TYPE_INT32.toVectorType(source.type.getVectorWidth()));
         method.method->appendToEnd((new intermediate::IntrinsicOperation("zext", Value(tmp), std::move(source)))
@@ -563,17 +565,23 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
     else if(type == ConversionType::SIGNED_TO_SIGNED)
     {
         // signed 32-bit to signed other size -> move to retain 32-bit sign
-        method.method->appendToEnd(
-            (new intermediate::MoveOperation(std::move(dest), std::move(tmp)))->addDecorations(decorations));
+        if(dest.checkLocal()->is<LongLocal>())
+            method.method->appendToEnd((new intermediate::IntrinsicOperation("sext", std::move(dest), std::move(tmp))));
+        else
+            method.method->appendToEnd(
+                (new intermediate::MoveOperation(std::move(dest), std::move(tmp)))->addDecorations(decorations));
         return;
     }
     else if(type == ConversionType::SIGNED_TO_UNSIGNED || type == ConversionType::UNSIGNED_TO_UNSIGNED)
     {
         // (un)signed 32-bit to unsigned some size -> trunc (since negative values are UB anyway)
         // TODO correct??
-        method.method->appendToEnd(
-            (new intermediate::IntrinsicOperation("trunc", std::move(dest), std::move(tmp)))
-                ->addDecorations(add_flag(decorations, intermediate::InstructionDecorations::UNSIGNED_RESULT)));
+        if(dest.checkLocal()->is<LongLocal>())
+            method.method->appendToEnd((new intermediate::IntrinsicOperation("zext", std::move(dest), std::move(tmp))));
+        else
+            method.method->appendToEnd(
+                (new intermediate::IntrinsicOperation("trunc", std::move(dest), std::move(tmp)))
+                    ->addDecorations(add_flag(decorations, intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return;
     }
     else if(type == ConversionType::UNSIGNED_TO_SIGNED)

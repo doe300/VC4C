@@ -69,6 +69,7 @@ public:
     void testVectorReorder4();
     void testVectorReorder8();
     void testVectorReorder16();
+    void testVectorReorderLong();
     void testExtractElement();
     void testInsertElement();
 

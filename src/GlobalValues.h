@@ -94,6 +94,7 @@ namespace vc4c
          * Whether this global value is a constant
          */
         const bool isConstant;
+
     protected:
         // required, since the access to the same global value from multiple kernels could be modified at the same time
         mutable std::mutex usersLock;
