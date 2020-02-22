@@ -34,7 +34,7 @@ public:
     void testFloatToUnsignedInt();
     void testFloatToUnsignedShort();
     void testFloatToUnsignedChar();
-    
+
     void testSaturateSignedIntToUnsignedInt();
     void testSaturateUnsignedIntToSignedInt();
     void testSaturateFloatToSignedInt();
@@ -59,10 +59,12 @@ public:
     void testSaturateFloatToUnsignedChar();
     void testSaturateSignedCharToUnsignedChar();
     void testSaturateUnsignedCharToSignedChar();
-    //TODO with rounding modes
-    
+    // TODO with rounding modes
+
+    void testVectorBitcastTruncation8To1();
     void testVectorBitcastTruncation4To1();
     void testVectorBitcastTruncation2To1();
+    void testVectorBitcastExtension1To8();
     void testVectorBitcastExtension1To4();
     void testVectorBitcastExtension1To2();
 

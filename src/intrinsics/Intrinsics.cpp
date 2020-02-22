@@ -173,7 +173,7 @@ static IntrinsicFunction intrinsifyMutexAccess(bool lock)
     };
 }
 
-enum class DMAAccess : unsigned char
+enum class MemoryAccess : unsigned char
 {
     READ,
     WRITE,
@@ -181,12 +181,12 @@ enum class DMAAccess : unsigned char
     PREFETCH
 };
 
-static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access, bool setMutex)
+static IntrinsicFunction intrinsifyMemoryAccess(MemoryAccess access, bool setMutex)
 {
     return [access, setMutex](Method& method, InstructionWalker it, const MethodCall* callSite) -> InstructionWalker {
         switch(access)
         {
-        case DMAAccess::READ:
+        case MemoryAccess::READ:
         {
             CPPLOG_LAZY(
                 logging::Level::DEBUG, log << "Intrinsifying memory read " << callSite->to_string() << logging::endl);
@@ -196,7 +196,7 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access, bool setMutex)
             it.nextInBlock();
             break;
         }
-        case DMAAccess::WRITE:
+        case MemoryAccess::WRITE:
         {
             CPPLOG_LAZY(
                 logging::Level::DEBUG, log << "Intrinsifying memory write " << callSite->to_string() << logging::endl);
@@ -205,7 +205,7 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access, bool setMutex)
             it.nextInBlock();
             break;
         }
-        case DMAAccess::COPY:
+        case MemoryAccess::COPY:
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying ternary '" << callSite->to_string() << "' to DMA copy operation "
@@ -215,7 +215,7 @@ static IntrinsicFunction intrinsifyDMAAccess(DMAAccess access, bool setMutex)
             it.nextInBlock();
             break;
         }
-        case DMAAccess::PREFETCH:
+        case MemoryAccess::PREFETCH:
         {
             // TODO could be used to load into VPM and then use the cache for further reads
             // for now, simply discard
@@ -351,7 +351,7 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> unaryIn
             [](const Value& val) { return periphery::precalculateSFU(REG_SFU_RECIP, val); }}},
     {"vc4cl_semaphore_increment", Intrinsic{intrinsifySemaphoreAccess(true)}},
     {"vc4cl_semaphore_decrement", Intrinsic{intrinsifySemaphoreAccess(false)}},
-    {"vc4cl_dma_read", Intrinsic{intrinsifyDMAAccess(DMAAccess::READ, false)}},
+    {"vc4cl_dma_read", Intrinsic{intrinsifyMemoryAccess(MemoryAccess::READ, false)}},
     {"vc4cl_unpack_sext", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_NOP, UNPACK_SHORT_TO_INT_SEXT)}},
     {"vc4cl_unpack_color_byte0", Intrinsic{intrinsifyUnaryALUInstruction(OP_FMIN.name, false, PACK_NOP, UNPACK_8A_32)}},
     {"vc4cl_unpack_color_byte1", Intrinsic{intrinsifyUnaryALUInstruction(OP_FMIN.name, false, PACK_NOP, UNPACK_8B_32)}},
@@ -374,7 +374,7 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> unaryIn
             [](const Value& val) {
                 return std::isnan(val.literal().real()) || std::isinf(val.literal().real()) ? INT_ONE : INT_ZERO;
             }}},
-    {"vc4cl_vload3", Intrinsic{intrinsifyDMAAccess(DMAAccess::READ, true)}},
+    {"vc4cl_vload3", Intrinsic{intrinsifyMemoryAccess(MemoryAccess::READ, true)}},
     /* simply set the event to something so it is initialized */
     {"vc4cl_set_event", Intrinsic{intrinsifyValueRead(INT_ZERO), [](const Value& val) -> Value { return INT_ZERO; }}}};
 
@@ -409,7 +409,7 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryI
     {"vc4cl_mul24",
         Intrinsic{intrinsifyBinaryALUInstruction(OP_MUL24.name, true),
             [](const Value& val0, const Value& val1) { return OP_MUL24(val0, val1).first.value(); }}},
-    {"vc4cl_dma_write", Intrinsic{intrinsifyDMAAccess(DMAAccess::WRITE, false)}},
+    {"vc4cl_dma_write", Intrinsic{intrinsifyMemoryAccess(MemoryAccess::WRITE, false)}},
     {"vc4cl_vector_rotate", Intrinsic{intrinsifyVectorRotation()}},
     // the 32-bit saturation MUST BE applied to the over-/underflowing operation
     {"vc4cl_saturated_add", Intrinsic{intrinsifyBinaryALUInstruction(OP_ADD.name, false, PACK_32_32)}},
@@ -437,11 +437,11 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryI
     {"vc4cl_v8max",
         Intrinsic{intrinsifyBinaryALUInstruction(OP_V8MAX.name, false),
             [](const Value& val0, const Value& val1) { return OP_V8MAX(val0, val1).first.value(); }}},
-    {"vc4cl_vstore3", Intrinsic{intrinsifyDMAAccess(DMAAccess::WRITE, true)}},
+    {"vc4cl_vstore3", Intrinsic{intrinsifyMemoryAccess(MemoryAccess::WRITE, true)}},
     {"vc4cl_mul_hi", Intrinsic{intrinsifyIntegerMultiplicationHighPart}}};
 
 const static std::map<std::string, Intrinsic, std::greater<std::string>> ternaryIntrinsicMapping = {
-    {"vc4cl_dma_copy", Intrinsic{intrinsifyDMAAccess(DMAAccess::COPY, false)}},
+    {"vc4cl_dma_copy", Intrinsic{intrinsifyMemoryAccess(MemoryAccess::COPY, false)}},
     {"vc4cl_flag_cond", Intrinsic{intrinsifyFlagCondition}}};
 
 const static std::map<std::string, std::pair<Intrinsic, Optional<Value>>, std::greater<std::string>>

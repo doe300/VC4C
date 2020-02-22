@@ -173,7 +173,7 @@ bool CallSite::mapInstruction(Method& method)
         }
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Intrinsifying llvm.fshl with manual funnel-shifting" << logging::endl);
-        auto upper = method.addNewLocal(TYPE_INT32.toVectorType(arguments.at(0).type.getVectorWidth()), "%fshl.upper");
+        auto upper = method.addNewLocal(arguments.at(0).type.getUnionType(TYPE_INT32), "%fshl.upper");
         auto lower = method.addNewLocal(arguments.at(1).type, "%fshl.lower");
         auto offset = method.addNewLocal(arguments.at(2).type, "%fshl.offset");
         method.appendToEnd(new intermediate::Operation(
@@ -217,7 +217,7 @@ bool CallSite::mapInstruction(Method& method)
         }
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Intrinsifying llvm.fshr with manual funnel-shifting" << logging::endl);
-        auto upper = method.addNewLocal(TYPE_INT32.toVectorType(arguments.at(0).type.getVectorWidth()), "%fshr.upper");
+        auto upper = method.addNewLocal(arguments.at(0).type.getUnionType(TYPE_INT32), "%fshr.upper");
         auto lower = method.addNewLocal(arguments.at(1).type, "%fshr.lower");
         auto offset = method.addNewLocal(arguments.at(2).type, "%fshr.offset");
         method.appendToEnd(new intermediate::Operation(

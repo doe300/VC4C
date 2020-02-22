@@ -567,6 +567,9 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
         // signed 32-bit to signed other size -> move to retain 32-bit sign
         if(dest.checkLocal()->is<LongLocal>())
             method.method->appendToEnd((new intermediate::IntrinsicOperation("sext", std::move(dest), std::move(tmp))));
+        else if(source.checkLocal()->is<LongLocal>())
+            method.method->appendToEnd(
+                (new intermediate::MethodCall(std::move(dest), "vc4cl_long_to_intl", {std::move(tmp)})));
         else
             method.method->appendToEnd(
                 (new intermediate::MoveOperation(std::move(dest), std::move(tmp)))->addDecorations(decorations));
@@ -576,8 +579,14 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
     {
         // (un)signed 32-bit to unsigned some size -> trunc (since negative values are UB anyway)
         // TODO correct??
-        if(dest.checkLocal()->is<LongLocal>())
+        if(dest.checkLocal()->is<LongLocal>() && source.checkLocal()->is<LongLocal>())
+            method.method->appendToEnd(
+                (new intermediate::MethodCall(std::move(dest), "vc4cl_bitcast_ulong", {std::move(tmp)})));
+        else if(dest.checkLocal()->is<LongLocal>())
             method.method->appendToEnd((new intermediate::IntrinsicOperation("zext", std::move(dest), std::move(tmp))));
+        else if(source.checkLocal()->is<LongLocal>())
+            method.method->appendToEnd(
+                (new intermediate::MethodCall(std::move(dest), "vc4cl_long_to_intm", {std::move(tmp)})));
         else
             method.method->appendToEnd(
                 (new intermediate::IntrinsicOperation("trunc", std::move(dest), std::move(tmp)))

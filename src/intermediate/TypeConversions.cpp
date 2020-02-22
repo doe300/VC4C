@@ -153,11 +153,16 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
      */
     std::vector<Value> shiftedTruncatedVectors;
     shiftedTruncatedVectors.reserve(sizeFactor);
+    auto srcLongLocal = src.checkLocal()->as<LongLocal>();
     for(unsigned i = 0; i < sizeFactor; ++i)
     {
         shiftedTruncatedVectors.emplace_back(method.addNewLocal(dest.type, "%bit_cast"));
         const Value& result = shiftedTruncatedVectors.back();
-        Value tmp = assign(it, dest.type, "%bit_cast") = as_unsigned{src} >> Value(Literal(shift * i), TYPE_INT8);
+        auto srcVal = src;
+        if(srcLongLocal)
+            // need to correctly take the lower or upper part for 64-bit locals
+            srcVal = (i >= (sizeFactor / 2) ? srcLongLocal->upper : srcLongLocal->lower)->createReference();
+        Value tmp = assign(it, dest.type, "%bit_cast") = as_unsigned{srcVal} >> Value(Literal(shift * i), TYPE_INT8);
         assign(it, result) = tmp & Value(Literal(dest.type.getScalarWidthMask()), TYPE_INT32);
     }
 
