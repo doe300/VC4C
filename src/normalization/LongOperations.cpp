@@ -328,31 +328,6 @@ void normalization::lowerLongOperation(
             move->setSource(src->upper->createReference());
         }
     }
-    else if(auto op = it.get<intermediate::IntrinsicOperation>())
-    {
-        CPPLOG_LAZY(
-            logging::Level::DEBUG, log << "Lowering 64-bit intrinsic operation: " << op->to_string() << logging::endl);
-        auto out = op->checkOutputLocal()->as<LongLocal>();
-
-        if(out && op->opCode == "sext")
-        {
-            // extend (if necessary) to 32-bit and then replicate the high bit across the whole word to be written to
-            // the upper word
-            it = intermediate::insertSignExtension(it, method, op->getFirstArg(), out->lower->createReference(), true);
-            assign(it, out->upper->createReference()) =
-                (as_signed{out->lower->createReference()} >> 31_val, op->conditional, op->decoration);
-            it.erase();
-        }
-        else if(out && op->opCode == "zext")
-        {
-            // extend (if necessary) to 32-bit and set the upper word to zero
-            it = intermediate::insertZeroExtension(it, method, op->getFirstArg(), out->lower->createReference(), true);
-            assign(it, out->upper->createReference()) = (INT_ZERO, op->conditional,
-                add_flag(op->decoration, intermediate::InstructionDecorations::UNSIGNED_RESULT));
-            it.erase();
-        }
-        // TODO handle: sitofp, uitofp
-    }
     else if(auto call = it.get<intermediate::MethodCall>())
     {
         CPPLOG_LAZY(
@@ -360,31 +335,24 @@ void normalization::lowerLongOperation(
         auto out = call->checkOutputLocal()->as<LongLocal>();
         auto src = call->assertArgument(0).checkLocal()->as<LongLocal>();
 
-        if(out && call->methodName == "vc4cl_int_to_longi")
+        if(out && call->methodName.find("vc4cl_int_to_long") != std::string::npos)
         {
-            assign(it, out->lower->createReference()) = (call->assertArgument(0), call->conditional, call->decoration);
-            assign(it, out->upper->createReference()) =
-                (as_signed{out->lower->createReference()} >> 31_val, call->conditional, call->decoration);
+            it = intermediate::insertSignExtension(
+                it, method, call->assertArgument(0), out->createReference(), true, call->conditional, call->setFlags);
             it.erase();
         }
-        else if(out && call->methodName == "vc4cl_int_to_longj")
+        else if(out && call->methodName.find("vc4cl_int_to_ulong") != std::string::npos)
         {
-            assign(it, out->lower->createReference()) = (call->assertArgument(0), call->conditional, call->decoration);
-            assign(it, out->upper->createReference()) = (INT_ZERO, call->conditional,
-                add_flag(call->decoration, intermediate::InstructionDecorations::UNSIGNED_RESULT));
+            // see "zext" above
+            it = intermediate::insertZeroExtension(
+                it, method, call->assertArgument(0), out->createReference(), true, call->conditional, call->setFlags);
             it.erase();
         }
-        else if(src && call->methodName == "vc4cl_long_to_intl")
+        else if(src && call->methodName.find("vc4cl_long_to_int") != std::string::npos)
         {
-            // TODO correct??
+            // TODO correct for signed??
             assign(it, call->getOutput().value()) =
                 (src->lower->createReference(), call->conditional, call->decoration);
-            it.erase();
-        }
-        else if(src && call->methodName == "vc4cl_long_to_intm")
-        {
-            assign(it, call->getOutput().value()) = (src->lower->createReference(), call->conditional,
-                add_flag(call->decoration, intermediate::InstructionDecorations::UNSIGNED_RESULT));
             it.erase();
         }
         else if(out && src && call->methodName.find("vc4cl_bitcast_long") != std::string::npos)

@@ -247,6 +247,21 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
                 CompilationStep::GENERAL, "Invalid type-width for zero-extension", dest.type.to_string());
         }
     }
+    else if(dest.type.getScalarBitCount() > 32 && dest.checkLocal()->is<LongLocal>())
+    {
+        auto out = dest.checkLocal()->as<LongLocal>();
+        if(src.type.getScalarBitCount() < 32)
+        {
+            // extend to 32-bit integer first
+            it = insertZeroExtension(
+                it, method, src, out->lower->createReference(), allowLiteral, conditional, setFlags);
+        }
+        else
+            assign(it, out->lower->createReference()) = (src, conditional, setFlags);
+        // set upper word to all zeros
+        it.emplace(new MoveOperation(out->upper->createReference(), INT_ZERO));
+        it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+    }
     else if(dest.type.getScalarBitCount() >= 32 && src.type.getScalarBitCount() >= 32)
     {
         // do nothing, is just a move, since we truncate the 64-bit integers anyway
@@ -285,7 +300,30 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
 InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method& method, const Value& src,
     const Value& dest, bool allowLiteral, const ConditionCode conditional, const SetFlag setFlags)
 {
-    if(dest.type.getScalarBitCount() >= 32 && src.type.getScalarBitCount() >= 32)
+    if(dest.type.getScalarBitCount() > 32 && dest.checkLocal()->is<LongLocal>())
+    {
+        auto out = dest.checkLocal()->as<LongLocal>();
+        if(src.type.getScalarBitCount() < 32)
+        {
+            // extend to 32-bit integer first
+            it = insertSignExtension(
+                it, method, src, out->lower->createReference(), allowLiteral, conditional, SetFlag::DONT_SET);
+        }
+        else
+            assign(it, out->lower->createReference()) = (src, conditional, setFlags);
+        auto offset = 31_val;
+        if(!allowLiteral)
+        {
+            offset = method.addNewLocal(TYPE_INT8, "%sext");
+            it.emplace(new LoadImmediate(offset, 31_lit));
+            it.nextInBlock();
+        }
+        // replicate the high bit across the whole word to be written to the upper word
+        assign(it, out->upper->createReference()) =
+            (as_signed{out->lower->createReference()} >> offset, conditional, setFlags);
+        it.previousInBlock();
+    }
+    else if(dest.type.getScalarBitCount() >= 32 && src.type.getScalarBitCount() >= 32)
     {
         // do nothing, is just a move, since we truncate the 64-bit integers anyway
         it.emplace(new MoveOperation(dest, src, conditional, setFlags));
