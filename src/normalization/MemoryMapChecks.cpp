@@ -504,10 +504,10 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                     auto origLocal = memInstr->getDestination();
                     Value lowerLocal = UNDEFINED_VALUE;
                     Value upperLocal = UNDEFINED_VALUE;
-                    if(auto loc = origLocal.local()->as<LongLocal>())
+                    if(auto data = origLocal.local()->get<MultiRegisterData>())
                     {
-                        lowerLocal = loc->lower->createReference();
-                        upperLocal = loc->upper->createReference();
+                        lowerLocal = data->lower->createReference();
+                        upperLocal = data->upper->createReference();
                     }
                     else
                     {

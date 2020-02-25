@@ -88,6 +88,14 @@ namespace vc4c
         const Local* createLocal(DataType type, const std::string& name) __attribute__((returns_nonnull));
 
         /**
+         * Adds the given parameter to the list of tracked parameters for this function.
+         *
+         * NOTE: Since this function also executes some more logic (e.g. setting additional LocalData), this is to be
+         * preferred over adding parameters manually!
+         */
+        Parameter& addParameter(Parameter&& param);
+
+        /**
          * Looks for a builtin local with the given name and returns it.
          */
         const BuiltinLocal* findBuiltin(BuiltinLocal::Type type) const;
@@ -291,10 +299,6 @@ namespace vc4c
          */
         std::vector<std::unique_ptr<BuiltinLocal>> builtinLocals;
 
-        /**
-         * The list of specially handled combined/long locals.
-         */
-        StableList<LongLocal> longLocals;
         /*
          * The currently valid CFG
          *
@@ -313,6 +317,8 @@ namespace vc4c
         void updateCFGOnBlockRemoval(BasicBlock* block);
         void updateCFGOnBranchInsertion(InstructionWalker it);
         void updateCFGOnBranchRemoval(BasicBlock& affectedBlock, const Local* branchTarget);
+
+        void addLocalData(Local& loc);
 
         friend class BasicBlock;
         friend class InstructionWalker;

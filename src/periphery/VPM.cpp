@@ -506,12 +506,12 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
     // 2) read value from VPM
     if(dest.type.getScalarBitCount() == 64)
     {
-        auto loc = dest.checkLocal()->as<LongLocal>();
-        if(!loc)
+        auto data = Local::getLocalData<MultiRegisterData>(dest.checkLocal());
+        if(!data)
             throw CompilationError(
                 CompilationStep::GENERAL, "Can only read 64-bit value from VPM from long local", dest.to_string());
-        assign(it, loc->lower->createReference()) = VPM_IO_REGISTER;
-        assign(it, loc->upper->createReference()) = VPM_IO_REGISTER;
+        assign(it, data->lower->createReference()) = VPM_IO_REGISTER;
+        assign(it, data->upper->createReference()) = VPM_IO_REGISTER;
     }
     else
         assign(it, dest) = outputValue;
@@ -620,12 +620,12 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
     // 2. write data to VPM
     if(src.type.getScalarBitCount() == 64)
     {
-        auto loc = src.checkLocal()->as<LongLocal>();
-        if(!loc)
+        auto data = Local::getLocalData<MultiRegisterData>(src.checkLocal());
+        if(!data)
             throw CompilationError(
                 CompilationStep::GENERAL, "Can only write 64-bit value into VPM from long local", src.to_string());
-        assign(it, VPM_IO_REGISTER) = loc->lower->createReference();
-        assign(it, VPM_IO_REGISTER) = loc->upper->createReference();
+        assign(it, VPM_IO_REGISTER) = data->lower->createReference();
+        assign(it, VPM_IO_REGISTER) = data->upper->createReference();
     }
     else
         assign(it, VPM_IO_REGISTER) = src;

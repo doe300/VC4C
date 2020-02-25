@@ -10,6 +10,13 @@
 
 using namespace vc4c;
 
+LocalData::~LocalData() noexcept = default;
+
+std::string LocalData::to_string() const
+{
+    return "";
+}
+
 Local::Local(DataType type, const std::string& name) : type(type), name(name), reference(nullptr, ANY_ELEMENT) {}
 
 bool Local::operator<(const Local& other) const noexcept
@@ -125,6 +132,8 @@ std::string Local::to_string(bool withContent) const
                                                (std::string(" at ") + std::to_string(reference.second))) +
             ")";
     }
+    if(withContent && data)
+        content += data->to_string();
     return (type.to_string() + " ") + name + content;
 }
 LCOV_EXCL_STOP
@@ -247,16 +256,16 @@ BuiltinLocal::BuiltinLocal(const std::string& name, DataType dataType, Type buil
 
 BuiltinLocal::~BuiltinLocal() noexcept = default;
 
-LongLocal::LongLocal(DataType type, const std::string& name, const Local* upperPart, const Local* lowerPart) :
-    Local(type, name), upper(upperPart), lower(lowerPart)
+MultiRegisterData::MultiRegisterData(const Local* lowerPart, const Local* upperPart) :
+    lower(lowerPart), upper(upperPart)
 {
 }
 
-LongLocal::~LongLocal() noexcept = default;
+MultiRegisterData::~MultiRegisterData() noexcept = default;
 
 LCOV_EXCL_START
-std::string LongLocal::to_string(bool withContent) const
+std::string MultiRegisterData::to_string() const
 {
-    return Local::to_string(withContent) + " (" + upper->name + ", " + lower->name + ")";
+    return " (" + lower->name + ", " + upper->name + ")";
 }
 LCOV_EXCL_STOP

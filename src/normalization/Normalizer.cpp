@@ -128,7 +128,7 @@ static void checkNormalized(Module& module, Method& method, InstructionWalker it
     if(it.has())
     {
         it->forUsedLocals([](const Local* loc, LocalUse::Type type, const auto& inst) {
-            if(loc && loc->is<LongLocal>())
+            if(loc && loc->get<MultiRegisterData>())
             {
                 throw CompilationError(CompilationStep::NORMALIZER, "Not lowered 64-bit local found", inst.to_string());
             }

@@ -143,8 +143,8 @@ void SPIRVParser::parse(Module& module)
             if(parameterTypeNames && std::getline(parameterTypeNames, parameterType, ','))
                 param.origTypeName = parameterType;
 
-            m.second.method->parameters.emplace_back(std::move(param));
-            memoryAllocatedData.emplace(pair.first, &m.second.method->parameters.back());
+            auto& ptr = m.second.method->addParameter(std::move(param));
+            memoryAllocatedData.emplace(pair.first, &ptr);
         }
 
         // to support OpenCL built-in operations, we need to demangle all VC4CL std-lib definitions of the OpenCL C

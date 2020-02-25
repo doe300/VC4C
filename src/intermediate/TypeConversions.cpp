@@ -153,15 +153,15 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
      */
     std::vector<Value> shiftedTruncatedVectors;
     shiftedTruncatedVectors.reserve(sizeFactor);
-    auto srcLongLocal = src.checkLocal()->as<LongLocal>();
+    auto srcLongData = Local::getLocalData<MultiRegisterData>(src.checkLocal());
     for(unsigned i = 0; i < sizeFactor; ++i)
     {
         shiftedTruncatedVectors.emplace_back(method.addNewLocal(dest.type, "%bit_cast"));
         const Value& result = shiftedTruncatedVectors.back();
         auto srcVal = src;
-        if(srcLongLocal)
+        if(srcLongData)
             // need to correctly take the lower or upper part for 64-bit locals
-            srcVal = (i >= (sizeFactor / 2) ? srcLongLocal->upper : srcLongLocal->lower)->createReference();
+            srcVal = (i >= (sizeFactor / 2) ? srcLongData->upper : srcLongData->lower)->createReference();
         Value tmp = assign(it, dest.type, "%bit_cast") = as_unsigned{srcVal} >> Value(Literal(shift * i), TYPE_INT8);
         assign(it, result) = tmp & Value(Literal(dest.type.getScalarWidthMask()), TYPE_INT32);
     }
@@ -247,9 +247,9 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
                 CompilationStep::GENERAL, "Invalid type-width for zero-extension", dest.type.to_string());
         }
     }
-    else if(dest.type.getScalarBitCount() > 32 && dest.checkLocal()->is<LongLocal>())
+    else if(dest.type.getScalarBitCount() > 32 && Local::getLocalData<MultiRegisterData>(dest.checkLocal()))
     {
-        auto out = dest.checkLocal()->as<LongLocal>();
+        auto out = dest.local()->get<MultiRegisterData>();
         if(src.type.getScalarBitCount() < 32)
         {
             // extend to 32-bit integer first
@@ -300,9 +300,9 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
 InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method& method, const Value& src,
     const Value& dest, bool allowLiteral, const ConditionCode conditional, const SetFlag setFlags)
 {
-    if(dest.type.getScalarBitCount() > 32 && dest.checkLocal()->is<LongLocal>())
+    if(dest.type.getScalarBitCount() > 32 && Local::getLocalData<MultiRegisterData>(dest.checkLocal()))
     {
-        auto out = dest.checkLocal()->as<LongLocal>();
+        auto out = dest.local()->get<MultiRegisterData>();
         if(src.type.getScalarBitCount() < 32)
         {
             // extend to 32-bit integer first

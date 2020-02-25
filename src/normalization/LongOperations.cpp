@@ -18,23 +18,24 @@ using namespace vc4c::operators;
 static void lowerLongOperation(
     Method& method, InstructionWalker it, intermediate::Operation& op, const Configuration& config)
 {
-    auto out = op.checkOutputLocal()->as<LongLocal>();
+    auto outLocal = op.checkOutputLocal();
+    auto out = Local::getLocalData<MultiRegisterData>(outLocal);
     if(!out && op.getOutput() != NOP_REGISTER)
         throw CompilationError(CompilationStep::NORMALIZER,
             "Can only calculate with 64-bit values into long locals or NOP register", op.to_string());
     Value in0Low = op.getFirstArg();
     Value in0Up = INT_ZERO;
-    if(auto loc = in0Low.checkLocal()->as<LongLocal>())
+    if(auto data = Local::getLocalData<MultiRegisterData>(in0Low.checkLocal()))
     {
-        in0Low = loc->lower->createReference();
-        in0Up = loc->upper->createReference();
+        in0Low = data->lower->createReference();
+        in0Up = data->upper->createReference();
     }
     auto in1Low = op.getSecondArg();
     Optional<Value> in1Up{};
-    if(auto loc = (in1Low & &Value::checkLocal)->as<LongLocal>())
+    if(auto data = Local::getLocalData<MultiRegisterData>(in1Low & &Value::checkLocal))
     {
-        in1Low = loc->lower->createReference();
-        in1Up = loc->upper->createReference();
+        in1Low = data->lower->createReference();
+        in1Up = data->upper->createReference();
     }
     else if(in1Low & &Value::getLiteralValue)
     {
@@ -60,10 +61,12 @@ static void lowerLongOperation(
         // This saves us from needing to convert the writer(s) of the literal/vector
         in1Low->type = TYPE_INT32.toVectorType(in1Low->type.getVectorWidth());
 
-    if(!out)
+    if(!outLocal && !out)
+    {
         // If the output is NOP, we still need an output value to be able to calculate the flags
-        out = dynamic_cast<const LongLocal*>(
-            method.addNewLocal(TYPE_INT64.toVectorType(op.getFirstArg().type.getVectorWidth())).checkLocal());
+        outLocal = method.addNewLocal(TYPE_INT64.toVectorType(op.getFirstArg().type.getVectorWidth())).checkLocal();
+        out = Local::getLocalData<MultiRegisterData>(outLocal);
+    }
 
     if(op.op == OP_ADD)
     {
@@ -115,7 +118,7 @@ static void lowerLongOperation(
     }
     else if(op.op == OP_SHR || op.op == OP_ASR)
     {
-        auto offsetType = TYPE_INT8.toVectorType(out->type.getVectorWidth());
+        auto offsetType = TYPE_INT8.toVectorType(outLocal->type.getVectorWidth());
         it.emplace(new intermediate::Operation(OP_MIN, NOP_REGISTER, 32_val, in1Low.value()));
         it->setSetFlags(SetFlag::SET_FLAGS);
         it.nextInBlock();
@@ -164,7 +167,7 @@ static void lowerLongOperation(
     }
     else if(op.op == OP_SHL)
     {
-        auto offsetType = TYPE_INT8.toVectorType(out->type.getVectorWidth());
+        auto offsetType = TYPE_INT8.toVectorType(outLocal->type.getVectorWidth());
         it.emplace(new intermediate::Operation(OP_MIN, NOP_REGISTER, 32_val, in1Low.value()));
         it->setSetFlags(SetFlag::SET_FLAGS);
         it.nextInBlock();
@@ -242,7 +245,7 @@ static void lowerLongOperation(
 
     if(op.doesSetFlag())
     {
-        auto flagType = TYPE_INT32.toVectorType(out->type.getVectorWidth());
+        auto flagType = TYPE_INT32.toVectorType(outLocal->type.getVectorWidth());
         auto flagIt = it.copy().nextInBlock();
         // Need to combine the flags into single instruction -> for all possible combinations, find instruction
         // which produces those flags behavior...
@@ -276,7 +279,7 @@ void normalization::lowerLongOperation(
     bool writesLongLocal = false;
     bool readsLongLocal = false;
     it->forUsedLocals([&](const Local* loc, LocalUse::Type type, auto& inst) {
-        if(loc->is<LongLocal>())
+        if(loc->get<MultiRegisterData>())
         {
             writesLongLocal |= has_flag(type, LocalUse::Type::WRITER);
             readsLongLocal |= has_flag(type, LocalUse::Type::READER);
@@ -294,8 +297,8 @@ void normalization::lowerLongOperation(
     {
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Lowering 64-bit move/rotation: " << move->to_string() << logging::endl);
-        auto out = move->checkOutputLocal()->as<LongLocal>();
-        auto src = move->getSource().checkLocal()->as<LongLocal>();
+        auto out = Local::getLocalData<MultiRegisterData>(move->checkOutputLocal());
+        auto src = Local::getLocalData<MultiRegisterData>(move->getSource().checkLocal());
         if(!out)
             throw CompilationError(
                 CompilationStep::NORMALIZER, "Can only move/rotate 64-bit values into long locals", move->to_string());
@@ -332,20 +335,21 @@ void normalization::lowerLongOperation(
     {
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Lowering 64-bit intrinsic function: " << call->to_string() << logging::endl);
-        auto out = call->checkOutputLocal()->as<LongLocal>();
-        auto src = call->assertArgument(0).checkLocal()->as<LongLocal>();
+        auto outLoc = call->checkOutputLocal();
+        auto out = Local::getLocalData<MultiRegisterData>(outLoc);
+        auto src = Local::getLocalData<MultiRegisterData>(call->assertArgument(0).checkLocal());
 
         if(out && call->methodName.find("vc4cl_int_to_long") != std::string::npos)
         {
-            it = intermediate::insertSignExtension(
-                it, method, call->assertArgument(0), out->createReference(), true, call->conditional, call->setFlags);
+            it = intermediate::insertSignExtension(it, method, call->assertArgument(0), outLoc->createReference(), true,
+                call->conditional, call->setFlags);
             it.erase();
         }
         else if(out && call->methodName.find("vc4cl_int_to_ulong") != std::string::npos)
         {
             // see "zext" above
-            it = intermediate::insertZeroExtension(
-                it, method, call->assertArgument(0), out->createReference(), true, call->conditional, call->setFlags);
+            it = intermediate::insertZeroExtension(it, method, call->assertArgument(0), outLoc->createReference(), true,
+                call->conditional, call->setFlags);
             it.erase();
         }
         else if(src && call->methodName.find("vc4cl_long_to_int") != std::string::npos)

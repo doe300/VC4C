@@ -682,9 +682,8 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
             // Parameters
             // TODO remove, pass to consructor! Same for all other setting of values
             const_cast<PointerType*>(type.getPointerType())->addressSpace = AddressSpace::CONSTANT;
-        method->parameters.emplace_back(Parameter(toParameterName(arg, paramCounter), type,
+        auto& param = method->addParameter(Parameter(toParameterName(arg, paramCounter), type,
             toParameterDecorations(arg, type, func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)));
-        auto& param = method->parameters.back();
         if(arg.getDereferenceableBytes() != 0)
             param.maxByteOffset = static_cast<std::size_t>(arg.getDereferenceableBytes());
 #if LLVM_LIBRARY_VERSION >= 39

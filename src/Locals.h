@@ -10,6 +10,7 @@
 #include "Values.h"
 
 #include <functional>
+#include <memory>
 #include <utility>
 
 namespace vc4c
@@ -63,10 +64,30 @@ namespace vc4c
     };
 
     /*
-     * A Local is a Value stored in a (name) variable and represents any Value which is neither a Register, a constant
+     * Base class for additional data associated with Locals.
+     *
+     * The data contained here is only present/required in a small subset of Locals and therefore keeping it in the
+     * Local type itself would waste memory. Also, depending on the type of Local (e.g. the DataType stored), different
+     * types of additional information might be of interest.
+     */
+    struct LocalData
+    {
+        LocalData() = default;
+        LocalData(const LocalData&) = delete;
+        LocalData(LocalData&&) noexcept = delete;
+        virtual ~LocalData() noexcept;
+
+        LocalData& operator=(const LocalData&) = delete;
+        LocalData& operator=(LocalData&&) noexcept = delete;
+
+        virtual std::string to_string() const;
+    };
+
+    /*
+     * A Local is a Value stored in a (named) variable and represents any Value which is neither a Register, a constant
      * value nor a compound constant value.
      *
-     * "Default" locals are a representation of function-private variables and are mapped to phyiscal registers in the
+     * "Default" locals are a representation of function-private variables and are mapped to physical registers in the
      * code-generator.
      *
      * Similarly to LocalUsers tracking the Locals used, Locals track their users. This allows for easier finding of
@@ -167,6 +188,30 @@ namespace vc4c
          */
         const Local* getBase(bool includeOffsets) const;
 
+        template <typename T>
+        T* get()
+        {
+            return dynamic_cast<T*>(data.get());
+        }
+
+        template <typename T>
+        const T* get() const
+        {
+            return dynamic_cast<const T*>(data.get());
+        }
+
+        template <typename T>
+        static const T* getLocalData(const Local* loc)
+        {
+            return loc ? loc->get<T>() : nullptr;
+        }
+
+        template <typename T>
+        static T* getLocalData(Local* loc)
+        {
+            return loc ? loc->get<T>() : nullptr;
+        }
+
         /*
          * The type of the data represented by this local
          */
@@ -213,6 +258,8 @@ namespace vc4c
         // FIXME unordered_map randomly throws SEGFAULT somewhere in stdlib in #removeUser called by
         // IntermediateInstruction#erase
         SortedMap<const LocalUser*, LocalUse> users;
+        // Additional data for this local
+        std::unique_ptr<LocalData> data;
 
         friend class Method;
     };
@@ -428,23 +475,22 @@ namespace vc4c
     };
 
     /**
-     * Type for "normal" locals which do not fit into a single registers, e.g. 64-bit values.
+     * Additional data type for locals which do not fit into a single registers, e.g. 64-bit values.
      *
-     * Internally, they will be mapped to an "upper" and a "lower" part which will be used for all the actual
-     * caculations.
+     * This type tracks the "upper" and a "lower" parts which will be used for all the actual caculations.
      */
-    struct LongLocal : public Local
+    struct MultiRegisterData : public LocalData
     {
-        LongLocal(DataType type, const std::string& name, const Local* upperPart, const Local* lowerPart);
-        ~LongLocal() noexcept override;
+        MultiRegisterData(const Local* lowerPart, const Local* upperPart);
+        ~MultiRegisterData() noexcept override;
 
-        std::string to_string(bool withContent = false) const override;
-
-        /** The local storing the upper 32 bit of this local value */
-        const Local* upper;
+        std::string to_string() const override;
 
         /** The local storing the lower 32 bit of this local value */
         const Local* lower;
+
+        /** The local storing the upper 32 bit of this local value */
+        const Local* upper;
     };
 
 } /* namespace vc4c */

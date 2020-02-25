@@ -322,6 +322,8 @@ bool Literal::operator==(const Literal& other) const noexcept
     if(type == LiteralType::TOMBSTONE || other.type == LiteralType::TOMBSTONE)
         // if either is tombstone, but must be tombstone
         return type == other.type;
+    if(type == LiteralType::LONG_LEADING_ONES || other.type == LiteralType::LONG_LEADING_ONES)
+        return type == other.type && u == other.u;
     // checks for bit-equality
     return u == other.u;
 }

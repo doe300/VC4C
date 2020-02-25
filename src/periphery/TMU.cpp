@@ -142,8 +142,8 @@ static NODISCARD InstructionWalker insertExtractByteElements(
 static NODISCARD InstructionWalker insertReadLongVectorFromTMU(
     Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu)
 {
-    auto outputLocal = dest.checkLocal()->as<LongLocal>();
-    if(!outputLocal)
+    auto outputData = Local::getLocalData<MultiRegisterData>(dest.checkLocal());
+    if(!outputData)
         throw CompilationError(
             CompilationStep::GENERAL, "Can only read 64-bit value from TMU into long local", dest.to_string());
 
@@ -167,8 +167,8 @@ static NODISCARD InstructionWalker insertReadLongVectorFromTMU(
     nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
 
     // read the lower and upper elements into the result variables
-    assign(it, outputLocal->lower->createReference()) = TMU_READ_REGISTER;
-    assign(it, outputLocal->upper->createReference()) = TMU_READ_REGISTER;
+    assign(it, outputData->lower->createReference()) = TMU_READ_REGISTER;
+    assign(it, outputData->upper->createReference()) = TMU_READ_REGISTER;
 
     return it;
 }

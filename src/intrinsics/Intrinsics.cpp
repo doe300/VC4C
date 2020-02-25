@@ -1001,8 +1001,8 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
                 log << "Intrinsifying truncate from 64-bit to 32-bit with move of lower part: " << op->to_string()
                     << logging::endl);
             auto src = op->getFirstArg();
-            if(auto loc = src.checkLocal()->as<LongLocal>())
-                src = loc->lower->createReference();
+            if(auto data = Local::getLocalData<MultiRegisterData>(src.checkLocal()))
+                src = data->lower->createReference();
             it.reset(
                 (new MoveOperation(op->getOutput().value(), src, op->conditional, op->setFlags))->copyExtrasFrom(op));
         }

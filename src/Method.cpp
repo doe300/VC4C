@@ -68,15 +68,19 @@ const StackAllocation* Method::findStackAllocation(const std::string& name) cons
 
 const Local* Method::createLocal(DataType type, const std::string& name)
 {
-    if(type.isSimpleType() && type.getScalarBitCount() > 32 && type.getScalarBitCount() <= 64)
-    {
-        auto lower = locals.emplace(Local(TYPE_INT32.toVectorType(type.getVectorWidth()), name + ".lower")).first;
-        auto upper = locals.emplace(Local(TYPE_INT32.toVectorType(type.getVectorWidth()), name + ".upper")).first;
-        longLocals.emplace_back(type, name, &*upper, &*lower);
-        return &longLocals.back();
-    }
-    auto it = locals.emplace(Local(type, name));
-    return &(*it.first);
+    auto it = locals.emplace(Local(type, name)).first;
+    addLocalData(const_cast<Local&>(*it));
+    return &(*it);
+}
+
+Parameter& Method::addParameter(Parameter&& param)
+{
+    parameters.emplace_back(std::move(param));
+    auto& p = parameters.back();
+    // Parameters of non-kernel functions might also be e.g. vectors of 64-bit integers in which case we add the lower
+    // and upper parts there too
+    addLocalData(p);
+    return p;
 }
 
 const BuiltinLocal* Method::findOrCreateBuiltin(BuiltinLocal::Type type)
@@ -661,4 +665,15 @@ void Method::updateCFGOnBranchRemoval(BasicBlock& affectedBlock, const Local* br
     if(!cfg)
         return;
     cfg->updateOnBranchRemoval(*this, affectedBlock, branchTarget);
+}
+
+void Method::addLocalData(Local& loc)
+{
+    if(loc.type.isSimpleType() && loc.type.getScalarBitCount() > 32 && loc.type.getScalarBitCount() <= 64)
+    {
+        auto elementType = TYPE_INT32.toVectorType(loc.type.getVectorWidth());
+        auto lower = locals.emplace(Local(elementType, loc.name + ".lower")).first;
+        auto upper = locals.emplace(Local(elementType, loc.name + ".upper")).first;
+        loc.data = std::make_unique<MultiRegisterData>(&*lower, &*upper);
+    }
 }
