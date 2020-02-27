@@ -171,17 +171,17 @@ namespace vc4c
     {
     public:
         /**
-         * Moves the given temporary vector into the global storage and returns a pointer to the inserted vector or an
-         * equivalent vector already stored.
+         * Moves the given temporary vector into the global storage and a value containing either the inserted vector,
+         * an equivalent vector already stored or an equivalent literal value.
          */
-        const SIMDVector* storeVector(SIMDVector&& vec);
+        Value storeVector(SIMDVector&& vec, DataType type);
 
         /**
          * Uses the given store (if set) to store the vector, otherwise uses the global storage.
          *
          * See #storeVector(SIMDVector&&)
          */
-        static const SIMDVector* storeVector(SIMDVector&& vec, SIMDVectorHolder* storage);
+        static Value storeVector(SIMDVector&& vec, DataType type, SIMDVectorHolder* storage);
 
     private:
         /*

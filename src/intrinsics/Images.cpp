@@ -269,7 +269,7 @@ InstructionWalker intermediate::insertQueryMeasurements(
             const Value arraySize = method.addNewLocal(TYPE_INT32, "%image_array_size");
             it = insertLoadImageWidth(it, method, image, imgWidth);
             it = insertLoadArraySizeOrImageDepth(it, method, image, arraySize);
-            Value mask(method.module.storeVector(SIMDVector({Literal(0u), Literal(1u)})), TYPE_INT8.toVectorType(2));
+            auto mask = method.module.storeVector(SIMDVector({Literal(0u), Literal(1u)}), TYPE_INT8.toVectorType(2));
             return insertVectorShuffle(it, method, dest, imgWidth, arraySize, mask);
         }
         return insertLoadImageWidth(it, method, image, dest);
@@ -280,7 +280,7 @@ InstructionWalker intermediate::insertQueryMeasurements(
         const Value imgHeight = method.addNewLocal(TYPE_INT32, "%image_height");
         it = insertLoadImageWidth(it, method, image, imgWidth);
         it = insertLoadImageHeight(it, method, image, imgHeight);
-        Value mask(method.module.storeVector(SIMDVector({Literal(0u), Literal(1u)})), TYPE_INT8.toVectorType(2));
+        auto mask = method.module.storeVector(SIMDVector({Literal(0u), Literal(1u)}), TYPE_INT8.toVectorType(2));
         if(imageType->isImageArray)
         {
             // XXX OpenCL C function get_image_dim() for image_2d_array_t does not return the array-size (only width and
@@ -291,8 +291,8 @@ InstructionWalker intermediate::insertQueryMeasurements(
             const Value arraySize = method.addNewLocal(TYPE_INT32, "%image_array_size");
             it = insertLoadArraySizeOrImageDepth(it, method, image, arraySize);
 
-            mask = Value(method.module.storeVector(SIMDVector({Literal(0u), Literal(1u), Literal(2u)})),
-                TYPE_INT8.toVectorType(3));
+            mask = method.module.storeVector(
+                SIMDVector({Literal(0u), Literal(1u), Literal(2u)}), TYPE_INT8.toVectorType(3));
             return insertVectorShuffle(it, method, dest, tmp, arraySize, mask);
         }
         return insertVectorShuffle(it, method, dest, imgWidth, imgHeight, mask);
@@ -303,7 +303,7 @@ InstructionWalker intermediate::insertQueryMeasurements(
         const Value imgHeight = method.addNewLocal(TYPE_INT32, "%image_height");
         it = insertLoadImageWidth(it, method, image, imgWidth);
         it = insertLoadImageHeight(it, method, image, imgHeight);
-        Value mask(method.module.storeVector(SIMDVector({Literal(0u), Literal(1u)})), TYPE_INT8.toVectorType(2));
+        auto mask = method.module.storeVector(SIMDVector({Literal(0u), Literal(1u)}), TYPE_INT8.toVectorType(2));
 
         const Value tmp = method.addNewLocal(TYPE_INT32.toVectorType(2), "%image_dimensions");
         it = insertVectorShuffle(it, method, tmp, imgWidth, imgHeight, mask);
@@ -311,8 +311,8 @@ InstructionWalker intermediate::insertQueryMeasurements(
         const Value arraySize = method.addNewLocal(TYPE_INT32, "%image_depth");
         it = insertLoadArraySizeOrImageDepth(it, method, image, arraySize);
 
-        mask = Value(
-            method.module.storeVector(SIMDVector({Literal(0u), Literal(1u), Literal(2u)})), TYPE_INT8.toVectorType(3));
+        mask =
+            method.module.storeVector(SIMDVector({Literal(0u), Literal(1u), Literal(2u)}), TYPE_INT8.toVectorType(3));
         return insertVectorShuffle(it, method, dest, tmp, arraySize, mask);
     }
     else

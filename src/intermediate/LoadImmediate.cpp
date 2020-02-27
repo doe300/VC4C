@@ -94,17 +94,15 @@ PrecalculatedValue LoadImmediate::precalculate(const std::size_t numIterations) 
     case LoadType::PER_ELEMENT_SIGNED:
     {
         // since there are only a few possible combinations (4 per type), using the global vector store is okay here
-        auto val =
-            Value(GLOBAL_VECTOR_HOLDER.storeVector(toLoadedValues(assertArgument(0).literal().unsignedInt(), type)),
-                TYPE_INT32.toVectorType(16));
+        auto val = GLOBAL_VECTOR_HOLDER.storeVector(
+            toLoadedValues(assertArgument(0).literal().unsignedInt(), type), TYPE_INT32.toVectorType(16));
         return PrecalculatedValue{val, VectorFlags::fromValue(val)};
     }
     case LoadType::PER_ELEMENT_UNSIGNED:
     {
         // since there are only a few possible combinations (4 per type), using the global vector store is okay here
-        auto val =
-            Value(GLOBAL_VECTOR_HOLDER.storeVector(toLoadedValues(assertArgument(0).literal().unsignedInt(), type)),
-                TYPE_INT8.toVectorType(16));
+        auto val = GLOBAL_VECTOR_HOLDER.storeVector(
+            toLoadedValues(assertArgument(0).literal().unsignedInt(), type), TYPE_INT8.toVectorType(16));
         return PrecalculatedValue{val, VectorFlags::fromValue(val)};
     }
     }

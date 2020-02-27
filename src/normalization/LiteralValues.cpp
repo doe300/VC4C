@@ -184,7 +184,7 @@ InstructionWalker normalization::handleContainer(
         // need to rotate all (possible non-existing) 16 elements, so use a temporary vector with 16 elements and rotate
         // it
         SIMDVector tmp = src.vector().rotate(static_cast<uint8_t>(offset));
-        rot->setSource(Value(method.module.storeVector(std::move(tmp)), src.type));
+        rot->setSource(method.module.storeVector(std::move(tmp), src.type));
         // TODO next step could be optimized, if we used the vector-rotation to extract an element
         // In which case, a simple copy suffices?? At least, we don't need to set the other elements
     }

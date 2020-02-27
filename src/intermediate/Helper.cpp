@@ -39,8 +39,8 @@ InstructionWalker intermediate::insertMakePositive(
             tmpDest[i] = isNegative ? Literal(-elem.signedInt()) : elem;
             tmpNegative[i] = isNegative ? Literal(-1) : Literal(0u);
         }
-        dest = Value(SIMDVectorHolder::storeVector(std::move(tmpDest), vector->getStorage()), src.type);
-        writeIsNegative = Value(SIMDVectorHolder::storeVector(std::move(tmpNegative), vector->getStorage()), src.type);
+        dest = SIMDVectorHolder::storeVector(std::move(tmpDest), src.type, vector->getStorage());
+        writeIsNegative = SIMDVectorHolder::storeVector(std::move(tmpNegative), src.type, vector->getStorage());
     }
     else if(src.getSingleWriter() != nullptr &&
         src.getSingleWriter()->hasDecoration(InstructionDecorations::UNSIGNED_RESULT))

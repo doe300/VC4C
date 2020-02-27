@@ -489,8 +489,8 @@ static std::pair<Value, Value> calculateConstant(Module& module, const Value& di
         {
             std::tie(factors[i], shifts[i]) = calculateConstant((*vector)[i], accuracy);
         }
-        return std::make_pair(Value(module.storeVector(std::move(factors)), divisor.type),
-            Value(module.storeVector(std::move(shifts)), divisor.type));
+        return std::make_pair(
+            module.storeVector(std::move(factors), divisor.type), module.storeVector(std::move(shifts), divisor.type));
     }
 
     const Literal div = divisor.getLiteralValue().value();

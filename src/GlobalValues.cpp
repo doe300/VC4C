@@ -103,7 +103,7 @@ Optional<Value> CompoundConstant::toValue() const
             }
             // Since this should be called only very rarely (and we don't have access to the module), we use the global
             // vector store
-            return Value(GLOBAL_VECTOR_HOLDER.storeVector(std::move(vector)), type);
+            return GLOBAL_VECTOR_HOLDER.storeVector(std::move(vector), type);
         }
     }
     return NO_VALUE;

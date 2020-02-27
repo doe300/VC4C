@@ -149,18 +149,27 @@ std::string SIMDVector::to_string(bool withLiterals) const
 }
 LCOV_EXCL_STOP
 
-const SIMDVector* SIMDVectorHolder::storeVector(SIMDVector&& vec)
+Value SIMDVectorHolder::storeVector(SIMDVector&& vec, DataType type)
 {
+    if(vec.isAllSame() &&
+        std::none_of(vec.begin(), vec.end(), [](const Literal& lit) -> bool { return lit.isUndefined(); }))
+    {
+        // if all elements are a non-undefined same value, just use that value right now, since we would convert the
+        // vector to that value later on anyway. This saves us from later having to check that as well as needing to
+        // store a SIMDVector entry.
+        return Value(vec[0], type);
+    }
     // TODO does this mutex lock too often??
     std::lock_guard<std::mutex> guard(accessMutex);
     auto it = constantVectors.emplace(std::move(vec)).first;
     const_cast<SIMDVectorHolder*&>(it->storage) = this;
-    return &*it;
+    return Value(&*it, type);
 }
 
-const SIMDVector* SIMDVectorHolder::storeVector(SIMDVector&& vec, SIMDVectorHolder* storage)
+Value SIMDVectorHolder::storeVector(SIMDVector&& vec, DataType type, SIMDVectorHolder* storage)
 {
-    return (storage ? storage : &GLOBAL_VECTOR_HOLDER)->storeVector(std::move(vec));
+    // TODO try to reduce the number of global vectors stored
+    return (storage ? storage : &GLOBAL_VECTOR_HOLDER)->storeVector(std::move(vec), type);
 }
 
 std::size_t std::hash<vc4c::SIMDVector>::operator()(vc4c::SIMDVector const& val) const noexcept

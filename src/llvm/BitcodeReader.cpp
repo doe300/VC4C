@@ -1246,7 +1246,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         {
             aggregate[i] = *toConstant(module, constant->getOperand(i)).getLiteralValue();
         }
-        return Value(module.storeVector(std::move(aggregate)), type);
+        return module.storeVector(std::move(aggregate), type);
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantDataSequential>(val))
     {
@@ -1256,11 +1256,11 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         {
             aggregate[i] = *toConstant(module, constant->getElementAsConstant(i)).getLiteralValue();
         }
-        return Value(module.storeVector(std::move(aggregate)), type);
+        return module.storeVector(std::move(aggregate), type);
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantAggregateZero>(val))
     {
-        return Value(module.storeVector(SIMDVector(Literal(0u))), type);
+        return module.storeVector(SIMDVector(Literal(0u)), type);
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantFP>(val))
     {

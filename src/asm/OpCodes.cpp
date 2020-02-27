@@ -318,7 +318,7 @@ Optional<Value> Unpack::operator()(const Value& val) const
         auto elemType = val.type.toVectorType(1);
         SIMDVector result = vector->transform(
             [&](Literal lit) -> Literal { return unpackLiteral(*this, lit, elemType.isFloatingType()); });
-        return Value(SIMDVectorHolder::storeVector(std::move(result), vector->getStorage()), val.type);
+        return SIMDVectorHolder::storeVector(std::move(result), val.type, vector->getStorage());
     }
     // can only unpack literals
     if(auto lit = val.getLiteralValue())
@@ -564,7 +564,7 @@ Optional<Value> Pack::operator()(const Value& val, const VectorFlags& flags) con
             auto elem = (*vector)[i];
             result[i] = packLiteral(*this, elem, elemType.isFloatingType(), flags[i]);
         }
-        return Value(SIMDVectorHolder::storeVector(std::move(result), vector->getStorage()), val.type);
+        return SIMDVectorHolder::storeVector(std::move(result), val.type, vector->getStorage());
     }
     // can only pack literals
     if(auto lit = val.getLiteralValue())
@@ -1075,9 +1075,8 @@ PrecalculatedValue OpCode::operator()(const Value& firstOperand, const Optional<
             flags[i] = tmp.second[0];
         }
         // TODO this could lead to a lot of vectors in the global storage!
-        return std::make_pair(Value(SIMDVectorHolder::storeVector(
-                                        std::move(res), (firstVector ? firstVector : secondVector)->getStorage()),
-                                  resultType),
+        return std::make_pair(SIMDVectorHolder::storeVector(
+                                  std::move(res), resultType, (firstVector ? firstVector : secondVector)->getStorage()),
             flags);
     }
 

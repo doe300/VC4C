@@ -51,7 +51,7 @@ Optional<Value> periphery::precalculateSFU(Register sfuReg, const Value& input)
     if(auto vector = input.checkVector())
     {
         SIMDVector result = vector->transform(elemFunc);
-        return Value(SIMDVectorHolder::storeVector(std::move(result), vector->getStorage()), input.type);
+        return SIMDVectorHolder::storeVector(std::move(result), input.type, vector->getStorage());
     }
     return NO_VALUE;
 }
