@@ -517,36 +517,30 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         const std::string instructionSet(readLiteralString(parsed_instruction, &parsed_instruction->operands[1]));
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Importing extended instruction set: " << instructionSet << logging::endl);
-        if(instructionSet.find("OpenCL") == std::string::npos)
+        if(instructionSet == "OpenCL.std")
+            // https://www.khronos.org/registry/spir-v/specs/unified1/OpenCL.ExtendedInstructionSet.100.html
+            extensionConsumers.emplace(parsed_instruction->result_id, &SPIRVParser::consumeOpenCLInstruction);
+        else if(instructionSet == "DebugInfo")
+            // https://www.khronos.org/registry/spir-v/specs/unified1/DebugInfo.html
+            extensionConsumers.emplace(parsed_instruction->result_id, &SPIRVParser::consumeDebugInfoInstruction);
+        else if(instructionSet == "OpenCL.DebugInfo.100")
+            // https://www.khronos.org/registry/spir-v/specs/unified1/OpenCL.DebugInfo.100.html
+            extensionConsumers.emplace(parsed_instruction->result_id, &SPIRVParser::consumeOpenCLDebugInfoInstruction);
+        else if(instructionSet.find("NonSemantic."))
+            // added by SPV_KHR_non_semantic_info extension, these extended instruction sets have only instructions
+            // without semantic meaning and therefore can simply be ignored.
+            extensionConsumers.emplace(parsed_instruction->result_id, &SPIRVParser::consumeNonSemanticInstruction);
+        else
             throw CompilationError(CompilationStep::PARSER, "Unsupported extended instruction set", instructionSet);
         return SPV_SUCCESS;
     }
     case spv::Op::OpExtInst: // executes instruction from extended instruction set
     {
-        if(parsed_instruction->ext_inst_type != SPV_EXT_INST_TYPE_OPENCL_STD)
+        auto extensionIt = extensionConsumers.find(getWord(parsed_instruction, 3));
+        if(extensionIt == extensionConsumers.end())
             throw CompilationError(CompilationStep::PARSER, "Invalid extended instruction set",
                 std::to_string(parsed_instruction->ext_inst_type));
-        localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        if(getWord(parsed_instruction, 4) == OpenCLLIB::Entrypoints::Shuffle2)
-        {
-            instructions.emplace_back(
-                new SPIRVShuffle(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id,
-                    getWord(parsed_instruction, 5), getWord(parsed_instruction, 6), getWord(parsed_instruction, 7)));
-            return SPV_SUCCESS;
-        }
-        if(getWord(parsed_instruction, 4) == OpenCLLIB::Entrypoints::Shuffle)
-        {
-            instructions.emplace_back(
-                new SPIRVShuffle(parsed_instruction->result_id, *currentMethod, parsed_instruction->type_id,
-                    getWord(parsed_instruction, 5), UNDEFINED_ID, getWord(parsed_instruction, 6)));
-            return SPV_SUCCESS;
-        }
-        // the OpenCL built-in operations are not supported directly, but there might be a function definition for them
-        // here, we simply map them to function calls and resolve the possible matching definitions later
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod,
-            getOpenCLMethodName(getWord(parsed_instruction, 4)), parsed_instruction->type_id,
-            parseArguments(parsed_instruction, 5)));
-        return SPV_SUCCESS;
+        return (this->*(extensionIt->second))(parsed_instruction);
     }
     case spv::Op::OpMemoryModel:
     {
@@ -1986,6 +1980,46 @@ std::pair<spv_result_t, Optional<Value>> SPIRVParser::calculateConstantOperation
     instructions.swap(instructionsBackup);
 
     return std::make_pair(SPV_SUCCESS, value);
+}
+
+spv_result_t SPIRVParser::consumeOpenCLInstruction(const spv_parsed_instruction_t* instruction)
+{
+    localTypes[instruction->result_id] = instruction->type_id;
+    if(getWord(instruction, 4) == OpenCLLIB::Entrypoints::Shuffle2)
+    {
+        instructions.emplace_back(new SPIRVShuffle(instruction->result_id, *currentMethod, instruction->type_id,
+            getWord(instruction, 5), getWord(instruction, 6), getWord(instruction, 7)));
+        return SPV_SUCCESS;
+    }
+    if(getWord(instruction, 4) == OpenCLLIB::Entrypoints::Shuffle)
+    {
+        instructions.emplace_back(new SPIRVShuffle(instruction->result_id, *currentMethod, instruction->type_id,
+            getWord(instruction, 5), UNDEFINED_ID, getWord(instruction, 6)));
+        return SPV_SUCCESS;
+    }
+    // the OpenCL built-in operations are not supported directly, but there might be a function definition for them
+    // here, we simply map them to function calls and resolve the possible matching definitions later
+    instructions.emplace_back(new SPIRVCallSite(instruction->result_id, *currentMethod,
+        getOpenCLMethodName(getWord(instruction, 4)), instruction->type_id, parseArguments(instruction, 5)));
+    return SPV_SUCCESS;
+}
+
+spv_result_t SPIRVParser::consumeDebugInfoInstruction(const spv_parsed_instruction_t* instruction)
+{
+    // These instructions are guaranteed to be non-semantic, so we can just ignore them
+    return SPV_SUCCESS;
+}
+
+spv_result_t SPIRVParser::consumeOpenCLDebugInfoInstruction(const spv_parsed_instruction_t* instruction)
+{
+    // These instructions are guaranteed to be non-semantic, so we can just ignore them
+    return SPV_SUCCESS;
+}
+
+spv_result_t SPIRVParser::consumeNonSemanticInstruction(const spv_parsed_instruction_t* instruction)
+{
+    // These instructions are guaranteed to be non-semantic, so we can just ignore them
+    return SPV_SUCCESS;
 }
 
 #endif

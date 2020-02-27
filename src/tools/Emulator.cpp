@@ -395,7 +395,7 @@ static constexpr uint8_t toIndex(Register reg) noexcept
 SIMDVector Registers::readStorageRegister(Register reg, bool anyElementUsed)
 {
     const auto& vec = storageRegisters.at(toIndex(reg));
-    if(vec.isUndefined())
+    if(vec.first.isUndefined())
     {
         if(anyElementUsed)
             throw CompilationError(
@@ -405,8 +405,12 @@ SIMDVector Registers::readStorageRegister(Register reg, bool anyElementUsed)
             return SIMDVector{};
     }
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Reading from register '" << reg.to_string(true, true) << "': " << vec.to_string(true) << logging::endl);
-    return vec;
+        log << "Reading from register '" << reg.to_string(true, true) << "': " << vec.first.to_string(true)
+            << logging::endl);
+    if(reg.isGeneralPurpose() && qpu.currentCycle - 1 <= vec.second)
+        throw CompilationError(CompilationStep::GENERAL,
+            "Physical register cannot be read in the next instruction after it was written", reg.to_string());
+    return vec.first;
 }
 
 static SIMDVector toStorageValue(
@@ -440,26 +444,26 @@ void Registers::writeStorageRegister(Register reg, SIMDVector&& val, std::bitset
         // actual value stored is truncated to lowest 1 Bit and replicated across all elements
         val = SIMDVector(Literal(val[0].unsignedInt() & 1));
     }
-    auto& vec = storageRegisters.at(toIndex(reg)) =
-        toStorageValue(storageRegisters.at(toIndex(reg)), val, elementMask, bitMask);
+    auto& vec = storageRegisters.at(toIndex(reg)) = std::make_pair(
+        toStorageValue(storageRegisters.at(toIndex(reg)).first, val, elementMask, bitMask), qpu.currentCycle);
     if(reg.num == REG_REPLICATE_ALL.num && elementMask.any())
     {
         // TODO if some flags are set, but not the 0th (or 0th, 4th, 8th and 12th), need to retain old value?
         // TODO or is conditional replication possible at all?
         // is not actually stored in the physical file A or B
-        vec = SIMDVector{};
-        storageRegisters.at(toIndex(REG_ACC5)) = val;
+        vec.first = SIMDVector{};
+        storageRegisters.at(toIndex(REG_ACC5)).first = val;
 
         if(reg.file == RegisterFile::PHYSICAL_A)
         {
             // per-quad replication
-            storageRegisters.at(toIndex(REG_ACC5)) = SIMDVector({val[0], val[0], val[0], val[0], val[4], val[4], val[4],
-                val[4], val[8], val[8], val[8], val[8], val[12], val[12], val[12], val[12]});
+            storageRegisters.at(toIndex(REG_ACC5)).first = SIMDVector({val[0], val[0], val[0], val[0], val[4], val[4],
+                val[4], val[4], val[8], val[8], val[8], val[8], val[12], val[12], val[12], val[12]});
         }
         else if(reg.file == RegisterFile::PHYSICAL_B)
         {
             // across all elements replication
-            storageRegisters.at(toIndex(REG_ACC5)) = SIMDVector(val[0]);
+            storageRegisters.at(toIndex(REG_ACC5)).first = SIMDVector(val[0]);
         }
         else
             throw CompilationError(CompilationStep::GENERAL,

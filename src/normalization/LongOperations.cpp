@@ -15,6 +15,32 @@ using namespace vc4c;
 using namespace vc4c::normalization;
 using namespace vc4c::operators;
 
+static void lowerFlags(Method& method, InstructionWalker it, const MultiRegisterData& output, FlagBehavior flagBehavior)
+{
+    auto flagType = TYPE_INT32.toVectorType(output.lower->type.getVectorWidth());
+    auto flagIt = it.copy().nextInBlock();
+    // Need to combine the flags into single instruction -> for all possible combinations, find instruction
+    // which produces those flags behavior...
+    if(has_flag(flagBehavior,
+           add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)))
+    {
+        /*
+         * This is e.g. the behavior of AND, OR, XOR, etc.
+         *
+         * - OR'ing upper and lower parts together gives the zero-check
+         * - for negative check, need to only consider high bit of upper part
+         * => compress lower part to never set the high bit
+         */
+        auto tmp0 = assign(flagIt, flagType) = as_unsigned{output.lower->createReference()} >> 1_val;
+        // since we shift the last bit of the lower part out, need to separately add it again back in
+        auto tmp1 = assign(flagIt, flagType) = output.lower->createReference() & 1_val;
+        auto tmp2 = assign(flagIt, flagType) = tmp0 | tmp1;
+        assignNop(flagIt) = (tmp2 | output.upper->createReference(), SetFlag::SET_FLAGS);
+    }
+    else
+        throw CompilationError(CompilationStep::NORMALIZER, "Unhandled flag behavior for 64-bit operation");
+}
+
 static void lowerLongOperation(
     Method& method, InstructionWalker it, intermediate::Operation& op, const Configuration& config)
 {
@@ -245,29 +271,8 @@ static void lowerLongOperation(
 
     if(op.doesSetFlag())
     {
-        auto flagType = TYPE_INT32.toVectorType(outLocal->type.getVectorWidth());
-        auto flagIt = it.copy().nextInBlock();
-        // Need to combine the flags into single instruction -> for all possible combinations, find instruction
-        // which produces those flags behavior...
-        if(has_flag(op.op.flagBehavior,
-               add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)))
-        {
-            /*
-             * This is e.g. the behavior of AND, OR, XOR, etc.
-             *
-             * - OR'ing upper and lower parts together gives the zero-check
-             * - for negative check, need to only consider high bit of upper part
-             * => compress lower part to never set the high bit
-             */
-            auto tmp0 = assign(flagIt, flagType) = as_unsigned{out->lower->createReference()} >> 1_val;
-            // since we shift the last bit of the lower part out, need to separately add it again back in
-            auto tmp1 = assign(flagIt, flagType) = out->lower->createReference() & 1_val;
-            auto tmp2 = assign(flagIt, flagType) = tmp0 | tmp1;
-            assignNop(flagIt) = (tmp2 | out->upper->createReference(), SetFlag::SET_FLAGS);
-        }
-        else
-            throw CompilationError(
-                CompilationStep::NORMALIZER, "Unhandled flag behavior for 64-bit operation", op.to_string());
+        op.setSetFlags(SetFlag::DONT_SET);
+        lowerFlags(method, it, *out, op.op.flagBehavior);
     }
 }
 
@@ -297,29 +302,22 @@ void normalization::lowerLongOperation(
     {
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Lowering 64-bit move/rotation: " << move->to_string() << logging::endl);
-        auto out = Local::getLocalData<MultiRegisterData>(move->checkOutputLocal());
+        auto outLocal = move->checkOutputLocal();
+        auto out = Local::getLocalData<MultiRegisterData>(outLocal);
         auto src = Local::getLocalData<MultiRegisterData>(move->getSource().checkLocal());
-        if(!out)
-            throw CompilationError(
-                CompilationStep::NORMALIZER, "Can only move/rotate 64-bit values into long locals", move->to_string());
+        if(!out && move->getOutput() != NOP_REGISTER)
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Can only move/rotate 64-bit values into long locals or NOP register", move->to_string());
 
-        if(move->isSimpleMove() &&
-            (move->getSource().type.getScalarBitCount() <= 32 || move->getSource().getConstantValue()))
+        if(!outLocal && !out)
         {
-            assign(it, out->lower->createReference()) = move->getSource();
-            move->setOutput(out->upper->createReference());
-            move->setSource(Value(0_lit, move->getSource().type));
+            // If the output is NOP, we still need an output value to be able to calculate the flags
+            outLocal =
+                method.addNewLocal(TYPE_INT64.toVectorType(move->getSource().type.getVectorWidth())).checkLocal();
+            out = Local::getLocalData<MultiRegisterData>(outLocal);
         }
-        else if(move->isSimpleMove() && src)
-        {
-            // simple copy move -> copy the parts
-            it.emplace(new intermediate::MoveOperation(out->lower->createReference(), src->lower->createReference()));
-            it->copyExtrasFrom(move);
-            it.nextInBlock();
-            move->setOutput(out->upper->createReference());
-            move->setSource(src->upper->createReference());
-        }
-        else if(it.get<intermediate::VectorRotation>() && src)
+
+        if(!move->hasSideEffects() && it.get<intermediate::VectorRotation>() && src)
         {
             auto rot = it.get<intermediate::VectorRotation>();
             // split into 2 rotations
@@ -329,6 +327,28 @@ void normalization::lowerLongOperation(
             it.nextInBlock();
             move->setOutput(out->upper->createReference());
             move->setSource(src->upper->createReference());
+        }
+        else if(!move->hasOtherSideEffects(intermediate::SideEffectType::FLAGS) &&
+            (move->getSource().type.getScalarBitCount() <= 32 || move->getSource().getConstantValue()))
+        {
+            assign(it, out->lower->createReference()) = move->getSource();
+            move->setOutput(out->upper->createReference());
+            move->setSource(Value(0_lit, move->getSource().type));
+        }
+        else if(!move->hasOtherSideEffects(intermediate::SideEffectType::FLAGS) && src)
+        {
+            // simple copy move -> copy the parts
+            it.emplace(new intermediate::MoveOperation(out->lower->createReference(), src->lower->createReference()));
+            it->copyExtrasFrom(move);
+            it.nextInBlock();
+            move->setOutput(out->upper->createReference());
+            move->setSource(src->upper->createReference());
+        }
+
+        if(move->doesSetFlag())
+        {
+            move->setSetFlags(SetFlag::DONT_SET);
+            lowerFlags(method, it, *out, OP_OR.flagBehavior);
         }
     }
     else if(auto call = it.get<intermediate::MethodCall>())
@@ -382,6 +402,26 @@ void normalization::lowerLongOperation(
             it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
             it.nextInBlock();
             it.erase();
+        }
+    }
+    else if(auto load = it.get<intermediate::LoadImmediate>())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Lowering 64-bit load: " << load->to_string() << logging::endl);
+        auto out = Local::getLocalData<MultiRegisterData>(load->checkOutputLocal());
+        if(!out)
+            throw CompilationError(
+                CompilationStep::NORMALIZER, "Can only load 64-bit values into long locals", load->to_string());
+
+        load->setOutput(out->lower->createReference());
+        if(load->getImmediate().type == LiteralType::LONG_LEADING_ONES)
+            assign(it, out->upper->createReference()) = INT_MINUS_ONE;
+        else
+            assign(it, out->upper->createReference()) = INT_ZERO;
+
+        if(load->doesSetFlag())
+        {
+            load->setSetFlags(SetFlag::DONT_SET);
+            lowerFlags(method, it, *out, OP_OR.flagBehavior);
         }
     }
 }

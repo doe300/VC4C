@@ -166,6 +166,9 @@ const static std::vector<std::pair<std::string, NormalizationStep>> initialNorma
     {"MapGlobalDataToAddress", accessGlobalData},
     // moves vector-containers to locals and re-directs all uses to the local
     {"HandleLiteralVector", handleContainer},
+    // lowers operations taking or returning 64-bit values. Since other normalization steps might produce 64-bit
+    // operations, we rerun this after any other normalization step.
+    {"Lower64BitOperations", lowerLongOperation},
     // dummy step which simply checks whether all remaining instructions are normalized
     {"CheckNormalized", checkNormalized}};
 

@@ -11,17 +11,6 @@
 
 namespace vc4c
 {
-    enum class MetaDataType : unsigned char
-    {
-        ARG_ADDR_SPACES,
-        ARG_ACCESS_QUALIFIERS,
-        ARG_TYPE_NAMES,
-        ARG_TYPE_QUALIFIERS,
-        ARG_NAMES,
-        WORK_GROUP_SIZES,
-        WORK_GROUP_SIZES_HINT
-    };
-
     /*
      * Base class for any front-end implementation converting an input to a module in internal representation
      */
@@ -36,17 +25,5 @@ namespace vc4c
         virtual void parse(Module& module) = 0;
     };
 } // namespace vc4c
-
-namespace std
-{
-    template <>
-    struct hash<vc4c::MetaDataType> : public std::hash<uint8_t>
-    {
-        size_t operator()(const vc4c::MetaDataType& val) const noexcept
-        {
-            return std::hash<uint8_t>::operator()(static_cast<uint8_t>(val));
-        }
-    };
-} /* namespace std */
 
 #endif /* PARSER_H */

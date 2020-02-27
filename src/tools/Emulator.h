@@ -95,7 +95,7 @@ namespace vc4c
 
         private:
             QPU& qpu;
-            std::array<SIMDVector, 4 * 64> storageRegisters;
+            std::array<std::pair<SIMDVector, uint32_t>, 4 * 64> storageRegisters;
             Optional<SIMDVector> hostInterrupt;
             SortedMap<Register, SIMDVector> readCache;
 

@@ -4,8 +4,8 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#ifndef COMPARISONS_H
-#define COMPARISONS_H
+#ifndef VC4C_COMPARISONS_H
+#define VC4C_COMPARISONS_H
 
 #include "../InstructionWalker.h"
 
@@ -18,4 +18,4 @@ namespace vc4c
     } // namespace intrinsics
 } // namespace vc4c
 
-#endif /* COMPARISONS_H */
+#endif /* VC4C_COMPARISONS_H */

@@ -52,6 +52,12 @@ namespace vc4c
                 uint32_t sampler;
             };
 
+            enum class MetaDataType : unsigned char
+            {
+                WORK_GROUP_SIZES,
+                WORK_GROUP_SIZES_HINT
+            };
+
             // whether the input is SPIR-V text representation
             const bool isTextInput;
             // all global methods in the module
@@ -80,11 +86,19 @@ namespace vc4c
             FastAccessList<std::string> strings;
             // the global mapping of ID -> name for this ID (e.g. type-, function-name)
             FastMap<uint32_t, std::string> names;
+            // the global mapping of ID -> extended instruction set consumer
+            std::unordered_map<uint32_t, spv_result_t (SPIRVParser::*)(const spv_parsed_instruction_t*)>
+                extensionConsumers;
 
             Module* module;
 
             std::pair<spv_result_t, Optional<Value>> calculateConstantOperation(
                 const spv_parsed_instruction_t* instruction);
+
+            spv_result_t consumeOpenCLInstruction(const spv_parsed_instruction_t* instruction);
+            spv_result_t consumeDebugInfoInstruction(const spv_parsed_instruction_t* instruction);
+            spv_result_t consumeOpenCLDebugInfoInstruction(const spv_parsed_instruction_t* instruction);
+            spv_result_t consumeNonSemanticInstruction(const spv_parsed_instruction_t* instruction);
         };
     } // namespace spirv
 } // namespace vc4c

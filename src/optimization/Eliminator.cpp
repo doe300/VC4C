@@ -334,6 +334,23 @@ InstructionWalker optimizations::simplifyOperation(
                                   op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags))
                                  ->addDecorations(it->decoration));
                 }
+                else if(op->op == OP_XOR && op->getFirstArg().getLiteralValue() == Literal(-1))
+                {
+                    // LLVM converts ~%a to %a xor -1, we convert it back to free the local from use-with-literal
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Replacing XOR " << op->to_string() << " with NOT" << logging::endl);
+                    it.reset((new intermediate::Operation(OP_NOT, op->getOutput().value(), op->getSecondArg().value(),
+                                  op->conditional, op->setFlags))
+                                 ->addDecorations(it->decoration));
+                }
+                else if(op->op == OP_XOR && (op->getSecondArg() & &Value::getLiteralValue) == Literal(-1))
+                {
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Replacing XOR " << op->to_string() << " with NOT" << logging::endl);
+                    it.reset((new intermediate::Operation(
+                                  OP_NOT, op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags))
+                                 ->addDecorations(it->decoration));
+                }
             }
         }
         // TODO trunc to int32/float
