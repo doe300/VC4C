@@ -206,7 +206,8 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
                     if(auto loc = arg.checkLocal())
                     {
                         readAddresses.emplace(loc);
-                        readAddresses.emplace(loc->reference.first);
+                        if(auto data = loc->get<ReferenceData>())
+                            readAddresses.emplace(data->base);
                     }
                 }
             }
@@ -217,7 +218,8 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
                     if(auto loc = arg.checkLocal())
                     {
                         writtenAddresses.emplace(loc);
-                        writtenAddresses.emplace(loc->reference.first);
+                        if(auto data = loc->get<ReferenceData>())
+                            writtenAddresses.emplace(data->base);
                     }
                 }
             }

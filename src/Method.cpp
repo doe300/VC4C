@@ -674,6 +674,6 @@ void Method::addLocalData(Local& loc)
         auto elementType = TYPE_INT32.toVectorType(loc.type.getVectorWidth());
         auto lower = locals.emplace(Local(elementType, loc.name + ".lower")).first;
         auto upper = locals.emplace(Local(elementType, loc.name + ".upper")).first;
-        loc.data = std::make_unique<MultiRegisterData>(&*lower, &*upper);
+        loc.set(MultiRegisterData(&*lower, &*upper));
     }
 }

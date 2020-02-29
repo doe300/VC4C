@@ -7,6 +7,7 @@
 #ifndef LOCALS_H
 #define LOCALS_H
 
+#include "CompilationError.h"
 #include "Values.h"
 
 #include <functional>
@@ -73,12 +74,12 @@ namespace vc4c
     struct LocalData
     {
         LocalData() = default;
-        LocalData(const LocalData&) = delete;
-        LocalData(LocalData&&) noexcept = delete;
+        LocalData(const LocalData&) = default;
+        LocalData(LocalData&&) noexcept = default;
         virtual ~LocalData() noexcept;
 
-        LocalData& operator=(const LocalData&) = delete;
-        LocalData& operator=(LocalData&&) noexcept = delete;
+        LocalData& operator=(const LocalData&) = default;
+        LocalData& operator=(LocalData&&) noexcept = default;
 
         virtual std::string to_string() const;
     };
@@ -107,11 +108,9 @@ namespace vc4c
         bool operator==(const Local& other) const noexcept;
 
         /*
-         * Creates a Value referencing this Local at the given index (e.g. for compound-types).
-         *
-         * An index of WHOLE_OBJECT creates a reference to the whole Local
+         * Creates a Value referencing this Local.
          */
-        Value createReference(int index = WHOLE_OBJECT) const;
+        Value createReference() const;
 
         /*
          * Returns all the LocalUsers accessing this object
@@ -201,6 +200,16 @@ namespace vc4c
         }
 
         template <typename T>
+        T& set(T&& val)
+        {
+            if(data && !get<T>())
+                throw CompilationError(
+                    CompilationStep::GENERAL, "Cannot overwrite LocalData of different type", to_string(true));
+            data = std::make_unique<T>(std::move(val));
+            return dynamic_cast<T&>(*data.get());
+        }
+
+        template <typename T>
         static const T* getLocalData(const Local* loc)
         {
             return loc ? loc->get<T>() : nullptr;
@@ -220,14 +229,6 @@ namespace vc4c
          * The name of this object
          */
         std::string name;
-        /*
-         * Another local (e.g. parameter, global) referenced by this local with the index, if it is a scalar index,
-         * otherwise ANY_ELEMENT.
-         *
-         * Locals referring to each other is used for calculation of indices, where the index (or pointer to an element)
-         * refers to the original object for easier tracking of memory accessed.
-         */
-        std::pair<Local*, int> reference;
 
     protected:
         Local(DataType type, const std::string& name);
@@ -491,6 +492,32 @@ namespace vc4c
 
         /** The local storing the upper 32 bit of this local value */
         const Local* upper;
+    };
+
+    /**
+     * Additional data type for locals which refer to one or multiple other locals (i.e. pointers to memory areas).
+     *
+     * This type tracks the local's pointed-to locals.
+     */
+    struct ReferenceData : public LocalData
+    {
+        ReferenceData(const Local& ref, int index);
+        ~ReferenceData() noexcept override;
+
+        std::string to_string() const override;
+
+        /**
+         * The local representing the (memory location) this pointer local refers to.
+         *
+         * This is never NULL.
+         */
+        const Local* base;
+        /**
+         * The offset (in elements of the pointed-to data).
+         *
+         * This might be ANY_ELEMENT, if it is not a constant literal.
+         */
+        int offset;
     };
 
 } /* namespace vc4c */

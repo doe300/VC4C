@@ -63,8 +63,11 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
     const Local* ref = val.local()->getBase(false);
     if(ref != val.local())
         return findBaseAndOffset(ref->createReference());
-    if(val.local()->reference.first != nullptr && val.local()->reference.second != ANY_ELEMENT)
-        return BaseAndOffset(val.local()->reference.first->createReference(), val.local()->reference.second);
+    if(auto data = val.local()->get<ReferenceData>())
+    {
+        if(data->offset != ANY_ELEMENT)
+            return BaseAndOffset(data->base->createReference(), data->offset);
+    }
 
     const auto writers = val.local()->getUsers(LocalUse::Type::WRITER);
     if(writers.size() != 1)
@@ -749,7 +752,7 @@ void normalization::resolveStackAllocation(
                 auto finalAddr = assign(it, arg.type, "%stack_addr") = addrTemp +
                     Value(Literal(static_cast<uint32_t>(arg.local()->as<StackAllocation>()->offset + stackBaseOffset)),
                         TYPE_INT32);
-                finalAddr.local()->reference = std::make_pair(arg.local(), ANY_ELEMENT);
+                finalAddr.local()->set(ReferenceData(*arg.local(), ANY_ELEMENT));
                 it->setArgument(i, std::move(finalAddr));
             }
         }

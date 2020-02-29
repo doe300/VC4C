@@ -387,11 +387,12 @@ Value IntermediateInstruction::renameValue(
         return it->second->createReference();
     const Local* copy = method.createLocal(orig.type, prefix + origLocal->name);
     localMapping.emplace(origLocal, copy);
-    if(origLocal->reference.first != nullptr)
-        // re-reference the copied local to the (original) source
-        const_cast<std::pair<Local*, int>&>(copy->reference) = std::make_pair(
-            renameValue(method, origLocal->reference.first->createReference(), prefix, localMapping).local(),
-            origLocal->reference.second);
+    if(auto data = origLocal->get<ReferenceData>())
+    {
+        // copy the reference of the original local with updated base
+        auto& copyData = const_cast<Local*>(copy)->set(ReferenceData(*data));
+        copyData.base = renameValue(method, data->base->createReference(), prefix, localMapping).local();
+    }
     return copy->createReference();
 }
 

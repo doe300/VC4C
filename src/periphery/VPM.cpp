@@ -650,9 +650,8 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
         if(auto param = local->as<Parameter>())
             memoryAddress.local()->as<Parameter>()->decorations =
                 add_flag(param->decorations, ParameterDecorations::INPUT);
-        if(local->reference.first != nullptr && local->reference.first->as<Parameter>() != nullptr)
-            local->reference.first->as<Parameter>()->decorations =
-                add_flag(local->reference.first->as<Parameter>()->decorations, ParameterDecorations::INPUT);
+        if(auto param = local->getBase(true)->as<Parameter>())
+            const_cast<Parameter*>(param)->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
     }
 
     auto rowCount = numEntries.getLiteralValue() ? numEntries.getLiteralValue()->unsignedInt() : 0;
@@ -743,9 +742,8 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
         if(auto param = local->as<Parameter>())
             memoryAddress.local()->as<Parameter>()->decorations =
                 add_flag(param->decorations, ParameterDecorations::OUTPUT);
-        if(local->reference.first != nullptr && local->reference.first->as<Parameter>() != nullptr)
-            local->reference.first->as<Parameter>()->decorations =
-                add_flag(local->reference.first->as<Parameter>()->decorations, ParameterDecorations::OUTPUT);
+        if(auto param = local->getBase(true)->as<Parameter>())
+            const_cast<Parameter*>(param)->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
     }
 
     it = insertLockMutex(it, useMutex);
@@ -827,10 +825,10 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
         Value tmpDest = assign(it, destAddress.type, "%mem_copy_addr") =
             destAddress + Value(Literal(i * size.first.getInMemoryWidth()), TYPE_INT8);
 
-        if(auto local = srcAddress.checkLocal())
-            tmpSource.local()->reference.first = local->reference.first;
-        if(auto local = destAddress.checkLocal())
-            tmpDest.local()->reference.first = local->reference.first;
+        if(auto data = Local::getLocalData<ReferenceData>(srcAddress.checkLocal()))
+            tmpSource.local()->set(ReferenceData(*data->base, ANY_ELEMENT));
+        if(auto data = Local::getLocalData<ReferenceData>(destAddress.checkLocal()))
+            tmpDest.local()->set(ReferenceData(*data->base, ANY_ELEMENT));
 
         it = insertReadRAM(method, it, tmpSource, size.first, area, false);
         it = insertWriteRAM(method, it, tmpDest, size.first, area, false);
@@ -868,10 +866,10 @@ InstructionWalker VPM::insertCopyRAMDynamic(Method& method, InstructionWalker it
             if(auto param = local->as<Parameter>())
                 srcAddress.local()->as<Parameter>()->decorations =
                     add_flag(param->decorations, ParameterDecorations::INPUT);
-            if(local->reference.first != nullptr && local->reference.first->as<Parameter>() != nullptr)
-                local->reference.first->as<Parameter>()->decorations =
-                    add_flag(local->reference.first->as<Parameter>()->decorations, ParameterDecorations::INPUT);
-            tmpSource.local()->reference.first = local->reference.first;
+            if(auto param = local->getBase(true)->as<Parameter>())
+                const_cast<Parameter*>(param)->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
+            if(auto data = local->get<ReferenceData>())
+                tmpSource.local()->set(ReferenceData(*data->base, ANY_ELEMENT));
         }
         if(auto local = destAddress.checkLocal())
         {
@@ -879,10 +877,10 @@ InstructionWalker VPM::insertCopyRAMDynamic(Method& method, InstructionWalker it
             if(auto param = local->as<Parameter>())
                 destAddress.local()->as<Parameter>()->decorations =
                     add_flag(param->decorations, ParameterDecorations::OUTPUT);
-            if(local->reference.first != nullptr && local->reference.first->as<Parameter>() != nullptr)
-                local->reference.first->as<Parameter>()->decorations =
-                    add_flag(local->reference.first->as<Parameter>()->decorations, ParameterDecorations::OUTPUT);
-            tmpDest.local()->reference.first = local->reference.first;
+            if(auto param = local->getBase(true)->as<Parameter>())
+                const_cast<Parameter*>(param)->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
+            if(auto data = local->get<ReferenceData>())
+                tmpDest.local()->set(ReferenceData(*data->base, ANY_ELEMENT));
         }
 
         inLoopIt = insertReadRAM(method, inLoopIt, tmpSource, elementType, area, false);

@@ -53,17 +53,12 @@ bool CallSite::mapInstruction(Method& method)
         Value pointer = arguments.at(1);
         if(!pointer.local()->is<StackAllocation>())
         {
-            // the source of the life-time intrinsic could be bit-cast from an alloca-instruction
             if(auto move = dynamic_cast<const intermediate::MoveOperation*>(pointer.getSingleWriter()))
-            {
+                // the source of the life-time intrinsic could be bit-cast from an alloca-instruction
                 pointer = move->getSource();
-            }
-            // it also could be a getelementptr (to the index 0)
-            else if(pointer.local()->reference.first != nullptr &&
-                pointer.local()->reference.first->is<StackAllocation>())
-            {
-                pointer = pointer.local()->reference.first->createReference();
-            }
+            else if(auto alloc = pointer.local()->getBase(true)->as<StackAllocation>())
+                // it also could be a getelementptr (to the index 0)
+                pointer = alloc->createReference();
         }
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Converting life-time instrinsic to life-time instruction" << logging::endl);

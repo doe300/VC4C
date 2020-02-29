@@ -17,7 +17,7 @@ std::string LocalData::to_string() const
     return "";
 }
 
-Local::Local(DataType type, const std::string& name) : type(type), name(name), reference(nullptr, ANY_ELEMENT) {}
+Local::Local(DataType type, const std::string& name) : type(type), name(name) {}
 
 bool Local::operator<(const Local& other) const noexcept
 {
@@ -29,12 +29,8 @@ bool Local::operator==(const Local& other) const noexcept
     return this == &other || name == other.name;
 }
 
-Value Local::createReference(int index) const
+Value Local::createReference() const
 {
-    if(index != WHOLE_OBJECT)
-    {
-        return Value(const_cast<Local*>(this), type.getElementType(index));
-    }
     return Value(const_cast<Local*>(this), type);
 }
 
@@ -122,19 +118,7 @@ const LocalUser* Local::getSingleWriter() const
 LCOV_EXCL_START
 std::string Local::to_string(bool withContent) const
 {
-    std::string content;
-    if(withContent && reference.first != nullptr)
-    {
-        // FIXME very often the Local referenced here is already freed by Method#cleanLocals(). The references need to
-        // be updated!
-        content = std::string(" (ref ") + reference.first->to_string(false) +
-            (reference.second == ANY_ELEMENT ? std::string("") :
-                                               (std::string(" at ") + std::to_string(reference.second))) +
-            ")";
-    }
-    if(withContent && data)
-        content += data->to_string();
-    return (type.to_string() + " ") + name + content;
+    return (type.to_string() + " ") + name + (withContent && data ? data->to_string() : "");
 }
 LCOV_EXCL_STOP
 
@@ -145,9 +129,10 @@ bool Local::residesInMemory() const
 
 const Local* Local::getBase(bool includeOffsets) const
 {
-    if(reference.first != nullptr && (reference.second == 0 || includeOffsets))
+    if(auto data = get<ReferenceData>())
     {
-        return reference.first->getBase(includeOffsets);
+        if(data->offset == 0 || includeOffsets)
+            return data->base->getBase(includeOffsets);
     }
     return this;
 }
@@ -267,5 +252,17 @@ LCOV_EXCL_START
 std::string MultiRegisterData::to_string() const
 {
     return " (" + lower->name + ", " + upper->name + ")";
+}
+LCOV_EXCL_STOP
+
+ReferenceData::ReferenceData(const Local& ref, int index) : base(&ref), offset(index) {}
+
+ReferenceData::~ReferenceData() noexcept = default;
+
+LCOV_EXCL_START
+std::string ReferenceData::to_string() const
+{
+    return std::string(" (ref ") + base->to_string(false) +
+        (offset == ANY_ELEMENT ? std::string("") : (std::string(" at ") + std::to_string(offset))) + ")";
 }
 LCOV_EXCL_STOP

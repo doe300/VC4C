@@ -78,28 +78,21 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                 // map parameters to arguments
                 for(std::size_t i = 0; i < call->getArguments().size(); ++i)
                 {
+                    auto callArg = call->assertArgument(i);
                     const Parameter& param = calledMethod->parameters.at(i);
-                    const Value ref =
-                        currentMethod.createLocal(param.type, newLocalPrefix + param.name)->createReference();
+                    auto ref = currentMethod.createLocal(param.type, newLocalPrefix + param.name)->createReference();
                     mapping.emplace(&param, ref.local());
                     if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
-                    {
-                        it = intermediate::insertSignExtension(
-                            it, currentMethod, call->getArgument(i).value(), ref, true);
-                    }
+                        it = intermediate::insertSignExtension(it, currentMethod, callArg, ref, true);
                     else if(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND))
-                    {
-                        it = intermediate::insertZeroExtension(
-                            it, currentMethod, call->getArgument(i).value(), ref, true);
-                    }
+                        it = intermediate::insertZeroExtension(it, currentMethod, callArg, ref, true);
                     else
                     {
-                        it.emplace(new intermediate::MoveOperation(ref, call->getArgument(i).value()));
-                        if(ref.checkLocal() && call->getArgument(i)->checkLocal())
-                            const_cast<Local*>(it->getOutput()->local())->reference =
-                                std::make_pair(call->getArgument(i)->local(), 0);
+                        it.emplace(new intermediate::MoveOperation(ref, callArg));
                         it.nextInMethod();
                     }
+                    if(ref.checkLocal() && callArg.checkLocal() && callArg.type.getPointerType())
+                        ref.local()->set(ReferenceData(*callArg.local()->getBase(false), 0));
                 }
                 // add parameters and locals to locals of parent
                 for(const Parameter& arg : calledMethod->parameters)

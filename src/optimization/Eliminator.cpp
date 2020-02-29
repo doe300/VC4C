@@ -470,15 +470,14 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
             if(pair.second.hasLocal(output) || pair.second.local()->getBase(true) == output)
                 // phi node references its own result, ignore
                 continue;
-            if(ref != nullptr &&
-                !(pair.second.local()->getBase(true) == ref || pair.second.local()->reference.first == ref))
+            if(ref != nullptr && pair.second.local()->getBase(true) != ref)
                 // references differ
                 return;
             ref = pair.second.local()->getBase(true);
         }
 
-        node.getOutput()->local()->reference.first = const_cast<Local*>(ref);
-        node.getOutput()->local()->reference.second = ANY_ELEMENT;
+        if(ref && node.getOutput()->type.getPointerType())
+            node.getOutput()->local()->set(ReferenceData(*ref, ANY_ELEMENT));
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "PHI output: " << node.getOutput()->to_string(true, true) << logging::endl);
     }
@@ -754,11 +753,15 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                     if((*destinationReader)->assertArgument(i).hasLocal(oldLocal))
                         (*destinationReader)->setArgument(i, std::move(newInput));
                 }
-                if(oldLocal->residesInMemory() && (*destinationReader)->checkOutputLocal() &&
-                    (*destinationReader)->getOutput()->local()->getBase(true) ==
-                        (*destinationReader)->getOutput()->local())
-                    (*destinationReader)->getOutput()->local()->reference =
-                        std::make_pair(const_cast<Local*>(oldLocal), ANY_ELEMENT);
+                if((*destinationReader)->checkOutputLocal() &&
+                    !Local::getLocalData<LocalData>((*destinationReader)->checkOutputLocal()))
+                {
+                    if(oldLocal->residesInMemory())
+                        const_cast<Local*>((*destinationReader)->checkOutputLocal())
+                            ->set(ReferenceData(*oldLocal, ANY_ELEMENT));
+                    else if(auto data = oldLocal->get<ReferenceData>())
+                        const_cast<Local*>((*destinationReader)->checkOutputLocal())->set(ReferenceData(*data));
+                }
                 it.erase();
                 // to not skip the next instruction
                 it.previousInBlock();

@@ -881,9 +881,9 @@ InstructionWalker normalization::handleUseWithImmediate(
                         log << "Inserting temporary to split up use of long-living local with immediate value: "
                             << op->to_string() << logging::endl);
                     Value tmp = method.addNewLocal(localIt->type, localPrefix);
-                    if(localIt->local()->reference.first != nullptr)
+                    if(auto data = localIt->local()->get<ReferenceData>())
                         // the use-with literal also references the value referenced by the original local
-                        tmp.local()->reference = localIt->local()->reference;
+                        tmp.local()->set(ReferenceData(*data));
                     it.emplace(new intermediate::MoveOperation(tmp, *localIt));
                     // since we simply move the source, some decorations for the writing of the source still apply
                     // TODO or more generally propagate (unsigned) decoration for every moves and some operations (e.g.

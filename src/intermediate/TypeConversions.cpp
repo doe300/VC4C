@@ -218,7 +218,7 @@ InstructionWalker intermediate::insertBitcast(
     // last step: map destination to source (if bit-cast of pointers)
     if(dest.checkLocal() && src.checkLocal() && dest.type.getPointerType() && src.type.getPointerType())
         // this helps recognizing lifetime-starts of bit-cast stack-allocations
-        const_cast<std::pair<Local*, int>&>(dest.local()->reference) = std::make_pair(src.local(), 0);
+        const_cast<Local*>(dest.local())->set(ReferenceData(*src.local(), 0));
     it->addDecorations(deco);
     it.nextInBlock();
     return it;

@@ -228,7 +228,8 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
     if(firstIndexIsElement && indices.at(0).isZeroInitializer())
         index = indices.size() > 1 ? indices.at(1) : UNDEFINED_VALUE;
     const int refIndex = index.getLiteralValue().value_or(Literal(ANY_ELEMENT)).signedInt();
-    const_cast<std::pair<Local*, int>&>(dest.local()->reference) = std::make_pair(container.local(), refIndex);
+    if(dest.type.getPointerType() && container.checkLocal())
+        const_cast<Local*>(dest.local())->set(ReferenceData(*container.local(), refIndex));
 
     DataType finalType = subContainerType;
     if(auto arrayType = subContainerType.getArrayType())

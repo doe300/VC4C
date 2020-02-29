@@ -662,7 +662,7 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         else
             it = localMapping.find(id);
         if(it != localMapping.end())
-            dest = it->second->createReference(ANY_ELEMENT);
+            dest = it->second->createReference();
         else
         {
             dest = method.method->createLocal(source.type, std::string("%") + std::to_string(id))->createReference();

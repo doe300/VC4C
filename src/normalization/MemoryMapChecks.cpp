@@ -62,9 +62,12 @@ Optional<Value> normalization::getConstantValue(const Value& source)
     if(global->initialValue.isAllSame())
         // all entries are the same
         return globalContainer->at(0).toValue();
-    if(globalContainer && source.local()->reference.second >= 0)
+    auto sourceData = source.local()->get<ReferenceData>();
+    if(globalContainer && sourceData && sourceData->offset >= 0)
         // fixed index
-        return globalContainer->at(static_cast<std::size_t>(source.local()->reference.second)).toValue();
+        // TODO this might be wrong! The offset is not necessarily the offset directly into the global, it could be a
+        // sub-offset!
+        return globalContainer->at(static_cast<std::size_t>(sourceData->offset)).toValue();
     if(auto val = global->initialValue.toValue())
     {
         if(auto vector = val->checkVector())
@@ -158,8 +161,8 @@ static NODISCARD std::pair<InstructionWalker, InstructionWalker> insert64BitWrit
     auto startIt = it;
     it.nextInBlock();
     auto upperIndex = assign(it, lowerIndex.type) = lowerIndex + 4_val;
-    if(auto ref = lowerIndex.local()->reference.first)
-        upperIndex.local()->reference.first = ref;
+    if(auto data = lowerIndex.local()->get<ReferenceData>())
+        upperIndex.local()->set(ReferenceData(*data));
     it.emplace(
         new MemoryInstruction(MemoryOperation::WRITE, std::move(upperIndex), std::move(upper), Value(INT_ONE), false));
     if(origInstruction)
@@ -393,15 +396,15 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                         auto valueType = method.createPointerType(nextMemInstr->getSourceElementType());
                         {
                             auto tmp = method.addNewLocal(valueType);
-                            if(auto loc = src.checkLocal())
-                                tmp.local()->reference = loc->reference;
+                            if(auto data = Local::getLocalData<ReferenceData>(src.checkLocal()))
+                                tmp.local()->set(ReferenceData(*data));
                             assign(nextIt, tmp) = src;
                             src = tmp;
                         }
                         {
                             auto tmp = method.addNewLocal(valueType);
-                            if(auto loc = dest.checkLocal())
-                                tmp.local()->reference = loc->reference;
+                            if(auto data = Local::getLocalData<ReferenceData>(dest.checkLocal()))
+                                tmp.local()->set(ReferenceData(*data));
                             assign(nextIt, tmp) = dest;
                             dest = tmp;
                         }
@@ -534,8 +537,8 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                     auto startIt = it;
                     it.nextInBlock();
                     auto upperIndex = assign(it, lowerIndex.type) = lowerIndex + 4_val;
-                    if(auto ref = lowerIndex.local()->reference.first)
-                        upperIndex.local()->reference.first = ref;
+                    if(auto data = lowerIndex.local()->get<ReferenceData>())
+                        upperIndex.local()->set(ReferenceData(*data));
                     it.emplace(new MemoryInstruction(
                         MemoryOperation::READ, Value(upperLocal), std::move(upperIndex), Value(INT_ONE), false));
                     it->copyExtrasFrom(memInstr);
