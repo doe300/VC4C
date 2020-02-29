@@ -140,7 +140,6 @@ namespace vc4c
             FastSet<const Local*> openSet;
             std::unique_ptr<analysis::InterferenceGraph> interferenceGraph;
             FastMap<const Local*, LocalUsage> localUses;
-            bool isReplicationUsed = false;
 
             ColoredGraph graph;
             FastSet<const Local*> errorSet;

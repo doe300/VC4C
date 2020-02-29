@@ -14,6 +14,9 @@
 using namespace vc4c;
 using namespace vc4c::analysis;
 
+static std::unique_ptr<Local> replicateRegisterLocal(new Parameter("%replicate_register", TYPE_INT32.toVectorType(16)));
+const Local* analysis::FAKE_REPLICATE_REGISTER = replicateRegisterLocal.get();
+
 LivenessChangesAnalysis::LivenessChangesAnalysis() :
     LocalAnalysis(LivenessChangesAnalysis::analyzeLivenessChanges, LivenessChangesAnalysis::to_string)
 {
@@ -25,8 +28,20 @@ static bool isIfElseWrite(const FastSet<const LocalUser*>& users)
     return users.size() == 2 && (*users.begin())->conditional.isInversionOf((*(++users.begin()))->conditional);
 }
 
+static bool readsR5(const intermediate::IntermediateInstruction& instr)
+{
+    return instr.readsRegister(REG_ACC5) || instr.readsRegister(REG_REPLICATE_ALL) ||
+        instr.readsRegister(REG_REPLICATE_QUAD);
+}
+
+static bool writesR5(const intermediate::IntermediateInstruction& instr)
+{
+    return instr.writesRegister(REG_ACC5) || instr.writesRegister(REG_REPLICATE_ALL) ||
+        instr.writesRegister(REG_REPLICATE_QUAD);
+}
+
 static LivenessChanges analyzeLivenessChangesInner(
-    const intermediate::IntermediateInstruction& instr, LivenessAnalysisCache& cache)
+    const intermediate::IntermediateInstruction& instr, LivenessAnalysisCache& cache, bool trackR5Usage)
 {
     PROFILE_START(LivenessChangesAnalysis);
     LivenessChanges changes;
@@ -37,7 +52,7 @@ static LivenessChanges analyzeLivenessChangesInner(
         // labels do not change any lifetime, since we do not track label lifetimes
         return changes;
 
-    instr.forUsedLocals([&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
+    auto localConsumer = [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
         if(has_flag(type, LocalUse::Type::WRITER) &&
             !inst.hasDecoration(vc4c::intermediate::InstructionDecorations::ELEMENT_INSERTION))
         {
@@ -76,17 +91,40 @@ static LivenessChanges analyzeLivenessChangesInner(
                     conditionalReads.emplace(loc, inst.conditional);
             }
         }
-    });
+    };
+
+    instr.forUsedLocals(localConsumer);
+    if(trackR5Usage)
+    {
+        auto usageConsumer = [&](const intermediate::IntermediateInstruction& inst) {
+            LocalUse::Type type = LocalUse::Type::NONE;
+            if(writesR5(inst))
+                type = add_flag(type, LocalUse::Type::WRITER);
+            if(readsR5(inst))
+                type = add_flag(type, LocalUse::Type::READER);
+            if(type != LocalUse::Type::NONE)
+                localConsumer(FAKE_REPLICATE_REGISTER, type, inst);
+        };
+        if(auto combined = dynamic_cast<const intermediate::CombinedOperation*>(&instr))
+        {
+            if(auto first = combined->getFirstOp())
+                usageConsumer(*first);
+            if(auto second = combined->getSecondOP())
+                usageConsumer(*second);
+        }
+        else
+            usageConsumer(instr);
+    }
 
     PROFILE_END(LivenessChangesAnalysis);
     return changes;
 }
 
 LivenessChanges LivenessChangesAnalysis::analyzeLivenessChanges(const intermediate::IntermediateInstruction* instr,
-    const LivenessChanges& previousChanges, LivenessAnalysisCache& cache)
+    const LivenessChanges& previousChanges, LivenessAnalysisCache& cache, bool trackR5Usage)
 {
     if(instr)
-        return analyzeLivenessChangesInner(*instr, cache);
+        return analyzeLivenessChangesInner(*instr, cache, trackR5Usage);
     return {};
 }
 
@@ -126,7 +164,7 @@ static FastSet<const Local*> updateLiveness(
     FastSet<const Local*>&& nextResult, const LivenessChanges& changes, bool skipAdditions = false);
 
 FastSet<const Local*> LivenessAnalysis::analyzeIncomingLiveLocals(
-    const BasicBlock& block, FastSet<const Local*>&& outgoingLiveLocals)
+    const BasicBlock& block, bool trackR5Usage, FastSet<const Local*>&& outgoingLiveLocals)
 {
     Cache c;
     auto prevVal = std::move(outgoingLiveLocals);
@@ -135,7 +173,7 @@ FastSet<const Local*> LivenessAnalysis::analyzeIncomingLiveLocals(
     {
         --it;
         if(*it)
-            prevVal = updateLiveness(std::move(prevVal), analyzeLivenessChangesInner(*it->get(), c));
+            prevVal = updateLiveness(std::move(prevVal), analyzeLivenessChangesInner(*it->get(), c, trackR5Usage));
     } while(it != block.begin());
     return prevVal;
 }
@@ -181,9 +219,9 @@ void LivenessAnalysis::updateWithChanges(
 }
 
 FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::IntermediateInstruction* instr,
-    const FastSet<const Local*>& nextResult, LivenessAnalysisCache& cache)
+    const FastSet<const Local*>& nextResult, LivenessAnalysisCache& cache, bool trackR5Usage)
 {
-    auto changes = instr ? analyzeLivenessChangesInner(*instr, cache) : LivenessChanges{};
+    auto changes = instr ? analyzeLivenessChangesInner(*instr, cache, trackR5Usage) : LivenessChanges{};
     return updateLiveness(FastSet<const Local*>{nextResult}, changes);
 }
 
@@ -292,7 +330,7 @@ void GlobalLivenessAnalysis::operator()(Method& method)
     for(const auto& block : method)
     {
         auto it = changes.emplace(&block, LivenessChangesAnalysis{}).first;
-        it->second(block);
+        it->second(block, trackR5Usage);
     }
 
     // The cache of the live locals at the end of a given basic blocks (e.g. consumed by any succeeding block)

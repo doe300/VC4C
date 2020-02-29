@@ -213,7 +213,7 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createTransitiveDepend
 {
     PROFILE_START(createTransitiveDependencyGraph);
     std::unique_ptr<DataDependencyGraph> graph(new DataDependencyGraph(method.size()));
-    analysis::GlobalLivenessAnalysis gla;
+    analysis::GlobalLivenessAnalysis gla(false);
     gla(method);
     makeTransitive(method.getCFG(), *graph, gla);
 

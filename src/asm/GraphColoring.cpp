@@ -9,6 +9,7 @@
 #include "../Profiler.h"
 #include "../analysis/ControlFlowGraph.h"
 #include "../analysis/DebugGraph.h"
+#include "../analysis/LivenessAnalysis.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "RegisterAllocation.h"
 #include "log.h"
@@ -453,19 +454,36 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
                 }
             });
         }
-        if(it.has() &&
-            (it->writesRegister(REG_REPLICATE_QUAD) || it->writesRegister(REG_REPLICATE_ALL) ||
-                it->writesRegister(REG_ACC5) || it->readsRegister(REG_REPLICATE_QUAD) ||
-                it->readsRegister(REG_REPLICATE_ALL) || it->readsRegister(REG_ACC5)))
-            isReplicationUsed = true;
         it.nextInMethod();
     }
+}
+
+/**
+ * Insert node for r5 register precolored to only allow r5.
+ *
+ * This is used to only block the r5 accumulator for the ranges where it is actually used, to be able to map more load
+ * output locals to r5.
+ */
+static void insertR5Node(ColoredGraph& graph)
+{
+    auto& r5Node = graph.getOrCreateNode(analysis::FAKE_REPLICATE_REGISTER,
+        ColoredNode(graph, analysis::FAKE_REPLICATE_REGISTER, RegisterFile::ACCUMULATOR));
+    r5Node.blockRegister(RegisterFile::ACCUMULATOR, 0);
+    r5Node.blockRegister(RegisterFile::ACCUMULATOR, 1);
+    r5Node.blockRegister(RegisterFile::ACCUMULATOR, 2);
+    r5Node.blockRegister(RegisterFile::ACCUMULATOR, 3);
+    r5Node.blockRegister(RegisterFile::ACCUMULATOR, 4);
+    if(r5Node.getRegisterFixed() != REG_ACC5)
+        throw CompilationError(
+            CompilationStep::LABEL_REGISTER_MAPPING, "Replication register node is not fixed to replication register");
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Created dummy node: " << r5Node.to_string(false) << logging::endl);
 }
 
 void GraphColoring::createGraph()
 {
     interferenceGraph = analysis::InterferenceGraph::createGraph(method);
     graph.reserveNodeSize(localUses.size());
+    insertR5Node(graph);
     // 1. iteration: set files and locals used together and map to start/end of range
     PROFILE_START(createColoredNodes);
     for(const auto& pair : localUses)
@@ -473,15 +491,15 @@ void GraphColoring::createGraph()
         auto& node = graph.getOrCreateNode(pair.first);
         node.possibleFiles = pair.second.possibleFiles;
         node.initialFile = pair.second.possibleFiles;
-        if(isReplicationUsed ||
-            dynamic_cast<const intermediate::LoadImmediate*>(pair.first->getSingleWriter()) == nullptr ||
-            dynamic_cast<const intermediate::LoadImmediate*>(pair.first->getSingleWriter())->type !=
-                intermediate::LoadType::REPLICATE_INT32)
-            // XXX we could optimize on the check whether r5 is used anywhere and check whether it is used in the
-            // usage-range of the local, but this would require tracking all usage-ranges of r5 for replications.
-            // Since writing to r5 automatically replicates, we only use it for value we know to be the same across all
-            // SIMD elements
-            node.blockR5();
+        {
+            auto load = dynamic_cast<const intermediate::LoadImmediate*>(pair.first->getSingleWriter());
+            auto move = dynamic_cast<const intermediate::MoveOperation*>(pair.first->getSingleWriter());
+            if(!(load && load->type == intermediate::LoadType::REPLICATE_INT32) &&
+                !(move && !dynamic_cast<const intermediate::VectorRotation*>(move) && move->readsRegister(REG_UNIFORM)))
+                // Since writing to r5 automatically replicates, we only use it for values we know to be the same across
+                // all SIMD elements
+                node.blockR5();
+        }
         if(pair.second.firstOccurrence.get() == pair.second.lastOccurrence.get())
         {
             CPPLOG_LAZY(
@@ -583,6 +601,12 @@ void GraphColoring::createGraph()
             });
         }
     }
+    // block all locals which interfere with r5 usage from using r5
+    graph.assertNode(analysis::FAKE_REPLICATE_REGISTER)
+        .forAllEdges([](ColoredNode& neighbor, ColoredEdge& edge) -> bool {
+            neighbor.blockR5();
+            return true;
+        });
     while(!openNodes.empty())
     {
         auto& node = *openNodes.begin();

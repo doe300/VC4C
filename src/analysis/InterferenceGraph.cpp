@@ -34,7 +34,7 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method
     std::unique_ptr<InterferenceGraph> graph_ptr(new InterferenceGraph(method.getNumLocals()));
     auto& graph = *graph_ptr;
 
-    GlobalLivenessAnalysis livenessAnalysis;
+    GlobalLivenessAnalysis livenessAnalysis(true);
     livenessAnalysis(method);
 
     PROFILE_START(LivenessToInterference);

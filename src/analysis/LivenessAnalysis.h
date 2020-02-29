@@ -27,6 +27,13 @@ namespace vc4c
         using LivenessAnalysisCache = std::pair<FastSet<const Local*>, FastMap<const Local*, ConditionCode>>;
 
         /**
+         * Dummy local which indicated the r5/replicate registers.
+         *
+         * NOTE: This pointer is only valid for the liveness analysis and all derived analysis algorithms!
+         */
+        extern const Local* FAKE_REPLICATE_REGISTER;
+
+        /**
          * Analyses the changes in the liveness of locals within a basic block
          *
          * See LivenessAnalysis below for details.
@@ -34,7 +41,7 @@ namespace vc4c
          * This is a helper analysis and probably won't be useful on its own.
          */
         class LivenessChangesAnalysis
-            : public LocalAnalysis<AnalysisDirection::BACKWARD, LivenessChanges, LivenessAnalysisCache>
+            : public LocalAnalysis<AnalysisDirection::BACKWARD, LivenessChanges, LivenessAnalysisCache, bool>
         {
         public:
             explicit LivenessChangesAnalysis();
@@ -48,7 +55,7 @@ namespace vc4c
              * - any other live local remains live
              */
             static LivenessChanges analyzeLivenessChanges(const intermediate::IntermediateInstruction* instr,
-                const LivenessChanges& previousChanges, LivenessAnalysisCache& cache);
+                const LivenessChanges& previousChanges, LivenessAnalysisCache& cache, bool trackR5Usage);
 
             static std::string to_string(const LivenessChanges& changes);
         };
@@ -66,7 +73,7 @@ namespace vc4c
          * Also called Live Variable Analysis (https://en.wikipedia.org/wiki/Live_variable_analysis)
          */
         class LivenessAnalysis
-            : public LocalAnalysis<AnalysisDirection::BACKWARD, FastSet<const Local*>, LivenessAnalysisCache>
+            : public LocalAnalysis<AnalysisDirection::BACKWARD, FastSet<const Local*>, LivenessAnalysisCache, bool>
         {
         public:
             // The optional parameter are the locals assumed to be live at the end of the block
@@ -74,6 +81,9 @@ namespace vc4c
 
             /**
              * Analyzes the live locals inside the block and returns the live locals at the beginning of the block.
+             *
+             * If the trackR5Usage flag is set to true, the usages of the R5/replicate register will be tracked under
+             * the dummy local FAKE_REPLICATE_REGISTER.
              *
              * The optional parameter outgoingLiveLocals takes the locals that are live at the end of the block (i.e.
              * that are live at the beginning of the successor blocks). If this parameter is not set, only locals used
@@ -85,7 +95,7 @@ namespace vc4c
              * Returns the live locals at the beginning of the block
              */
             static FastSet<const Local*> analyzeIncomingLiveLocals(
-                const BasicBlock& block, FastSet<const Local*>&& outgoingLiveLocals = {});
+                const BasicBlock& block, bool trackR5Usage, FastSet<const Local*>&& outgoingLiveLocals = {});
 
             /**
              * Analyzes the live locals inside the block using the given precalculated liveness changes.
@@ -118,7 +128,7 @@ namespace vc4c
              * - any other live local remains live
              */
             static FastSet<const Local*> analyzeLiveness(const intermediate::IntermediateInstruction* instr,
-                const FastSet<const Local*>& nextResult, LivenessAnalysisCache& cache);
+                const FastSet<const Local*>& nextResult, LivenessAnalysisCache& cache, bool trackR5Usage);
 
             static std::string to_string(const FastSet<const Local*>& liveLocals);
         };
@@ -137,7 +147,7 @@ namespace vc4c
         class GlobalLivenessAnalysis
         {
         public:
-            explicit GlobalLivenessAnalysis() = default;
+            explicit GlobalLivenessAnalysis(bool trackR5) : trackR5Usage(trackR5) {}
 
             void operator()(Method& method);
 
@@ -152,6 +162,7 @@ namespace vc4c
             void dumpResults(const Method& method) const;
 
         private:
+            bool trackR5Usage;
             FastMap<const BasicBlock*, std::unique_ptr<LivenessAnalysis>> results;
             FastMap<const BasicBlock*, LivenessChangesAnalysis> changes;
         };
