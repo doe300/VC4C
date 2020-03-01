@@ -180,9 +180,9 @@ static void lowerLongOperation(
          * Since we have offset < 32 it also fits into the lower 5 bits actually used by the QPU!
          */
         cond = cond.invert();
-        auto tmpLow = assign(it, out->lower->type) = (as_unsigned{in0Low} >> in1Low.value(), cond);
-        auto tmpOffset = assign(it, offsetType) = (32_val - in1Low.value(), cond);
-        auto tmpUp = assign(it, out->upper->type) = (in0Up << tmpOffset, cond);
+        auto tmpLow = assign(it, out->lower->type, "%long_shift") = (as_unsigned{in0Low} >> in1Low.value(), cond);
+        auto tmpOffset = assign(it, offsetType, "%long_shift") = (32_val - in1Low.value(), cond);
+        auto tmpUp = assign(it, out->upper->type, "%long_shift") = (in0Up << tmpOffset, cond);
         // special handling required since for offset of zero, we need to skip OR'ing the upper part to the lower part
         assign(it, tmpUp) = (INT_ZERO, zeroCond);
         assign(it, out->lower->createReference()) = (tmpLow | tmpUp, cond);
@@ -206,7 +206,7 @@ static void lowerLongOperation(
          *
          * Since offset is between 32 and 63, the effective offset fits into the lower 5 bits actually used by the QPU!
          */
-        auto offset = assign(it, offsetType) = (in1Low.value() - 32_val, cond);
+        auto offset = assign(it, offsetType, "%long_shift") = (in1Low.value() - 32_val, cond);
         assign(it, out->lower->createReference()) = (INT_ZERO, cond);
         assign(it, out->upper->createReference()) = (in0Low << offset, cond);
         /*
@@ -220,11 +220,11 @@ static void lowerLongOperation(
          */
         cond = cond.invert();
         assign(it, out->lower->createReference()) = (in0Low << in1Low.value(), cond);
-        auto tmpOffset = assign(it, offsetType) = (32_val - in1Low.value(), cond);
-        auto tmpLow = assign(it, out->lower->type) = (as_unsigned{in0Low} >> tmpOffset, cond);
+        auto tmpOffset = assign(it, offsetType, "%long_shift") = (32_val - in1Low.value(), cond);
+        auto tmpLow = assign(it, out->lower->type, "%long_shift") = (as_unsigned{in0Low} >> tmpOffset, cond);
         // special handling required since for offset of zero, we need to skip OR'ing the lower part to the upper part
         assign(it, tmpLow) = (INT_ZERO, zeroCond);
-        auto tmpUp = assign(it, out->upper->type) = (in0Up << in1Low.value(), cond);
+        auto tmpUp = assign(it, out->upper->type, "%long_shift") = (in0Up << in1Low.value(), cond);
         op.setOutput(out->upper->createReference());
         op.op = OP_OR;
         op.setArgument(0, tmpLow);
@@ -246,14 +246,16 @@ static void lowerLongOperation(
          *
          * Since we cannot combine flags, we calculate in reverse order:
          */
-        auto upperEqualNegLower = assign(it, out->lower->type) = min(as_signed{in0Low}, as_signed{in1Low.value()});
-        auto upperEqualPosLower = assign(it, out->lower->type) = max(as_signed{in0Low}, as_signed{in1Low.value()});
+        auto upperEqualNegLower = assign(it, out->lower->type, "%long_max") =
+            min(as_signed{in0Low}, as_signed{in1Low.value()});
+        auto upperEqualPosLower = assign(it, out->lower->type, "%long_max") =
+            max(as_signed{in0Low}, as_signed{in1Low.value()});
         auto negativeCond = assignNop(it) = as_signed{in0Up} < as_signed{INT_ZERO};
-        auto upperEqualLower = assign(it, out->lower->type) = (upperEqualNegLower, negativeCond);
+        auto upperEqualLower = assign(it, out->lower->type, "%long_max") = (upperEqualNegLower, negativeCond);
         assign(it, upperEqualLower) = (upperEqualPosLower, negativeCond.invert());
 
         auto equalCond = assignNop(it) = as_signed{in0Up} == as_signed{in1Up.value()};
-        auto upperEqualOrLessLower = assign(it, out->lower->type) = (upperEqualLower, equalCond);
+        auto upperEqualOrLessLower = assign(it, out->lower->type, "%long_max") = (upperEqualLower, equalCond);
         assign(it, upperEqualOrLessLower) = (in1Low.value(), equalCond.invert());
 
         it.emplace(new intermediate::Operation(OP_MAX, out->upper->createReference(), in0Up, in1Up.value()));
@@ -266,6 +268,46 @@ static void lowerLongOperation(
         op.setOutput(out->lower->createReference());
         op.setArgument(0, upperEqualOrLessLower);
         op.setArgument(1, upperEqualOrLessLower);
+        op.setCondition(COND_CARRY_CLEAR);
+    }
+    else if(op.op == OP_MIN)
+    {
+        /*
+         * %a.upper < %b.upper:
+         *   %out.upper = %a.upper
+         *   %out.lower = %a.lower
+         * %a.upper > %b.upper:
+         *   %out.upper = %b.upper
+         *   %out.lower = %b.lower
+         * %a.upper == %b.upper:
+         *   %out.upper = %a.upper
+         *   %out.lower = %a.upper < 0 ? max(%a.lower, %b.lower) : min(%a.lower, %b.lower)
+         *
+         * Since we cannot combine flags, we calculate in reverse order:
+         */
+        auto upperEqualNegLower = assign(it, out->lower->type, "%long_min") =
+            max(as_signed{in0Low}, as_signed{in1Low.value()});
+        auto upperEqualPosLower = assign(it, out->lower->type, "%long_min") =
+            min(as_signed{in0Low}, as_signed{in1Low.value()});
+        auto negativeCond = assignNop(it) = as_signed{in0Up} < as_signed{INT_ZERO};
+        auto upperEqualLower = assign(it, out->lower->type, "%long_min") = (upperEqualNegLower, negativeCond);
+        assign(it, upperEqualLower) = (upperEqualPosLower, negativeCond.invert());
+
+        auto equalCond = assignNop(it) = as_signed{in0Up} == as_signed{in1Up.value()};
+        auto upperEqualOrGreaterLower = assign(it, out->lower->type, "%long_min") = (upperEqualLower, equalCond);
+        assign(it, upperEqualOrGreaterLower) = (in1Low.value(), equalCond.invert());
+
+        // min(a, b) sets carry flag is a > b, so we invert operands to set carry if %a < %b
+        it.emplace(new intermediate::Operation(OP_MIN, out->upper->createReference(), in1Up.value(), in0Up));
+        it->setSetFlags(SetFlag::SET_FLAGS);
+        it.nextInBlock();
+
+        assign(it, out->lower->createReference()) = (in0Low, COND_CARRY_SET);
+
+        op.op = OP_OR;
+        op.setOutput(out->lower->createReference());
+        op.setArgument(0, upperEqualOrGreaterLower);
+        op.setArgument(1, upperEqualOrGreaterLower);
         op.setCondition(COND_CARRY_CLEAR);
     }
 

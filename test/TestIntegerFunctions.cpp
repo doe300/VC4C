@@ -103,6 +103,8 @@ TestIntegerFunctions::TestIntegerFunctions(const vc4c::Configuration& config) : 
     TEST_ADD(TestIntegerFunctions::testMaxUnsignedInt);
     TEST_ADD(TestIntegerFunctions::testMaxUnsignedShort);
     TEST_ADD(TestIntegerFunctions::testMaxUnsignedChar);
+    TEST_ADD(TestIntegerFunctions::testMaxSignedLong);
+    TEST_ADD(TestIntegerFunctions::testMaxUnsignedLong);
 
     TEST_ADD(TestIntegerFunctions::testMinSignedInt);
     TEST_ADD(TestIntegerFunctions::testMinSignedShort);
@@ -110,6 +112,8 @@ TestIntegerFunctions::TestIntegerFunctions(const vc4c::Configuration& config) : 
     TEST_ADD(TestIntegerFunctions::testMinUnsignedInt);
     TEST_ADD(TestIntegerFunctions::testMinUnsignedShort);
     TEST_ADD(TestIntegerFunctions::testMinUnsignedChar);
+    TEST_ADD(TestIntegerFunctions::testMinSignedLong);
+    TEST_ADD(TestIntegerFunctions::testMinUnsignedLong);
 
     TEST_ADD(TestIntegerFunctions::testMulHiSignedInt);
     TEST_ADD(TestIntegerFunctions::testMulHiSignedShort);
@@ -136,6 +140,8 @@ TestIntegerFunctions::TestIntegerFunctions(const vc4c::Configuration& config) : 
     TEST_ADD(TestIntegerFunctions::testUpsampleSignedCharToShort);
     TEST_ADD(TestIntegerFunctions::testUpsampleUnsignedShortToInt);
     TEST_ADD(TestIntegerFunctions::testUpsampleUnsignedCharToShort);
+    TEST_ADD(TestIntegerFunctions::testUpsampleSignedIntToLong);
+    TEST_ADD(TestIntegerFunctions::testUpsampleUnsignedIntToLong);
 
     TEST_ADD(TestIntegerFunctions::testPopcountSignedInt);
     TEST_ADD(TestIntegerFunctions::testPopcountSignedShort);
@@ -143,6 +149,8 @@ TestIntegerFunctions::TestIntegerFunctions(const vc4c::Configuration& config) : 
     TEST_ADD(TestIntegerFunctions::testPopcountUnsignedInt);
     TEST_ADD(TestIntegerFunctions::testPopcountUnsignedShort);
     TEST_ADD(TestIntegerFunctions::testPopcountUnsignedChar);
+    // TEST_ADD(TestIntegerFunctions::testPopcountSignedLong);
+    // TEST_ADD(TestIntegerFunctions::testPopcountUnsignedLong);
 
     TEST_ADD(TestIntegerFunctions::testMad24SignedInt);
     TEST_ADD(TestIntegerFunctions::testMad24UnsignedInt);
@@ -739,6 +747,19 @@ void TestIntegerFunctions::testMaxUnsignedChar()
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
+void TestIntegerFunctions::testMaxSignedLong()
+{
+    testBinaryFunction<int64_t, int64_t>(config, "-DOUT=long16 -DIN0=long16 -DIN1=long16 -DFUNC=max", std::max<int64_t>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMaxUnsignedLong()
+{
+    testBinaryFunction<uint64_t, uint64_t>(config, "-DOUT=ulong16 -DIN0=ulong16 -DIN1=ulong16 -DFUNC=max",
+        std::max<uint64_t>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
 void TestIntegerFunctions::testMinSignedInt()
 {
     testBinaryFunction<int, int>(config, "-DOUT=int16 -DIN0=int16 -DIN1=int16 -DFUNC=min", std::min<int>,
@@ -776,6 +797,19 @@ void TestIntegerFunctions::testMinUnsignedChar()
 {
     testBinaryFunction<unsigned char, unsigned char>(config, "-DOUT=uchar16 -DIN0=uchar16 -DIN1=uchar16 -DFUNC=min",
         std::min<unsigned char>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMinSignedLong()
+{
+    testBinaryFunction<int64_t, int64_t>(config, "-DOUT=long16 -DIN0=long16 -DIN1=long16 -DFUNC=min", std::min<int64_t>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testMinUnsignedLong()
+{
+    testBinaryFunction<uint64_t, uint64_t>(config, "-DOUT=ulong16 -DIN0=ulong16 -DIN1=ulong16 -DFUNC=min",
+        std::min<uint64_t>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -932,6 +966,20 @@ void TestIntegerFunctions::testUpsampleUnsignedCharToShort()
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
+void TestIntegerFunctions::testUpsampleSignedIntToLong()
+{
+    testBinaryFunction<int, int64_t>(config, "-DOUT=long16 -DIN0=int16 -DIN1=uint16 -DFUNC=upsample",
+        checkUpsample<int64_t, int, unsigned int>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testUpsampleUnsignedIntToLong()
+{
+    testBinaryFunction<unsigned int, uint64_t>(config, "-DOUT=ulong16 -DIN0=uint16 -DIN1=uint16 -DFUNC=upsample",
+        checkUpsample<uint64_t, unsigned int, unsigned int>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
 void TestIntegerFunctions::testPopcountSignedInt()
 {
     testUnaryFunction<int, int>(config, "-DOUT=int16 -DIN=int16 -DFUNC=popcount", checkPopcount<int>,
@@ -969,6 +1017,18 @@ void TestIntegerFunctions::testPopcountUnsignedChar()
 {
     testUnaryFunction<unsigned char, unsigned char>(config, "-DOUT=uchar16 -DIN=uchar16 -DFUNC=popcount",
         checkPopcount<unsigned char>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testPopcountSignedLong()
+{
+    testUnaryFunction<int64_t, int64_t>(config, "-DOUT=long16 -DIN=long16 -DFUNC=popcount", checkPopcount<int64_t>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testPopcountUnsignedLong()
+{
+    testUnaryFunction<uint64_t, uint64_t>(config, "-DOUT=ulong16 -DIN=ulong16 -DFUNC=popcount", checkPopcount<uint64_t>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

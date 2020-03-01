@@ -86,6 +86,8 @@ public:
     void testMaxUnsignedInt();
     void testMaxUnsignedShort();
     void testMaxUnsignedChar();
+    void testMaxSignedLong();
+    void testMaxUnsignedLong();
     
     void testMinSignedInt();
     void testMinSignedShort();
@@ -93,6 +95,8 @@ public:
     void testMinUnsignedInt();
     void testMinUnsignedShort();
     void testMinUnsignedChar();
+    void testMinSignedLong();
+    void testMinUnsignedLong();
     
     void testMulHiSignedInt();
     void testMulHiSignedShort();
@@ -119,6 +123,8 @@ public:
     void testUpsampleSignedCharToShort();
     void testUpsampleUnsignedShortToInt();
     void testUpsampleUnsignedCharToShort();
+    void testUpsampleSignedIntToLong();
+    void testUpsampleUnsignedIntToLong();
     
     void testPopcountSignedInt();
     void testPopcountSignedShort();
@@ -126,6 +132,8 @@ public:
     void testPopcountUnsignedInt();
     void testPopcountUnsignedShort();
     void testPopcountUnsignedChar();
+    void testPopcountSignedLong();
+    void testPopcountUnsignedLong();
     
     void testMad24SignedInt();
     void testMad24UnsignedInt();
