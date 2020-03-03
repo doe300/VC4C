@@ -1046,7 +1046,7 @@ PrecalculatedValue OpCode::operator()(const Value& firstOperand, const Optional<
 
     // both (used) values are literals (or literal containers)
     bool calcPerComponent =
-        (firstVector && !firstVector->isAllSame()) || (numOperands > 1 && secondVector && !secondVector->isAllSame());
+        (firstVector && !firstVector->getAllSame()) || (numOperands > 1 && secondVector && !secondVector->getAllSame());
     DataType resultType = firstOperand.type;
     if(numOperands > 1 &&
         (secondVal->type.getVectorWidth() > resultType.getVectorWidth() ||

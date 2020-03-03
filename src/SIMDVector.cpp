@@ -12,12 +12,19 @@ using namespace vc4c;
 
 SIMDVectorHolder vc4c::GLOBAL_VECTOR_HOLDER{};
 
-bool SIMDVector::isAllSame() const noexcept
+Optional<Literal> SIMDVector::getAllSame() const noexcept
 {
-    Literal firstElement = elements[0];
-    return std::all_of(elements.begin(), elements.end(),
-        // if items are UNDEFINED, ignore them, since maybe the remaining items all have the same value
-        [=](Literal lit) -> bool { return lit.isUndefined() || lit == firstElement; });
+    Optional<Literal> firstDefinedElement{};
+    for(const auto& elem : *this)
+    {
+        if(elem.isUndefined())
+            // if items are UNDEFINED, ignore them, since maybe the remaining items all have the same value
+            continue;
+        if(firstDefinedElement && firstDefinedElement != elem)
+            return {};
+        firstDefinedElement = elem;
+    }
+    return firstDefinedElement;
 }
 
 bool SIMDVector::isElementNumber(bool withOffset, bool withFactor, bool ignoreUndefined) const noexcept
@@ -143,7 +150,7 @@ std::string SIMDVector::to_string(bool withLiterals) const
     }
     if(isUndefined())
         return "<undefined>";
-    if(isAllSame() && at(0).unsignedInt() == 0)
+    if(getAllSame() == Literal{0u})
         return "zerointializer";
     return "SIMD vector";
 }
@@ -151,7 +158,7 @@ LCOV_EXCL_STOP
 
 Value SIMDVectorHolder::storeVector(SIMDVector&& vec, DataType type)
 {
-    if(vec.isAllSame() &&
+    if(vec.getAllSame() &&
         std::none_of(vec.begin(), vec.end(), [](const Literal& lit) -> bool { return lit.isUndefined(); }))
     {
         // if all elements are a non-undefined same value, just use that value right now, since we would convert the

@@ -114,9 +114,15 @@ namespace vc4c
         }
 
         /**
-         * Determines whether all elements of this vector have the same value
+         * Determines whether all elements of this vector have the same value and returns that value.
+         *
+         * NOTE: undefined elements are considered "equal" to any other element. In case the vector contains undefined
+         * and "defined" elements, the defined element comparing equal to all other elements is returned.
+         *
+         * NOTE: Since the undefined literal doubles as empty compact_optional<Literal>, a vector containing only
+         * undefined elements will report as having no "same element". In that case #isUndefined() needs to be checked!
          */
-        bool isAllSame() const noexcept;
+        Optional<Literal> getAllSame() const noexcept;
 
         /**
          * Determines whether all element-values correspond to their element number,  e.g. 1, 2, 3, 4, ...

@@ -1334,7 +1334,7 @@ static std::pair<SIMDVector, bool> applyVectorRotation(std::pair<SIMDVector, boo
         // XXX can't we actually?! See http://maazl.de/project/vc4asm/doc/VideoCoreIV-addendum.html
         throw CompilationError(CompilationStep::GENERAL, "Cannot read vector rotation offset", input.first.to_string());
 
-    if(input.first.isAllSame())
+    if(input.first.isUndefined() || input.first.getAllSame())
         return std::move(input);
 
     unsigned char distance;

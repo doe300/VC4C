@@ -51,12 +51,20 @@ static bool fitsIntoSignedMaskedLoad(Literal lit)
 static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker it, const Value& out, const Value& in)
 {
     const auto& inContainer = in.vector();
-    if(inContainer.isAllSame())
+    if(inContainer.isUndefined())
     {
         // if all values within a container are the same, there is no need to extract them separately, a simple move
         // (e.g. load) will do
-        it.emplace((new intermediate::MoveOperation(out, Value(inContainer[0], in.type.getElementType())))
+        it.emplace((new intermediate::MoveOperation(out, Value(UNDEFINED_LITERAL, in.type.getElementType())))
                        ->copyExtrasFrom(it.get()));
+        return it.nextInBlock();
+    }
+    if(auto elem = inContainer.getAllSame())
+    {
+        // if all values within a container are the same, there is no need to extract them separately, a simple move
+        // (e.g. load) will do
+        it.emplace(
+            (new intermediate::MoveOperation(out, Value(*elem, in.type.getElementType())))->copyExtrasFrom(it.get()));
         return it.nextInBlock();
     }
     if(inContainer.isElementNumber(false, false, true))
@@ -219,15 +227,15 @@ InstructionWalker normalization::handleContainer(
             // for special containers, rewrite to scalars/registers
             if(auto con = op->assertArgument(i).checkVector())
             {
-                if(con->isAllSame())
+                if(auto elem = con->getAllSame())
                 {
                     const Value& container = op->assertArgument(i);
-                    op->setArgument(i, Value((*con)[0], container.type));
+                    op->setArgument(i, Value(*elem, container.type));
                 }
                 else if(con->isElementNumber())
-                {
                     op->setArgument(i, Value(REG_ELEMENT_NUMBER, op->assertArgument(i).type));
-                }
+                else if(con->isUndefined())
+                    op->setArgument(i, Value(UNDEFINED_LITERAL, op->assertArgument(i).type));
             }
         }
         if(op->getFirstArg().checkVector() && !op->getFirstArg().type.getPointerType())

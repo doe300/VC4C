@@ -535,8 +535,8 @@ bool ShuffleVector::mapInstruction(Method& method)
 {
     // shuffling = iteration over all elements in both vectors and re-ordering in order given
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Generating operations mixing " << v1.to_string() << " and " << v2.to_string() << " into "
-            << dest.to_string() << logging::endl);
+        log << "Generating operations mixing " << v1.to_string() << " and " << v2.to_string() << " with mask "
+            << mask.to_string() << " into " << dest.to_string() << logging::endl);
     ignoreReturnValue(intermediate::insertVectorShuffle(method.appendToEnd(), method, dest, v1, v2, mask));
     return true;
 }

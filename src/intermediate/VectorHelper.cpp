@@ -369,9 +369,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     // if all indices are ascending (correspond to the elements of source 0), we can simply copy it
     // if all indices point to the same, replicate this index over the vector
     const auto& maskContainer = mask.vector();
-    bool indicesCorrespond = maskContainer.isElementNumber(false, false, true);
-    bool allIndicesSame = maskContainer.isAllSame();
-    if(indicesCorrespond)
+    if(maskContainer.isElementNumber(false, false, true))
     {
         // the vector is copied in-order
         if(!isSingleSource && mask.type.getVectorWidth() > source0.type.getVectorWidth() &&
@@ -387,13 +385,13 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         }
         return it;
     }
-    if(allIndicesSame)
+    if(auto elem = maskContainer.getAllSame())
     {
-        const int32_t indexValue = maskContainer[0].signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
-            maskContainer[0].signedInt() :
-            maskContainer[0].signedInt() - static_cast<int32_t>(source0.type.getVectorWidth());
+        const int32_t indexValue = elem->signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
+            elem->signedInt() :
+            elem->signedInt() - static_cast<int32_t>(source0.type.getVectorWidth());
         const Value source =
-            maskContainer[0].signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ? source0 : source1;
+            elem->signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ? source0 : source1;
         // if all indices same, replicate
         Value tmp(UNDEFINED_VALUE);
         if(indexValue == 0)

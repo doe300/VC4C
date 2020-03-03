@@ -569,7 +569,7 @@ bool Value::isZeroInitializer() const
 {
     if(auto vec = checkVector())
     {
-        return vec->at(0).unsignedInt() == 0 && vec->isAllSame();
+        return vec->getAllSame() == Literal{0u};
     }
     if(auto lit = getLiteralValue())
     {
@@ -590,7 +590,7 @@ Optional<Literal> Value::getLiteralValue() const noexcept
     if(auto imm = checkImmediate())
         return imm->toLiteral();
     if(auto vector = checkVector())
-        return vector->isAllSame() ? ((*vector)[0]) : Optional<Literal>{};
+        return vector->isUndefined() ? UNDEFINED_LITERAL : vector->getAllSame();
     return {};
 }
 
@@ -665,7 +665,7 @@ bool Value::isUniform() const
     if(checkLiteral())
         return true;
     if(auto vec = checkVector())
-        return vec->isAllSame();
+        return vec->getAllSame() || vec->isUndefined();
     if(auto reg = checkRegister())
         return *reg == REG_UNIFORM || *reg == REG_QPU_NUMBER || *reg == REG_REV_FLAG;
     return isUndefined();
