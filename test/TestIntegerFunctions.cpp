@@ -75,6 +75,8 @@ TestIntegerFunctions::TestIntegerFunctions(const vc4c::Configuration& config) : 
     TEST_ADD(TestIntegerFunctions::testClampUnsignedInt);
     TEST_ADD(TestIntegerFunctions::testClampUnsignedShort);
     TEST_ADD(TestIntegerFunctions::testClampUnsignedChar);
+    TEST_ADD(TestIntegerFunctions::testClampSignedLong);
+    TEST_ADD(TestIntegerFunctions::testClampUnsignedLong);
 
     TEST_ADD(TestIntegerFunctions::testClzSignedInt);
     TEST_ADD(TestIntegerFunctions::testClzSignedShort);
@@ -292,6 +294,17 @@ static T checkMadSat(T in1, T in2, T in3)
         std::min(std::max(static_cast<int64_t>(in1) * static_cast<int64_t>(in2) + static_cast<int64_t>(in3),
                      static_cast<int64_t>(std::numeric_limits<T>::min())),
             static_cast<int64_t>(std::numeric_limits<T>::max())));
+}
+
+template <>
+uint32_t checkMadSat(uint32_t in1, uint32_t in2, uint32_t in3)
+{
+    // special case, since for 32-bit mad_sat, the 64-bit overall result could also overflow!
+    auto mulResult = static_cast<uint64_t>(in1) * static_cast<uint64_t>(in2);
+    if(mulResult > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()))
+        return std::numeric_limits<uint32_t>::max();
+    return static_cast<uint32_t>(
+        std::min(mulResult + static_cast<uint64_t>(in3), static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())));
 }
 
 // taken from: https://stackoverflow.com/questions/25799215/bitwise-rotation-circular-shift
@@ -582,6 +595,20 @@ void TestIntegerFunctions::testClampUnsignedChar()
 {
     testTernaryFunction<unsigned char, unsigned char>(config,
         "-DOUT=uchar16 -DIN0=uchar16 -DIN1=uchar16 -DIN2=uchar16 -DFUNC=clamp", checkClamp<unsigned char>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testClampSignedLong()
+{
+    testTernaryFunction<int64_t, int64_t>(config, "-DOUT=long16 -DIN0=long16 -DIN1=long16 -DIN2=long16 -DFUNC=clamp",
+        checkClamp<int64_t>,
+        std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestIntegerFunctions::testClampUnsignedLong()
+{
+    testTernaryFunction<uint64_t, uint64_t>(config,
+        "-DOUT=ulong16 -DIN0=ulong16 -DIN1=ulong16 -DIN2=ulong16 -DFUNC=clamp", checkClamp<uint64_t>,
         std::bind(&TestIntegerFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

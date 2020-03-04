@@ -90,8 +90,8 @@ InstructionWalker intrinsics::intrinsifyUnsignedIntegerMultiplication(
     return it;
 }
 
-InstructionWalker intrinsics::intrinsifyIntegerMultiplicationHighPart(
-    Method& method, InstructionWalker it, const MethodCall* call)
+InstructionWalker intrinsics::intrinsifyIntegerToLongMultiplication(
+    Method& method, InstructionWalker it, const MethodCall* call, Optional<Value> lowResult)
 {
     auto arg0 = call->assertArgument(0);
     auto arg1 = call->assertArgument(1);
@@ -124,8 +124,9 @@ InstructionWalker intrinsics::intrinsifyIntegerMultiplicationHighPart(
      */
     // see #intrinsifyUnsignedIntegerMultiplication for comments on the implementation and signed/unsigned
     // (non-)distinction
-    // NOTE: in contrast to the normal multiplication, we need to take 16-bit portions, since for 24-bit multiplication,
-    // we lose the upper 16 bits (2 * 24 = 48 > 32)!
+    // NOTE: in contrast to the normal 32-bit multiplication, we need to take 16-bit portions, since for 24-bit
+    // multiplication, we lose the upper 16 bits (2 * 24 = 48 > 32)!
+    Value lowTmp = UNDEFINED_VALUE;
 
     auto outputType = call->getOutput()->type;
     auto arg0Hi = assign(it, outputType, "%mul_hi.arg0Hi") = as_unsigned{arg0} >> 16_val;
@@ -136,9 +137,16 @@ InstructionWalker intrinsics::intrinsifyIntegerMultiplicationHighPart(
     auto resHiLo = assign(it, outputType, "%mul_hi.resHiLo") = mul24(arg0Hi, arg1Lo);
     auto resLoHi = assign(it, outputType, "%mul_hi.resLoHi") = mul24(arg0Lo, arg1Hi);
     auto resLo = assign(it, outputType, "%mul_hi.resLo") = mul24(arg0Lo, arg1Lo);
+    if(lowResult)
+        lowTmp = assign(it, outputType) = resLo;
     auto resOverflow = assign(it, outputType, "%mul_hi.of") = 0_val;
     resLo = assign(it, outputType, "%mul_hi.resLo") = as_unsigned{resLo} >> 16_val;
     auto resMid = assign(it, outputType, "%mul_hi.resMid") = (resHiLo + resLoHi, SetFlag::SET_FLAGS);
+    if(lowResult)
+    {
+        auto tmp = assign(it, outputType) = resMid << 16_val;
+        assign(it, *lowResult) = lowTmp + tmp;
+    }
     assign(it, resOverflow) = (resOverflow + 1_val, COND_CARRY_SET);
     resMid = assign(it, outputType, "%mul_hi.resMid") = (resMid + resLo, SetFlag::SET_FLAGS);
     assign(it, resOverflow) = (resOverflow + 1_val, COND_CARRY_SET);

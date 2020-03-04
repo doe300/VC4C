@@ -58,6 +58,8 @@ public:
     void testClampUnsignedInt();
     void testClampUnsignedShort();
     void testClampUnsignedChar();
+    void testClampSignedLong();
+    void testClampUnsignedLong();
     
     void testClzSignedInt();
     void testClzSignedShort();

@@ -138,7 +138,7 @@ jobs:
       - run: dpkg -i build/vc4c-0.4-Linux.deb
       - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: ldconfig
-      - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-common --emulate-conversions --emulate-geometric --emulate-memory --emulate-relational --emulate-vector --test-emulator --test-graph --test-patterns --test-frontend --test-expressions --test-optimization-steps --test-intrinsics
+      - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-common --emulate-conversions --emulate-geometric --emulate-integer --emulate-memory --emulate-relational --emulate-vector --test-emulator --test-graph --test-patterns --test-frontend --test-expressions --test-optimization-steps --test-intrinsics
       - run: dpkg -r vc4c
       - run: dpkg -r vc4cl-stdlib
   test-spirv:

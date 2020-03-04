@@ -274,6 +274,15 @@ static IntrinsicFunction intrinsifyCheckNaN(bool checkInfinite)
     };
 }
 
+static InstructionWalker intrinsifyIntegerMultiplicationHighPart(
+    Method& method, InstructionWalker it, const MethodCall* callSite)
+{
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Intrinsifying full 32-bit to 64-bit multiplication taking the high part: " << callSite->to_string()
+            << logging::endl);
+    return intrinsifyIntegerToLongMultiplication(method, it, it.get<MethodCall>());
+}
+
 static ConditionCode toCondition(int c)
 {
     // for mapping, see _flags.h in VC4CLStdLib

@@ -9,11 +9,15 @@
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/TypeConversions.h"
 #include "../intermediate/operators.h"
+#include "../intrinsics/Operators.h"
 #include "log.h"
 
 using namespace vc4c;
 using namespace vc4c::normalization;
 using namespace vc4c::operators;
+
+// see VC4CLStdLib (_intrinsics.h)
+static constexpr unsigned char VC4CL_UNSIGNED{1};
 
 static void lowerFlags(Method& method, InstructionWalker it, const MultiRegisterData& output, FlagBehavior flagBehavior)
 {
@@ -414,6 +418,36 @@ void normalization::lowerLongOperation(
                 call->conditional, call->setFlags);
             it.erase();
         }
+        else if(src && call->methodName.find("vc4cl_long_to_int_sat") != std::string::npos)
+        {
+            // saturate the low part if the high part is not zero (for unsigned) or 0/-1 (for signed)
+            bool isUnsigned = call->getArgument(1) &&
+                (call->assertArgument(1).getConstantValue() & &Value::getLiteralValue & &Literal::unsignedInt) ==
+                    VC4CL_UNSIGNED;
+            auto outValue = call->getOutput().value();
+            if(isUnsigned)
+            {
+                // for unsigned, any non-zero upper part means overflow, so saturate
+                assign(it, outValue) = src->lower->createReference();
+                auto cond = assignNop(it) = as_unsigned{src->upper->createReference()} != as_unsigned{INT_ZERO};
+                assign(it, outValue) = (0xFFFFFFFF_val, cond);
+            }
+            else
+            {
+                // for signed, the lower part overflows if the upper part is neither all zeroes nor all ones
+                // assume that the high bit of the upper part is correctly signed (i.e. 1 for negative and 0 for
+                // positive values)
+                auto resultNegative = assign(it, outValue.type) = as_signed{src->upper->createReference()} >> 31_val;
+                // normal case, no overflow
+                assign(it, outValue) = src->lower->createReference();
+                // if there are bits in the upper word which differ from the high bit, we have an overflow
+                auto cond = assignNop(it) = as_unsigned{src->upper->createReference()} != as_unsigned{resultNegative};
+                // if the result is supposed to be negative, all ones ^ 0x7FFFFFFF = 0x80000000 (= INT_MIN)
+                // if the result is supposed to be positive, all zeroes ^ 0x7FFFFFFF = 0x7FFFFFFF (= INT_MAX)
+                assign(it, outValue) = (resultNegative ^ 0x7FFFFFFF_val, cond);
+            }
+            it.erase();
+        }
         else if(src && call->methodName.find("vc4cl_long_to_int") != std::string::npos)
         {
             // TODO correct for signed??
@@ -444,6 +478,13 @@ void normalization::lowerLongOperation(
             it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
             it.nextInBlock();
             it.erase();
+        }
+        else if(out && call->methodName.find("vc4cl_mul_full") != std::string::npos)
+        {
+            auto outLow = out->lower->createReference();
+            auto outUp = out->upper->createReference();
+            call->setOutput(outUp);
+            it = intrinsics::intrinsifyIntegerToLongMultiplication(method, it, call, outLow);
         }
     }
     else if(auto load = it.get<intermediate::LoadImmediate>())
