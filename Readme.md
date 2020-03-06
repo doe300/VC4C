@@ -45,5 +45,3 @@ Run `cpack -G DEB` to create a debian package.
 If the [VC4CLStdLib](https://github.com/doe300/VC4CLStdLib) is updated, the LLVM pre-compiled header (PCH) needs to be rebuilt. For this to happen, simply delete the file `VC4CLStdLib.h.pch` (located in the source/installation directory of the VC4CLStdLib project, depending on whether it was installed) and rebuild the VC4C compiler (or just the `vc4cl-stdlib` target).
 
 When `BUILD_TESTING` is on, some of the files (`TestConversionFunctions.cpp.o`) have to be compiled in one thread (`make -j 1`).
-
-During compilation on GCC 8.3.0, pass extra `-DCMAKE_CXX_FLAGS="-Werror=maybe-uninitialized"`.
