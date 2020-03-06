@@ -425,8 +425,7 @@ std::array<Result, VectorWidth * LocalSize * NumGroups> runEmulation(std::string
     if(!result.executionSuccessful)
         throw vc4c::CompilationError(vc4c::CompilationStep::GENERAL, "Kernel execution failed");
 
-    std::array<Result, VectorWidth * LocalSize * NumGroups> output;
-    output.fill(0);
+    std::array<Result, VectorWidth * LocalSize * NumGroups> output {0};
     copyConvert<VectorWidth * LocalSize * NumGroups>(result.results[0].second.value(), output);
     return output;
 }
