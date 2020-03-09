@@ -10,6 +10,7 @@ target_sources(TestVC4C
     TestCommonFunctions.h
     TestConversionFunctions.cpp
     TestConversionFunctions.h
+    TestCustomContainers.cpp
     TestEmulator.cpp
     TestEmulator.h
     TestExpressions.cpp

@@ -9,6 +9,7 @@
 
 #include "CompilationError.h"
 #include "Values.h"
+#include "tools/SmallMap.h"
 
 #include <functional>
 #include <memory>
@@ -115,7 +116,7 @@ namespace vc4c
         /*
          * Returns all the LocalUsers accessing this object
          */
-        const SortedMap<const LocalUser*, LocalUse>& getUsers() const;
+        const tools::SmallSortedPointerMap<const LocalUser*, LocalUse>& getUsers() const;
         /*
          * Returns the users of the given kind (reading or writing) accessing this Local
          */
@@ -258,7 +259,7 @@ namespace vc4c
     private:
         // FIXME unordered_map randomly throws SEGFAULT somewhere in stdlib in #removeUser called by
         // IntermediateInstruction#erase
-        SortedMap<const LocalUser*, LocalUse> users;
+        tools::SmallSortedPointerMap<const LocalUser*, LocalUse> users;
         // Additional data for this local
         std::unique_ptr<LocalData> data;
 

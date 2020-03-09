@@ -34,7 +34,7 @@ Value Local::createReference() const
     return Value(const_cast<Local*>(this), type);
 }
 
-const SortedMap<const LocalUser*, LocalUse>& Local::getUsers() const
+const tools::SmallSortedPointerMap<const LocalUser*, LocalUse>& Local::getUsers() const
 {
     return users;
 }

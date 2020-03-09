@@ -548,13 +548,17 @@ void GraphColoring::createGraph()
     PROFILE_END(createColoredNodes);
 
     // TODO if this method works, could here spill all locals with more than XX (64) neighbors!?!
-    for(const auto& node : graph.getNodes())
+    // TODO can't fix on some number, since there are kernels where a node has > 240 neighbors and register association
+    // works! Need to try first and if register mapping fails, spill node with largest number of neighbors, smallest
+    // usage count and largest usage range (-> need to find some balance!).
+    // TODO before actually spilling, try to split up large usage-ranges first by inserting a move
+    for(const auto& node : interferenceGraph->findOverfullNodes(256))
     {
-        if(node.second.getEdgesSize() >= 32)
-            CPPLOG_LAZY(logging::Level::DEBUG, log << "Spill candidate: " << node.first->to_string() << logging::endl);
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 5, "SpillCandidates", node.second.getEdgesSize() >= 32);
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 6, "SpillCandidates (uses)",
-            (node.second.getEdgesSize() >= 32) * node.first->getUsers().size());
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Spill candidate: " << node->key->to_string() << " (with " << node->getEdgesSize()
+                << " neighbors and " << node->key->getUsers().size() << " uses)" << logging::endl);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 5, "SpillCandidates", 1);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 6, "SpillCandidates (uses)", node->key->getUsers().size());
     }
     // 2. iteration: associate locals used together
     PROFILE_START(InterferenceToColoredGraph);
@@ -765,7 +769,7 @@ static RegisterFile getBlockedInputs(
     return blockedFiles;
 }
 
-static NODISCARD LocalUse checkUser(const SortedMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
+static NODISCARD LocalUse checkUser(const tools::SmallSortedPointerMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
 {
     LocalUse use;
     it.forAllInstructions([&users, &use](const intermediate::IntermediateInstruction& instr) {
@@ -779,7 +783,7 @@ static NODISCARD LocalUse checkUser(const SortedMap<const LocalUser*, LocalUse>&
     return use;
 }
 
-static NODISCARD LocalUse assertUser(const SortedMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
+static NODISCARD LocalUse assertUser(const tools::SmallSortedPointerMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
 {
     auto use = checkUser(users, it);
     if(!use.readsLocal() && !use.writesLocal())

@@ -151,7 +151,7 @@ const BuiltinLocal* Method::findOrCreateBuiltin(BuiltinLocal::Type type)
 }
 
 static NODISCARD bool removeUsagesInBasicBlock(const Method& method, const BasicBlock& bb, const Local* locale,
-    SortedMap<const LocalUser*, LocalUse>& remainingUsers, int& usageRangeLeft)
+    tools::SmallSortedPointerMap<const LocalUser*, LocalUse>& remainingUsers, int& usageRangeLeft)
 {
     auto it = bb.walk();
     while(usageRangeLeft >= 0 && !it.isEndOfMethod())
