@@ -476,67 +476,71 @@ AccessRanges analysis::determineAccessRanges(Method& method)
     return result;
 }
 
+static Optional<MemoryAccessRange> findAccessRange(Method& method, const Value& val, const Local* baseAddr,
+    InstructionWalker accessIt, const intermediate::IntermediateInstruction* defaultInst)
+{
+    if(auto writer = getSingleWriter(val, defaultInst))
+        // if there is a single address writer, take that one
+        return determineAccessRange(method, *writer, accessIt);
+    // TODO how to determine access range for a memory location for conditionally written address??
+    return {};
+}
+
 FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
     Method& method, const Local* baseAddr, MemoryAccess& access)
 {
     // NOTE: If we cannot find one access range for a local, we cannot combine any other access ranges for this local!
     FastAccessList<MemoryAccessRange> result;
-    for(auto it : access.accessInstructions)
+    for(const auto& entry : access.accessInstructions)
     {
-        const auto memInstr = it.get<intermediate::MemoryInstruction>();
+        const auto memInstr = entry.first.get<intermediate::MemoryInstruction>();
         switch(memInstr->op)
         {
         case intermediate::MemoryOperation::READ:
         {
-            if(auto writer = getSingleWriter(memInstr->getSource(), memInstr))
+            if(auto res = findAccessRange(method, memInstr->getSource(), baseAddr, entry.first, memInstr))
             {
-                if(auto res = determineAccessRange(method, *writer, it))
-                {
-                    result.emplace_back(std::move(res).value());
-                    break;
-                }
+                result.emplace_back(std::move(res).value());
+                break;
             }
+
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Failed to determine access range for memory read: " << it->to_string() << logging::endl);
+                log << "Failed to determine access range for memory read: " << entry.first->to_string()
+                    << logging::endl);
             return FastAccessList<MemoryAccessRange>{};
         }
         case intermediate::MemoryOperation::WRITE:
         case intermediate::MemoryOperation::FILL:
         {
-            if(auto writer = getSingleWriter(memInstr->getDestination(), memInstr))
+            if(auto res = findAccessRange(method, memInstr->getDestination(), baseAddr, entry.first, memInstr))
             {
-                if(auto res = determineAccessRange(method, *writer, it))
-                {
-                    result.emplace_back(std::move(res).value());
-                    break;
-                }
+                result.emplace_back(std::move(res).value());
+                break;
             }
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Failed to determine access range for memory write/fill: " << it->to_string() << logging::endl);
+                log << "Failed to determine access range for memory write/fill: " << entry.first->to_string()
+                    << logging::endl);
             return FastAccessList<MemoryAccessRange>{};
         }
         case intermediate::MemoryOperation::COPY:
         {
             Value matchingAddress = UNDEFINED_VALUE;
-            if(memInstr->getSource().local()->getBase(true) == baseAddr)
+            if(memInstr->getSource().local()->getBase(true) == entry.second)
                 matchingAddress = memInstr->getSource();
-            else if(memInstr->getDestination().local()->getBase(true) == baseAddr)
+            else if(memInstr->getDestination().local()->getBase(true) == entry.second)
                 matchingAddress = memInstr->getDestination();
             else
-                throw CompilationError(CompilationStep::GENERAL, "Failed to find address referring to address",
+                throw CompilationError(CompilationStep::GENERAL, "Failed to find address referring to memory location",
                     memInstr->to_string() + " and " + baseAddr->to_string());
 
-            if(auto writer = getSingleWriter(matchingAddress, memInstr))
+            if(auto res = findAccessRange(method, matchingAddress, baseAddr, entry.first, memInstr))
             {
-                if(auto res = determineAccessRange(method, *writer, it))
-                {
-                    result.emplace_back(std::move(res.value()));
-                    break;
-                }
+                result.emplace_back(std::move(res).value());
+                break;
             }
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Failed to determine access range for local '" << baseAddr->to_string()
-                    << "' in memory copy: " << it->to_string() << logging::endl);
+                    << "' in memory copy: " << entry.first->to_string() << logging::endl);
             return FastAccessList<MemoryAccessRange>{};
         }
         }

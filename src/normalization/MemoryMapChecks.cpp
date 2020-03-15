@@ -250,7 +250,8 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Determining memory access for kernel: " << method.name << logging::endl);
     MemoryAccessMap mapping;
     FastSet<InstructionWalker> allWalkers;
-    FastMap<InstructionWalker, FastSet<const ConditionalMemoryAccess*>> conditionalWrittenMemoryAccesses;
+    FastMap<InstructionWalker, std::pair<const Local*, FastSet<const ConditionalMemoryAccess*>>>
+        conditionalWrittenMemoryAccesses;
     FastSet<ConditionalMemoryAccess> conditionalAddressWrites;
     for(const auto& param : method.parameters)
     {
@@ -580,10 +581,10 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                 if(mapping.find(local) != mapping.end())
                 {
                     // local was already processed
-                    mapping[local].accessInstructions.emplace(it);
+                    mapping[local].accessInstructions.emplace(it, local);
                     continue;
                 }
-                mapping[local].accessInstructions.emplace(it);
+                mapping[local].accessInstructions.emplace(it, local);
                 if(local->is<StackAllocation>())
                 {
                     if(local->type.isSimpleType() || convertSmallArrayToRegister(local))
@@ -673,9 +674,10 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                     // all memory accesses using the same phi-node. The same is true for memory addresses written via
                     // select-statements (?:-operators).
 
-                    auto& nodes =
-                        conditionalWrittenMemoryAccesses.emplace(it, FastSet<const ConditionalMemoryAccess*>{})
-                            .first->second;
+                    auto& entry = conditionalWrittenMemoryAccesses
+                                      .emplace(it, std::pair<const Local*, FastSet<const ConditionalMemoryAccess*>>{})
+                                      .first->second;
+                    entry.first = local;
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Conditionally written local '" << local->to_string()
                             << "' will not be mapped, these sources will be mapped instead: " << logging::endl);
@@ -689,7 +691,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                                 auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, loc});
                                 if(tmp.second)
                                 {
-                                    nodes.emplace(&*tmp.first);
+                                    entry.second.emplace(&*tmp.first);
                                     CPPLOG_LAZY(logging::Level::DEBUG,
                                         log << "\tconditional write " << writer->to_string()
                                             << " to memory area: " << loc->to_string(true) << logging::endl);
@@ -704,7 +706,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                                 auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, writer});
                                 if(tmp.second)
                                 {
-                                    nodes.emplace(&*tmp.first);
+                                    entry.second.emplace(&*tmp.first);
                                     CPPLOG_LAZY(logging::Level::DEBUG,
                                         log << "\tconditional write " << writer->to_string()
                                             << " to conditional write: " << writer->to_string() << logging::endl);
@@ -769,22 +771,30 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
     for(const auto& conditionalAccessedMemory : conditionalWrittenMemoryAccesses)
     {
         FastSet<MemoryAccessType> preferredTypes;
-        for(const auto* access : conditionalAccessedMemory.second)
+        for(const auto* access : conditionalAccessedMemory.second.second)
         {
             auto& memoryAccess = *conditionalAccesses.at(access);
-            memoryAccess.accessInstructions.emplace(conditionalAccessedMemory.first);
+            memoryAccess.accessInstructions.emplace(
+                conditionalAccessedMemory.first, conditionalAccessedMemory.second.first);
             preferredTypes.emplace(memoryAccess.preferred);
         }
 
         if(preferredTypes.size() > 1)
         {
             // TODO would need to fall back to the allowed fall-backs until something matches
-            // also will need to update the MemoryAccesses for the source locals
+            // also will need to update the MemoryAccesses for the source locals (and all other conditional accesses on
+            // these source locals)
             throw CompilationError(CompilationStep::NORMALIZER,
                 "Mapping conditionally addressed memory access to memory areas with different memory access types is "
                 "not supported yet",
                 conditionalAccessedMemory.first->to_string());
         }
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Conditionally written memory address '" << conditionalAccessedMemory.second.first->to_string()
+                << "' will access all source memory locations as "
+                << static_cast<unsigned>(*preferredTypes.begin())
+                // TODO correct type!
+                << logging::endl);
     }
 
     return MemoryAccessInfo{std::move(mapping), std::move(allWalkers), std::move(conditionalLocalMappings)};
@@ -808,12 +818,13 @@ static MemoryInfo canLowerToRegisterReadOnly(Method& method, const Local* baseAd
                 baseAddr, MemoryAccessType::QPU_REGISTER_READONLY, nullptr, {}, convertedValue, convertedType};
         }
     }
-    // c) the global is a constant where all accesses have constant indices and therefore all accessed elements can be
-    // determined at compile time
-    if(std::all_of(
-           access.accessInstructions.begin(), access.accessInstructions.end(), [&](InstructionWalker it) -> bool {
-               return getConstantValue(it.get<const intermediate::MemoryInstruction>()->getSource()).has_value();
-           }))
+    // c) the global is a constant where all accesses are direct accesses (i.e. not via a conditional address write) and
+    // have constant indices and therefore all accessed elements can be determined at compile time
+    if(std::all_of(access.accessInstructions.begin(), access.accessInstructions.end(), [&](const auto& entry) -> bool {
+           return baseAddr == entry.second &&
+               getConstantValue(entry.first.template get<const intermediate::MemoryInstruction>()->getSource())
+                   .has_value();
+       }))
         return MemoryInfo{baseAddr, MemoryAccessType::QPU_REGISTER_READONLY};
 
     // cannot lower to constant register, use fall-back

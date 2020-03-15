@@ -83,7 +83,15 @@ namespace vc4c
 
         struct MemoryAccess
         {
-            FastSet<InstructionWalker> accessInstructions;
+            /**
+             * The map of the instructions accessing the memory location and the local the memory location is accessed
+             * as.
+             *
+             * In most cases, the local will be the actual memory local (e.g. Parameter, Global, StackAllocation).
+             * However, if the corresponding memory access is conditional (e.g. the address is assigned via phi-node or
+             * selection), then the value in this mapping will represent the conditionally assigned address local.
+             */
+            FastMap<InstructionWalker, const Local*> accessInstructions;
             MemoryAccessType preferred;
             MemoryAccessType fallback;
         };
