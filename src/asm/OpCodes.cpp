@@ -918,6 +918,7 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
         // XXX seem to convert unsigned values > 2^31 to unsigned integer and anything out of bounds [INT_MIN,
         // UINT_MAX] to 0. Could make use of this to speed up fptoui?
         if(std::isnan(firstLit.real()) || std::isinf(firstLit.real()) ||
+            std::abs(firstLit.real()) > static_cast<float>(std::numeric_limits<int64_t>::max()) ||
             std::abs(static_cast<int64_t>(firstLit.real())) > std::numeric_limits<int32_t>::max())
             return setFlags(Literal(0u));
         return setFlags(Literal(static_cast<int32_t>(firstLit.real())), false);
@@ -928,7 +929,8 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
         auto extendedVal =
             static_cast<uint64_t>(firstLit.unsignedInt()) + static_cast<uint64_t>(secondLit.unsignedInt());
         auto signedVal = static_cast<int64_t>(firstLit.signedInt()) + static_cast<int64_t>(secondLit.signedInt());
-        return setFlags(Literal(firstLit.signedInt() + secondLit.signedInt()),
+        // use unsigned addition to have defined overflow wrap behavior, the actual calculation is identical
+        return setFlags(Literal(firstLit.unsignedInt() + secondLit.unsignedInt()),
             extendedVal > static_cast<uint64_t>(0xFFFFFFFFul),
             signedVal > static_cast<int64_t>(std::numeric_limits<int32_t>::max()) ||
                 signedVal < static_cast<int64_t>(std::numeric_limits<int32_t>::min()));
@@ -936,7 +938,8 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
     case OP_SUB.opAdd:
     {
         auto extendedVal = static_cast<int64_t>(firstLit.signedInt()) - static_cast<int64_t>(secondLit.signedInt());
-        return setFlags(Literal(firstLit.signedInt() - secondLit.signedInt()),
+        // use unsigned subtraction to have defined overflow wrap behavior, the actual calculation is identical
+        return setFlags(Literal(firstLit.unsignedInt() - secondLit.unsignedInt()),
             extendedVal<0, extendedVal> static_cast<int64_t>(std::numeric_limits<int32_t>::max()) ||
                 extendedVal < static_cast<int64_t>(std::numeric_limits<int32_t>::min()));
     }

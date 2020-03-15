@@ -25,22 +25,46 @@ InstructionWalker periphery::insertSFUCall(const Register sfuReg, InstructionWal
     return it;
 }
 
+Literal periphery::precalculateSFUExp2(Literal in)
+{
+    return Literal(std::exp2(in.real()));
+}
+
+Literal periphery::precalculateSFULog2(Literal in)
+{
+    return Literal(std::log2(in.real()));
+}
+
+Literal periphery::precalculateSFURecip(Literal in)
+{
+    if(in.real() == 0.0f)
+        return Literal(std::numeric_limits<float>::infinity());
+    return Literal(1.0f / in.real());
+}
+
+Literal periphery::precalculateSFURecipSqrt(Literal in)
+{
+    if(in.real() == 0.0f)
+        return Literal(std::numeric_limits<float>::infinity());
+    return Literal(1.0f / std::sqrt(in.real()));
+}
+
 Optional<Value> periphery::precalculateSFU(Register sfuReg, const Value& input)
 {
     std::function<Literal(const Literal&)> elemFunc;
     switch(sfuReg.num)
     {
     case REG_SFU_EXP2.num:
-        elemFunc = [](const Literal& val) -> Literal { return Literal(std::exp2(val.real())); };
+        elemFunc = precalculateSFUExp2;
         break;
     case REG_SFU_LOG2.num:
-        elemFunc = [](const Literal& val) -> Literal { return Literal(std::log2(val.real())); };
+        elemFunc = precalculateSFULog2;
         break;
     case REG_SFU_RECIP.num:
-        elemFunc = [](const Literal& val) -> Literal { return Literal(1.0f / val.real()); };
+        elemFunc = precalculateSFURecip;
         break;
     case REG_SFU_RECIP_SQRT.num:
-        elemFunc = [](const Literal& val) -> Literal { return Literal(1.0f / std::sqrt(val.real())); };
+        elemFunc = precalculateSFURecipSqrt;
         break;
     default:
         throw CompilationError(CompilationStep::GENERAL, "Invalid SFU input register", sfuReg.to_string());

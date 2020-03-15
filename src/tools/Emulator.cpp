@@ -14,6 +14,7 @@
 #include "../asm/KernelInfo.h"
 #include "../asm/LoadInstruction.h"
 #include "../asm/SemaphoreInstruction.h"
+#include "../periphery/SFU.h"
 #include "../periphery/VPM.h"
 #include "CompilationError.h"
 #include "Compiler.h"
@@ -674,39 +675,39 @@ bool SFU::hasValueOnR4() const
     return sfuResult.has_value();
 }
 
-static SIMDVector calcSFU(const SIMDVector& in, const std::function<float(float)>& func)
+static SIMDVector calcSFU(const SIMDVector& in, const std::function<Literal(Literal)>& func)
 {
-    return in.transform([&](Literal in) -> Literal { return Literal(func(in.real())); });
+    return in.transform(func);
 }
 
-static float addSFUError(float val)
+static Literal addSFUError(Literal val)
 {
     // assume 10 bits of SFU accuracy (half float)
     // -> convert from 23 bits accuracy to 10 bits accuracy
-    return bit_cast<uint32_t, float>(bit_cast<float, uint32_t>(val) & 0xFFFFE000);
+    return Literal(val.unsignedInt() & 0xFFFFE000);
 }
 
 void SFU::startRecip(const SIMDVector& val)
 {
-    sfuResult = calcSFU(val, [](float f) -> float { return addSFUError(1.0f / f); });
+    sfuResult = calcSFU(val, [](Literal f) -> Literal { return addSFUError(periphery::precalculateSFURecip(f)); });
     lastSFUWrite = currentCycle;
 }
 
 void SFU::startRecipSqrt(const SIMDVector& val)
 {
-    sfuResult = calcSFU(val, [](float f) -> float { return addSFUError(1.0f / std::sqrt(f)); });
+    sfuResult = calcSFU(val, [](Literal f) -> Literal { return addSFUError(periphery::precalculateSFURecipSqrt(f)); });
     lastSFUWrite = currentCycle;
 }
 
 void SFU::startExp2(const SIMDVector& val)
 {
-    sfuResult = calcSFU(val, [](float f) -> float { return addSFUError(std::exp2(f)); });
+    sfuResult = calcSFU(val, [](Literal f) -> Literal { return addSFUError(periphery::precalculateSFUExp2(f)); });
     lastSFUWrite = currentCycle;
 }
 
 void SFU::startLog2(const SIMDVector& val)
 {
-    sfuResult = calcSFU(val, [](float f) -> float { return addSFUError(std::log2(f)); });
+    sfuResult = calcSFU(val, [](Literal f) -> Literal { return addSFUError(periphery::precalculateSFULog2(f)); });
     lastSFUWrite = currentCycle;
 }
 

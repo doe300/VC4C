@@ -1976,10 +1976,10 @@ static void insertRepetitionBlocks(Method& method, const BasicBlock& defaultBloc
     it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdX, maxGroupIdX, it, nullptr);
 
     auto groupIdY = method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_ID_Y)->createReference();
-    it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdY, maxGroupIdY, it, maxGroupIdX.local());
+    it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdY, maxGroupIdY, it, groupIdX.local());
 
     auto groupIdZ = method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_ID_Z)->createReference();
-    it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdZ, maxGroupIdZ, it, maxGroupIdY.local());
+    it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdZ, maxGroupIdZ, it, groupIdY.local());
 }
 
 bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const Configuration& config)

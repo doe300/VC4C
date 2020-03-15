@@ -19,6 +19,11 @@ namespace vc4c
          */
         NODISCARD InstructionWalker insertSFUCall(Register sfuReg, InstructionWalker it, const Value& arg);
 
+        Literal precalculateSFUExp2(Literal in);
+        Literal precalculateSFULog2(Literal in);
+        Literal precalculateSFURecip(Literal in);
+        Literal precalculateSFURecipSqrt(Literal in);
+
         /*
          * Tries to convert the constant result for the SFU call and the given input
          */
