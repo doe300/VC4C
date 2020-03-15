@@ -451,6 +451,11 @@ Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const Ele
 {
     if(literal.isUndefined())
         return literal;
+
+    if(mode.hasEffect() && mode != PACK_32_32 && !isFloatOperation && flags.overflow != FlagStatus::UNDEFINED)
+        // Tests have shown that (at least for integer operations), all pack modes apply a 32-bit saturation first.
+        literal = packLiteral(PACK_32_32, literal, false, flags);
+
     switch(mode)
     {
     case PACK_NOP:
@@ -458,20 +463,36 @@ Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const Ele
     case PACK_32_16A:
         if(isFloatOperation)
             return Literal(static_cast<uint16_t>(half_t(literal.real())));
+        if(flags.overflow == FlagStatus::SET &&
+            (literal.unsignedInt() == 0x7FFFFFFFu || literal.unsignedInt() == 0x80000000u))
+            // Tests have shown that for 32-bit overflow, the values 0x7FFFFFFF and 0x80000000 get truncated to 0x7FFF
+            // and 0x8000 respectively
+            return literal.unsignedInt() == 0x7FFFFFFFu ? Literal(0x7FFF) : Literal(0x8000);
         return Literal(literal.unsignedInt() & 0xFFFF);
     case PACK_32_16A_S:
         if(isFloatOperation)
             // TODO no saturation?
             return Literal(static_cast<uint16_t>(half_t(literal.real())));
+        if(flags.overflow == FlagStatus::SET)
+            // On full 32-bit integer overflow, the return value is sometimes zero!
+            return Literal(0u);
         return Literal(saturate<int16_t>(literal.signedInt()) & 0xFFFF);
     case PACK_32_16B:
         if(isFloatOperation)
             return Literal(static_cast<uint16_t>(half_t(literal.real())) << 16);
+        if(flags.overflow == FlagStatus::SET &&
+            (literal.unsignedInt() == 0x7FFFFFFFu || literal.unsignedInt() == 0x80000000u))
+            // Tests have shown that for 32-bit overflow, the values 0x7FFFFFFF and 0x80000000 get truncated to 0x7FFF
+            // and 0x8000 respectively
+            return literal.unsignedInt() == 0x7FFFFFFFu ? Literal(0x7FFF) : Literal(0x8000);
         return Literal((literal.unsignedInt() & 0xFFFF) << 16);
     case PACK_32_16B_S:
         if(isFloatOperation)
             // TODO no saturation?
             return Literal(static_cast<uint16_t>(half_t(literal.real())) << 16);
+        if(flags.overflow == FlagStatus::SET)
+            // On full 32-bit integer overflow, the return value is sometimes zero!
+            return Literal(0u);
         // need to bitcast here, since left shifting negative values is undefined behavior
         return Literal(bit_cast<int32_t, uint32_t>(saturate<int16_t>(literal.signedInt())) << 16);
     case PACK_32_32:

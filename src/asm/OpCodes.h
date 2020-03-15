@@ -369,6 +369,8 @@ namespace vc4c
 
     /*
      * ALU instructions can also pack their results back into packed storage-formats.
+     *
+     * Pack modes work completely independent of whether writing of flags is enabled for the associated operation.
      */
     struct Pack : public InstructionPart
     {
@@ -398,6 +400,13 @@ namespace vc4c
      * Convert to 16 bit float if input was float result, else convert to int16 (no saturation, just take ls 16 bits)
      * and copy into lower half
      *
+     * Tests have shown that the operation's result is saturated to 32-bit signed integer first and the lower half-word
+     * of the saturated result is taken for the pack input.
+     *
+     * NOTE: Tests have shown that the values 0x7FFFFFFF and 0x80000000 gets truncated to 0x7FFF and 0x8000
+     * respectively, at least if they resulted from the 32-bit saturation (e.g. a 32-bit signed overflow occurred).
+     * Any other values seem to be truncated correctly.
+     *
      * NOTE: Only the Half-Word specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
@@ -407,6 +416,13 @@ namespace vc4c
      * Convert to 16 bit float if input was float result, else convert to int16 (no saturation, just take ls 16 bits)
      * and copy into higher half
      *
+     * Tests have shown that the operation's result is saturated to 32-bit signed integer first and the lower half-word
+     * of the saturated result is taken for the pack input.
+     *
+     * NOTE: Tests have shown that the values 0x7FFFFFFF and 0x80000000 gets truncated to 0x7FFF and 0x8000
+     * respectively, they resulted from the 32-bit saturation (i.e. a 32-bit signed overflow occurred in the same
+     * instruction). Any other values seem to be truncated correctly.
+     *
      * NOTE: Only the Half-Word specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
@@ -415,11 +431,17 @@ namespace vc4c
     /*
      * Convert to 8-bit unsigned int (no saturation, just take LSB) and replicate across all bytes of 32-bit word
      *
+     * Tests have shown that the operation's result is saturated to 32-bit signed integer first and the lower byte of
+     * the saturated result is taken for the pack input.
+     *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_8888{3};
     /*
      * Convert to 8-bit unsigned int (no saturation, just take LSB) and copy into byte 0 (LSB)
+     *
+     * Tests have shown that the operation's result is saturated to 32-bit signed integer first and the lower byte of
+     * the saturated result is taken for the pack input.
      *
      * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
      *
@@ -429,6 +451,9 @@ namespace vc4c
     /*
      * Convert to 8-bit unsigned int (no saturation, just take LSB) and copy into byte 1
      *
+     * Tests have shown that the operation's result is saturated to 32-bit signed integer first and the lower byte of
+     * the saturated result is taken for the pack input.
+     *
      * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
@@ -437,6 +462,9 @@ namespace vc4c
     /*
      * Convert to 8-bit unsigned int (no saturation, just take LSB) and copy into byte 2
      *
+     * Tests have shown that the operation's result is saturated to 32-bit signed integer first and the lower byte of
+     * the saturated result is taken for the pack input.
+     *
      * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
@@ -444,6 +472,9 @@ namespace vc4c
     constexpr Pack PACK_32_8C{6};
     /*
      * Convert to 8-bit unsigned int (no saturation, just take LSB) and copy into byte 3 (MSB)
+     *
+     * Tests have shown that the operation's result is saturated to 32-bit signed integer first and the lower byte of
+     * the saturated result is taken for the pack input.
      *
      * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
      *
@@ -467,6 +498,8 @@ namespace vc4c
      * On a non-float instruction, this converts any negative int32 value (high bit set) lower than the int16 minimum
      * value (-32768) to 0x00008000 and any value exceeding the int16 maximum value (32767) to 0x00007FFF.
      *
+     * NOTE: On full 32-bit integer overflow, the return value is sometimes zero!
+     *
      * NOTE: Only the Half-Word specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
@@ -479,6 +512,8 @@ namespace vc4c
      * On a non-float instruction, this converts any negative int32 value (high bit set) lower than the int16 minimum
      * value (-32768) to 0x80000000 and any value exceeding the int16 maximum value (32767) to 0x7FFF0000.
      *
+     * NOTE: On full 32-bit integer overflow, the return value is sometimes zero!
+     *
      * NOTE: Only the Half-Word specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
@@ -490,6 +525,9 @@ namespace vc4c
      * Takes the input as signed integer, resulting in negative values being truncated to zero and anything > 255 to
      * 0xFF.
      *
+     * Tests have shown that the operation's result is saturated to 32-bit signed integer first and the lower byte of
+     * the saturated result is taken for the pack input.
+     *
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_8888_S{11};
@@ -498,6 +536,9 @@ namespace vc4c
      *
      * Takes the input as signed integer, resulting in negative values being truncated to zero and anything > 255 to
      * 0xFF.
+     *
+     * Tests have shown that the operation's result is saturated to 32-bit signed integer first and the lower byte of
+     * the saturated result is taken for the pack input.
      *
      * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
      *
@@ -510,6 +551,9 @@ namespace vc4c
      * Takes the input as signed integer, resulting in negative values being truncated to zero and anything > 255 to
      * 0xFF00.
      *
+     * Tests have shown that the operation's result is saturated to 32-bit signed integer first and the lower byte of
+     * the saturated result is taken for the pack input.
+     *
      * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
@@ -521,6 +565,9 @@ namespace vc4c
      * Takes the input as signed integer, resulting in negative values being truncated to zero and anything > 255 to
      * 0xFF0000.
      *
+     * Tests have shown that the operation's result is saturated to 32-bit signed integer first and the lower byte of
+     * the saturated result is taken for the pack input.
+     *
      * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
      *
      * NOTE: The pm bit is part of the pack value and set as high bit
@@ -531,6 +578,9 @@ namespace vc4c
      *
      * Takes the input as signed integer, resulting in negative values being truncated to zero and anything > 255 to
      * 0xFF000000.
+     *
+     * Tests have shown that the operation's result is saturated to 32-bit signed integer first and the lower byte of
+     * the saturated result is taken for the pack input.
      *
      * NOTE: Only the Byte specified is actually written, the other bytes retain their previous values!
      *

@@ -373,7 +373,6 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> unaryIn
     {"vc4cl_pack_truncate", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_SHORT_TRUNCATE)}},
     {"vc4cl_replicate_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_32_8888)}},
     {"vc4cl_pack_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_CHAR_TRUNCATE)}},
-    {"vc4cl_saturate_short", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_SIGNED_SHORT_SATURATE)}},
     {"vc4cl_saturate_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_UNSIGNED_CHAR_SATURATE)}},
     {"vc4cl_is_nan",
         Intrinsic{intrinsifyCheckNaN(false),
