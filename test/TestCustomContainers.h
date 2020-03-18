@@ -17,6 +17,9 @@ public:
 
     void testFixedSortedPointerMap();
     void testSmallSortedPointerMap();
+    
+    void testFixedSortedPointerSet();
+    void testSmallSortedPointerSet();
 };
 
 #endif /* VC4C_TEST_CUSTOM_CONTAINERS_H */

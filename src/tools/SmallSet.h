@@ -10,7 +10,7 @@
 
 #include <algorithm>
 #include <array>
-#include <map>
+#include <set>
 #include <type_traits>
 
 namespace vc4c
@@ -18,52 +18,29 @@ namespace vc4c
     namespace tools
     {
         /**
-         * Container similar to a map, but with a fixed size that is allocated inline in the object.
+         * Container similar to a set, but with a fixed size that is allocated inline in the object.
          *
-         * NOTE: In contrast to std::map, inserting or deleting elements might invalidate iterators!
+         * NOTE: In contrast to std::set, inserting or deleting elements might invalidate iterators!
          */
-        template <typename K, typename V, std::size_t N, typename C = std::less<K>>
-        class FixedSortedPointerMap
+        template <typename T, std::size_t N, typename C = std::less<T>>
+        class FixedSortedPointerSet
         {
             // For now, only support pointers as keys and take nullptr as "not set"
-            static_assert(std::is_pointer<K>::value, "The key must be a pointer type");
+            static_assert(std::is_pointer<T>::value, "The type must be a pointer type");
 
             // For now only support stateless comparators, so we do not need to store the objects
             static_assert(std::is_empty<C>::value, "Only stateless comparators are supported");
 
-            // Since we create pairs (and therefore values) for entries which do not exist, they need to be default
-            // constructible
-            static_assert(std::is_default_constructible<V>::value, "The value type needs to be default constructible");
-
             // The marker for an entry that is not set, is sorted to the end of the array
             static constexpr auto TOMBSTONE = std::numeric_limits<uintptr_t>::max();
 
-            using Container = std::array<std::pair<K, V>, N>;
-            using Element = typename Container::value_type;
-
-            struct ElementComparator
-            {
-                C comp;
-                bool operator()(const Element& e1, const Element& e2) const
-                {
-                    return comp(e1.first, e2.first);
-                }
-            };
-
-            struct ElementWithKeyComparator
-            {
-                C comp;
-                bool operator()(const Element& e1, const K& k2) const
-                {
-                    return comp(e1.first, k2);
-                }
-            };
+            using Container = std::array<T, N>;
 
         public:
-            using key_type = K;
-            using mapped_type = V;
+            using key_type = T;
             using value_type = typename Container::value_type;
             using key_compare = C;
+            using value_compare = key_compare;
             using reference = typename Container::reference;
             using const_reference = typename Container::const_reference;
             using pointer = typename Container::pointer;
@@ -73,13 +50,13 @@ namespace vc4c
             using difference_type = typename Container::difference_type;
             using size_type = typename Container::size_type;
 
-            explicit FixedSortedPointerMap()
+            explicit FixedSortedPointerSet()
             {
                 // need to set all pointers initially to TOMBSTONE value
                 clear();
             }
 
-            FixedSortedPointerMap(std::initializer_list<value_type> init) : FixedSortedPointerMap()
+            FixedSortedPointerSet(std::initializer_list<key_type> init) : FixedSortedPointerSet()
             {
                 std::copy(init.begin(), init.end(), data.begin());
                 sort();
@@ -97,29 +74,29 @@ namespace vc4c
 
             iterator end() noexcept
             {
-                return findInner(reinterpret_cast<K>(TOMBSTONE));
+                return findInner(reinterpret_cast<T>(TOMBSTONE));
             }
 
             const_iterator end() const noexcept
             {
-                return findInner(reinterpret_cast<K>(TOMBSTONE));
+                return findInner(reinterpret_cast<T>(TOMBSTONE));
             }
 
             bool empty() const noexcept
             {
                 // if the first element is a tombstone, all are, since tombstones are sorted to the end
-                return data[0].first == reinterpret_cast<K>(TOMBSTONE);
+                return data[0] == reinterpret_cast<T>(TOMBSTONE);
             }
 
             bool full() const noexcept
             {
                 // if the last element is not a tombstone, none are, since tombstones are sorted to the end
-                return data.back().first != reinterpret_cast<K>(TOMBSTONE);
+                return data.back() != reinterpret_cast<T>(TOMBSTONE);
             }
 
             size_type size() const noexcept
             {
-                return findInner(reinterpret_cast<K>(TOMBSTONE)) - begin();
+                return findInner(reinterpret_cast<T>(TOMBSTONE)) - begin();
             }
 
             size_type max_size() const noexcept
@@ -127,48 +104,16 @@ namespace vc4c
                 return data.size();
             }
 
-            mapped_type& operator[](const key_type& key)
-            {
-                auto it = find(key);
-                if(it == data.end())
-                    // key not found and array is full
-                    throw std::out_of_range{"Fixed pointer map is full, can't insert key"};
-                if(it->first == reinterpret_cast<K>(TOMBSTONE))
-                {
-                    // insert new element
-                    *it = std::make_pair(key, V{});
-                    sort();
-                    return find(key)->second;
-                }
-                return it->second;
-            }
-
-            mapped_type& at(const key_type& key)
-            {
-                auto it = findInner(key);
-                if(it != data.end() && it->first == key)
-                    return it->second;
-                throw std::out_of_range{"Key not in fixed pointer map"};
-            }
-
-            const mapped_type& at(const key_type& key) const
-            {
-                auto it = findInner(key);
-                if(it != data.end() && it->first == key)
-                    return it->second;
-                throw std::out_of_range{"Key not in fixed pointer map"};
-            }
-
             void erase(const_iterator position)
             {
-                *const_cast<iterator>(position) = std::make_pair(reinterpret_cast<K>(TOMBSTONE), V{});
+                *const_cast<iterator>(position) = reinterpret_cast<T>(TOMBSTONE);
                 sort();
             }
 
             size_type erase(const key_type& key)
             {
                 auto it = findInner(key);
-                if(it != data.end() && it->first == key)
+                if(it != data.end() && *it == key)
                 {
                     erase(it);
                     return 1;
@@ -178,23 +123,20 @@ namespace vc4c
 
             void clear()
             {
-                data.fill(std::make_pair(reinterpret_cast<K>(TOMBSTONE), V{}));
+                data.fill(reinterpret_cast<T>(TOMBSTONE));
             }
 
-            template <typename... Args>
-            std::pair<iterator, bool> emplace(Args&&... args)
+            std::pair<iterator, bool> emplace(key_type arg)
             {
-                value_type tmp{std::forward<Args>(args)...};
-                auto it = find(tmp.first);
+                auto it = find(arg);
                 if(it == data.end())
                     // key not found and array is full
-                    throw std::out_of_range{"Fixed pointer map is full, can't insert key"};
-                if(it->first == reinterpret_cast<K>(TOMBSTONE))
+                    throw std::out_of_range{"Fixed pointer set is full, can't insert key"};
+                if(*it == reinterpret_cast<T>(TOMBSTONE))
                 {
-                    auto key = tmp.first;
-                    *it = std::move(tmp);
+                    *it = arg;
                     sort();
-                    return std::make_pair(find(key), true);
+                    return std::make_pair(find(arg), true);
                 }
                 return std::make_pair(it, false);
             }
@@ -202,7 +144,7 @@ namespace vc4c
             iterator find(const key_type& key)
             {
                 auto it = findInner(key);
-                if(it == data.end() || it->first == key)
+                if(it == data.end() || *it == key)
                     return it;
                 return end();
             }
@@ -210,7 +152,7 @@ namespace vc4c
             const_iterator find(const key_type& key) const
             {
                 auto it = findInner(key);
-                if(it == data.end() || it->first == key)
+                if(it == data.end() || *it == key)
                     return it;
                 return end();
             }
@@ -220,44 +162,44 @@ namespace vc4c
 
             void sort()
             {
-                std::sort(data.begin(), data.end(), ElementComparator{});
+                std::sort(data.begin(), data.end(), key_compare{});
             }
 
             iterator findInner(const key_type& key)
             {
-                return std::lower_bound(data.begin(), data.end(), key, ElementWithKeyComparator{});
+                return std::lower_bound(data.begin(), data.end(), key, key_compare{});
             }
 
             const_iterator findInner(const key_type& key) const
             {
-                return std::lower_bound(data.begin(), data.end(), key, ElementWithKeyComparator{});
+                return std::lower_bound(data.begin(), data.end(), key, key_compare{});
             }
         };
 
         /**
-         * Container similar to a std::map, but stores the first few elements in-line.
+         * Container similar to a std::set, but stores the first few elements in-line.
          *
          * This container should be preferred when the object usually contains a small number of elements to avoid
          * allocating memory on the heap.
          *
-         * NOTE: In contrast to std::map, inserting or deleting elements might invalidate iterators!
+         * NOTE: In contrast to std::set, inserting or deleting elements might invalidate iterators!
          *
-         * NOTE: The NULL pointer is considered a marker for a "not set" entry in the small map and can therefore
+         * NOTE: The NULL pointer is considered a marker for a "not set" entry in the small set and can therefore
          * not be used as valid value!
          */
-        template <typename K, typename V>
-        class SmallSortedPointerMap
+        template <typename T>
+        class SmallSortedPointerSet
         {
             // For now, only support pointers as keys and take nullptr as "not set"
-            static_assert(std::is_pointer<K>::value, "The key must be a pointer type");
+            static_assert(std::is_pointer<T>::value, "The key must be a pointer type");
 
             // The number of elements in the small version
-            static constexpr auto SmallSize = sizeof(std::map<K, V>) / sizeof(std::pair<K, V>);
+            static constexpr auto SmallSize = sizeof(std::set<T>) / sizeof(T);
             static_assert(SmallSize > 0, "Element size too big, the small version has no elements");
 
-            using Comparator = std::less<K>;
-            using SmallContainer = FixedSortedPointerMap<K, V, SmallSize, Comparator>;
-            using BigContainer = std::map<K, V, Comparator>;
+            using Comparator = std::less<T>;
+            using SmallContainer = FixedSortedPointerSet<T, SmallSize, Comparator>;
+            using BigContainer = std::set<T, Comparator>;
             static_assert(sizeof(SmallContainer) <= sizeof(BigContainer), "Small container is too big");
 
             struct ConstIterator
@@ -282,14 +224,14 @@ namespace vc4c
                     return !(*this == other);
                 }
 
-                const std::pair<const K, V>& operator*() const noexcept
+                const T& operator*() const noexcept
                 {
-                    return isBig ? *bigIt : reinterpret_cast<const std::pair<const K, V>&>(*smallIt);
+                    return isBig ? *bigIt : reinterpret_cast<const T&>(*smallIt);
                 }
 
-                const std::pair<const K, V>* operator->() const noexcept
+                const T* operator->() const noexcept
                 {
-                    return isBig ? &*bigIt : reinterpret_cast<const std::pair<const K, V>*>(&*smallIt);
+                    return isBig ? &*bigIt : reinterpret_cast<const T*>(&*smallIt);
                 }
 
                 ConstIterator& operator++() noexcept
@@ -353,14 +295,14 @@ namespace vc4c
                     return !(*this == other);
                 }
 
-                std::pair<const K, V>& operator*() noexcept
+                const T& operator*() noexcept
                 {
-                    return isBig ? *bigIt : reinterpret_cast<std::pair<const K, V>&>(*smallIt);
+                    return isBig ? *bigIt : reinterpret_cast<const T&>(*smallIt);
                 }
 
-                std::pair<const K, V>* operator->() noexcept
+                const T* operator->() noexcept
                 {
-                    return isBig ? &*bigIt : reinterpret_cast<std::pair<const K, V>*>(&*smallIt);
+                    return isBig ? &*bigIt : reinterpret_cast<const T*>(&*smallIt);
                 }
 
                 Iterator& operator++() noexcept
@@ -409,9 +351,9 @@ namespace vc4c
 
         public:
             using key_type = typename BigContainer::key_type;
-            using mapped_type = typename BigContainer::mapped_type;
             using value_type = typename BigContainer::value_type;
             using key_compare = typename BigContainer::key_compare;
+            using value_compare = typename BigContainer::value_compare;
             using reference = typename BigContainer::reference;
             using const_reference = typename BigContainer::const_reference;
             using pointer = typename BigContainer::pointer;
@@ -421,12 +363,12 @@ namespace vc4c
             using difference_type = typename BigContainer::difference_type;
             using size_type = typename BigContainer::size_type;
 
-            explicit SmallSortedPointerMap() : data(SmallContainer{}) {}
+            explicit SmallSortedPointerSet() : data(SmallContainer{}) {}
 
-            SmallSortedPointerMap(std::initializer_list<value_type> init)
+            SmallSortedPointerSet(std::initializer_list<key_type> init)
             {
                 if(init.size() <= small_size())
-                    data = SmallContainer{*reinterpret_cast<std::initializer_list<std::pair<K, V>>*>(&init)};
+                    data = SmallContainer{init};
                 else
                     data = BigContainer{init};
             }
@@ -473,34 +415,6 @@ namespace vc4c
                 return VariantNamespace::get<BigContainer>(data).size();
             }
 
-            mapped_type& operator[](const key_type& key)
-            {
-                if(auto small = VariantNamespace::get_if<SmallContainer>(&data))
-                {
-                    auto it = small->find(key);
-                    if(it != small->end())
-                        return it->second;
-                    if(!small->full())
-                        return (*small)[key];
-                    useBigContainer();
-                }
-                return VariantNamespace::get<BigContainer>(data)[key];
-            }
-
-            mapped_type& at(const key_type& key)
-            {
-                if(auto small = VariantNamespace::get_if<SmallContainer>(&data))
-                    return small->at(key);
-                return VariantNamespace::get<BigContainer>(data).at(key);
-            }
-
-            const mapped_type& at(const key_type& key) const
-            {
-                if(auto small = VariantNamespace::get_if<SmallContainer>(&data))
-                    return small->at(key);
-                return VariantNamespace::get<BigContainer>(data).at(key);
-            }
-
             void erase(const_iterator position)
             {
                 if(auto small = VariantNamespace::get_if<SmallContainer>(&data))
@@ -521,21 +435,20 @@ namespace vc4c
                 data = SmallContainer{};
             }
 
-            template <typename... Args>
-            std::pair<iterator, bool> emplace(Args&&... args)
+            std::pair<iterator, bool> emplace(key_type arg)
             {
                 if(auto small = VariantNamespace::get_if<SmallContainer>(&data))
                 {
                     if(!small->full())
                     {
-                        auto tmp = small->emplace(std::forward<Args>(args)...);
+                        auto tmp = small->emplace(arg);
                         return std::make_pair(Iterator{false, tmp.first, {}}, tmp.second);
                     }
                     else
                         // TODO if the element is already in there, this wastes resources
                         useBigContainer();
                 }
-                auto tmp = VariantNamespace::get<BigContainer>(data).emplace(std::forward<Args>(args)...);
+                auto tmp = VariantNamespace::get<BigContainer>(data).emplace(arg);
                 return std::make_pair(Iterator{true, {}, tmp.first}, tmp.second);
             }
 
@@ -568,17 +481,18 @@ namespace vc4c
             {
                 // copy all entries and insert them back to the big container
                 auto tmp = VariantNamespace::get<SmallContainer>(data);
-                data = BigContainer{tmp.begin(), tmp.end()};
+                // NOTE: () on purpose to select range constructor and not the initializer list!
+                data = BigContainer(tmp.begin(), tmp.end());
             }
         };
 
         // just to make sure we don't have too much overhead
-        static_assert(sizeof(FixedSortedPointerMap<void*, void*, 4>) == sizeof(std::array<std::pair<void*, void*>, 4>),
-            "FixedPointerMap wastes space");
-        static_assert(sizeof(SmallSortedPointerMap<void*, void*>) == (sizeof(void*) + sizeof(std::map<void*, void*>)),
-            "SmallSortedPointerMap wastes space");
+        static_assert(
+            sizeof(FixedSortedPointerSet<void*, 4>) == sizeof(std::array<void*, 4>), "FixedPointerSet wastes space");
+        static_assert(sizeof(SmallSortedPointerSet<void*>) == (sizeof(void*) + sizeof(std::set<void*>)),
+            "SmallSortedPointerSet wastes space");
 
-        static_assert(std::is_trivially_destructible<FixedSortedPointerMap<void*, unsigned, 4>>::value, "");
+        static_assert(std::is_trivially_destructible<FixedSortedPointerSet<void*, 4>>::value, "");
 
     } // namespace tools
 } // namespace vc4c
