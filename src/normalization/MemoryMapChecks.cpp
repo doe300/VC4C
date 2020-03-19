@@ -177,14 +177,14 @@ static NODISCARD std::pair<InstructionWalker, InstructionWalker> insert64BitWrit
 }
 
 static Optional<FastSet<const IntermediateInstruction*>> checkAllWritersArePhiNodesOrSelections(
-    const Local* local, const IntermediateInstruction* excludedInstruction)
+    const Local* local, const tools::SmallSortedPointerSet<const IntermediateInstruction*>& excludedInstructions)
 {
     bool allWritersArePhiNodes = true;
     bool allWritersAreSelections = true;
     FastSet<const IntermediateInstruction*> phiNodes;
     FastSet<const IntermediateInstruction*> selections;
     local->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) {
-        if(excludedInstruction == writer)
+        if(excludedInstructions.find(writer) != excludedInstructions.end())
             // skip the (possible write) we are currently processing
             return;
         if(writer->hasDecoration(InstructionDecorations::PHI_NODE))
@@ -210,9 +210,9 @@ static Optional<FastSet<const IntermediateInstruction*>> checkAllWritersArePhiNo
             allWritersAreSelections = false;
         }
     });
-    if(allWritersArePhiNodes)
+    if(!phiNodes.empty() && allWritersArePhiNodes)
         return phiNodes;
-    if(allWritersAreSelections)
+    if(!selections.empty() && allWritersAreSelections)
         return selections;
     return {};
 }
@@ -229,6 +229,13 @@ struct ConditionalMemoryAccess
     {
         return conditionalWrite == other.conditionalWrite;
     }
+
+    std::string to_string() const
+    {
+        if(auto loc = VariantNamespace::get_if<const Local*>(&source))
+            return (*loc)->to_string();
+        return VariantNamespace::get<const IntermediateInstruction*>(source)->to_string();
+    }
 };
 
 namespace std
@@ -243,6 +250,24 @@ namespace std
     };
 
 } // namespace std
+
+static MemoryAccessType getFallbackType(MemoryAccessType preferredType)
+{
+    switch(preferredType)
+    {
+    case MemoryAccessType::QPU_REGISTER_READONLY:
+        return MemoryAccessType::RAM_LOAD_TMU;
+    case MemoryAccessType::QPU_REGISTER_READWRITE:
+        return MemoryAccessType::VPM_PER_QPU;
+    case MemoryAccessType::VPM_PER_QPU:
+    case MemoryAccessType::VPM_SHARED_ACCESS:
+    case MemoryAccessType::RAM_LOAD_TMU:
+    case MemoryAccessType::RAM_READ_WRITE_VPM:
+        return MemoryAccessType::RAM_READ_WRITE_VPM;
+    }
+    throw CompilationError(CompilationStep::NORMALIZER, "Cannot determine fallback for unknown memory access type",
+        std::to_string(static_cast<unsigned>(preferredType)));
+}
 
 MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
 {
@@ -261,7 +286,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
         if(pointerType->addressSpace == AddressSpace::CONSTANT)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Constant parameter '" << param.to_string() << "' will be read from RAM via TMU"
+                log << "Constant parameter '" << param.to_string() << "' can be read from RAM via TMU"
                     << logging::endl);
             mapping[&param].preferred = MemoryAccessType::RAM_LOAD_TMU;
             // fall-back, e.g. for memory copy
@@ -273,7 +298,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Global parameter '" << param.to_string()
-                        << "' without any write access will be read from RAM via TMU" << logging::endl);
+                        << "' without any write access can be read from RAM via TMU" << logging::endl);
                 mapping[&param].preferred = MemoryAccessType::RAM_LOAD_TMU;
                 // fall-back, e.g. for memory copy
                 mapping[&param].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
@@ -282,7 +307,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Global parameter '" << param.to_string()
-                        << "' which is written to will be stored in RAM and accessed via VPM" << logging::endl);
+                        << "' which is written to can be stored in RAM and accessed via VPM" << logging::endl);
                 mapping[&param].preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
                 mapping[&param].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
             }
@@ -293,7 +318,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
             // TODO need to make sure the correct size is used (by default, lowering to VPM uses the pointed-to-type
             // which could be wrong!)
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Local parameter '" << param.to_string() << "' will be stored in RAM and accessed via VPM"
+                log << "Local parameter '" << param.to_string() << "' can be stored in RAM and accessed via VPM"
                     << logging::endl);
             mapping[&param].preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
             mapping[&param].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
@@ -590,7 +615,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                     if(local->type.isSimpleType() || convertSmallArrayToRegister(local))
                     {
                         CPPLOG_LAZY(logging::Level::DEBUG,
-                            log << "Small stack value '" << local->to_string() << "' will be stored in a register"
+                            log << "Small stack value '" << local->to_string() << "' can be stored in a register"
                                 << logging::endl);
                         mapping[local].preferred = MemoryAccessType::QPU_REGISTER_READWRITE;
                         // we cannot pack an array into a VPM cache line, since always all 16 elements are read/written
@@ -602,7 +627,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                     {
                         CPPLOG_LAZY(logging::Level::DEBUG,
                             log << "Stack value '" << local->to_string()
-                                << "' will be stored in VPM per QPU (with fall-back to RAM via VPM)" << logging::endl);
+                                << "' can be stored in VPM per QPU (with fall-back to RAM via VPM)" << logging::endl);
                         mapping[local].preferred = MemoryAccessType::VPM_PER_QPU;
                         mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
                     }
@@ -610,7 +635,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                     {
                         CPPLOG_LAZY(logging::Level::DEBUG,
                             log << "Struct stack value '" << local->to_string()
-                                << "' will be stored in RAM per QPU (via VPM)" << logging::endl);
+                                << "' can be stored in RAM per QPU (via VPM)" << logging::endl);
                         mapping[local].preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
                         mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
                     }
@@ -624,7 +649,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                         {
                             CPPLOG_LAZY(logging::Level::DEBUG,
                                 log << "Constant element of constant buffer '" << local->to_string()
-                                    << "' will be stored in a register " << logging::endl);
+                                    << "' can be stored in a register " << logging::endl);
                             mapping[local].preferred = MemoryAccessType::QPU_REGISTER_READONLY;
                             mapping[local].fallback = MemoryAccessType::RAM_LOAD_TMU;
                         }
@@ -632,14 +657,14 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                         {
                             CPPLOG_LAZY(logging::Level::DEBUG,
                                 log << "Small constant buffer '" << local->to_string()
-                                    << "' will be stored in a register" << logging::endl);
+                                    << "' can be stored in a register" << logging::endl);
                             mapping[local].preferred = MemoryAccessType::QPU_REGISTER_READONLY;
                             mapping[local].fallback = MemoryAccessType::RAM_LOAD_TMU;
                         }
                         else
                         {
                             CPPLOG_LAZY(logging::Level::DEBUG,
-                                log << "Constant buffer '" << local->to_string() << "' will be read from RAM via TMU"
+                                log << "Constant buffer '" << local->to_string() << "' can be read from RAM via TMU"
                                     << logging::endl);
                             mapping[local].preferred = MemoryAccessType::RAM_LOAD_TMU;
                             // fall-back, e.g. for memory copy
@@ -651,7 +676,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                         // local buffer
                         CPPLOG_LAZY(logging::Level::DEBUG,
                             log << "Local buffer '" << local->to_string()
-                                << "' will be stored in VPM (with fall-back to RAM via VPM)" << logging::endl);
+                                << "' can be stored in VPM (with fall-back to RAM via VPM)" << logging::endl);
                         mapping[local].preferred = MemoryAccessType::VPM_SHARED_ACCESS;
                         mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
                     }
@@ -659,13 +684,13 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                     {
                         // local buffer
                         CPPLOG_LAZY(logging::Level::DEBUG,
-                            log << "Local struct '" << local->to_string() << "' will be stored in RAM via VPM"
+                            log << "Local struct '" << local->to_string() << "' can be stored in RAM via VPM"
                                 << logging::endl);
                         mapping[local].preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
                         mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
                     }
                 }
-                else if(auto conditonalWrites = checkAllWritersArePhiNodesOrSelections(local, it.get()))
+                else if(auto conditonalWrites = checkAllWritersArePhiNodesOrSelections(local, {it.get(), memInstr}))
                 {
                     // if the local is a PHI result from different memory addresses, we can still map it, if the
                     // source addresses have the same access type. Since the "original" access types of the sources
@@ -679,8 +704,8 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                                       .first->second;
                     entry.first = local;
                     CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Conditionally written local '" << local->to_string()
-                            << "' will not be mapped, these sources will be mapped instead: " << logging::endl);
+                        log << "Conditionally accessed local '" << local->to_string()
+                            << "' will not be mapped, these sources can be mapped instead: " << logging::endl);
                     for(auto writer : *conditonalWrites)
                     {
                         if(const Local* loc = writer->assertArgument(0).local())
@@ -689,13 +714,10 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                             if(loc->residesInMemory() || loc->is<Parameter>())
                             {
                                 auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, loc});
-                                if(tmp.second)
-                                {
-                                    entry.second.emplace(&*tmp.first);
-                                    CPPLOG_LAZY(logging::Level::DEBUG,
-                                        log << "\tconditional write " << writer->to_string()
-                                            << " to memory area: " << loc->to_string(true) << logging::endl);
-                                }
+                                entry.second.emplace(&*tmp.first);
+                                CPPLOG_LAZY(logging::Level::DEBUG,
+                                    log << "\tconditional write " << writer->to_string()
+                                        << " to memory area: " << loc->to_string(true) << logging::endl);
                                 continue;
                             }
                             if(loc->getSingleWriter() &&
@@ -704,13 +726,10 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                             {
                                 auto writer = loc->getSingleWriter();
                                 auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, writer});
-                                if(tmp.second)
-                                {
-                                    entry.second.emplace(&*tmp.first);
-                                    CPPLOG_LAZY(logging::Level::DEBUG,
-                                        log << "\tconditional write " << writer->to_string()
-                                            << " to conditional write: " << writer->to_string() << logging::endl);
-                                }
+                                entry.second.emplace(&*tmp.first);
+                                CPPLOG_LAZY(logging::Level::DEBUG,
+                                    log << "\tconditional write " << writer->to_string()
+                                        << " to conditional write: " << writer->to_string() << logging::endl);
                                 continue;
                             }
                         }
@@ -771,23 +790,48 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
     for(const auto& conditionalAccessedMemory : conditionalWrittenMemoryAccesses)
     {
         FastSet<MemoryAccessType> preferredTypes;
+        FastSet<MemoryAccessType> fallbackTypes;
         for(const auto* access : conditionalAccessedMemory.second.second)
         {
             auto& memoryAccess = *conditionalAccesses.at(access);
             memoryAccess.accessInstructions.emplace(
                 conditionalAccessedMemory.first, conditionalAccessedMemory.second.first);
             preferredTypes.emplace(memoryAccess.preferred);
+            fallbackTypes.emplace(memoryAccess.fallback);
         }
 
-        if(preferredTypes.size() > 1)
+        while(preferredTypes.size() > 1)
         {
-            // TODO would need to fall back to the allowed fall-backs until something matches
-            // also will need to update the MemoryAccesses for the source locals (and all other conditional accesses on
-            // these source locals)
-            throw CompilationError(CompilationStep::NORMALIZER,
-                "Mapping conditionally addressed memory access to memory areas with different memory access types is "
-                "not supported yet",
-                conditionalAccessedMemory.first->to_string());
+            // try to fall back to the fall-back memory access types, until we have one type that fits all.
+            // since all memory access types in the end fall back to memory access via DMA, we can repeat this fix-up
+            // until there is only a single memory access type left
+            for(const auto* access : conditionalAccessedMemory.second.second)
+            {
+                auto& memoryAccess = *conditionalAccesses.at(access);
+                // Some other memory location prefers our fallback type, so use it also. Don't fall back (yet) if other
+                // memory locations can fall back to our preferred type, since this might be the memory access type
+                // everyone can agree on.
+                if(fallbackTypes.find(memoryAccess.preferred) == fallbackTypes.end() &&
+                    preferredTypes.find(memoryAccess.fallback) != preferredTypes.end())
+                {
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Falling back to memory access type ' " << toString(memoryAccess.fallback)
+                            << "' to match other conditional memory accesses for location: " << access->to_string()
+                            << logging::endl);
+                    memoryAccess.preferred = memoryAccess.fallback;
+                    memoryAccess.fallback = getFallbackType(memoryAccess.preferred);
+                }
+            }
+
+            // check again
+            preferredTypes.clear();
+            fallbackTypes.clear();
+            for(const auto* access : conditionalAccessedMemory.second.second)
+            {
+                auto& memoryAccess = *conditionalAccesses.at(access);
+                preferredTypes.emplace(memoryAccess.preferred);
+                fallbackTypes.emplace(memoryAccess.fallback);
+            }
         }
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Conditionally written memory address '" << conditionalAccessedMemory.second.first->to_string()

@@ -39,6 +39,8 @@ namespace vc4c
             RAM_READ_WRITE_VPM
         };
 
+        std::string toString(MemoryAccessType type);
+
         /**
          * Analysis data for the range of memory accessed per memory object
          *
