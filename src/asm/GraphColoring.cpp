@@ -769,7 +769,8 @@ static RegisterFile getBlockedInputs(
     return blockedFiles;
 }
 
-static NODISCARD LocalUse checkUser(const tools::SmallSortedPointerMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
+static NODISCARD LocalUse checkUser(
+    const tools::SmallSortedPointerMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
 {
     LocalUse use;
     it.forAllInstructions([&users, &use](const intermediate::IntermediateInstruction& instr) {
@@ -783,7 +784,8 @@ static NODISCARD LocalUse checkUser(const tools::SmallSortedPointerMap<const Loc
     return use;
 }
 
-static NODISCARD LocalUse assertUser(const tools::SmallSortedPointerMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
+static NODISCARD LocalUse assertUser(
+    const tools::SmallSortedPointerMap<const LocalUser*, LocalUse>& users, const InstructionWalker it)
 {
     auto use = checkUser(users, it);
     if(!use.readsLocal() && !use.writesLocal())

@@ -89,6 +89,111 @@ __kernel void test(__global TYPE* out, const __global TYPE* in, __global TYPE* p
 }
 )";
 
+static const std::string COPY64BIT = R"(
+typedef struct {
+  uint a;
+  uint b;
+} Type;
+
+__kernel void test(__global Type* out, __global Type* in, __global const ulong* other) {
+  size_t gid = get_global_id(0);
+  Type val = in[gid];
+  out[gid] = val;
+})";
+
+static const std::string LOADSTORE64BIT = R"(
+typedef struct {
+  uint a;
+  uint b;
+} Type;
+
+__kernel void test(__global Type* out, __global Type* in, __global const ulong* other) {
+  size_t gid = get_global_id(0);
+  Type val = in[gid];
+  // this prevents e.g. copy optimization
+  in[gid] = (Type){.a = 0, .b = 0};
+  out[gid] = val;
+  in[gid] = val;
+})";
+
+static const std::string READ64BITLOWERWORD = R"(
+typedef struct {
+  uint a;
+  uint b;
+} Type;
+
+__kernel void test(__global uint* out, __global Type* in, __global const ulong* other) {
+  size_t gid = get_global_id(0);
+  Type val = in[gid];
+  ulong b = other[gid];
+  uint2 c = (uint2)(b & 0xFFFFFFFF, b >> 32);
+  out[gid] = val.a + c.x;
+})";
+
+static const std::string READ64BITUPPERWORD = R"(
+typedef struct {
+  uint a;
+  uint b;
+} Type;
+
+__kernel void test(__global uint* out, __global Type* in, __global const ulong* other) {
+  size_t gid = get_global_id(0);
+  Type val = in[gid];
+  ulong b = other[gid];
+  uint2 c = (uint2)(b & 0xFFFFFFFF, b >> 32);
+  out[gid] = val.b + c.y;
+})";
+
+static const std::string READWRITE64BITLOWERWORD = R"(
+typedef struct {
+  uint a;
+  uint b;
+} Type;
+
+__kernel void test(__global Type* out, __global Type* in, __global const ulong* other) {
+  size_t gid = get_global_id(0);
+  // read the input, so we don't merge the below to a copy
+  Type val = in[gid];
+  ulong b = other[gid];
+  uint2 c = (uint2)(b & 0xFFFFFFFF, b >> 32);
+  in[gid].a += c.x;
+  out[gid] = in[gid];
+})";
+
+static const std::string READWRITE64BITUPPERWORD = R"(
+typedef struct {
+  uint a;
+  uint b;
+} Type;
+
+__kernel void test(__global Type* out, __global Type* in, __global const ulong* other) {
+  size_t gid = get_global_id(0);
+  // read the input, so we don't merge the below to a copy
+  Type val = in[gid];
+  ulong b = other[gid];
+  uint2 c = (uint2)(b & 0xFFFFFFFF, b >> 32);
+  in[gid].b += c.y;
+  out[gid] = in[gid];
+})";
+
+static const std::string WRITE64BIT = R"(
+typedef struct {
+  uint a;
+  uint b;
+} Type;
+
+__kernel void test(__global Type* out, __global Type* in, __global const ulong* other) {
+  size_t gid = get_global_id(0);
+  // read the input, so we don't merge the below to a copy
+  Type val = in[gid];
+  ulong tmp = other[gid];
+  Type tmp2;
+  tmp2.a = (uint)tmp;
+  tmp2.b = (uint)(tmp >> 32);
+  in[gid] = tmp2;
+  out[gid] = in[gid];
+})";
+
 TestMemoryAccess::TestMemoryAccess(const Configuration& config) : TestEmulator(false, config)
 {
     TEST_ADD(TestMemoryAccess::testPrivateStorage);
@@ -115,6 +220,17 @@ TestMemoryAccess::TestMemoryAccess(const Configuration& config) : TestEmulator(f
     TEST_ADD(TestMemoryAccess::testVectorLoadStorePrivateVPMPartial);
     TEST_ADD(TestMemoryAccess::testVectorLoadStoreLocalParameter);
     TEST_ADD(TestMemoryAccess::testVectorLoadStoreGlobalParameter);
+
+    TEST_ADD(TestMemoryAccess::testCopy64BitRAM);
+    TEST_ADD(TestMemoryAccess::testLoadStore64BitRAM);
+    // covers 64-bit TMU read
+    TEST_ADD(TestMemoryAccess::testRead64BitLowerWordFromRAM);
+    // covers 64-bit TMU read as well as lshr %src.upper >> 32 into %dest.lower
+    TEST_ADD(TestMemoryAccess::testRead64BitUpperWordFromRAM);
+    // XXX the following tests does not increase coverage over the above, i.e. the same code is executed -> rewrite!
+    TEST_ADD(TestMemoryAccess::testReadWrite64BitLowerWordFromRAM);
+    TEST_ADD(TestMemoryAccess::testReadWrite64BitUpperWordFromRAM);
+    TEST_ADD(TestMemoryAccess::testWrite64BitToRAM);
 }
 
 TestMemoryAccess::~TestMemoryAccess() = default;
@@ -165,6 +281,19 @@ static void testGlobalFunction(vc4c::Configuration& config, const std::string& o
         options.substr(type, options.find(' ', type) - type) + "__global", onError);
 }
 
+template <typename In, typename Out, std::size_t N, typename Comparison = CompareEqual<Out>>
+static void testBinaryFunction(std::stringstream& code, const std::string& options,
+    const std::function<Out(In, In)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    auto in0 = generateInput<In, N * 12>(true);
+    auto in1 = generateInput<In, N * 12>(true);
+
+    auto out = runEmulation<In, Out, N, 12>(code, {in0, in1});
+    auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();
+    checkBinaryResults<Out, In, N * 12, Comparison>(
+        in0, in1, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
+}
+
 void TestMemoryAccess::testPrivateStorage()
 {
     const std::vector<uint32_t> expected{
@@ -193,7 +322,7 @@ void TestMemoryAccess::testPrivateStorage()
     if(expected != result.results.at(1).second.value())
     {
         auto expectedIt = expected.begin();
-        auto resultIt = result.results.at(1).second->end();
+        auto resultIt = result.results.at(1).second->begin();
         while(expectedIt != expected.end())
         {
             TEST_ASSERT_EQUALS(*expectedIt, *resultIt)
@@ -640,4 +769,87 @@ void TestMemoryAccess::testVectorLoadStoreGlobalParameter()
             TEST_ASSERT_EQUALS("", "element " + std::to_string(i))
         }
     }
+}
+
+void TestMemoryAccess::testCopy64BitRAM()
+{
+    auto func = [](uint64_t i, uint64_t other) -> uint64_t { return i; };
+
+    std::string options = "-DFUNC=memcpy";
+    std::stringstream code;
+    compileBuffer(config, code, COPY64BIT, options);
+    testBinaryFunction<uint64_t, uint64_t, 1>(code, options, func,
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestMemoryAccess::testLoadStore64BitRAM()
+{
+    auto func = [](uint64_t i, uint64_t other) -> uint64_t { return i; };
+
+    std::string options = "-DFUNC=load/store";
+    std::stringstream code;
+    compileBuffer(config, code, LOADSTORE64BIT, options);
+    testBinaryFunction<uint64_t, uint64_t, 1>(code, options, func,
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestMemoryAccess::testRead64BitLowerWordFromRAM()
+{
+    auto func = [](uint64_t i, uint64_t other) -> uint32_t { return static_cast<uint32_t>((i & 0xFFFFFFFFu) + other); };
+
+    std::string options = "-DFUNC=memcpy";
+    std::stringstream code;
+    compileBuffer(config, code, READ64BITLOWERWORD, options);
+    testBinaryFunction<uint64_t, uint32_t, 1>(code, options, func,
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestMemoryAccess::testRead64BitUpperWordFromRAM()
+{
+    auto func = [](uint64_t i, uint64_t other) -> uint32_t { return static_cast<uint32_t>((i >> 32) + (other >> 32)); };
+
+    std::string options = "-DFUNC=memcpy";
+    std::stringstream code;
+    compileBuffer(config, code, READ64BITUPPERWORD, options);
+    testBinaryFunction<uint64_t, uint32_t, 1>(code, options, func,
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestMemoryAccess::testReadWrite64BitLowerWordFromRAM()
+{
+    auto func = [](uint64_t i, uint64_t other) -> uint64_t {
+        return (i & uint64_t{0xFFFFFFFF00000000u}) | ((i + other) & 0xFFFFFFFFu);
+    };
+
+    std::string options = "-DFUNC=memcpy";
+    std::stringstream code;
+    compileBuffer(config, code, READWRITE64BITLOWERWORD, options);
+    testBinaryFunction<uint64_t, uint64_t, 1>(code, options, func,
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestMemoryAccess::testReadWrite64BitUpperWordFromRAM()
+{
+    auto func = [](uint64_t i, uint64_t other) -> uint64_t {
+        auto lower = static_cast<uint32_t>(i & uint64_t{0xFFFFFFFFu});
+        auto upper = static_cast<uint32_t>((i >> 32u) + (other >> 32u));
+        return lower | (static_cast<uint64_t>(upper) << 32u);
+    };
+
+    std::string options = "-DFUNC=memcpy";
+    std::stringstream code;
+    compileBuffer(config, code, READWRITE64BITUPPERWORD, options);
+    testBinaryFunction<uint64_t, uint64_t, 1>(code, options, func,
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestMemoryAccess::testWrite64BitToRAM()
+{
+    auto func = [](uint64_t i, uint64_t other) -> uint64_t { return other; };
+
+    std::string options = "-DFUNC=memcpy";
+    std::stringstream code;
+    compileBuffer(config, code, WRITE64BIT, options);
+    testBinaryFunction<uint64_t, uint64_t, 1>(code, options, func,
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

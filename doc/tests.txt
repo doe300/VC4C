@@ -29,12 +29,12 @@ test_array						PASSED
 test_async_wait					PASSED
 test_async_wait_guard			PASSED
 test_bernoulli_distribution		PASSED
-test_binary_search				result mismatch
+test_binary_search				PASSED (fixed test case!!)
 test_buffer						PASSED
 test_buffer_allocator			PASSED
 test_buffer_iterator			PASSED
 test_clamp_range				PASSED
-test_closure					result mismatch (ULP, "add_two_and_pi": difference{6.49642e-08%} between results[1]{7.33999968} and 7.34f{7.34000015} exceeds 1e-06%)
+test_closure					result mismatch (ULP, "add_two_and_pi": difference{6.49642e-08%} between results[1]{7.33999968} and 7.34f{7.34000015} exceeds 1e-06%, ULP in "triangle_area")
 test_command_queue				PASSED
 test_complex					PASSED
 test_constant_iterator			PASSED
@@ -42,33 +42,33 @@ test_context					PASSED
 test_context_error				PASSED
 test_copy						PASSED
 test_copy_if					PASSED (emulation fails with out-of-bounds access)
-test_copy_type_mismatch			Invalid Value error (command_queue:hpp:884, unexpected return value for clEnqueueUnmapMemObject, CL_INVALID_VALUE -> mapping not found!), hangs
-test_count						compilation error (long)
+test_copy_type_mismatch			PASSED
+test_count						result mismatch ("count_if_odd", "count_if_with_reduce")
 test_counting_iterator			PASSED
 test_device						PASSED (skips some OpenCL 2.0+ tests)
 test_discard_iterator			PASSED
-test_discrete_distribution		compilation error (ulong)
-test_dynamic_bitset				compilation error (long), result mismatch
+test_discrete_distribution		result mismatch
+test_dynamic_bitset				compilation error (long popcount), result mismatch
 test_equal						PASSED
 test_equal_range				PASSED
 test_event						PASSED
 test_extents					PASSED
-test_extrema					result mismatch ("int_min_max", "int2_min_max_custom_comparision_function", "iota_min_max", "max_vector_length"), compilation error, runs very long (4096 work-items per extreme tested)
+test_extrema					result mismatch ("int_min_max", "int2_min_max_custom_comparision_function" (both call find_extrema_with_reduce, other functions pass), "max_vector_length" ULP error of 1)
 test_fill						PASSED
 test_find						PASSED
 test_find_end					PASSED
 test_flat_map					PASSED
 test_flat_set					PASSED
 test_for_each					PASSED
-test_function					PASSED
+test_function					compilation error (cast of long to pointer, "invalid local type for memory area")
 test_function_input_iterator	PASSED
-test_functional_as				compilation error (not normalized instruction as_float, but works on host machine! LLVM version?!)
+test_functional_as				PASSED
 test_functional_bind			result mismatch ("transform_pow_two")
 test_functional_convert			PASSED
 test_functional_get				PASSED
-test_functional_hash			compilation error (ulong)
+test_functional_hash			compilation error (ulong multiplication)
 test_functional_identity		PASSED
-test_functional_popcount		compilation error (ulong)
+test_functional_popcount		compilation error (ulong popcount)
 test_functional_unpack			PASSED
 test_gather						PASSED
 test_generate					PASSED
@@ -78,23 +78,23 @@ test_image3d					SKIPPED
 test_image_sampler				SKIPPED
 test_includes					PASSED
 test_inner_product				PASSED
-test_inplace_merge				PASSED (reads 1-after-bounds of allocated buffer)
-test_inplace_reduce				result mismatch ("reduce_iota")
-test_insertion_sort				compilation error (long)
+test_inplace_merge				compilation error (register association) (reads 1-after-bounds of allocated buffer)
+test_inplace_reduce				result mismatch ("reduce_iota", uses kernel sum_int)
+test_insertion_sort				result mismatch ("sort_long_vector", "sort_ulong_vector")
 test_invoke						result mismatch (ULP, "invoke_builtin": result: inf expected: 256.f for function pow(2, 8))
 test_iota						PASSED
 test_is_permutation				PASSED (reads 1-after-bounds of allocated buffer)
 test_is_sorted					PASSED
-test_kernel						PASSED
+test_kernel						FAILED ("Invalid Argument Size")
 test_lambda						PASSED
 test_lexicographical_compare	PASSED
 test_linear_congruential_engine	PASSED
 test_literal_conversion			PASSED
 test_local_buffer				SKIPPED ("device does not support local memory")
 test_malloc						PASSED
-test_mapped_view				PASSED (result value mismatch for emulator)
-test_merge						PASSED
-test_merge_sort_gpu				Invalid Value error (get_object_info.hpp:104), compilation error (register association, long), double test skipped
+test_mapped_view				result mismatch ("mapped_view_reduce_doctest")
+test_merge						compilation error (register association)
+test_merge_sort_gpu				Invalid Value error (get_object_info.hpp:104), compilation error (register association), double test skipped
 test_mersenne_twister_engine	PASSED
 test_mismatch					PASSED
 test_next_permutation			PASSED
@@ -111,9 +111,9 @@ test_pinned_allocator			PASSED/SKIPPED
 test_pipe						SKIPPED
 test_platform					PASSED/SKIPPED
 test_prev_permutation			PASSED
-test_program					FAILED ("compile_and_link")
+test_program					PASSED
 test_program_cache				PASSED/SKIPPED
-test_radix_sort					result mismatches, compilation errors (long kernels), reads 1-after-bounds of allocated buffer
+test_radix_sort					result mismatches, compilation errors (long constant), reads 1-after-bounds of allocated buffer
 test_radix_sort_by_key			result mismatches, reads 1-after-bounds of allocated buffer
 test_random_fill				PASSED
 test_random_shuffle				PASSED
@@ -130,15 +130,15 @@ test_scatter					PASSED
 test_scatter_if					PASSED
 test_search						PASSED
 test_search_n					PASSED
-test_set_difference				PASSED (SEGFAULTS on emulator)
+test_set_difference				PASSED
 test_set_intersection			PASSED
 test_set_symmetric_difference   PASSED
 test_set_union					PASSED (SEGFAULTS on emulator)
-test_sort						result mismatch; compilation error (long)
-test_sort_by_key				result mismatch, compilation error (register association)
+test_sort						result mismatch; compilation error (long to pointer conversion)
+test_sort_by_key				PASSED
 test_sort_by_transform			PASSED (writes out-of-bounds of allocated buffer)
 test_stable_partition			PASSED (reads 1-after-bounds of allocated buffer)
-test_stable_sort				result mismatch ("sort_int_vector")
+test_stable_sort				PASSED
 test_stable_sort_by_key			PASSED
 test_stack						PASSED
 test_strided_iterator			PASSED
@@ -147,17 +147,17 @@ test_struct						PASSED
 test_svm_ptr					PASSED
 test_system						PASSED
 test_tabulate					PASSED
-test_threefry_engine			compilation error
-test_transform					result mismatch (ULP pow/sqrt and 0 != x)
+test_threefry_engine			compilation error (long rotation)
+test_transform					result mismatch (ULP pow and 0 != x)
 test_transform_if				PASSED
 test_transform_iterator			PASSED
-test_transform_reduce			result mismatch ("multiply_vector_length" (ULP), "mean_and_std_dev")
-test_tuple						compilation error (lowering copy with multiple entries into VPM not yet implemented)
+test_transform_reduce			result mismatch ("mean_and_std_dev")
+test_tuple						PASSED
 test_type_traits				PASSED
 test_types						PASSED
-test_uniform_int_distribution	compilation error (long)
-test_uniform_real_distribution	compilation error (long in kernel code)
-test_unique						PASSED
+test_uniform_int_distribution	PASSED
+test_uniform_real_distribution	PASSED
+test_unique						result mismatch
 test_unique_copy				PASSED
 test_unsupported_extension		PASSED
 test_user_defined_types			PASSED
@@ -165,7 +165,75 @@ test_user_event					PASSED
 test_valarray					result mismatch (only "sum", calls boost::compute::accumulate)
 test_vector						PASSED (reads 1-after-bounds of allocated buffer)
 test_wait_list					PASSED
-test_zip_iterator				compilation error (lowering copy with multiple entries into VPM not yet implemented)
+test_zip_iterator				PASSED
+
+pocl:
+kernel/
+  image_query_funcs                                       "CL_INVALID_OPERATION in clCreateSampler on line 70"
+  kernel                                                  compilation errors
+  sampler_address_clamp                                   "image creation failed"
+  test_shuffle char                                       result mismatch
+  test_shuffle uchar                                      result mismatch
+  test_shuffle short                                      result mismatch
+  test_shuffle ushort                                     result mismatch
+  test_shuffle int                                        result mismatch
+  test_shuffle uint                                       result mismatch
+  test_shuffle float                                      result mismatch
+regression/
+  test_alignment_with_dynamic_wg 4 3 1                    FAILED
+  test_alignment_with_dynamic_wg2                         PASSED
+  test_alignment_with_dynamic_wg3                         PASSED
+  test_assign_loop_variable_to_privvar_makes_it_local     FAILED (NULL kernel passed to clReleaseKernel() function)
+  test_assign_loop_variable_to_privvar_makes_it_local_2   FAILED (NULL kernel passed to clReleaseKernel() function)
+  test_autolocals_in_constexprs                           compilation error (long in kernel code)
+  test_barrier_before_return                              PASSED
+  test_barrier_between_for_loops                          PASSED
+  test_constant_array                                     compilation error (converts float to double for printf format)
+  test_early_return                                       PASSED
+  test_flatten_barrier_subs                               result mismatch (all zeroes)
+  test_fors_with_var_iteration_counts                     PASSED (out-of-bounds access in emulator)
+  test_for_with_var_iteration_count                       PASSED
+  test_id_dependent_computation                           PASSED
+  test_infinite_loop                                      compilation error (converts float to double for printf format)
+  test_issue_231                                          compilation error ("Unhandled element-type to cache in VPM")
+  test_issue_445                                          result mismatch
+  test_issue_553                                          compilation error ("Invalid numbers of method arguments"), hangs on failure
+  test_issue_577                                          PASSED
+  test_locals                                             PASSED
+  test_loop_phi_replication                               PASSED
+  test_multi_level_loops_with_barriers                    PASSED
+  test_null_arg                                           PASSED
+  test_program_from_binary_with_local_1_1_1               PASSED
+  test_setargs                                            FAILED
+  test_simple_for_with_a_barrier                          PASSED
+  test_structs_as_args                                    result mismatch
+  test_undominated_variable                               PASSED
+  test_vectors_as_args                                    PASSED
+runtime/
+  test_buffer-image-copy                                  PASSED
+  test_clBuildProgram                                     compilation error (include file not found)
+  test_clCreateKernel                                     PASSED
+  test_clCreateKernelsInProgram                           compilation error ("No kernel offset found!" for empty source (single newline))
+  test_clCreateProgramWithBinary                          FAILED ("Multiple devices specified, only a single is supported!")
+  test_clCreateSubDevices                                 FAILED (no multiple devices supported)
+  test_clEnqueueNativeKernel                              FAILED (no native kernels supported)
+  test_clFinish                                           compilation error ("Invalid number of method arguments")
+  test_clGetDeviceInfo                                    FAILED (assertion error, out-of-resources on emulator)
+  test_clGetEventInfo                                     PASSED
+  test_clGetKernelArgInfo                                 compilation error (image kernel functions required)
+  test_clGetSupportedImageFormats                         FAILED
+  test_clSetEventCallback                                 PASSED
+  test_clSetMemObjectDestructorCallback                   PASSED
+  test_enqueue_kernel_from_binary                         FAILED ("Local work-sizes exceed maximum")
+  test_event_cycle                                        FAILED (out-of-resources)
+  test_event_free                                         FAILED ("Image support is not enabled!")
+  test_kernel_cache_includes                              compilation error (include file not found)
+  test_link_error                                         PASSED
+  test_read-copy-write-buffer                             result mismatch
+  test_user_event                                         PASSED
+  test_version                                            FAILED (VC4CL version is not POCL version)
+workgroup/
+  run_kernel                                              FAILED
 
 clRNG:
 Inventory						invalid buffer size
@@ -385,3 +453,18 @@ simple_vector_addition        PASSED
 vectors_in_kernel             cl::sycl::exception thrown
 work_efficient_prefix_sum     result mismatch
 smallpt
+
+opencv:
+(only lists relevant tests)
+opencv_test_core
+  OCL_MeanStdDev_.ZeroMask    PASSED
+  OCL_Gemm.small              FAILED (invalid work group size, test_gemm.cpp:160)
+  OpenCL.support_binary_programs FAILED (test_opencl.cpp:22, invalid work group size)
+  OpenCL.support_SPIR_programs FAILED ("Can't find required data file")
+SEGFAULTS
+
+... (TODO)
+
+opencv_test_stitching
+FAILED (result mismatch)
+SEGFAULTS

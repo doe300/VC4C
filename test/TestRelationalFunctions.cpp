@@ -147,9 +147,9 @@ static void testTernaryFunction(vc4c::Configuration& config, const std::string& 
     std::stringstream code;
     compileBuffer(config, code, TERNARY_FUNCTION, options);
 
-    auto in0 = generateInput<T, N * 12, float, Distribution>(true);
-    auto in1 = generateInput<T, N * 12, float, Distribution>(true);
-    auto in2 = generateInput<T, N * 12, float, Distribution>(true);
+    auto in0 = generateInput<T, N * 12, T, Distribution>(true);
+    auto in1 = generateInput<T, N * 12, T, Distribution>(true);
+    auto in2 = generateInput<T, N * 12, T, Distribution>(true);
 
     auto out = runEmulation<T, T, N, 12>(code, {in0, in1, in2});
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();

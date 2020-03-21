@@ -45,6 +45,14 @@ public:
     void testVectorLoadStoreLocalParameter();
     void testVectorLoadStoreGlobalParameter();
 
+    void testCopy64BitRAM();
+    void testLoadStore64BitRAM();
+    void testRead64BitLowerWordFromRAM();
+    void testRead64BitUpperWordFromRAM();
+    void testReadWrite64BitLowerWordFromRAM();
+    void testReadWrite64BitUpperWordFromRAM();
+    void testWrite64BitToRAM();
+
 private:
     void onMismatch(const std::string& expected, const std::string& result);
 };
