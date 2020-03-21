@@ -24,6 +24,16 @@ const TMU periphery::TMU1{REG_TMU1_COORD_S_U_X, REG_TMU1_COORD_T_V_Y, REG_TMU1_C
 static NODISCARD InstructionWalker insertCalculateAddressOffsets(
     Method& method, InstructionWalker it, const Value& baseAddress, DataType type, Value& outputAddress)
 {
+    if(type.isScalarType())
+    {
+        // for scalar loads, we can save us all that effort, since we already have the address in element 0 and there is
+        // no offset for element zero. So just set the address for all other elements to 0 to not load anything there.
+        outputAddress = assign(it, method.createPointerType(type.getElementType().toVectorType(type.getVectorWidth())),
+            "%tmu_address") = 0_val;
+        auto cond = assignNop(it) = selectSIMDElement(0);
+        assign(it, outputAddress) = (baseAddress, cond);
+        return it;
+    }
     /*
      * we need to set the addresses in this way:
      *
@@ -39,14 +49,10 @@ static NODISCARD InstructionWalker insertCalculateAddressOffsets(
     outputAddress = method.addNewLocal(TYPE_INT32.toVectorType(type.getVectorWidth()), "%tmu_address");
 
     // since the base address might be a single pointer, we need to replicate it for the upper vector elements to read
-    // the correct address (if there are upper elements)
-    Value replicatedAddress = baseAddress;
-    if(type.getVectorWidth() > 1)
-    {
-        replicatedAddress = method.addNewLocal(
-            method.createPointerType(type.getElementType().toVectorType(type.getVectorWidth())), "%replicated_address");
-        it = intermediate::insertReplication(it, baseAddress, replicatedAddress);
-    }
+    // the correct address
+    Value replicatedAddress = method.addNewLocal(
+        method.createPointerType(type.getElementType().toVectorType(type.getVectorWidth())), "%replicated_address");
+    it = intermediate::insertReplication(it, baseAddress, replicatedAddress);
 
     // addressOffsets = sizeof(type) * elem_num
     assign(it, addressOffsets) = ELEMENT_NUMBER_REGISTER * Literal(static_cast<uint32_t>(type.getScalarBitCount()) / 8);

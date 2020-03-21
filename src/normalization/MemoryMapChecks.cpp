@@ -223,7 +223,7 @@ struct ConditionalMemoryAccess
 {
     // The instruction doing the conditional write, e.g. the phi-node or the conditional move for a select-statement
     const IntermediateInstruction* conditionalWrite;
-    Variant<const Local*, const IntermediateInstruction*> source;
+    Variant<const Local*, Value> source;
 
     inline bool operator==(const ConditionalMemoryAccess& other) const noexcept
     {
@@ -234,7 +234,7 @@ struct ConditionalMemoryAccess
     {
         if(auto loc = VariantNamespace::get_if<const Local*>(&source))
             return (*loc)->to_string();
-        return VariantNamespace::get<const IntermediateInstruction*>(source)->to_string();
+        return VariantNamespace::get<Value>(source).to_string();
     }
 };
 
@@ -267,6 +267,20 @@ static MemoryAccessType getFallbackType(MemoryAccessType preferredType)
     }
     throw CompilationError(CompilationStep::NORMALIZER, "Cannot determine fallback for unknown memory access type",
         std::to_string(static_cast<unsigned>(preferredType)));
+}
+
+static void addConditionalLocalMapping(const Local* loc, const ConditionalMemoryAccess& conditionalWrite,
+    FastMap<const ConditionalMemoryAccess*, MemoryAccess*>& conditionalAccesses,
+    FastMap<const Local*, FastSet<const Local*>>& conditionalLocalMappings, MemoryAccessMap& mapping)
+{
+    auto mappingIt = mapping.find(loc);
+    if(mappingIt == mapping.end())
+        // TODO what to do if the memory area is not yet mapped (i.e. only accessed via phi-nodes)?
+        // Would need to run the checks/mappings recursive?!
+        throw CompilationError(CompilationStep::NORMALIZER,
+            "Memory which is only accessed via conditional address writes is not supported yet", loc->to_string());
+    conditionalAccesses.emplace(&conditionalWrite, &mappingIt->second);
+    conditionalLocalMappings[conditionalWrite.conditionalWrite->checkOutputLocal()].emplace(loc);
 }
 
 MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
@@ -708,6 +722,17 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                             << "' will not be mapped, these sources can be mapped instead: " << logging::endl);
                     for(auto writer : *conditonalWrites)
                     {
+                        if(writer->hasDecoration(InstructionDecorations::PHI_NODE) || writer->hasConditionalExecution())
+                        {
+                            auto sourceValue = dynamic_cast<const MoveOperation*>(writer) ? writer->assertArgument(0) :
+                                                                                            writer->getOutput().value();
+                            auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
+                            entry.second.emplace(&*tmp.first);
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "\tconditional write " << writer->to_string()
+                                    << " to conditional write: " << writer->to_string() << logging::endl);
+                            continue;
+                        }
                         if(const Local* loc = writer->assertArgument(0).local())
                         {
                             loc = loc->getBase(true);
@@ -725,7 +750,11 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                                     loc->getSingleWriter()->hasConditionalExecution()))
                             {
                                 auto writer = loc->getSingleWriter();
-                                auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, writer});
+                                auto sourceValue = dynamic_cast<const MoveOperation*>(writer) ?
+                                    writer->assertArgument(0) :
+                                    writer->getOutput().value();
+                                auto tmp =
+                                    conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
                                 entry.second.emplace(&*tmp.first);
                                 CPPLOG_LAZY(logging::Level::DEBUG,
                                     log << "\tconditional write " << writer->to_string()
@@ -770,20 +799,80 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
     FastMap<const Local*, FastSet<const Local*>> conditionalLocalMappings;
     for(const auto& conditionalWrite : conditionalAddressWrites)
     {
-        if(VariantNamespace::holds_alternative<const IntermediateInstruction*>(conditionalWrite.source))
-            // TODO how to handle phi-inputs also coming from phi-nodes? E.g. for ./testing/clNN/im2col.cl!
-            throw CompilationError(CompilationStep::NORMALIZER,
-                "Memory accessed via recursive conditional address writes is not supported yet",
-                conditionalWrite.conditionalWrite->to_string());
-        auto loc = VariantNamespace::get<const Local*>(conditionalWrite.source);
-        auto mappingIt = mapping.find(loc);
-        if(mappingIt == mapping.end())
-            // TODO what to do if the memory area is not yet mapped (i.e. only accessed via phi-nodes)?
-            // Would need to run the above checks/mappings recursive?!
-            throw CompilationError(CompilationStep::NORMALIZER,
-                "Memory which is only accessed via conditional address writes is not supported yet", loc->to_string());
-        conditionalAccesses.emplace(&conditionalWrite, &mappingIt->second);
-        conditionalLocalMappings[conditionalWrite.conditionalWrite->checkOutputLocal()].emplace(loc);
+        if(auto source = VariantNamespace::get_if<Value>(&conditionalWrite.source))
+        {
+            // check whether conditional source is a conditionally read memory location
+            if(source->checkLocal() && (source->local()->residesInMemory() || source->local()->is<Parameter>()))
+            {
+                logging::debug() << "Using source of conditional address write '" << source->to_string()
+                                 << "' as source of main address write: "
+                                 << conditionalWrite.conditionalWrite->to_string() << logging::endl;
+                addConditionalLocalMapping(
+                    source->local(), conditionalWrite, conditionalAccesses, conditionalLocalMappings, mapping);
+                continue;
+            }
+            // the (possibly recursive) conditional memory address writes referenced by this conditional memory access
+            // write
+            FastSet<ConditionalMemoryAccess> recursiveAccesses;
+            auto writers = source->local()->getUsers(LocalUse::Type::WRITER);
+            for(const auto& innerConditionalWrite : conditionalAddressWrites)
+            {
+                if(writers.find(innerConditionalWrite.conditionalWrite) != writers.end())
+                    recursiveAccesses.emplace(innerConditionalWrite);
+            }
+            if(recursiveAccesses.size() != writers.size())
+            {
+                for(const auto writer : writers)
+                    logging::error() << "Address writer: " << writer->to_string() << logging::endl;
+                for(const auto& access : recursiveAccesses)
+                    logging::error() << "Conditional memory access: " << access.to_string() << logging::endl;
+                throw CompilationError(CompilationStep::NORMALIZER,
+                    "Failed to find recursive conditional address write for all conditional address write sources!");
+            }
+            // If all the conditional address writes used as input by this conditional address write are either
+            // a) recursively referencing back the output of this write or
+            // b) referencing an actual memory location,
+            // we can replace the sources of this conditional write with the actual memory locations accessed by our
+            // source instructions.
+            for(const auto& recursiveAccess : recursiveAccesses)
+            {
+                const Local* sourceLocal = nullptr;
+                auto innerSource = VariantNamespace::get_if<Value>(&recursiveAccess.source);
+                if(innerSource)
+                {
+                    if(innerSource->checkLocal() &&
+                        (innerSource->local()->residesInMemory() || innerSource->local()->is<Parameter>()))
+                        sourceLocal = innerSource->local();
+                    else if(!innerSource->hasLocal(conditionalWrite.conditionalWrite->checkOutputLocal()))
+                    {
+                        logging::error() << "Recursive address write diverges: " << innerSource->to_string()
+                                         << logging::endl;
+                        throw CompilationError(CompilationStep::NORMALIZER,
+                            "Memory accessed via divergent recursive conditional address writes is not supported "
+                            "yet",
+                            conditionalWrite.conditionalWrite->to_string());
+                    }
+                    else
+                        // this is the recursive branch
+                        continue;
+                }
+                else
+                    sourceLocal = VariantNamespace::get<const Local*>(conditionalWrite.source);
+
+                // if the recursive conditional address write source is a local, we handle it as input of our
+                // outer conditional address write
+                logging::debug() << "Using source of recursive address write '" << sourceLocal->to_string()
+                                 << "' as source of main address write: "
+                                 << conditionalWrite.conditionalWrite->to_string() << logging::endl;
+                addConditionalLocalMapping(
+                    sourceLocal, conditionalWrite, conditionalAccesses, conditionalLocalMappings, mapping);
+            }
+        }
+        else
+        {
+            auto loc = VariantNamespace::get<const Local*>(conditionalWrite.source);
+            addConditionalLocalMapping(loc, conditionalWrite, conditionalAccesses, conditionalLocalMappings, mapping);
+        }
     }
 
     // 2. map memory access instructions to phi-nodes, determine best common access type
