@@ -759,6 +759,34 @@ void normalization::resolveStackAllocation(
     }
 }
 
+static tools::SmallSortedPointerSet<const MemoryInfo*> getMemoryInfos(const Local* baseLocal,
+    const FastMap<const Local*, MemoryInfo>& infos,
+    const FastMap<const Local*, FastSet<const Local*>>& additionalAreaMappings)
+{
+    tools::SmallSortedPointerSet<const MemoryInfo*> result;
+    // directly found, single area
+    auto srcInfoIt = baseLocal ? infos.find(baseLocal) : infos.end();
+    if(srcInfoIt != infos.end())
+        result.emplace(&srcInfoIt->second);
+    else if(baseLocal)
+    {
+        auto srcInfosIt = additionalAreaMappings.find(baseLocal);
+        if(srcInfosIt != additionalAreaMappings.end())
+        {
+            for(auto conditionalSource : srcInfosIt->second)
+            {
+                srcInfoIt = infos.find(conditionalSource);
+                if(srcInfoIt == infos.end())
+                    throw CompilationError(CompilationStep::NORMALIZER,
+                        "Memory info for conditionally addresses memory location not found",
+                        conditionalSource->to_string());
+                result.emplace(&srcInfoIt->second);
+            }
+        }
+    }
+    return result;
+}
+
 /* clang-format off */
 /*
  * Matrix of memory types and storage locations:
@@ -849,35 +877,15 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
         auto srcBaseLocal = mem->getSource().checkLocal() ? mem->getSource().local()->getBase(true) : nullptr;
         auto dstBaseLocal = mem->getDestination().checkLocal() ? mem->getDestination().local()->getBase(true) : nullptr;
 
-        auto srcInfoIt = srcBaseLocal ? infos.find(srcBaseLocal) : infos.end();
-        const MemoryInfo& srcInfo = srcInfoIt != infos.end() ?
-            srcInfoIt->second :
-            MemoryInfo{srcBaseLocal, MemoryAccessType::QPU_REGISTER_READWRITE};
-        auto dstInfoIt = dstBaseLocal ? infos.find(dstBaseLocal) : infos.end();
-        const MemoryInfo& dstInfo = dstInfoIt != infos.end() ?
-            dstInfoIt->second :
-            MemoryInfo{dstBaseLocal, MemoryAccessType::QPU_REGISTER_READWRITE};
+        auto sourceInfos = getMemoryInfos(srcBaseLocal, infos, memoryAccessInfo.additionalAreaMappings);
+        auto destInfos = getMemoryInfos(dstBaseLocal, infos, memoryAccessInfo.additionalAreaMappings);
 
-        if(srcInfo.type == MemoryAccessType::RAM_READ_WRITE_VPM || dstInfo.type == MemoryAccessType::RAM_READ_WRITE_VPM)
+        auto checkVPMAccess = [](const MemoryInfo* info) { return info->type == MemoryAccessType::RAM_READ_WRITE_VPM; };
+        if(std::any_of(sourceInfos.begin(), sourceInfos.end(), checkVPMAccess) ||
+            std::any_of(destInfos.begin(), destInfos.end(), checkVPMAccess))
             affectedBlocks.emplace(InstructionWalker{memIt}.getBasicBlock());
 
-        // TODO Fail here preemptively, since the actual mapping  will only check the
-        // direct base of the source/destination, which is the phi-node output local, which is not
-        // mapped correctly! And here, we actually know the reason, so we can show better error messages.
-        // TODO to solve this, we would need to be able to pass (and handle) all MemoryInfo for all phi-node accessed
-        // memory areas for src/dest.
-        if(srcInfo.local &&
-            memoryAccessInfo.additionalAreaMappings.find(srcInfo.local) !=
-                memoryAccessInfo.additionalAreaMappings.end())
-            throw CompilationError(CompilationStep::NORMALIZER,
-                "Reading memory through a phi-node is not implemented yet", memIt->to_string());
-        if(dstInfo.local &&
-            memoryAccessInfo.additionalAreaMappings.find(dstInfo.local) !=
-                memoryAccessInfo.additionalAreaMappings.end())
-            throw CompilationError(CompilationStep::NORMALIZER,
-                "Writing memory through a phi-node is not implemented yet", memIt->to_string());
-
-        mapMemoryAccess(method, memIt, const_cast<MemoryInstruction*>(mem), srcInfo, dstInfo);
+        mapMemoryAccess(method, memIt, const_cast<MemoryInstruction*>(mem), sourceInfos, destInfos);
         // TODO mark local for prefetch/write-back (if necessary)
     }
 

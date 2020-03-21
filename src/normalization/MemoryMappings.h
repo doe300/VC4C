@@ -7,6 +7,7 @@
 #ifndef VC4C_NORMALIZATION_MEMORY_MAPPING_H
 #define VC4C_NORMALIZATION_MEMORY_MAPPING_H
 
+#include "../tools/SmallSet.h"
 #include "AddressCalculation.h"
 
 namespace vc4c
@@ -90,7 +91,8 @@ namespace vc4c
          * destination information.
          */
         InstructionWalker mapMemoryAccess(Method& method, InstructionWalker it, intermediate::MemoryInstruction* mem,
-            const MemoryInfo& srcInfo, const MemoryInfo& destInfo);
+            const tools::SmallSortedPointerSet<const MemoryInfo*>& srcInfos,
+            const tools::SmallSortedPointerSet<const MemoryInfo*>& destInfos);
     } // namespace normalization
 } // namespace vc4c
 

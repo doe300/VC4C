@@ -9,6 +9,14 @@
 
 #include "TestEmulator.h"
 
+namespace vc4c
+{
+    namespace tools
+    {
+        struct EmulationResult;
+    } // namespace tools
+} // namespace vc4c
+
 class TestMemoryAccess : public TestEmulator
 {
 public:
@@ -45,6 +53,20 @@ public:
     void testVectorLoadStoreLocalParameter();
     void testVectorLoadStoreGlobalParameter();
 
+    void testDynamicCopyRegisterToRegister();
+    void testDynamicCopyRegisterToVPM();
+    void testDynamicCopyRegisterToRAM();
+    void testDynamicCopyVPMToRegister();
+    void testDynamicCopyVPMToVPM();
+    void testDynamicCopyVPMToRAM();
+    void testDynamicCopyRAMToRegister();
+    void testDynamicCopyRAMToVPM();
+    void testDynamicCopyRAMToRAM();
+
+    void testDynamicFillRegister();
+    void testDynamicFillVPM();
+    void testDynamicFillRAM();
+
     void testCopy64BitRAM();
     void testLoadStore64BitRAM();
     void testRead64BitLowerWordFromRAM();
@@ -53,8 +75,22 @@ public:
     void testReadWrite64BitUpperWordFromRAM();
     void testWrite64BitToRAM();
 
+    void testWriteSelectParameter();
+    void testReadSelectParameter();
+    void testReadWriteSelectParameter();
+    // TODO void testCopySelectParameter();
+    void testWritePhiParameter();
+    void testReadPhiParameter();
+    void testReadWritePhiParameter();
+    // TODO void testCopyPhiParameter();
+    // TODO void testWriteSelectParameterOrLocal();
+    void testReadSelectParameterOrLocal();
+
 private:
     void onMismatch(const std::string& expected, const std::string& result);
+
+    void emulateKernel(std::istream& code, const std::string& kernelName, unsigned numItems,
+        std::unique_ptr<vc4c::tools::EmulationResult>& result, const std::vector<std::vector<unsigned>>& args);
 };
 
 #endif /* VC4C_TEST_MEMORY_ACCESS_H */
