@@ -273,7 +273,7 @@ using LiveLocalsCache = FastMap<const BasicBlock*, FastSet<const Local*>>;
 
 static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::unique_ptr<LivenessAnalysis>>& results,
     const FastMap<const BasicBlock*, LivenessChangesAnalysis>& changes, LiveLocalsCache& cachedEndLiveLocals,
-    FastSet<const Local*>&& cacheEntry, const BasicBlock* startOfKernel)
+    FastSet<const Local*>&& cacheEntry, const BasicBlock* startOfKernel, FastSet<const CFGNode*>& pendingNodes)
 {
     PROFILE_START(SingleLivenessAnalysis);
     auto& analyzer = results[node.key];
@@ -313,9 +313,8 @@ static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::uni
         else
             predCacheIt = cachedEndLiveLocals.emplace(predecessor.key, startLiveLocals).first;
 
-        runAnalysis(predecessor, results, changes, cachedEndLiveLocals, FastSet<const Local*>{predCacheIt->second},
-            startOfKernel);
-
+        // we need to (re-)run the analysis on that basic blocks sine the live locals changed
+        pendingNodes.emplace(&predecessor);
         return true;
     });
 }
@@ -325,6 +324,7 @@ void GlobalLivenessAnalysis::operator()(Method& method)
     PROFILE_START(GlobalLivenessAnalysis);
     auto& cfg = method.getCFG();
     auto& finalNode = cfg.getEndOfControlFlow();
+    auto startOfKernel = cfg.getStartOfControlFlow().key;
     changes.reserve(method.size());
     // precalculate changes in livenesses
     for(const auto& block : method)
@@ -336,7 +336,24 @@ void GlobalLivenessAnalysis::operator()(Method& method)
     // The cache of the live locals at the end of a given basic blocks (e.g. consumed by any succeeding block)
     LiveLocalsCache cachedEndLiveLocals(cfg.getNodes().size());
     results.reserve(cfg.getNodes().size());
-    runAnalysis(finalNode, results, changes, cachedEndLiveLocals, {}, cfg.getStartOfControlFlow().key);
+    // to avoid stack overflows, we rerun the pending blocks iteratively, not recursively. So keep track of the basic
+    // blocks still to be processed (again).
+    FastSet<const CFGNode*> pendingNodes;
+    // initial run for the last node
+    runAnalysis(finalNode, results, changes, cachedEndLiveLocals, {}, startOfKernel, pendingNodes);
+    // repeat until there are no more pending nodes. Since we have a limited number of locals, this can never be an
+    // infinite loop. It will always stop, latest when all locals are added to all blocks.
+    while(!pendingNodes.empty())
+    {
+        auto node = *pendingNodes.begin();
+        // remove before running the analysis since (e.g. on a 1 block loop) it could be added again with new locals
+        pendingNodes.erase(pendingNodes.begin());
+        // if the node is in the pendingNodes set, then it is also guaranteed that there is an entry in the
+        // cachedEndLiveLocals map, since the map is written before the pendingNodes set.
+        auto predCacheIt = cachedEndLiveLocals.find(node->key);
+        runAnalysis(*node, results, changes, cachedEndLiveLocals, FastSet<const Local*>{predCacheIt->second},
+            startOfKernel, pendingNodes);
+    }
     PROFILE_END(GlobalLivenessAnalysis);
 }
 
