@@ -944,7 +944,11 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                     it.reset((new MoveOperation(rot->getOutput().value(), firstRot->getSource()))
                                                  ->copyExtrasFrom(rot));
                                     it->copyExtrasFrom(firstRot);
-                                    firstIt->erase();
+
+                                    if(!(*firstIt)->hasSideEffects() &&
+                                        firstRot->getOutput()->local()->getUsers(LocalUse::Type::READER).empty())
+                                        // only remove first rotation if it does not have a second user
+                                        firstIt->erase();
                                 }
                                 else
                                 {
@@ -957,7 +961,8 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                                   rot->type == RotationType::ANY ? firstRot->type : rot->type))
                                                  ->copyExtrasFrom(rot));
                                     it->copyExtrasFrom(firstRot);
-                                    if(firstRot->getOutput()->local()->getUsers(LocalUse::Type::READER).empty())
+                                    if(!(*firstIt)->hasSideEffects() &&
+                                        firstRot->getOutput()->local()->getUsers(LocalUse::Type::READER).empty())
                                         // only remove first rotation if it does not have a second user
                                         firstIt->erase();
                                 }
