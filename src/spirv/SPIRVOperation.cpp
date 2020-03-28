@@ -934,8 +934,8 @@ void SPIRVIndexOf::mapInstruction(TypeMapping& types, ConstantMapping& constants
 
     // XXX work-around for global arrays which are represented as pointer to array. If now the first index is considered
     // the element, the second index is in multiple of the whole array size, but should address an array element.
-    if(indexValues.size() == 2 && isPtrAcessChain && container.checkLocal() && container.local()->is<Global>() &&
-        container.type.getElementType().getArrayType())
+    if(indexValues.size() == 2 && isPtrAcessChain &&
+        (check(container.checkLocal()) & &Local::is<Global>) &&container.type.getElementType().getArrayType())
     {
         // if we have an index-chain for a type[n]* into a type* with element-flag set and 1 actual offset, we would
         // get: type[n]* -> type[n]* -> type[n], but we need type[n]* -> type[n] -> type, so just unmark the
@@ -1277,9 +1277,9 @@ void SPIRVLifetimeInstruction::mapInstruction(TypeMapping& types, ConstantMappin
 {
     Value pointer = getValue(id, *method.method, types, constants, localTypes, localMapping);
 
-    if(pointer.checkLocal())
+    if(auto loc = pointer.checkLocal())
     {
-        if(auto alloc = const_cast<StackAllocation*>(pointer.local()->getBase(true)->as<StackAllocation>()))
+        if(auto alloc = const_cast<StackAllocation*>(loc->getBase(true)->as<StackAllocation>()))
             pointer = alloc->createReference();
     }
 

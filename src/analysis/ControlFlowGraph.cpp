@@ -215,8 +215,8 @@ void ControlFlowGraph::dumpGraph(const std::string& path, bool dumpConstantLoadI
             ss << bb->getLabel()->getLabel()->name << "\\n";
             std::for_each(bb->instructions.begin(), bb->instructions.end(),
                 [&ss](const std::unique_ptr<intermediate::IntermediateInstruction>& instr) {
-                    if(instr && instr->isConstantInstruction() && instr->checkOutputLocal() &&
-                        instr->checkOutputLocal()->getSingleWriter() == instr.get())
+                    if(instr && instr->isConstantInstruction() &&
+                        (check(instr->checkOutputLocal()) & &Local::getSingleWriter) == instr.get())
                         ss << instr->to_string() << "\\l";
                 });
             return ss.str();

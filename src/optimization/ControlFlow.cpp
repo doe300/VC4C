@@ -1247,8 +1247,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             auto block = cfgNode->key;
             for(auto it = block->walk(); it != block->walkEnd(); it.nextInBlock())
             {
-                if(it->isConstantInstruction() && it->checkOutputLocal() &&
-                    it->checkOutputLocal()->getSingleWriter() == it.get())
+                if(it->isConstantInstruction() && (check(it->checkOutputLocal()) & &Local::getSingleWriter) == it.get())
                 {
                     // can only move constant writes of locals only written exactly here
                     instMapper[&node].push_back(it);

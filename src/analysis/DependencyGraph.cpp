@@ -309,7 +309,9 @@ static void createMutexDependencies(DependencyGraph& graph, DependencyNode& node
     if(lastMutexLock &&
         ((node.key->checkOutputRegister() & &Register::isVertexPipelineMemory) ||
             std::any_of(node.key->getArguments().begin(), node.key->getArguments().end(),
-                [](const Value& arg) -> bool { return arg.checkRegister() && arg.reg().isVertexPipelineMemory(); }) ||
+                [](const Value& arg) -> bool {
+                    return check(arg.checkRegister()) & &Register::isVertexPipelineMemory;
+                }) ||
             node.key->writesRegister(REG_MUTEX)))
     {
         // any VPM operation or mutex unlock must be ordered after the previous mutex lock, if it exists

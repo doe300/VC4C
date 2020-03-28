@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "CompilationError.h"
+#include "Optional.h"
 
 #if __cplusplus > 201402L
 #define NODISCARD [[nodiscard]]
@@ -220,6 +221,160 @@ namespace vc4c
     {
         (void) val;
     }
+
+    /**
+     * Helper type to allow short-cutting checks on pointers, similar to the operators supported for Optional
+     */
+    template <typename T>
+    struct Pointer
+    {
+        T* ptr;
+
+        explicit constexpr operator bool() const noexcept
+        {
+            return ptr;
+        }
+
+        constexpr operator T*() const noexcept
+        {
+            return ptr;
+        }
+
+        std::string to_string() const
+        {
+            return ptr ? ptr->to_string() : "-";
+        }
+
+        // These operators are defined as member operators to not interfere with any other operator, since any Type is
+        // implicitly convertible to Pointer<Type>
+        bool operator&(const std::function<bool(const T&)>& func) const
+        {
+            return ptr && func(*ptr);
+        }
+
+        template <typename R>
+        Pointer<R> operator&(const std::function<Pointer<R>(const T&)>& func) const
+        {
+            return ptr ? func(*ptr) : Pointer<R>{};
+        }
+
+        template <typename R>
+        Pointer<R> operator&(const std::function<R*(const T&)>& func) const
+        {
+            return Pointer<R>{ptr ? func(*ptr) : nullptr};
+        }
+
+        template <typename R>
+        Optional<R> operator&(const std::function<R(const T&)>& func) const
+        {
+            return ptr ? func(*ptr) : Optional<R>{};
+        }
+
+        template <typename S = T>
+        typename std::enable_if<std::is_class<S>::value, bool>::type operator&(bool (S::*func)() const) const
+        {
+            return ptr && ((*ptr).*func)();
+        }
+
+        template <typename R, typename S = T>
+        typename std::enable_if<std::is_class<S>::value, Pointer<R>>::type operator&(
+            Pointer<R> (S::*func)() const) const
+        {
+            return ptr ? ((*ptr).*func)() : Pointer<R>{};
+        }
+
+        template <typename R, typename S = T>
+        typename std::enable_if<std::is_class<S>::value, Pointer<R>>::type operator&(R* (S::*func)() const) const
+        {
+            return Pointer<R>{ptr ? ((*ptr).*func)() : nullptr};
+        }
+
+        template <typename R, typename S = T>
+        typename std::enable_if<std::is_class<S>::value, Optional<R>>::type operator&(R (S::*func)() const) const
+        {
+            return ptr ? ((*ptr).*func)() : Optional<R>{};
+        }
+
+        const Pointer<T>& operator|(const Pointer<T>& other) const&
+        {
+            return ptr ? *this : other;
+        }
+
+        Pointer<T> operator|(Pointer<T>&& other) &&
+        {
+            return ptr ? *this : other;
+        }
+
+        constexpr bool operator==(const Pointer& other) const noexcept
+        {
+            return ptr == other.ptr;
+        }
+
+        constexpr bool operator==(const T* other) const noexcept
+        {
+            return ptr == other;
+        }
+
+        constexpr bool operator==(std::nullptr_t other) const noexcept
+        {
+            return ptr == other;
+        }
+
+        constexpr bool operator!=(const Pointer& other) const noexcept
+        {
+            return ptr != other.ptr;
+        }
+
+        constexpr bool operator!=(const T* other) const noexcept
+        {
+            return ptr != other;
+        }
+
+        constexpr bool operator!=(std::nullptr_t other) const noexcept
+        {
+            return ptr != other;
+        }
+
+        constexpr bool operator!() const noexcept
+        {
+            return !ptr;
+        }
+
+        constexpr const T& operator*() const noexcept
+        {
+            return *ptr;
+        }
+
+        constexpr const T* operator->() const noexcept
+        {
+            return ptr;
+        }
+
+        constexpr T& operator*() noexcept
+        {
+            return *ptr;
+        }
+
+        constexpr T* operator->() noexcept
+        {
+            return ptr;
+        }
+
+        constexpr T* get() const noexcept
+        {
+            return ptr;
+        }
+    };
+
+    template <typename T>
+    inline Pointer<T> check(T* ptr) noexcept
+    {
+        return Pointer<T>{ptr};
+    }
+
+    static_assert(std::is_trivial<Pointer<int32_t>>::value, "");
+    static_assert(std::is_literal_type<Pointer<int32_t>>::value, "");
+    static_assert(sizeof(Pointer<int32_t>) == sizeof(int32_t*), "");
 } // namespace vc4c
 
 #endif /* HELPER_H */
