@@ -107,6 +107,35 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                         hasChanged = true;
                         continue;
                     }
+                    if(move->checkOutputLocal() && !move->hasConditionalExecution())
+                    {
+                        // check whether move output is overridden in the same basic block before being read
+                        auto output = move->checkOutputLocal();
+                        auto checkIt = it.copy().nextInBlock();
+                        auto nextWrite = it.getBasicBlock()->walkEnd();
+                        while(!checkIt.isEndOfBlock())
+                        {
+                            if(checkIt->readsLocal(output))
+                                break;
+                            if(checkIt->writesLocal(output) && !checkIt->hasConditionalExecution())
+                            {
+                                nextWrite = checkIt;
+                                break;
+                            }
+                            checkIt.nextInBlock();
+                        }
+                        if(!nextWrite.isEndOfBlock())
+                        {
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Removing simple move into output local which is fully overridden before the "
+                                       "next read: "
+                                    << move->to_string() << logging::endl);
+                            // skip ++it, so next instructions is looked at too
+                            it.erase();
+                            hasChanged = true;
+                            continue;
+                        }
+                    }
                 }
                 else if(move->getSource().hasRegister(REG_UNIFORM) && !move->signal.hasSideEffects())
                 {
