@@ -8,6 +8,7 @@
 #define VC4C_LIVENESS_ANALYSIS
 
 #include "../performance.h"
+#include "../tools/SmallSet.h"
 #include "Analysis.h"
 
 #include <memory>
@@ -20,11 +21,16 @@ namespace vc4c
     {
         struct LivenessChanges
         {
-            FastAccessList<const Local*> removedLocals;
-            FastAccessList<const Local*> addedLocals;
+            tools::SmallSortedPointerSet<const Local*> removedLocals{};
+            tools::SmallSortedPointerSet<const Local*> addedLocals{};
         };
 
-        using LivenessAnalysisCache = std::pair<FastSet<const Local*>, FastMap<const Local*, ConditionCode>>;
+        struct LivenessAnalysisCache
+        {
+            FastSet<const Local*> conditionalWrites;
+            FastMap<const Local*, ConditionCode> conditionalReads;
+            FastSet<const Local*> liveLocals;
+        };
 
         /**
          * Dummy local which indicated the r5/replicate registers.
@@ -189,6 +195,73 @@ namespace vc4c
             static std::pair<FastSet<const Local*>, FastSet<const Local*>> analyzeLocalUsage(const BasicBlock& block);
 
             static std::string to_string(const FastSet<const Local*>& locals);
+        };
+
+        /**
+         * A single usage-range of a local inside a single basic block
+         *
+         * The usage range starts with:
+         * - the first writer to that local or if the local is not written before its first read,
+         * - the start of the block
+         *
+         * The usage range ends with:
+         * - the last read of that local or if not all reads of that local are within this block,
+         * - the end if the block
+         */
+        struct LocalUsageRange
+        {
+            const Local* local;
+            std::size_t startIndex;
+            std::size_t endIndex;
+            std::size_t numAccesses;
+
+            constexpr bool startsWithBlock() const noexcept
+            {
+                return startIndex == 0;
+            }
+
+            inline bool endsWithBlock(const BasicBlock& block) const noexcept
+            {
+                return endIndex == block.size();
+            }
+
+            constexpr std::size_t size() const noexcept
+            {
+                return endIndex - startIndex;
+            }
+
+            bool operator<(const LocalUsageRange& other) const noexcept;
+
+            std::string to_string() const;
+        };
+
+        /**
+         * Using the results of the given or a newly created global liveness analysis, determines the access ranges of
+         * the locals as the blocks they are accessed in, the first and last accesses as well as the number of accesses.
+         *
+         * The result of this analysis can be used as basis to deciding which locals to split (and where) or to spill
+         * into VPM/RAM.
+         */
+        class LocalUsageRangeAnalysis
+        {
+        public:
+            explicit LocalUsageRangeAnalysis(const GlobalLivenessAnalysis* globalLiveness = nullptr) :
+                livenessAnalysis(globalLiveness)
+            {
+            }
+
+            void operator()(Method& method);
+
+            inline const SortedSet<LocalUsageRange>& getRanges(const BasicBlock& block) const
+            {
+                return ranges.at(&block);
+            }
+
+            void dumpResults(const Method& method) const;
+
+        private:
+            const GlobalLivenessAnalysis* livenessAnalysis;
+            FastMap<const BasicBlock*, SortedSet<LocalUsageRange>> ranges;
         };
     } /* namespace analysis */
 } /* namespace vc4c */

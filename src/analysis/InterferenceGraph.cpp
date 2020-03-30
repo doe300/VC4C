@@ -28,14 +28,17 @@ FastSet<InterferenceNode*> InterferenceGraph::findOverfullNodes(std::size_t numN
     return results;
 }
 
-std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(Method& method)
+std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(
+    Method& method, const GlobalLivenessAnalysis* globalLivenessAnalysis)
 {
     PROFILE_START(createInterferenceGraph);
     std::unique_ptr<InterferenceGraph> graph_ptr(new InterferenceGraph(method.getNumLocals()));
     auto& graph = *graph_ptr;
 
-    GlobalLivenessAnalysis livenessAnalysis(true);
-    livenessAnalysis(method);
+    GlobalLivenessAnalysis tmpAnalysis(true);
+    if(!globalLivenessAnalysis)
+        tmpAnalysis(method);
+    auto& livenessAnalysis = globalLivenessAnalysis ? *globalLivenessAnalysis : tmpAnalysis;
 
     PROFILE_START(LivenessToInterference);
     for(auto& block : method)

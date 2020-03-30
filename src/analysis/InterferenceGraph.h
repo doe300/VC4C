@@ -18,6 +18,8 @@ namespace vc4c
 
     namespace analysis
     {
+        class GlobalLivenessAnalysis;
+
         /*
          * The type of interference between two locals
          */
@@ -51,7 +53,8 @@ namespace vc4c
              */
             FastSet<InterferenceNode*> findOverfullNodes(std::size_t numNeighbors);
 
-            static std::unique_ptr<InterferenceGraph> createGraph(Method& method);
+            static std::unique_ptr<InterferenceGraph> createGraph(
+                Method& method, const GlobalLivenessAnalysis* globalLivenessAnalysis = nullptr);
 
         private:
             explicit InterferenceGraph(std::size_t numLocals) : Graph(numLocals) {}

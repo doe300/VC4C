@@ -45,8 +45,9 @@ static LivenessChanges analyzeLivenessChangesInner(
 {
     PROFILE_START(LivenessChangesAnalysis);
     LivenessChanges changes;
-    auto& conditionalWrites = cache.first;
-    auto& conditionalReads = cache.second;
+    auto& conditionalWrites = cache.conditionalWrites;
+    auto& conditionalReads = cache.conditionalReads;
+    auto& liveLocals = cache.liveLocals;
 
     if(dynamic_cast<const intermediate::BranchLabel*>(&instr))
         // labels do not change any lifetime, since we do not track label lifetimes
@@ -62,23 +63,36 @@ static LivenessChanges analyzeLivenessChangesInner(
                 auto condReadIt = conditionalReads.find(loc);
                 if(condReadIt != conditionalReads.end() && condReadIt->second == inst.conditional &&
                     condReadIt->first->getSingleWriter() == &inst)
+                {
                     // the local only exists within a conditional block (e.g. temporary within the same flag)
-                    changes.removedLocals.emplace_back(loc);
+                    changes.removedLocals.emplace(loc);
+                    liveLocals.erase(loc);
+                }
                 else if(conditionalWrites.find(loc) != conditionalWrites.end() &&
                     isIfElseWrite(loc->getUsers(LocalUse::Type::WRITER)))
+                {
                     // the local is written in a select statement (if a then write b otherwise c), which is now complete
                     // (since the other write is already added to conditionalWrites)
                     // NOTE: For conditions (if there are several conditional writes, we need to keep the local)
-                    changes.removedLocals.emplace_back(loc);
+                    changes.removedLocals.emplace(loc);
+                    liveLocals.erase(loc);
+                }
                 else
                     conditionalWrites.emplace(loc);
             }
             else
-                changes.removedLocals.emplace_back(loc);
+            {
+                changes.removedLocals.emplace(loc);
+                liveLocals.erase(loc);
+            }
         }
         if(has_flag(type, LocalUse::Type::READER) && !loc->type.isLabelType())
         {
-            changes.addedLocals.emplace_back(loc);
+            if(liveLocals.find(loc) == liveLocals.end())
+            {
+                changes.addedLocals.emplace(loc);
+                liveLocals.emplace(loc);
+            }
             if(inst.hasConditionalExecution())
             {
                 // there exist locals which only exist if a certain condition is met, so check this
@@ -357,6 +371,7 @@ void GlobalLivenessAnalysis::operator()(Method& method)
     PROFILE_END(GlobalLivenessAnalysis);
 }
 
+LCOV_EXCL_START
 void GlobalLivenessAnalysis::dumpResults(const Method& method) const
 {
     logging::logLazy(logging::Level::DEBUG, [&]() {
@@ -367,6 +382,7 @@ void GlobalLivenessAnalysis::dumpResults(const Method& method) const
         }
     });
 }
+LCOV_EXCL_STOP
 
 LocalUsageAnalysis::LocalUsageAnalysis() :
     GlobalAnalysis(LocalUsageAnalysis::analyzeLocalUsage, LocalUsageAnalysis::to_string)
@@ -430,5 +446,130 @@ std::string LocalUsageAnalysis::to_string(const FastSet<const Local*>& locals)
     for(; it != locals.end(); ++it)
         s << ", " << (*it)->name;
     return s.str();
+}
+LCOV_EXCL_STOP
+
+bool LocalUsageRange::operator<(const LocalUsageRange& other) const noexcept
+{
+    if(local < other.local)
+        return true;
+    if(local > other.local)
+        return false;
+    if(startIndex < other.startIndex)
+        return true;
+    if(startIndex > other.startIndex)
+        return false;
+    return endIndex < other.endIndex;
+}
+
+LCOV_EXCL_START
+std::string LocalUsageRange::to_string() const
+{
+    return local->to_string() + " [" + std::to_string(startIndex) + ", " + std::to_string(endIndex) + "] (" +
+        std::to_string(numAccesses) + ")";
+}
+LCOV_EXCL_STOP
+
+static SortedSet<LocalUsageRange> determineUsageRanges(
+    const BasicBlock& block, const LivenessAnalysis& liveness, const LivenessChangesAnalysis& changes)
+{
+    // track the instruction index to have some integer value for our range
+    std::size_t instructionIndex = 0;
+    FastMap<const Local*, std::size_t> writeIndices;
+    FastMap<const Local*, std::size_t> numAccesses;
+    SortedSet<LocalUsageRange> localRanges;
+    auto it = block.begin();
+    for(const auto& loc : liveness.getStartResult())
+        // all these locals are live from the beginning of the block
+        writeIndices.emplace(loc, 0);
+    // skip label
+    ++it;
+    ++instructionIndex;
+
+    while(it != block.end())
+    {
+        if(!it->get())
+        {
+            ++it;
+            ++instructionIndex;
+            continue;
+        }
+
+        (*it)->forUsedLocals([&](const Local* loc, LocalUse::Type, const intermediate::IntermediateInstruction&) {
+            // XXX: This counts locals read multiple times by the same instruction multiple times, but so far that is
+            // not a problem.
+            ++numAccesses[loc];
+        });
+
+        const auto& livenessChanges = changes.getResult(it->get());
+        // NOTE: The removedLocals and addedLocals changes are when iterating backwards. Since we iterate from the
+        // front, we start a liveness when it is removed and end it when it is added.
+        for(const auto& loc : livenessChanges.addedLocals)
+        {
+            auto writeIt = writeIndices.find(loc);
+            if(writeIt == writeIndices.end())
+                // This should never happen, but we can simply catch it here by inserting a liveness from the beginning
+                // of the block.
+                writeIt = writeIndices.emplace(loc, 0).first;
+
+            // this is the last read, insert range
+            localRanges.emplace(LocalUsageRange{loc, writeIt->second, instructionIndex, numAccesses[loc]});
+            // remove write entry to start new range with next write
+            writeIndices.erase(writeIt);
+        }
+        for(const auto& loc : livenessChanges.removedLocals)
+        {
+            auto writeIt = writeIndices.find(loc);
+            if(writeIt == writeIndices.end())
+                // local was not written yet in the block (or all usages read, so removed again), so add
+                // this instruction as reader
+                writeIndices.emplace(loc, instructionIndex);
+        }
+
+        ++it;
+        ++instructionIndex;
+    }
+
+    // all entries left in the writer-index map have not been (fully) read, so add range to the end of the block
+    for(const auto& entry : writeIndices)
+        localRanges.emplace(LocalUsageRange{entry.first, entry.second, instructionIndex, numAccesses[entry.first]});
+
+    return localRanges;
+}
+
+void LocalUsageRangeAnalysis::operator()(Method& method)
+{
+    PROFILE_START(LocalUsageRangeAnalysis);
+
+    std::unique_ptr<GlobalLivenessAnalysis> globalLiveness;
+    auto actualLiveness = livenessAnalysis;
+    if(!livenessAnalysis)
+    {
+        globalLiveness.reset(new GlobalLivenessAnalysis(false));
+        (*globalLiveness)(method);
+        actualLiveness = globalLiveness.get();
+    }
+
+    for(const auto& block : method)
+    {
+        auto blockRanges =
+            determineUsageRanges(block, actualLiveness->getLocalAnalysis(block), actualLiveness->getChanges(block));
+        ranges.emplace(&block, std::move(blockRanges));
+    }
+
+    PROFILE_END(LocalUsageRangeAnalysis);
+}
+
+LCOV_EXCL_START
+void LocalUsageRangeAnalysis::dumpResults(const Method& method) const
+{
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        for(const BasicBlock& block : method)
+        {
+            logging::debug() << block.to_string() << logging::endl;
+            for(auto& entry : getRanges(block))
+                logging::debug() << '\t' << entry.to_string() << logging::endl;
+        }
+    });
 }
 LCOV_EXCL_STOP
