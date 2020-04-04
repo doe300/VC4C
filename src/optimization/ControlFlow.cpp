@@ -1102,33 +1102,6 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     // FIXME: fix the simplifying count (to finding the fixed point?)
     for(int i = 0; i < 2; i++)
     {
-        // set isBackEdge flag
-        {
-            std::set<CFGNode*> visited;
-
-            std::queue<CFGNode*> que;
-            que.push(&cfg->getStartOfControlFlow());
-            while(!que.empty())
-            {
-                auto cur = que.front();
-                que.pop();
-
-                visited.insert(cur);
-
-                cur->forAllOutgoingEdges([&que, &visited, &cur](CFGNode& next, CFGEdge& edge) -> bool {
-                    if(visited.find(cur) != visited.end())
-                    {
-                        edge.data.isBackEdge = true;
-                    }
-                    else
-                    {
-                        que.push(&next);
-                    }
-                    return true;
-                });
-            }
-        }
-
         std::vector<CFGNode*> unnecessaryNodes;
 
         for(auto& pair : cfg->getNodes())
@@ -1170,7 +1143,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             bool hasBackEdge = false;
             pair.second.forAllOutgoingEdges([&hasBackEdge](const CFGNode& next, const CFGEdge& edge) -> bool {
                 next.forAllIncomingEdges([&hasBackEdge](const CFGNode& nnext, const CFGEdge& nedge) -> bool {
-                    if(nedge.data.isBackEdge)
+                    if(nedge.data.backEdgeSource)
                     {
                         hasBackEdge = true;
                         return false;

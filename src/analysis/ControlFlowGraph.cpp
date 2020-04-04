@@ -12,6 +12,7 @@
 #include "log.h"
 
 #include <numeric>
+#include <queue>
 #include <sstream>
 
 using namespace vc4c;
@@ -24,14 +25,16 @@ bool CFGRelation::operator==(const CFGRelation& other) const
 LCOV_EXCL_START
 std::string CFGRelation::getLabel() const
 {
-    std::string wgl = isWorkGroupLoop ? " (wgl)" : "";
+    std::string extra = isWorkGroupLoop ? " (wgl)" : "";
+    if(backEdgeSource)
+        extra += " (back edge from " + backEdgeSource->getLabel()->getLabel()->name + ")";
     if(std::all_of(predecessors.begin(), predecessors.end(), [](const auto& pair) -> bool { return !pair.second; }))
     {
-        return "" + std::move(wgl);
+        return "" + std::move(extra);
     }
     if(predecessors.empty())
-        return "" + std::move(wgl);
-    const auto converter = [](const std::pair<BasicBlock*, Optional<InstructionWalker>>& pair) -> std::string {
+        return "" + std::move(extra);
+    const auto converter = [](const std::pair<const BasicBlock*, Optional<InstructionWalker>>& pair) -> std::string {
         if(pair.second && pair.second->get<const intermediate::Branch>())
             return "br " + pair.second->get<const intermediate::Branch>()->conditional.to_string();
         return "";
@@ -40,7 +43,7 @@ std::string CFGRelation::getLabel() const
                [&](const std::string& s, const auto& pair) -> std::string {
                    return (s.empty() ? s : (s + ", ")) + converter(pair);
                }) +
-        std::move(wgl);
+        std::move(extra);
 }
 LCOV_EXCL_STOP
 
@@ -51,10 +54,15 @@ InstructionWalker CFGRelation::getPredecessor(BasicBlock* source) const
     return source->walkEnd().previousInBlock();
 }
 
-bool CFGRelation::isImplicit(BasicBlock* source) const
+bool CFGRelation::isImplicit(const BasicBlock* source) const
 {
     const auto& pred = predecessors.at(source);
     return !pred.has_value();
+}
+
+bool CFGRelation::isBackEdge(const BasicBlock* source) const
+{
+    return backEdgeSource == source;
 }
 
 bool vc4c::operator<(const CFGNode& one, const CFGNode& other)
@@ -237,6 +245,56 @@ void ControlFlowGraph::dumpGraph(const std::string& path, bool dumpConstantLoadI
 }
 LCOV_EXCL_STOP
 
+static void markDepthFirst(const CFGNode& node, FastSet<const CFGNode*>& visitedNodes,
+    FastMap<const CFGNode*, std::size_t>& counters, std::size_t& counter)
+{
+    if(visitedNodes.find(&node) != visitedNodes.end())
+        return;
+    visitedNodes.emplace(&node);
+
+    node.forAllOutgoingEdges([&](const CFGNode& successor, const CFGEdge& edge) {
+        markDepthFirst(successor, visitedNodes, counters, counter);
+        return true;
+    });
+
+    counters[&node] = counter++;
+}
+
+static void updateBackEdges(ControlFlowGraph& graph, CFGNode* startOfControlFlow)
+{
+    PROFILE_START(updateBackEdges);
+    // 1. mark with counter value after traversal of sub-tree
+    FastMap<const CFGNode*, std::size_t> counters;
+    std::size_t counter = 0;
+    FastSet<const CFGNode*> visitedNodes;
+    markDepthFirst(*startOfControlFlow, visitedNodes, counters, counter);
+
+    // 2. check all edges whether we have an edge from lower number to higher number
+    visitedNodes.clear();
+    std::queue<CFGNode*> pendingNodes;
+    pendingNodes.push(startOfControlFlow);
+    while(!pendingNodes.empty())
+    {
+        auto currentNode = pendingNodes.front();
+        pendingNodes.pop();
+
+        visitedNodes.insert(currentNode);
+
+        currentNode->forAllOutgoingEdges([&](CFGNode& next, CFGEdge& edge) -> bool {
+            if(visitedNodes.find(&next) != visitedNodes.end())
+                edge.data.backEdgeSource = counters[currentNode] < counters[&next] ? currentNode->key : nullptr;
+            else
+            {
+                edge.data.backEdgeSource = nullptr;
+                pendingNodes.push(&next);
+            }
+            return true;
+        });
+    }
+
+    PROFILE_END(updateBackEdges);
+}
+
 void ControlFlowGraph::updateOnBlockInsertion(Method& method, BasicBlock& newBlock)
 {
     /*
@@ -371,6 +429,9 @@ void ControlFlowGraph::updateOnBranchInsertion(Method& method, InstructionWalker
     if(fallThroughEdge && !node.key->fallsThroughToNextBlock(false))
         // we have a fall-through edge left but the block no longer falls through
         node.removeEdge(*fallThroughEdge);
+
+    // update back edges
+    updateBackEdges(*this, &getStartOfControlFlow());
 }
 
 void ControlFlowGraph::updateOnBranchRemoval(Method& method, BasicBlock& affectedBlock, const Local* branchTarget)
@@ -448,6 +509,9 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
             edge.data.isWorkGroupLoop = isWorkGroupLoop;
         });
     }
+
+    // update back edges
+    updateBackEdges(*graph, &graph->getStartOfControlFlow());
 
 #ifdef DEBUG_MODE
     logging::logLazy(logging::Level::DEBUG, [&]() { graph->dumpGraph("/tmp/vc4c-cfg.dot", false); });

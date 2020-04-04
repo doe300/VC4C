@@ -7,6 +7,7 @@
 
 #include "ControlFlowGraph.h"
 #include "DataDependencyGraph.h"
+#include "DebugGraph.h"
 #include "PatternMatching.h"
 #include "logger.h"
 
@@ -683,6 +684,10 @@ const CFGNode* ControlFlowLoop::getHeader() const
 
     const CFGNode* header = nullptr;
 
+    if(size() == 1)
+        // special case for single-block loops
+        return front();
+
     for(auto& node : *this)
     {
         node->forAllIncomingEdges([&](const CFGNode& pred, const CFGEdge& edge) {
@@ -701,7 +706,54 @@ const CFGNode* ControlFlowLoop::getHeader() const
             return true;
         });
     }
+
+    // some cleanup for our work-group loops
+    if(!header && !empty())
+    {
+        // check all edges of adjacent nodes within this loop
+        for(auto it = ++begin(); it != end(); ++it)
+        {
+            if(auto edge = (*(it - 1))->getEdge(*it))
+            {
+                if(edge->data.isWorkGroupLoop)
+                    return *(it - 1);
+            }
+        }
+    }
+
     return header;
+}
+
+const CFGNode* ControlFlowLoop::getTail() const
+{
+    // Since there might be multiple nodes from which a jump to the header (and to outside of the loop) is performed
+    // (i.e. for nested loops), we check for the node where the back edge to the header is part of the loop, i.e. the
+    // node which directly precedes the header and has an edge to the header node.
+
+    // TODO correct??
+
+    if(size() == 1)
+        // special case for single block loops
+        return back();
+
+    if(auto header = getHeader())
+    {
+        for(auto it = ++begin(); it != end(); ++it)
+        {
+            if(*(it - 1) != header)
+                continue;
+            if(auto edge = (*(it - 1))->getEdge(*it))
+                return *it;
+        }
+
+        // final check between last and first
+        if(auto edge = front()->getEdge(back()))
+        {
+            if(back() == header)
+                return front();
+        }
+    }
+    return nullptr;
 }
 
 FastSet<InstructionWalker> ControlFlowLoop::findLoopInvariants()
@@ -867,5 +919,26 @@ std::unique_ptr<LoopInclusionTree> vc4c::createLoopInclusingTree(FastAccessList<
         }
     }
 
+#ifdef DEBUG_MODE
+    LCOV_EXCL_START
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        auto nameFunc = [](const ControlFlowLoop* loop) -> std::string {
+            std::string result{};
+            if(auto header = loop->getHeader())
+                result = header->key->to_string();
+            else
+                result = "(unknown header)";
+            result += " to ";
+            if(auto tail = loop->getTail())
+                result += tail->key->to_string();
+            else
+                result += "(unknown tail)";
+            return result;
+        };
+        DebugGraph<ControlFlowLoop*, LoopInclusion, Directionality::DIRECTED>::dumpGraph<LoopInclusionTree>(
+            *inclusionTree, "/tmp/vc4c-loop-inclusion.dot", nameFunc);
+    });
+    LCOV_EXCL_STOP
+#endif
     return inclusionTree;
 }

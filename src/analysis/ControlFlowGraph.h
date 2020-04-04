@@ -10,6 +10,7 @@
 #include "../Graph.h"
 #include "../InstructionWalker.h"
 #include "../Method.h"
+#include "../tools/SmallMap.h"
 #include "ControlFlowLoop.h"
 
 namespace vc4c
@@ -23,8 +24,8 @@ namespace vc4c
     class CFGRelation
     {
     public:
-        // this is used for only optimizations::removeConstantLoadInLoops
-        bool isBackEdge = false;
+        // the direction (given by the source block) which is the back edge.
+        const BasicBlock* backEdgeSource;
         // whether this edge represents a (back-) jump of the work-group loop optimization
         bool isWorkGroupLoop = false;
 
@@ -41,11 +42,19 @@ namespace vc4c
         /**
          * Returns whether the branch in the given direction (source to destination) is implicit.
          */
-        bool isImplicit(BasicBlock* source) const;
+        bool isImplicit(const BasicBlock* source) const;
+
+        /**
+         * Returns whether the branch in the given direction (source to destination) is a back-edge (e.g. for a loop).
+         *
+         * I.e. returns whether any code execution path taking this branch must have previously executed the destination
+         * block.
+         */
+        bool isBackEdge(const BasicBlock* source) const;
 
     private:
         // map of the source block and the predecessor within this block (empty for fall-through)
-        std::map<BasicBlock*, Optional<InstructionWalker>> predecessors;
+        tools::SmallSortedPointerMap<const BasicBlock*, Optional<InstructionWalker>> predecessors;
 
         friend class ControlFlowGraph;
     };

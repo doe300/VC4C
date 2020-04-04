@@ -90,12 +90,19 @@ namespace vc4c
             const DataDependencyGraph& dependencyGraph, bool includeIterationInformation) const;
 
         /*
-         * Returns this loop's header, or a nullptr if the header could not be deduced
+         * Returns this loop's header, or a nullptr if the header could not be deduced.
          *
          * The loop header is the only node inside the loop which has direct predecessor nodes that are not inside the
-         * loop
+         * loop.
          */
         const CFGNode* getHeader() const;
+
+        /**
+         * Returns this loop's tail, or a nullptr if the tail could not be deduced.
+         *
+         * The loop tail is the node from which the actual looping back-jump to the loop header is executed.
+         */
+        const CFGNode* getTail() const;
 
         /**
          * Iterates through all the instructions in the loop and marks instructions as "loop invariant" that do not
