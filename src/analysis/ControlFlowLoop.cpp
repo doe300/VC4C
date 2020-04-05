@@ -11,6 +11,8 @@
 #include "PatternMatching.h"
 #include "logger.h"
 
+#include <sstream>
+
 using namespace vc4c;
 
 const CFGNode* ControlFlowLoop::findPredecessor() const
@@ -730,8 +732,6 @@ const CFGNode* ControlFlowLoop::getTail() const
     // (i.e. for nested loops), we check for the node where the back edge to the header is part of the loop, i.e. the
     // node which directly precedes the header and has an edge to the header node.
 
-    // TODO correct??
-
     if(size() == 1)
         // special case for single block loops
         return back();
@@ -857,7 +857,101 @@ bool ControlFlowLoop::operator==(const ControlFlowLoop& other) const noexcept
     return false;
 }
 
+std::string ControlFlowLoop::to_string() const
+{
+    // since the blocks are in "reverse order", we print from the back
+    std::stringstream ss;
+    for(auto it = rbegin(); it != rend(); ++it)
+        ss << ((*it) && (*it)->key ? (*it)->key->to_string() : "(null)") << " -> ";
+    return ss.str();
+}
+
 LoopInclusionTreeNodeBase::~LoopInclusionTreeNodeBase() noexcept = default;
+
+LoopInclusionTreeNode* vc4c::castToTreeNode(LoopInclusionTreeNodeBase* base)
+{
+    auto* node = dynamic_cast<LoopInclusionTreeNode*>(base);
+    if(node == nullptr)
+    {
+        throw CompilationError(CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
+    }
+    return node;
+}
+
+const LoopInclusionTreeNode* vc4c::castToTreeNode(const LoopInclusionTreeNodeBase* base)
+{
+    auto* node = dynamic_cast<const LoopInclusionTreeNode*>(base);
+    if(node == nullptr)
+    {
+        throw CompilationError(CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
+    }
+    return node;
+}
+
+LoopInclusionTreeNodeBase* LoopInclusionTreeNodeBase::findRoot(Optional<int> depth)
+{
+    if(depth && depth.value() == 0)
+    {
+        return this;
+    }
+
+    auto* self = castToTreeNode(this);
+    LoopInclusionTreeNodeBase* root = this;
+    self->forAllIncomingEdges([&](LoopInclusionTreeNodeBase& parent, LoopInclusionTreeEdge&) -> bool {
+        // The root node must be only one
+        std::function<int(const int&)> dec = [](const int& d) -> int { return d - 1; };
+        root = parent.findRoot(depth & dec);
+        return true;
+    });
+    return root;
+}
+
+unsigned int LoopInclusionTreeNodeBase::getLongestPathToRoot() const
+{
+    auto* self = castToTreeNode(this);
+
+    unsigned int longestLength = 0;
+    self->forAllIncomingEdges([&](const LoopInclusionTreeNodeBase& parent, const LoopInclusionTreeEdge&) -> bool {
+        auto length = parent.getLongestPathToRoot() + 1u;
+        longestLength = std::max(longestLength, length);
+        return true;
+    });
+
+    return longestLength;
+}
+
+bool LoopInclusionTreeNodeBase::hasCFGNodeInChildren(const CFGNode* node) const
+{
+    auto* self = castToTreeNode(this);
+
+    bool found = false;
+    self->forAllOutgoingEdges([&](const LoopInclusionTreeNodeBase& childBase, const LoopInclusionTreeEdge&) -> bool {
+        auto* child = castToTreeNode(&childBase);
+        auto nodes = child->key;
+
+        auto targetNode = std::find(nodes->begin(), nodes->end(), node);
+        if(targetNode != nodes->end())
+        {
+            found = true;
+            return false;
+        }
+        auto foundInChildren = child->hasCFGNodeInChildren(node);
+        if(foundInChildren)
+        {
+            found = true;
+            return false;
+        }
+        return true;
+    });
+
+    return found;
+}
+
+std::string LoopInclusionTreeNodeBase::dumpLabel() const
+{
+    auto* self = castToTreeNode(this);
+    return (*self->key->rbegin())->key->getLabel()->to_string();
+}
 
 std::unique_ptr<LoopInclusionTree> vc4c::createLoopInclusingTree(FastAccessList<ControlFlowLoop>& loops)
 {
@@ -887,7 +981,7 @@ std::unique_ptr<LoopInclusionTree> vc4c::createLoopInclusingTree(FastAccessList<
         int longestLength = -1;
         currentNode.forAllIncomingEdges([&](LoopInclusionTreeNode& parent, LoopInclusionTreeEdge&) -> bool {
             auto parentNode = &parent;
-            int length = static_cast<int>(parentNode->longestPathLengthToRoot());
+            int length = static_cast<int>(parentNode->getLongestPathToRoot());
 
             if(length > longestLength)
             {

@@ -8,6 +8,7 @@
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
 #include "DebugGraph.h"
+#include "DominatorTree.h"
 
 #include "log.h"
 
@@ -126,10 +127,12 @@ struct CFGNodeSorter : public std::less<CFGNode*>
     }
 };
 
-FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(bool recursively, bool skipWorkGroupLoops)
+FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(
+    bool recursively, bool skipWorkGroupLoops, const analysis::DominatorTree* dominatorTree)
 {
-    FastAccessList<ControlFlowLoop> loops;
-    loops.reserve(8);
+    PROFILE_START(findLoops);
+    // use a linked list, since we a) remove entries in the middle and b) need stable pointers for the dominator chains
+    FastModificationList<ControlFlowLoop> loops;
 
     FastMap<const CFGNode*, int> discoveryTimes;
     FastMap<const CFGNode*, int> lowestReachable;
@@ -167,7 +170,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(bool recursively, bo
             // extra case, loop with single block
             ControlFlowLoop loop;
             loop.emplace_back(node);
-            loops.emplace_back(loop);
+            loops.emplace_back(std::move(loop));
         }
     }
 
@@ -179,14 +182,17 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(bool recursively, bo
             loops.end());
     }
 
-    // NOTE: need to merge loops, since for recursive loops we get multiple results for same loop with different
-    // starting blocks
-    // FIXME for test_barrier.cl (or any big if-else/switch inside loops), this are far too many loops to handle..
-    // -> need to somehow combine all if-else/switch cases in a single loop??
-    for(auto it = loops.begin(); it < loops.end() - 1; ++it)
+    // NOTE: need to merge loops, since for recursive loops or loops with branches inside we get multiple results for
+    // same loop with different starting blocks or paths.
+    // FIXME for test_barrier.cl (or any big if-else/switch inside loops), this still hangs/takes very long
+
+    // Merge identical loops with different "starting blocks", i.e. the loops have the identical blocks, but are rotated
+    // in the ControlFlowLoop structure.
+    for(auto it = loops.begin(); it != loops.end(); ++it)
     {
-        auto it2 = it + 1;
-        while(it2 < loops.end())
+        auto it2 = it;
+        ++it2;
+        while(it != loops.end() && it2 != loops.end())
         {
             if(*it == *it2)
                 it2 = loops.erase(it2);
@@ -195,20 +201,93 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(bool recursively, bo
         }
     }
 
+    auto dominators = dominatorTree;
+    std::unique_ptr<analysis::DominatorTree> tmpTree;
+    if(!dominatorTree)
+    {
+        tmpTree = analysis::DominatorTree::createDominatorTree(*this);
+        dominators = tmpTree.get();
+    }
+
+    // Merge loops for different branches, e.g. for if-else, switch-case or inner loops taken/not taken
+    FastMap<const ControlFlowLoop*, FastAccessList<const analysis::DominatorTreeNode*>> dominatorChains;
+    for(auto& loop : loops)
+    {
+        auto& chain = dominatorChains[&loop];
+        chain.reserve(loop.size());
+        for(auto entry : loop)
+        {
+            auto node = dominators->findNode(entry);
+            chain.emplace_back(node ? node->getSinglePredecessor() : nullptr);
+        }
+
+        // Remove adjacent duplicate dominators, as they e.g. happen for if-without-else, if-else, switch-case and
+        // loops. This allows us to simply check for equality of the dominator chains to cover all the cases listed
+        // above (instead of only for the if-else case).
+        chain.erase(std::unique(chain.begin(), chain.end()), chain.end());
+    }
+
+    for(auto it = loops.begin(); it != loops.end(); ++it)
+    {
+        if(it->empty())
+            continue;
+        auto& firstDominators = dominatorChains.at(&(*it));
+        auto it2 = it;
+        ++it2;
+        while(it != loops.end() && it2 != loops.end())
+        {
+            auto& secondDominators = dominatorChains.at(&(*it2));
+
+            if(!firstDominators.empty() && !secondDominators.empty() && firstDominators == secondDominators)
+            {
+                // since we remove adjacent duplicate dominators in the loop above, this allies for all inner structured
+                // control flow (if-without-else, if-else, switch-case, inner loops).
+                CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
+                    logging::debug() << "Merging loops: " << logging::endl;
+                    logging::debug() << "\t" << it->to_string() << logging::endl;
+                    logging::debug() << "\t" << it2->to_string() << logging::endl;
+                });
+
+                // move all entries from the second loop not present in the first to the first loop
+                auto firstIt = it->begin();
+                auto secondIt = it2->begin();
+                while(secondIt != it2->end())
+                {
+                    if(*firstIt != *secondIt)
+                    {
+                        auto findIt = std::find(firstIt, it->end(), *secondIt);
+                        if(findIt != it->end())
+                            // just skip any blocks in the first which are not in the second
+                            firstIt = findIt;
+                        else
+                            // add block from second to first
+                            // NOTE: We do not need to update the dominator chain, since this would only insert the same
+                            // dominator as the previous block, which we then anyway would remove again.
+                            firstIt = it->insert(firstIt, *secondIt);
+                    }
+                    ++firstIt;
+                    ++secondIt;
+                }
+                CPPLOG_LAZY(logging::Level::DEBUG, log << "\tinto: " << it->to_string() << logging::endl);
+                it2 = loops.erase(it2);
+            }
+            else
+                ++it2;
+        }
+    }
+
     LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         for(const auto& loop : loops)
-        {
-            auto& log = logging::debug();
-            log << "Found a control-flow loop: ";
-            for(auto it = loop.rbegin(); it != loop.rend(); ++it)
-                log << (*it)->key->to_string() << " -> ";
-            log << logging::endl;
-        }
+            logging::debug() << "Found a control-flow loop: " << loop.to_string() << logging::endl;
     });
     LCOV_EXCL_STOP
 
-    return loops;
+    FastAccessList<ControlFlowLoop> result;
+    result.reserve(loops.size());
+    std::copy(std::make_move_iterator(loops.begin()), std::make_move_iterator(loops.end()), std::back_inserter(result));
+    PROFILE_END(findLoops);
+    return result;
 }
 
 LCOV_EXCL_START
@@ -585,6 +664,13 @@ ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<c
         stack.pop_back();
     }
 
+    // for cleanup and easier reading, rotate loop so header is front (if we could determine one)
+    if(auto header = loop.getHeader())
+    {
+        auto it = std::find(loop.rbegin(), loop.rend(), header);
+        std::rotate(loop.rbegin(), it, loop.rend());
+    }
+
     return loop;
 }
 
@@ -616,6 +702,13 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(con
                 loop.push_back(tempStack.back());
                 tempStack.pop_back();
 
+                // for cleanup and easier reading, rotate loop so header is in the back (if we could determine one)
+                if(auto header = loop.getHeader())
+                {
+                    auto it = std::find(loop.rbegin(), loop.rend(), header);
+                    std::rotate(loop.rbegin(), it, loop.rend());
+                }
+
                 loops.emplace_back(std::move(loop));
             }
             else if(node != v)
@@ -631,100 +724,4 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(con
     stack.pop_back();
 
     return loops;
-}
-
-// LoopInclusionTreeNodeBase::LoopInclusionTreeNodeBase(const KeyType key) : Node(key) {}
-
-LoopInclusionTreeNode* vc4c::castToTreeNode(LoopInclusionTreeNodeBase* base)
-{
-    auto* node = dynamic_cast<LoopInclusionTreeNode*>(base);
-    if(node == nullptr)
-    {
-        throw CompilationError(CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
-    }
-    return node;
-}
-
-const LoopInclusionTreeNode* vc4c::castToTreeNode(const LoopInclusionTreeNodeBase* base)
-{
-    auto* node = dynamic_cast<const LoopInclusionTreeNode*>(base);
-    if(node == nullptr)
-    {
-        throw CompilationError(CompilationStep::OPTIMIZER, "Cannot downcast to LoopInclusionTreeNode.");
-    }
-    return node;
-}
-
-LoopInclusionTreeNodeBase* LoopInclusionTreeNodeBase::findRoot(Optional<int> depth)
-{
-    if(depth && depth.value() == 0)
-    {
-        return this;
-    }
-
-    auto* self = castToTreeNode(this);
-    LoopInclusionTreeNodeBase* root = this;
-    self->forAllIncomingEdges([&](LoopInclusionTreeNodeBase& parent, LoopInclusionTreeEdge&) -> bool {
-        // The root node must be only one
-        std::function<int(const int&)> dec = [](const int& d) -> int { return d - 1; };
-        root = parent.findRoot(depth & dec);
-        return true;
-    });
-    return root;
-}
-
-unsigned int LoopInclusionTreeNodeBase::longestPathLengthToRoot() const
-{
-    auto* self = castToTreeNode(this);
-
-    if(self->getEdgesSize() == 0)
-    {
-        // this is root
-        return 0;
-    }
-
-    unsigned int longestLength = 0;
-    self->forAllIncomingEdges([&](const LoopInclusionTreeNodeBase& parent, const LoopInclusionTreeEdge&) -> bool {
-        unsigned int length = parent.longestPathLengthToRoot() + 1;
-        if(length > longestLength)
-        {
-            longestLength = length;
-        }
-        return true;
-    });
-
-    return longestLength;
-}
-
-bool LoopInclusionTreeNodeBase::hasCFGNodeInChildren(const CFGNode* node) const
-{
-    auto* self = castToTreeNode(this);
-
-    bool found = false;
-    self->forAllOutgoingEdges([&](const LoopInclusionTreeNodeBase& childBase, const LoopInclusionTreeEdge&) -> bool {
-        auto* child = castToTreeNode(&childBase);
-        auto nodes = child->key;
-
-        auto targetNode = std::find(nodes->begin(), nodes->end(), node);
-        if(targetNode != nodes->end())
-        {
-            found = true;
-            return false;
-        }
-        auto foundInChildren = child->hasCFGNodeInChildren(node);
-        if(foundInChildren)
-        {
-            found = true;
-            return false;
-        }
-        return true;
-    });
-
-    return found;
-}
-
-std::string LoopInclusionTreeNodeBase::dumpLabel() const
-{
-    auto* self = castToTreeNode(this);
-    return (*self->key->rbegin())->key->getLabel()->to_string();
 }

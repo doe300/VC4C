@@ -47,6 +47,15 @@ namespace vc4c
      * A loop in the control-flow represented by the basic-blocks taking part in it
      *
      * NOTE: A control-flow loop can only be used within the life-time of the ControlFlowGraph it is created from!
+     *
+     * NOTE: The loop member blocks are in reverse relative order, i.e. their order is inverted to the "normal" control
+     * flow. Also their absolute order is not guaranteed, i.e. it is not guaranteed for the head to be the last entry in
+     * the block list.
+     *
+     * NOTE: Since a control-flow loop can contain choices (if-else, switch-case blocks) as well as other (inner) loops,
+     * the order of the nodes in the loop structure does only partially guarantee the block domination, but not the
+     * order of execution, i.e. not all blocks in the loop have to be executed and not all blocks are executed at most 1
+     * time.
      */
     struct ControlFlowLoop : public FastAccessList<const CFGNode*>
     {
@@ -127,6 +136,8 @@ namespace vc4c
         bool isWorkGroupLoop() const;
 
         bool operator==(const ControlFlowLoop& other) const noexcept;
+
+        std::string to_string() const;
     };
 
     /*
@@ -141,7 +152,7 @@ namespace vc4c
         virtual ~LoopInclusionTreeNodeBase() noexcept;
 
         LoopInclusionTreeNodeBase* findRoot(Optional<int> depth);
-        unsigned int longestPathLengthToRoot() const;
+        unsigned int getLongestPathToRoot() const;
         bool hasCFGNodeInChildren(const CFGNode* node) const;
 
         std::string dumpLabel() const;

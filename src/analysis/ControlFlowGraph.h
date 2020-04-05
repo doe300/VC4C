@@ -15,6 +15,11 @@
 
 namespace vc4c
 {
+    namespace analysis
+    {
+        struct DominatorTree;
+    } // namespace analysis
+
     /*
      * A relation in the control-flow-graph represents a transition between two basic blocks.
      *
@@ -87,7 +92,8 @@ namespace vc4c
         /*
          * Finds all loops in the CFG
          */
-        FastAccessList<ControlFlowLoop> findLoops(bool recursively, bool skipWorkGroupLoops = true);
+        FastAccessList<ControlFlowLoop> findLoops(
+            bool recursively, bool skipWorkGroupLoops = true, const analysis::DominatorTree* dominatorTree = nullptr);
 
         /*
          * Dump this graph as dot file
