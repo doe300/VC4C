@@ -453,6 +453,7 @@ namespace vc4c
             GROUP_ID_X,
             GROUP_ID_Y,
             GROUP_ID_Z,
+            GROUP_IDS,
             GLOBAL_OFFSET_X,
             GLOBAL_OFFSET_Y,
             GLOBAL_OFFSET_Z,

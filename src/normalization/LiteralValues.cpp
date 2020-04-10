@@ -836,9 +836,15 @@ static Optional<Value> findPreviousUseWithImmediate(
 
     while(instRemaining > 0 && !it.isStartOfBlock())
     {
-        if(it.get<intermediate::MoveOperation>() && it->getArgument(0) == arg && it->conditional == COND_ALWAYS &&
-            (it->getOutput() & [](const Value& val) -> bool {
-                return val.checkLocal() && val.local()->name.find(localPrefix) == 0;
+        if(it.get<intermediate::MoveOperation>() && it.get<intermediate::MoveOperation>()->isSimpleMove() &&
+            it->getArgument(0) == arg && it->conditional == COND_ALWAYS &&
+            (it->getOutput() & [&](const Value& val) -> bool {
+                return val.checkLocal() &&
+                    (
+                        /* a previously introduced use-with-literal temporary local for the same input local */
+                        val.local()->name.find(localPrefix) == 0 ||
+                        /* an existing move to a locally limited local for the same input local */
+                        it.getBasicBlock()->isLocallyLimited(it, val.local(), accumulatorThreshold));
             }))
         {
             return it->getOutput();

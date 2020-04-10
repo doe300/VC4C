@@ -664,15 +664,20 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
     ASSERT_SINGLE_DESTINATION("mapMemoryCopy");
 
     // srcInRegister is handled by another function
-    bool destInRegister = destInfo.type == MemoryAccessType::QPU_REGISTER_READWRITE;
-    bool srcInVPM =
-        srcInfo.type == MemoryAccessType::VPM_PER_QPU || srcInfo.type == MemoryAccessType::VPM_SHARED_ACCESS;
-    bool srcInRAM =
-        srcInfo.type == MemoryAccessType::RAM_LOAD_TMU || srcInfo.type == MemoryAccessType::RAM_READ_WRITE_VPM;
-    bool destInVPM =
-        destInfo.type == MemoryAccessType::VPM_PER_QPU || destInfo.type == MemoryAccessType::VPM_SHARED_ACCESS;
-    bool destInRAM =
-        destInfo.type == MemoryAccessType::RAM_LOAD_TMU || destInfo.type == MemoryAccessType::RAM_READ_WRITE_VPM;
+    bool destInRegister = std::all_of(destInfos.begin(), destInfos.end(),
+        [](const MemoryInfo* info) { return info->type == MemoryAccessType::QPU_REGISTER_READWRITE; });
+    bool srcInVPM = std::all_of(srcInfos.begin(), srcInfos.end(), [](const MemoryInfo* info) {
+        return info->type == MemoryAccessType::VPM_PER_QPU || info->type == MemoryAccessType::VPM_SHARED_ACCESS;
+    });
+    bool srcInRAM = std::all_of(srcInfos.begin(), srcInfos.end(), [](const MemoryInfo* info) {
+        return info->type == MemoryAccessType::RAM_LOAD_TMU || info->type == MemoryAccessType::RAM_READ_WRITE_VPM;
+    });
+    bool destInVPM = std::all_of(destInfos.begin(), destInfos.end(), [](const MemoryInfo* info) {
+        return info->type == MemoryAccessType::VPM_PER_QPU || info->type == MemoryAccessType::VPM_SHARED_ACCESS;
+    });
+    bool destInRAM = std::all_of(destInfos.begin(), destInfos.end(), [](const MemoryInfo* info) {
+        return info->type == MemoryAccessType::RAM_LOAD_TMU || info->type == MemoryAccessType::RAM_READ_WRITE_VPM;
+    });
 
     for(auto srcInfo : srcInfos)
     {

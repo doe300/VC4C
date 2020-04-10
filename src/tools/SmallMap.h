@@ -215,6 +215,16 @@ namespace vc4c
                 return end();
             }
 
+            bool operator==(const FixedSortedPointerMap& other) const
+            {
+                return data == other.data;
+            }
+
+            bool operator!=(const FixedSortedPointerMap& other) const
+            {
+                return data != other.data;
+            }
+
         private:
             Container data;
 
@@ -559,6 +569,16 @@ namespace vc4c
             constexpr size_type small_size()
             {
                 return SmallSize;
+            }
+
+            bool operator==(const SmallSortedPointerMap& other) const
+            {
+                return data == other.data;
+            }
+
+            bool operator!=(const SmallSortedPointerMap& other) const
+            {
+                return data != other.data;
             }
 
         private:

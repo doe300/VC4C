@@ -683,7 +683,7 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
 
     for(BasicBlock& block : method)
     {
-        FastMap<uint32_t, InstructionWalker> lastLoadImmediate;
+        FastMap<uint32_t, InstructionWalker> lastConstantWriter;
         FastMap<Register, InstructionWalker> lastLoadRegister;
         InstructionWalker it = block.walk();
         while(!it.isEndOfBlock())
@@ -696,8 +696,8 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
             {
                 if(Optional<Literal> literal = getSourceLiteral(it))
                 {
-                    auto immIt = lastLoadImmediate.find(literal->unsignedInt());
-                    if(immIt != lastLoadImmediate.end() && !it->hasSideEffects() &&
+                    auto immIt = lastConstantWriter.find(literal->unsignedInt());
+                    if(immIt != lastConstantWriter.end() && !it->hasSideEffects() &&
                         canReplaceConstantLoad(it, block.walk(), immIt->second, threshold))
                     {
                         Local* oldLocal = it->getOutput()->local();
@@ -714,7 +714,7 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
                         continue;
                     }
                     else
-                        lastLoadImmediate[literal->unsignedInt()] = it;
+                        lastConstantWriter[literal->unsignedInt()] = it;
                 }
                 if(auto reg = getSourceConstantRegister(it))
                 {

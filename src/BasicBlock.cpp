@@ -67,11 +67,14 @@ bool BasicBlock::isLocallyLimited(InstructionWalker curIt, const Local* locale, 
     auto remainingUsers = locale->getUsers();
 
     int32_t usageRangeLeft = static_cast<int32_t>(threshold);
-    // check whether the local is written in the instruction before (and this)
-    // this happens e.g. for comparisons
-    if(!curIt.isStartOfBlock())
+    // check whether the local is written in the instruction(s) before (and this)
+    // this happens e.g. for comparisons and for assembling vectors
+    auto prevIt = curIt;
+    while(!prevIt.isStartOfBlock())
     {
-        remainingUsers.erase(curIt.copy().previousInBlock().get());
+        prevIt.previousInBlock();
+        if(remainingUsers.erase(prevIt.get()) > 0)
+            --usageRangeLeft;
     }
     while(usageRangeLeft >= 0 && !curIt.isEndOfBlock())
     {

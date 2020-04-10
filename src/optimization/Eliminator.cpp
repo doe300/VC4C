@@ -139,7 +139,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                 }
                 else if(move->getSource().hasRegister(REG_UNIFORM) && !move->signal.hasSideEffects())
                 {
-                    // if the added work-group info UNIFORMs are never read, we can remove then (and their flag)
+                    // if the added work-group info UNIFORMs are never read, we can remove them (and their flag)
                     auto dest = instr->getOutput()->local()->as<BuiltinLocal>();
                     if(dest && dest->getUsers(LocalUse::Type::READER).empty())
                     {
@@ -580,6 +580,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
 {
     auto it = method.walkAllInstructions();
     auto replaced = false;
+    auto groupIdsLocal = method.findBuiltin(BuiltinLocal::Type::GROUP_IDS);
     while(!it.isEndOfMethod())
     {
         auto const op = it.get<intermediate::MoveOperation>();
@@ -602,7 +603,9 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
             !op->hasUnpackMode() && op->getOutput().has_value() &&
             (!op->getSource().checkRegister() || !op->getSource().reg().hasSideEffectsOnRead()) &&
             (!op->checkOutputRegister()) &&
-            (!op->readsLiteral() || normalization::toImmediate(*op->getSource().getLiteralValue())))
+            (!op->readsLiteral() || normalization::toImmediate(*op->getSource().getLiteralValue())) &&
+            /* XXX for now skip %group_ids, since we otherwise screw up our handcrafted code in the work-group loop */
+            (!groupIdsLocal || !op->readsLocal(groupIdsLocal)))
         {
             auto it2 = it.copy().nextInBlock();
             auto oldValue = op->getOutput().value();

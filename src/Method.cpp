@@ -120,6 +120,9 @@ const BuiltinLocal* Method::findOrCreateBuiltin(BuiltinLocal::Type type)
     case Type::GROUP_ID_Z:
         entry.reset(new BuiltinLocal("%group_id_z", TYPE_INT32, type));
         return entry.get();
+    case Type::GROUP_IDS:
+        entry.reset(new BuiltinLocal("%group_ids", TYPE_INT32, type));
+        return entry.get();
     case Type::GLOBAL_OFFSET_X:
         entry.reset(new BuiltinLocal("%global_offset_x", TYPE_INT32, type));
         return entry.get();

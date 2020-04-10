@@ -1013,6 +1013,13 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         method.metaData.uniformsUsed.setGroupIDZUsed(true);
         assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GROUP_IDS))
+    {
+        method.metaData.uniformsUsed.setGroupIDXUsed(true);
+        method.metaData.uniformsUsed.setGroupIDYUsed(true);
+        method.metaData.uniformsUsed.setGroupIDZUsed(true);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+    }
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GLOBAL_OFFSET_X))
     {
         method.metaData.uniformsUsed.setGlobalOffsetXUsed(true);
@@ -1832,12 +1839,13 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
 
 // If we loop through all work-groups, the initial work-group id for all dimensions is always zero
 // Also, to not override the work-group index at every iteration, extract the writing out of the loops
-static bool moveGroupIdInitializers(Method& method, BasicBlock& defaultBlock, BasicBlock& newStartBlock)
+NODISCARD static bool moveGroupIdInitializers(Method& method, BasicBlock& defaultBlock, BasicBlock& newStartBlock)
 {
     CPPLOG_LAZY(
         logging::Level::DEBUG, log << "Moving group ID initializers out of work-group-loop..." << logging::endl);
     auto insertIt = newStartBlock.walkEnd();
-    // whether the group id locals are not written and therefore not used inside the "real" kernel code
+    // whether the group id locals are not written (i.e. as converted by the intrinsic of vc4cl_get_group_id(n)) and
+    // therefore not used inside the "real" kernel code
     bool groupIdsOnlyRead = true;
     for(auto type : {BuiltinLocal::Type::GROUP_ID_X, BuiltinLocal::Type::GROUP_ID_Y, BuiltinLocal::Type::GROUP_ID_Z})
     {
@@ -1849,6 +1857,19 @@ static bool moveGroupIdInitializers(Method& method, BasicBlock& defaultBlock, Ba
                 it->erase();
         }
         assign(insertIt, loc->createReference()) = INT_ZERO;
+    }
+
+    if(groupIdsOnlyRead)
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Merging group ID locals, since they are not used in the kernel code" << logging::endl);
+        // If the group IDs are never actually used in the kernel code, we can compress them into a single register.
+        // 1. Remove all previous assignments
+        auto it = newStartBlock.walk().nextInBlock();
+        while(!it.isEndOfBlock())
+            it.erase();
+        // 2. Add new assignment to grouped value
+        assign(it, method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_IDS)->createReference()) = INT_ZERO;
     }
 
     return groupIdsOnlyRead;
@@ -1906,7 +1927,7 @@ NODISCARD static InstructionWalker insertAddressResetBlock(
 // - If so, jumps back to the default block
 // - Otherwise, falls through to the next block
 NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& method, const BasicBlock& defaultBlock,
-    const Value& id, const Value& maxValue, InstructionWalker it, const Local* previousId)
+    const Value& id, const Value& maxValue, InstructionWalker it, const Local* previousId, int8_t mergedValueIndex)
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Inserting repetition block for: " << id.to_string() << logging::endl);
     it = method.emplaceLabel(it,
@@ -1916,16 +1937,38 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     // insert after label, not before
     it.nextInBlock();
 
-    // first increment current id then reset previous dimension to be able to skip inserting a nop, since we read the
-    // current id immediately afterwards
-    assign(it, id) = id + INT_ONE;
-    if(previousId)
-        assign(it, previousId->createReference()) = INT_ZERO;
+    if(mergedValueIndex < 0)
+    {
+        // First increment current id then reset previous dimension to be able to skip inserting a nop, since we read
+        // the current id immediately afterwards.
+        assign(it, id) = id + INT_ONE;
+        if(previousId)
+            assign(it, previousId->createReference()) = INT_ZERO;
+    }
+    else
+    {
+        // Do the same as above, but with the current and the previous dimension merged into the same vector (with index
+        // mergedValueIndex for this dimension and mergedValueIndex -1 for the previous dimension).
+        // NOTE: We reorder the steps taken a bit to a) avoid inserting NOPs and b) avoid forcing the longest-living
+        // local (%group_ids) into an accumulator, by doing a full vector rotation on it!
+        auto mergedValue = method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_IDS)->createReference();
+        // do the actual calculations on a temporary, which might very well be on an accumulator and write the changes
+        // back afterwards
+        assign(it, NOP_REGISTER) =
+            (ELEMENT_NUMBER_REGISTER - Value(Literal(mergedValueIndex), TYPE_INT8), SetFlag::SET_FLAGS);
+        auto tmp = assign(it, mergedValue.type) = mergedValue;
+        assign(it, tmp) = (tmp + INT_ONE, COND_ZERO_SET);
+        if(previousId)
+            assign(it, tmp) = (INT_ZERO, COND_NEGATIVE_SET);
+        assign(it, mergedValue) = tmp;
+        // extract the current dimension into a temporary variable
+        it = insertVectorExtraction(it, method, tmp, Value(Literal(mergedValueIndex), TYPE_INT8), id);
+    }
+
     // NOTE: using signed comparison limits the number of work-groups per dimension to INT_MAX - 1 to avoid overflow.
     // This is also reflected host-side on the kernel_config::MAX_WORK_ITEM_DIMENSIONS limit and checked in
     // Kernel::enqueueNDRange.
     auto cond = assignNop(it) = as_signed{id} < as_signed{maxValue};
-    // XXX can be optimized, when branch supports carry conditions
     auto condValue = method.addNewLocal(TYPE_BOOL);
     assign(it, condValue) = (BOOL_TRUE, cond);
     assign(it, condValue) = (BOOL_TRUE ^ BOOL_TRUE, cond.invert());
@@ -1935,7 +1978,8 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     return it;
 }
 
-static void insertRepetitionBlocks(Method& method, const BasicBlock& defaultBlock, BasicBlock& lastBlock)
+static void insertRepetitionBlocks(
+    Method& method, const BasicBlock& defaultBlock, BasicBlock& lastBlock, bool mergeGroupIds)
 {
     auto maxGroupIdX = method.findOrCreateBuiltin(BuiltinLocal::Type::MAX_GROUP_ID_X)->createReference();
     auto maxGroupIdY = method.findOrCreateBuiltin(BuiltinLocal::Type::MAX_GROUP_ID_Y)->createReference();
@@ -1945,13 +1989,16 @@ static void insertRepetitionBlocks(Method& method, const BasicBlock& defaultBloc
     it = insertAddressResetBlock(method, it, maxGroupIdX, maxGroupIdY, maxGroupIdZ);
 
     auto groupIdX = method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_ID_X)->createReference();
-    it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdX, maxGroupIdX, it, nullptr);
+    it = insertSingleDimensionRepetitionBlock(
+        method, defaultBlock, groupIdX, maxGroupIdX, it, nullptr, mergeGroupIds ? 0 : -1);
 
     auto groupIdY = method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_ID_Y)->createReference();
-    it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdY, maxGroupIdY, it, groupIdX.local());
+    it = insertSingleDimensionRepetitionBlock(
+        method, defaultBlock, groupIdY, maxGroupIdY, it, groupIdX.local(), mergeGroupIds ? 1 : -1);
 
     auto groupIdZ = method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_ID_Z)->createReference();
-    it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdZ, maxGroupIdZ, it, groupIdY.local());
+    it = insertSingleDimensionRepetitionBlock(
+        method, defaultBlock, groupIdZ, maxGroupIdZ, it, groupIdY.local(), mergeGroupIds ? 2 : -1);
 }
 
 bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const Configuration& config)
@@ -1985,7 +2032,7 @@ bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const
     bool groupIdsNotUsed = moveGroupIdInitializers(method, defaultBlock, startBlock);
 
     // Insert all the code required to increment/reset the ids and repeat the kernel code
-    insertRepetitionBlocks(method, defaultBlock, *lastBlock);
+    insertRepetitionBlocks(method, defaultBlock, *lastBlock, groupIdsNotUsed);
 
     // set correct information to metadata
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Adjusting kernel metadata..." << logging::endl);
@@ -1996,17 +2043,6 @@ bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const
     method.metaData.uniformsUsed.setMaxGroupIDXUsed(true);
     method.metaData.uniformsUsed.setMaxGroupIDYUsed(true);
     method.metaData.uniformsUsed.setMaxGroupIDZUsed(true);
-
-    // TODO can lower register pressure by 2 over whole code at the cost of 2 instructions per cycle by compressing
-    // all group_ids into single register. Also saves 2 instructions for initialization. Run at least if group_ids
-    // are not used differently in code.
-    // TODO cases whether group ids are not used are not very many (used in get_global_id(...))
-    // TODO or instead group all group_id, group_offset, ... into vectors (per type, e.g. group_id[3],
-    // group_offset[3])?? Requires 2 instructions per element to initialize, 2 instructions to extract. Could also do
-    // calculation of e.g. get_global_id(?) in parallel for all (3) dimensions -> Extra optimization?! Enhance/Replace
-    // local-compression with that? XXX Or run as adjustment step if register-pressure more than X??V
-    if(groupIdsNotUsed)
-        ; // XXX logging::warn() << "TEST: Group ids are not used in kernel: " << method.name << logging::endl;
 
     return true;
 }

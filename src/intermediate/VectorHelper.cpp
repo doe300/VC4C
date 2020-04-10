@@ -146,11 +146,11 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
 }
 
 InstructionWalker intermediate::insertReplication(
-    InstructionWalker it, const Value& src, const Value& dest, const bool useDestionation)
+    InstructionWalker it, const Value& src, const Value& dest, const bool useDestination)
 {
     // distribute value 0 to all positions in the vector
     assign(it, Value(REG_REPLICATE_ALL, src.type)) = src;
-    if(useDestionation)
+    if(useDestination)
         //"Reading r5 returns the per-quad 32-bit value replicated across the four elements of that quad" (p. 18)
         assign(it, dest) = Value(REG_REPLICATE_ALL, src.type);
     return it;
