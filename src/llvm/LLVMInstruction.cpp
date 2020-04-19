@@ -605,7 +605,7 @@ bool Branch::mapInstruction(Method& method)
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating unconditional branch to " << thenLabel.to_string() << logging::endl);
         method.appendToEnd(
-            (new intermediate::Branch(thenLabel.local(), COND_ALWAYS, BOOL_TRUE))->addDecorations(decorations));
+            (new intermediate::Branch(thenLabel.local()))->addDecorations(decorations));
     }
     else
     {
@@ -640,7 +640,7 @@ bool Switch::mapInstruction(Method& method)
         method.appendToEnd(new intermediate::Branch(option.second.local(), COND_ZERO_CLEAR, tmp));
     }
     // branch default label
-    method.appendToEnd(new intermediate::Branch(defaultLabel.local(), COND_ALWAYS, BOOL_TRUE));
+    method.appendToEnd(new intermediate::Branch(defaultLabel.local()));
 
     return true;
 }

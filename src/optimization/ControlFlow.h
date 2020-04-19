@@ -24,22 +24,6 @@ namespace vc4c
         bool vectorizeLoops(const Module& module, Method& method, const Configuration& config);
 
         /*
-         * Extends the branches (up to now represented by a single instruction) by
-         * inserting instructions setting the necessary flags (if required)
-         * and the subsequent delay-instructions required to empty the pipeline
-         *
-         * Example:
-         *   br %103
-         *
-         * is converted to:
-         *   br %103
-         *   nop
-         *   nop
-         *   nop
-         */
-        void extendBranches(const Module& module, Method& method, const Configuration& config);
-
-        /*
          * Adds the start- and stop-segment to the kernel code
          *
          * The start-segment contains the code to read the kernel-parameters as well as the "hidden" parameters

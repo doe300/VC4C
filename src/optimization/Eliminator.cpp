@@ -542,7 +542,7 @@ InstructionWalker optimizations::eliminateReturn(
 
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Replacing return in kernel-function with branch to end-label" << logging::endl);
-        it.reset(new intermediate::Branch(target->getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        it.reset(new intermediate::Branch(target->getLabel()->getLabel()));
     }
     return it;
 }

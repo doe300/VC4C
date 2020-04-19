@@ -399,7 +399,7 @@ BasicBlock& intermediate::insertLoop(Method& method, InstructionWalker& it, cons
     inLoopIt.nextInBlock();
 
     // in loop content block, unconditionally jump back to preheader
-    inLoopIt.emplace(new Branch(preheaderLabel.local(), COND_ALWAYS, BOOL_TRUE));
+    inLoopIt.emplace(new Branch(preheaderLabel.local()));
     inLoopIt.nextInBlock();
 
     it = method.emplaceLabel(inLoopIt, new BranchLabel(*afterLoopLabel.local()));

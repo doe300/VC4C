@@ -33,6 +33,22 @@ namespace vc4c
          */
         InstructionWalker splitRegisterConflicts(
             const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+
+        /*
+         * Extends the branches (up to now represented by a single instruction) by
+         * inserting instructions setting the necessary flags (if required)
+         * and the subsequent delay-instructions required to empty the pipeline
+         *
+         * Example:
+         *   br %103
+         *
+         * is converted to:
+         *   br %103
+         *   nop
+         *   nop
+         *   nop
+         */
+        void extendBranches(const Module& module, Method& method, const Configuration& config);
     } // namespace normalization
 } // namespace vc4c
 

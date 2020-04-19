@@ -587,6 +587,7 @@ namespace vc4c
 
         struct Branch final : public IntermediateInstruction
         {
+            explicit Branch(const Local* target);
             Branch(const Local* target, ConditionCode condCode, const Value& cond);
             ~Branch() override = default;
 

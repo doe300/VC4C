@@ -458,7 +458,7 @@ void SPIRVBranch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
     {
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Generating intermediate branch to %" << defaultLabelID << logging::endl);
-        method.method->appendToEnd(new intermediate::Branch(trueLabel.local(), COND_ALWAYS, BOOL_TRUE));
+        method.method->appendToEnd(new intermediate::Branch(trueLabel.local()));
     }
 }
 
@@ -1145,7 +1145,7 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
         method.method->appendToEnd(new intermediate::Branch(destination.local(), COND_ZERO_CLEAR, tmp));
     }
     // branch default label
-    method.method->appendToEnd(new intermediate::Branch(defaultLabel.local(), COND_ALWAYS, BOOL_TRUE));
+    method.method->appendToEnd(new intermediate::Branch(defaultLabel.local()));
 }
 
 Optional<Value> SPIRVSwitch::precalculate(

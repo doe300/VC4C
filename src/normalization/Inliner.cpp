@@ -122,7 +122,7 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                         }
                         // after each return, jump to label after call-site (since there may be several return
                         // statements in a method)
-                        it.emplace(new intermediate::Branch(methodEndLabel, COND_ALWAYS, BOOL_TRUE));
+                        it.emplace(new intermediate::Branch(methodEndLabel));
                     }
                     else
                     {

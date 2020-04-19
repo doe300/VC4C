@@ -62,6 +62,10 @@ bool BranchLabel::innerEquals(const IntermediateInstruction& other) const
     return dynamic_cast<const BranchLabel*>(&other);
 }
 
+Branch::Branch(const Local* target) : Branch(target, COND_ALWAYS, BOOL_TRUE)
+{
+}
+
 Branch::Branch(const Local* target, const ConditionCode condCode, const Value& cond) :
     IntermediateInstruction({}, condCode)
 {

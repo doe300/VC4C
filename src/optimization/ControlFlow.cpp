@@ -608,7 +608,7 @@ static void fixInitialValueAndStep(
  * - fix initial iteration value and step
  */
 static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariable, Method& method,
-    const DataDependencyGraph& dependencyGraph, unsigned vectorizationFactor, Literal stepValue)
+    unsigned vectorizationFactor, Literal stepValue)
 {
     FastSet<const intermediate::IntermediateInstruction*> openInstructions;
 
@@ -790,7 +790,7 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
         }
 
         // 6. run vectorization
-        vectorize(loop, inductionVariable, method, *dependencyGraph, *vectorizationFactor, *stepConstant);
+        vectorize(loop, inductionVariable, method, *vectorizationFactor, *stepConstant);
         // increasing the iteration step might create a value not fitting into small immediate
         normalization::handleImmediate(
             module, method, loop.findInLoop(inductionVariable.inductionStep).value(), config);
@@ -800,69 +800,6 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
     }
 
     return hasChanged;
-}
-
-void optimizations::extendBranches(const Module& module, Method& method, const Configuration& config)
-{
-    auto it = method.walkAllInstructions();
-    // we only need to set the same flag once
-    std::pair<Value, intermediate::InstructionDecorations> lastSetFlags =
-        std::make_pair(UNDEFINED_VALUE, intermediate::InstructionDecorations::NONE);
-    while(!it.isEndOfMethod())
-    {
-        if(auto branch = it.get<intermediate::Branch>())
-        {
-            CPPLOG_LAZY(logging::Level::DEBUG, log << "Extending branch: " << branch->to_string() << logging::endl);
-            if(branch->hasConditionalExecution() || !branch->getCondition().hasLiteral(Literal(true)))
-            {
-                /*
-                 * branch can only depend on scalar value
-                 * -> set any not used vector-element (all except element 0) to a value where it doesn't influence
-                 * the condition
-                 *
-                 * Using ELEMENT_NUMBER sets the vector-elements 1 to 15 to a non-zero value and 0 to either 0 (if
-                 * condition was false) or 1 (if condition was true)
-                 */
-                // TODO can be skipped, if it is checked/guaranteed, that the last instruction setting flags is the
-                // boolean-selection for the given condition  but we need to check more than the last instructions,
-                // since there could be moves inserted by phi
-
-                // skip setting of flags, if the previous setting wrote the same flags
-                if(lastSetFlags.first != branch->getCondition() ||
-                    branch->hasDecoration(intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS) !=
-                        has_flag(lastSetFlags.second, intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
-                {
-                    auto cond = branch->getCondition();
-                    if(auto lit = cond.getLiteralValue())
-                    {
-                        if(auto imm = normalization::toImmediate(*lit))
-                            cond = Value(*imm, cond.type);
-                        else
-                            throw CompilationError(CompilationStep::NORMALIZER,
-                                "Unhandled literal value in branch condition", branch->to_string());
-                    }
-                    if(branch->hasDecoration(intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
-                        assign(it, NOP_REGISTER) = (branch->getCondition() | cond, SetFlag::SET_FLAGS);
-                    else
-                        assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER | cond, SetFlag::SET_FLAGS);
-                }
-                lastSetFlags.first = branch->getCondition();
-                lastSetFlags.second = branch->decoration;
-            }
-            // go to next instruction
-            it.nextInBlock();
-            // insert 3 NOPs before
-            it.emplace(new intermediate::Nop(intermediate::DelayType::BRANCH_DELAY));
-            it.emplace(new intermediate::Nop(intermediate::DelayType::BRANCH_DELAY));
-            it.emplace(new intermediate::Nop(intermediate::DelayType::BRANCH_DELAY));
-        }
-        else if(it.get() != nullptr && it->setFlags == SetFlag::SET_FLAGS)
-        {
-            // any other instruction setting flags, need to re-set the branch-condition
-            lastSetFlags = std::make_pair(UNDEFINED_VALUE, intermediate::InstructionDecorations::NONE);
-        }
-        it.nextInMethod();
-    }
 }
 
 static NODISCARD InstructionWalker loadVectorParameter(Parameter& param, Method& method, InstructionWalker it)
@@ -1525,8 +1462,8 @@ bool optimizations::reorderBasicBlocks(const Module& module, Method& method, con
                     log << "Inserting explicit branch to previous fall-through successor for moved block '"
                         << node.key->to_string() << "' to '" << fallThroughSuccessor->key->to_string() << '\''
                         << logging::endl);
-                node.key->walkEnd().emplace(new intermediate::Branch(
-                    fallThroughSuccessor->key->getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+                node.key->walkEnd().emplace(
+                    new intermediate::Branch(fallThroughSuccessor->key->getLabel()->getLabel()));
             }
         }
         else
@@ -1829,7 +1766,7 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
 
         // insert branch to successor block to guarantee we switch into that, independent of the block order
         block.predecessor->key->walkEnd().emplace(
-            new intermediate::Branch(block.successor->key->getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+            new intermediate::Branch(block.successor->key->getLabel()->getLabel()));
 
         changedCode = true;
     }

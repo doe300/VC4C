@@ -310,6 +310,10 @@ namespace vc4c
                 //   {toParameter(std::vector<float>{0,0, 1, 1, 0, 1, 1, 0, -1, -1, -1, 0, 0, -1, 1, -1, -1, 1}), toParameter(std::vector<float>(16)), toScalarParameter(9), toScalarParameter(0.5f), toScalarParameter(-0.5f)}, toConfig(12), maxExecutionCycles),
 				//   addVector({}, 0, std::vector<float>{0.707107f, 1.58114f, 1.58114f, 0.707107f, 1.58114f, 1.58114f, 0.707107f, 0.707107f, 2.12132f})
                 // ),
+                std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/HandsOnOpenCL/matmul.cl", "mmul",
+                    {toScalarParameter(4), toParameter(std::vector<float>(4 * 4, 3.0f)), toParameter(std::vector<float>(4 * 4, 5.0f)), toParameter(std::vector<float>(4 * 4, 0.0f))}, toConfig(2, 2, 1, 2, 2, 1), maxExecutionCycles),
+                    addVector({}, 3, std::vector<float>(4 * 4, 4 * 3.0f * 5.0f))
+                )
 		};
 	} /* namespace test */
 } /* namespace vc4c */

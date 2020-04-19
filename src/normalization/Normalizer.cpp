@@ -344,7 +344,7 @@ void Normalizer::adjustMethod(Module& module, Method& method) const
         logging::debug() << "Running pass: ExtendBranches" << logging::endl;
     });
     PROFILE_START(ExtendBranches);
-    optimizations::extendBranches(module, method, config);
+    extendBranches(module, method, config);
     PROFILE_END(ExtendBranches);
 
     PROFILE_END(AdjustmentPasses);
