@@ -17,6 +17,7 @@
 #include <sstream>
 
 using namespace vc4c;
+using namespace vc4c::analysis;
 
 bool CFGRelation::operator==(const CFGRelation& other) const
 {
@@ -66,7 +67,7 @@ bool CFGRelation::isBackEdge(const BasicBlock* source) const
     return backEdgeSource == source;
 }
 
-bool vc4c::operator<(const CFGNode& one, const CFGNode& other)
+bool analysis::operator<(const CFGNode& one, const CFGNode& other)
 {
     // sorts the CFG nodes by the order of the basic blocks
     // THIS IS IN REVERSE ORDER ON PURPOSE!
@@ -123,7 +124,7 @@ struct CFGNodeSorter : public std::less<CFGNode*>
 {
     bool operator()(const CFGNode* x, const CFGNode* y) const
     {
-        return vc4c::operator<(*x, *y);
+        return analysis::operator<(*x, *y);
     }
 };
 
@@ -314,7 +315,8 @@ void ControlFlowGraph::dumpGraph(const std::string& path, bool dumpConstantLoadI
         }
     };
     auto edgeLabelFunc = [](const CFGRelation& r) -> std::string { return r.getLabel(); };
-    DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(*this, path, nameFunc,
+    DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(
+        *this, path, nameFunc,
         [](const CFGRelation& rel) -> bool {
             return std::all_of(rel.predecessors.begin(), rel.predecessors.end(),
                 [](const auto& pair) -> bool { return !pair.second; });
@@ -617,6 +619,30 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::clone()
     }
 
     return graph;
+}
+
+static bool traverseDepthFirstHelper(
+    const CFGNode& node, const std::function<ControlFlowVisitResult(const CFGNode&)>& consumer)
+{
+    auto res = consumer(node);
+
+    if(res == ControlFlowVisitResult::STOP_ALL)
+        return false;
+    if(res == ControlFlowVisitResult::STOP_PATH)
+        return true;
+
+    bool continueTraversal = true;
+    node.forAllOutgoingEdges([&](const CFGNode& successor, const CFGEdge& edge) -> bool {
+        continueTraversal = traverseDepthFirstHelper(successor, consumer);
+        return continueTraversal;
+    });
+    return continueTraversal;
+}
+
+void ControlFlowGraph::traverseDepthFirst(const std::function<ControlFlowVisitResult(const CFGNode&)>& consumer) const
+{
+    auto& start = const_cast<ControlFlowGraph&>(*this).getStartOfControlFlow();
+    traverseDepthFirstHelper(start, consumer);
 }
 
 ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<const CFGNode*, int>& discoveryTimes,

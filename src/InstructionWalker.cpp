@@ -70,7 +70,7 @@ bool InstructionVisitor::visit(const InstructionWalker& start) const
     }
 }
 
-bool InstructionVisitor::visitReverse(const InstructionWalker& start, ControlFlowGraph* blockGraph) const
+bool InstructionVisitor::visitReverse(const InstructionWalker& start, analysis::ControlFlowGraph* blockGraph) const
 {
     // FIXME has problems with instructionwalkers freed in Method::cleanEmptyInstructions() (e.g. TestEmulator)
     InstructionWalker it(start);
@@ -102,13 +102,13 @@ bool InstructionVisitor::visitReverse(const InstructionWalker& start, ControlFlo
                 {
                     // use pre-calculated graph of basic blocks
                     blockGraph->assertNode(it.getBasicBlock())
-                        .forAllIncomingEdges(
-                            [&continueBranches, this, blockGraph](const CFGNode& node, const CFGEdge& edge) -> bool {
-                                // this makes sure, a STOP_ALL skips other predecessors
-                                if(continueBranches)
-                                    continueBranches = visitReverse(edge.data.getPredecessor(node.key), blockGraph);
-                                return true;
-                            });
+                        .forAllIncomingEdges([&continueBranches, this, blockGraph](
+                                                 const analysis::CFGNode& node, const analysis::CFGEdge& edge) -> bool {
+                            // this makes sure, a STOP_ALL skips other predecessors
+                            if(continueBranches)
+                                continueBranches = visitReverse(edge.data.getPredecessor(node.key), blockGraph);
+                            return true;
+                        });
                 }
                 else
                 {

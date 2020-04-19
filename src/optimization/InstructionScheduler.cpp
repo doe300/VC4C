@@ -125,7 +125,7 @@ static constexpr int DEFAULT_PRIORITY = 1000;
 // needs to be larger then the default priority to disregard in any case
 static constexpr int MIN_PRIORITY = 2000;
 
-static int calculateSchedulingPriority(DependencyEdge& dependency, BasicBlock& block)
+static int calculateSchedulingPriority(analysis::DependencyEdge& dependency, BasicBlock& block)
 {
     PROFILE_START(calculateSchedulingPriority);
     int latencyLeft = static_cast<int>(dependency.data.numDelayCycles);
@@ -177,12 +177,12 @@ static int calculateSchedulingPriority(DependencyEdge& dependency, BasicBlock& b
     // instruction can be calculated once per instruction?!
 }
 
-static int checkDependenciesMet(DependencyNode& entry, BasicBlock& block, OpenSet& openNodes)
+static int checkDependenciesMet(analysis::DependencyNode& entry, BasicBlock& block, OpenSet& openNodes)
 {
     if(!entry.hasIncomingDependencies())
         return true;
     int schedulingPriority = 0;
-    entry.forAllIncomingEdges([&](DependencyNode& neighbor, DependencyEdge& edge) -> bool {
+    entry.forAllIncomingEdges([&](analysis::DependencyNode& neighbor, analysis::DependencyEdge& edge) -> bool {
         if(openNodes.find(const_cast<intermediate::IntermediateInstruction*>(neighbor.key)) != openNodes.end())
         {
             // the dependent instruction was not yet scheduled, cannot schedule
@@ -210,8 +210,8 @@ static int checkDependenciesMet(DependencyNode& entry, BasicBlock& block, OpenSe
     return schedulingPriority;
 }
 
-static OpenSet::const_iterator selectInstruction(OpenSet& openNodes, DependencyGraph& graph, BasicBlock& block,
-    const DelaysMap& successiveMandatoryDelays, const DelaysMap& successiveDelays)
+static OpenSet::const_iterator selectInstruction(OpenSet& openNodes, analysis::DependencyGraph& graph,
+    BasicBlock& block, const DelaysMap& successiveMandatoryDelays, const DelaysMap& successiveDelays)
 {
     // iterate open-set until entry with no more dependencies
     auto it = openNodes.begin();
@@ -274,8 +274,8 @@ static OpenSet::const_iterator selectInstruction(OpenSet& openNodes, DependencyG
  * Select an instruction which does not depend on any instruction (not yet scheduled) anymore and insert it into the
  * basic block
  */
-static void selectInstructions(DependencyGraph& graph, BasicBlock& block, const DelaysMap& successiveMandatoryDelays,
-    const DelaysMap& successiveDelays)
+static void selectInstructions(analysis::DependencyGraph& graph, BasicBlock& block,
+    const DelaysMap& successiveMandatoryDelays, const DelaysMap& successiveDelays)
 {
     // 1. "empty" basic block without deleting the instructions, skipping the label
     auto it = block.walk().nextInBlock();
@@ -313,7 +313,7 @@ bool optimizations::reorderInstructions(const Module& module, Method& kernel, co
 {
     for(BasicBlock& bb : kernel)
     {
-        auto dependencies = DependencyGraph::createGraph(bb);
+        auto dependencies = analysis::DependencyGraph::createGraph(bb);
         // calculate required and recommended successive delays for all instructions
         DelaysMap successiveMandatoryDelays;
         DelaysMap successiveDelays;

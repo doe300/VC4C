@@ -15,7 +15,11 @@
 namespace vc4c
 {
     class BasicBlock;
-    class ControlFlowGraph;
+
+    namespace analysis
+    {
+        class ControlFlowGraph;
+    } // namespace analysis
 
     enum class InstructionVisitResult : unsigned char
     {
@@ -56,7 +60,7 @@ namespace vc4c
          * \return true, if the beginning of the block/method was reached, false, of the visiting operation aborted with
          * STOP_ALL
          */
-        bool visitReverse(const InstructionWalker& start, ControlFlowGraph* blockGraph = nullptr) const;
+        bool visitReverse(const InstructionWalker& start, analysis::ControlFlowGraph* blockGraph = nullptr) const;
     };
 
     /*

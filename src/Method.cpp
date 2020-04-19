@@ -565,13 +565,12 @@ std::size_t Method::getStackBaseOffset() const
     return baseOffset;
 }
 
-ControlFlowGraph& Method::getCFG()
+analysis::ControlFlowGraph& Method::getCFG()
 {
     if(!cfg)
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "CFG created/updated for function: " << name << logging::endl);
-        std::unique_ptr<ControlFlowGraph> tmp = ControlFlowGraph::createCFG(*this);
-        cfg.swap(tmp);
+        cfg = analysis::ControlFlowGraph::createCFG(*this);
     }
     return *cfg;
 }

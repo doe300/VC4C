@@ -17,7 +17,10 @@ namespace vc4c
     {
         class VPM;
     } // namespace periphery
-    class ControlFlowGraph;
+    namespace analysis
+    {
+        class ControlFlowGraph;
+    } // namespace analysis
     class Module;
     struct Global;
 
@@ -258,7 +261,7 @@ namespace vc4c
          *
          * NOTE: Depending on the state of the function, the CFG may be (re)created in this method-call
          */
-        ControlFlowGraph& getCFG();
+        analysis::ControlFlowGraph& getCFG();
 
         /*
          * The module the method belongs to
@@ -304,7 +307,7 @@ namespace vc4c
          *
          * We cannot use unique_ptr here, since the type ControlFlowGraph is not complete here
          */
-        std::unique_ptr<ControlFlowGraph> cfg;
+        std::unique_ptr<analysis::ControlFlowGraph> cfg;
 
         std::string createLocalName(const std::string& prefix = "", const std::string& postfix = "");
 

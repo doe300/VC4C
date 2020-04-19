@@ -18,6 +18,7 @@
 #include <limits>
 
 using namespace vc4c;
+using namespace vc4c::analysis;
 
 unsigned Dependency::rateDelay(unsigned currentDistance) const
 {

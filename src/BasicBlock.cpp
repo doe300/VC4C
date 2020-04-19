@@ -108,7 +108,7 @@ void BasicBlock::forSuccessiveBlocks(const std::function<void(BasicBlock&)>& con
     {
         // if we have a valid CFG, use it. This saves us from iterating all instructions
         method.cfg->assertNode(const_cast<BasicBlock*>(this))
-            .forAllOutgoingEdges([&consumer](CFGNode& node, CFGEdge& edge) -> bool {
+            .forAllOutgoingEdges([&consumer](analysis::CFGNode& node, analysis::CFGEdge& edge) -> bool {
                 consumer(*node.key);
                 return true;
             });
@@ -138,7 +138,7 @@ void BasicBlock::forPredecessors(const std::function<void(InstructionWalker)>& c
     {
         // if we have a valid CFG, use it. This saves us from iterating all instructions
         auto& thisNode = method.cfg->assertNode(const_cast<BasicBlock*>(this));
-        thisNode.forAllIncomingEdges([&](CFGNode& node, CFGEdge& edge) -> bool {
+        thisNode.forAllIncomingEdges([&](analysis::CFGNode& node, analysis::CFGEdge& edge) -> bool {
             consumer(edge.data.getPredecessor(edge.getOtherNode(thisNode).key));
             return true;
         });
@@ -179,11 +179,12 @@ bool BasicBlock::fallsThroughToNextBlock(bool useCFGIfAvailable) const
         // if we have a valid CFG, use it. This saves us from iterating all instructions
         const auto& node = method.cfg->assertNode(const_cast<BasicBlock*>(this));
         bool fallsThrough = false;
-        node.forAllOutgoingEdges([&node, &fallsThrough](const CFGNode& n, const CFGEdge& edge) -> bool {
-            if(edge.data.isImplicit(node.key))
-                fallsThrough = true;
-            return !fallsThrough;
-        });
+        node.forAllOutgoingEdges(
+            [&node, &fallsThrough](const analysis::CFGNode& n, const analysis::CFGEdge& edge) -> bool {
+                if(edge.data.isImplicit(node.key))
+                    fallsThrough = true;
+                return !fallsThrough;
+            });
         return fallsThrough;
     }
     // if the last instruction of a basic block is not an unconditional branch to another block, the control-flow falls

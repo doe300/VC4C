@@ -15,6 +15,7 @@
 #include "log.h"
 
 using namespace vc4c;
+using namespace vc4c::analysis;
 
 FastSet<const Local*> DataDependencyNodeBase::getAllIncomingDependencies() const
 {

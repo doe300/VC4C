@@ -27,6 +27,7 @@
 #include <queue>
 
 using namespace vc4c;
+using namespace vc4c::analysis;
 using namespace vc4c::optimizations;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;

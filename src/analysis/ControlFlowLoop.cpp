@@ -14,6 +14,7 @@
 #include <sstream>
 
 using namespace vc4c;
+using namespace vc4c::analysis;
 
 const CFGNode* ControlFlowLoop::findPredecessor() const
 {
@@ -868,7 +869,7 @@ std::string ControlFlowLoop::to_string() const
 
 LoopInclusionTreeNodeBase::~LoopInclusionTreeNodeBase() noexcept = default;
 
-LoopInclusionTreeNode* vc4c::castToTreeNode(LoopInclusionTreeNodeBase* base)
+LoopInclusionTreeNode* analysis::castToTreeNode(LoopInclusionTreeNodeBase* base)
 {
     auto* node = dynamic_cast<LoopInclusionTreeNode*>(base);
     if(node == nullptr)
@@ -878,7 +879,7 @@ LoopInclusionTreeNode* vc4c::castToTreeNode(LoopInclusionTreeNodeBase* base)
     return node;
 }
 
-const LoopInclusionTreeNode* vc4c::castToTreeNode(const LoopInclusionTreeNodeBase* base)
+const LoopInclusionTreeNode* analysis::castToTreeNode(const LoopInclusionTreeNodeBase* base)
 {
     auto* node = dynamic_cast<const LoopInclusionTreeNode*>(base);
     if(node == nullptr)
@@ -953,7 +954,7 @@ std::string LoopInclusionTreeNodeBase::dumpLabel() const
     return (*self->key->rbegin())->key->getLabel()->to_string();
 }
 
-std::unique_ptr<LoopInclusionTree> vc4c::createLoopInclusingTree(FastAccessList<ControlFlowLoop>& loops)
+std::unique_ptr<LoopInclusionTree> analysis::createLoopInclusingTree(FastAccessList<ControlFlowLoop>& loops)
 {
     std::unique_ptr<LoopInclusionTree> inclusionTree(new LoopInclusionTree());
     for(auto& loop1 : loops)
