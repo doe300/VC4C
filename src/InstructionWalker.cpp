@@ -40,6 +40,7 @@ bool InstructionVisitor::visit(const InstructionWalker& start) const
                 // handle either-or-jumps, check previous instruction
                 intermediate::Branch* prevJump = it.copy().previousInBlock().get<intermediate::Branch>();
                 if(prevJump != nullptr && prevJump->getCondition() == jump->getCondition() &&
+                    jump->conditionalElements == prevJump->conditionalElements &&
                     jump->conditional.isInversionOf(prevJump->conditional))
                     // the control-flow always jumps, both destinations are already processed
                     return true;

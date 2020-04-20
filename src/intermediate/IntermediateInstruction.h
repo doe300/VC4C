@@ -588,7 +588,8 @@ namespace vc4c
         struct Branch final : public IntermediateInstruction
         {
             explicit Branch(const Local* target);
-            Branch(const Local* target, ConditionCode condCode, const Value& cond);
+            Branch(const Local* target, ConditionCode condCode, const Value& cond,
+                std::bitset<NATIVE_VECTOR_SIZE> elements = 0x1);
             ~Branch() override = default;
 
             std::string to_string() const override;
@@ -603,6 +604,13 @@ namespace vc4c
 
             bool isUnconditional() const;
             const Value& getCondition() const;
+
+            /**
+             * The SIMD elements (defaults to element zero) which will be expanded to determine whether the branch is
+             * taken. In other words: All other SIMD elements will be ignored (masked off) when the branch condition is
+             * calculated.
+             */
+            std::bitset<NATIVE_VECTOR_SIZE> conditionalElements;
 
         protected:
             bool innerEquals(const IntermediateInstruction& other) const override;

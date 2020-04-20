@@ -217,6 +217,7 @@ bool BasicBlock::fallsThroughToNextBlock(bool useCFGIfAvailable) const
     // conditions
     if(lastBranch != nullptr && secondLastBranch != nullptr &&
         lastBranch->getCondition() == secondLastBranch->getCondition() &&
+        lastBranch->conditionalElements == secondLastBranch->conditionalElements &&
         lastBranch->conditional.isInversionOf(secondLastBranch->conditional))
     {
         return false;

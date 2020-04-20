@@ -89,8 +89,8 @@ void normalization::extendBranches(const Module& module, Method& method, const C
 {
     auto it = method.walkAllInstructions();
     // we only need to set the same flag once
-    std::pair<Value, intermediate::InstructionDecorations> lastSetFlags =
-        std::make_pair(UNDEFINED_VALUE, intermediate::InstructionDecorations::NONE);
+    std::tuple<Value, intermediate::InstructionDecorations, std::bitset<NATIVE_VECTOR_SIZE>> lastSetFlags{
+        UNDEFINED_VALUE, intermediate::InstructionDecorations::NONE, {}};
     while(!it.isEndOfMethod())
     {
         if(auto branch = it.get<intermediate::Branch>())
@@ -111,9 +111,11 @@ void normalization::extendBranches(const Module& module, Method& method, const C
                 // since there could be moves inserted by phi
 
                 // skip setting of flags, if the previous setting wrote the same flags
-                if(lastSetFlags.first != branch->getCondition() ||
+                if(std::get<0>(lastSetFlags) != branch->getCondition() ||
                     branch->hasDecoration(intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS) !=
-                        has_flag(lastSetFlags.second, intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
+                        has_flag(
+                            std::get<1>(lastSetFlags), intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS) ||
+                    branch->conditionalElements != std::get<2>(lastSetFlags))
                 {
                     auto cond = branch->getCondition();
                     if(auto lit = cond.getLiteralValue())
@@ -125,12 +127,25 @@ void normalization::extendBranches(const Module& module, Method& method, const C
                                 "Unhandled literal value in branch condition", branch->to_string());
                     }
                     if(branch->hasDecoration(intermediate::InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
-                        assign(it, NOP_REGISTER) = (branch->getCondition() | cond, SetFlag::SET_FLAGS);
-                    else
+                        assign(it, NOP_REGISTER) = (cond, SetFlag::SET_FLAGS);
+                    else if(branch->conditionalElements == 0x1)
+                        // this is the default/most common case
                         assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER | cond, SetFlag::SET_FLAGS);
+                    else
+                    {
+                        // This will be non-zero for all but the selected elements while the value for the selected
+                        // elements depends on the condition boolean flag
+                        auto elementMask = method.addNewLocal(TYPE_INT8.toVectorType(16));
+                        it.emplace(new intermediate::LoadImmediate(elementMask,
+                            static_cast<uint32_t>((~branch->conditionalElements).to_ulong()),
+                            intermediate::LoadType::PER_ELEMENT_UNSIGNED));
+                        it.nextInBlock();
+                        assign(it, NOP_REGISTER) = (elementMask | cond, SetFlag::SET_FLAGS);
+                    }
                 }
-                lastSetFlags.first = branch->getCondition();
-                lastSetFlags.second = branch->decoration;
+                std::get<0>(lastSetFlags) = branch->getCondition();
+                std::get<1>(lastSetFlags) = branch->decoration;
+                std::get<2>(lastSetFlags) = branch->conditionalElements;
             }
             // go to next instruction
             it.nextInBlock();
@@ -142,7 +157,7 @@ void normalization::extendBranches(const Module& module, Method& method, const C
         else if(it.get() != nullptr && it->setFlags == SetFlag::SET_FLAGS)
         {
             // any other instruction setting flags, need to re-set the branch-condition
-            lastSetFlags = std::make_pair(UNDEFINED_VALUE, intermediate::InstructionDecorations::NONE);
+            lastSetFlags = {UNDEFINED_VALUE, intermediate::InstructionDecorations::NONE, {}};
         }
         it.nextInMethod();
     }

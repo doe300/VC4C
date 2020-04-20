@@ -61,7 +61,13 @@ namespace vc4c
         std::string to_string() const;
         ConditionCode invert() const;
         bool isInversionOf(ConditionCode other) const;
-        BranchCond toBranchCondition() const;
+        /**
+         * Converts this condition code to a branch condition.
+         *
+         * If the optional parameter is set, the condition code will be converted to the ALL_X_SET and ANY_X_CLEAR
+         * conditions. Otherwise, the ANY_X_SET and ALL_X_CLEAR conditions are returned.
+         */
+        BranchCond toBranchCondition(bool requireAllSet = false) const;
     };
 
     /*

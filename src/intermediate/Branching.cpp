@@ -62,12 +62,12 @@ bool BranchLabel::innerEquals(const IntermediateInstruction& other) const
     return dynamic_cast<const BranchLabel*>(&other);
 }
 
-Branch::Branch(const Local* target) : Branch(target, COND_ALWAYS, BOOL_TRUE)
-{
-}
+Branch::Branch(const Local* target) : Branch(target, COND_ALWAYS, BOOL_TRUE) {}
 
-Branch::Branch(const Local* target, const ConditionCode condCode, const Value& cond) :
-    IntermediateInstruction({}, condCode)
+Branch::Branch(
+    const Local* target, const ConditionCode condCode, const Value& cond, std::bitset<NATIVE_VECTOR_SIZE> elements) :
+    IntermediateInstruction({}, condCode),
+    conditionalElements(elements)
 {
     if(condCode != COND_ALWAYS && condCode != COND_ZERO_CLEAR && condCode != COND_ZERO_SET)
         // only allow always and comparison for zero, since branches only work on boolean values (0, 1)

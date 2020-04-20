@@ -74,24 +74,24 @@ bool ConditionCode::isInversionOf(const ConditionCode other) const
     return other == invert();
 }
 
-BranchCond ConditionCode::toBranchCondition() const
+BranchCond ConditionCode::toBranchCondition(bool requireAllSet) const
 {
     switch(value)
     {
     case COND_ALWAYS.value:
         return BranchCond::ALWAYS;
     case COND_CARRY_CLEAR.value:
-        return BranchCond::ALL_C_CLEAR;
+        return requireAllSet ? BranchCond::ANY_C_CLEAR : BranchCond::ALL_C_CLEAR;
     case COND_CARRY_SET.value:
-        return BranchCond::ANY_C_SET;
+        return requireAllSet ? BranchCond::ALL_C_SET : BranchCond::ANY_C_SET;
     case COND_NEGATIVE_CLEAR.value:
-        return BranchCond::ALL_N_CLEAR;
+        return requireAllSet ? BranchCond::ANY_N_CLEAR : BranchCond::ALL_N_CLEAR;
     case COND_NEGATIVE_SET.value:
-        return BranchCond::ANY_N_SET;
+        return requireAllSet ? BranchCond::ALL_N_SET : BranchCond::ANY_N_SET;
     case COND_ZERO_CLEAR.value:
-        return BranchCond::ALL_Z_CLEAR;
+        return requireAllSet ? BranchCond::ANY_Z_CLEAR : BranchCond::ALL_Z_CLEAR;
     case COND_ZERO_SET.value:
-        return BranchCond::ANY_Z_SET;
+        return requireAllSet ? BranchCond::ALL_Z_SET : BranchCond::ANY_Z_SET;
     }
     throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid condition for branch", to_string());
 }

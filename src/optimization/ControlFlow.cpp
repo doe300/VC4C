@@ -1865,7 +1865,7 @@ NODISCARD static InstructionWalker insertAddressResetBlock(
 // - If so, jumps back to the default block
 // - Otherwise, falls through to the next block
 NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& method, const BasicBlock& defaultBlock,
-    const Value& id, const Value& maxValue, InstructionWalker it, const Local* previousId, int8_t mergedValueIndex)
+    Value id, const Value& maxValue, InstructionWalker it, const Local* previousId, int8_t mergedValueIndex)
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Inserting repetition block for: " << id.to_string() << logging::endl);
     it = method.emplaceLabel(it,
@@ -1887,20 +1887,15 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     {
         // Do the same as above, but with the current and the previous dimension merged into the same vector (with index
         // mergedValueIndex for this dimension and mergedValueIndex -1 for the previous dimension).
-        // NOTE: We reorder the steps taken a bit to a) avoid inserting NOPs and b) avoid forcing the longest-living
-        // local (%group_ids) into an accumulator, by doing a full vector rotation on it!
         auto mergedValue = method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_IDS)->createReference();
-        // do the actual calculations on a temporary, which might very well be on an accumulator and write the changes
-        // back afterwards
         assign(it, NOP_REGISTER) =
             (ELEMENT_NUMBER_REGISTER - Value(Literal(mergedValueIndex), TYPE_INT8), SetFlag::SET_FLAGS);
-        auto tmp = assign(it, mergedValue.type) = mergedValue;
-        assign(it, tmp) = (tmp + INT_ONE, COND_ZERO_SET);
+        assign(it, mergedValue) = (mergedValue + INT_ONE, COND_ZERO_SET);
         if(previousId)
-            assign(it, tmp) = (INT_ZERO, COND_NEGATIVE_SET);
-        assign(it, mergedValue) = tmp;
-        // extract the current dimension into a temporary variable
-        it = insertVectorExtraction(it, method, tmp, Value(Literal(mergedValueIndex), TYPE_INT8), id);
+            assign(it, mergedValue) = (INT_ZERO, COND_NEGATIVE_SET);
+        // we explicitly set the SIMD element to set the branch condition below, so use the whole group ids merged value
+        // here.
+        id = mergedValue;
     }
 
     // NOTE: using signed comparison limits the number of work-groups per dimension to INT_MAX - 1 to avoid overflow.
@@ -1910,7 +1905,8 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     auto condValue = method.addNewLocal(TYPE_BOOL);
     assign(it, condValue) = (BOOL_TRUE, cond);
     assign(it, condValue) = (BOOL_TRUE ^ BOOL_TRUE, cond.invert());
-    it.emplace((new intermediate::Branch(defaultBlock.getLabel()->getLabel(), COND_ZERO_CLEAR, condValue))
+    it.emplace((new intermediate::Branch(defaultBlock.getLabel()->getLabel(), COND_ZERO_CLEAR, condValue,
+                    1u << std::max(int8_t{0}, mergedValueIndex)))
                    ->addDecorations(InstructionDecorations::WORK_GROUP_LOOP));
     it.nextInMethod();
     return it;
