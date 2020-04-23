@@ -607,7 +607,7 @@ namespace vc4c
      * file b input, or a vector rotation to apply to the mul ALU output, according to Table 5."
      * - Broadcom VideoCore IV specification, page 29
      */
-    struct SmallImmediate : public InstructionPart
+    struct SmallImmediate : public InstructionPart<SmallImmediate>
     {
         /*
          * Creates an object with the given field-value (not the value actually loaded!)

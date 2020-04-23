@@ -132,12 +132,6 @@ if(NOT SPIRV_CLANG_FOUND AND NOT CLANG_FOUND)
 	message(FATAL_ERROR "No supported OpenCL compiler found!")
 endif()
 
-if(VERIFY_OUTPUT AND ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 9.0))
-    # XXX for now, vc4asm does not compile for GCC 9
-    message(WARNING "The vc4asm assembler validation does not compile with GCC 9.0+. It will automatically be disabled")
-    set(VERIFY_OUTPUT FALSE)
-endif()
-
 if(VERIFY_OUTPUT)
 	include(cmake/vc4asm.cmake)
 endif()

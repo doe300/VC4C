@@ -196,7 +196,11 @@ namespace vc4c
 
     /*
      * Values which are part of an instruction and can be uniquely represented by some kind of integral value.
+     *
+     * NOTE: The template type should be the child type itself. This is required to make the operators NOT work across
+     * different InstructionPart sub-types.
      */
+    template <typename T>
     struct InstructionPart
     {
         using type = unsigned char;
@@ -212,12 +216,12 @@ namespace vc4c
         /*
          * Two objects are the same, if their integral values match
          */
-        constexpr bool operator==(const InstructionPart& other) const noexcept
+        constexpr bool operator==(const T& other) const noexcept
         {
             return value == other.value;
         }
 
-        constexpr bool operator!=(const InstructionPart& other) const noexcept
+        constexpr bool operator!=(const T& other) const noexcept
         {
             return value != other.value;
         }

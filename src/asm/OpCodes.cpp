@@ -79,19 +79,19 @@ BranchCond ConditionCode::toBranchCondition(bool requireAllSet) const
     switch(value)
     {
     case COND_ALWAYS.value:
-        return BranchCond::ALWAYS;
+        return BRANCH_ALWAYS;
     case COND_CARRY_CLEAR.value:
-        return requireAllSet ? BranchCond::ANY_C_CLEAR : BranchCond::ALL_C_CLEAR;
+        return requireAllSet ? BRANCH_ANY_C_CLEAR : BRANCH_ALL_C_CLEAR;
     case COND_CARRY_SET.value:
-        return requireAllSet ? BranchCond::ALL_C_SET : BranchCond::ANY_C_SET;
+        return requireAllSet ? BRANCH_ALL_C_SET : BRANCH_ANY_C_SET;
     case COND_NEGATIVE_CLEAR.value:
-        return requireAllSet ? BranchCond::ANY_N_CLEAR : BranchCond::ALL_N_CLEAR;
+        return requireAllSet ? BRANCH_ANY_N_CLEAR : BRANCH_ALL_N_CLEAR;
     case COND_NEGATIVE_SET.value:
-        return requireAllSet ? BranchCond::ALL_N_SET : BranchCond::ANY_N_SET;
+        return requireAllSet ? BRANCH_ALL_N_SET : BRANCH_ANY_N_SET;
     case COND_ZERO_CLEAR.value:
-        return requireAllSet ? BranchCond::ANY_Z_CLEAR : BranchCond::ALL_Z_CLEAR;
+        return requireAllSet ? BRANCH_ANY_Z_CLEAR : BRANCH_ALL_Z_CLEAR;
     case COND_ZERO_SET.value:
-        return requireAllSet ? BranchCond::ALL_Z_SET : BranchCond::ANY_Z_SET;
+        return requireAllSet ? BRANCH_ALL_Z_SET : BRANCH_ANY_Z_SET;
     }
     throw CompilationError(CompilationStep::CODE_GENERATION, "Invalid condition for branch", to_string());
 }
@@ -1536,38 +1536,105 @@ Optional<Value> OpCode::getRightAbsorbingElement(const OpCode& code)
 }
 
 LCOV_EXCL_START
-std::string vc4c::toString(const BranchCond cond)
+std::string BranchCond::to_string() const
 {
-    switch(cond)
+    switch(*this)
     {
-    case BranchCond::ALL_C_CLEAR:
+    case BRANCH_ALL_C_CLEAR:
         return "ifallcc";
-    case BranchCond::ALL_C_SET:
+    case BRANCH_ALL_C_SET:
         return "ifallc";
-    case BranchCond::ALL_N_CLEAR:
+    case BRANCH_ALL_N_CLEAR:
         return "ifallnc";
-    case BranchCond::ALL_N_SET:
+    case BRANCH_ALL_N_SET:
         return "ifalln";
-    case BranchCond::ALL_Z_CLEAR:
+    case BRANCH_ALL_Z_CLEAR:
         return "ifallzc";
-    case BranchCond::ALL_Z_SET:
+    case BRANCH_ALL_Z_SET:
         return "ifallz";
-    case BranchCond::ALWAYS:
+    case BRANCH_ALWAYS:
         return "";
-    case BranchCond::ANY_C_CLEAR:
+    case BRANCH_ANY_C_CLEAR:
         return "ifanycc";
-    case BranchCond::ANY_C_SET:
+    case BRANCH_ANY_C_SET:
         return "ifanyc";
-    case BranchCond::ANY_N_CLEAR:
+    case BRANCH_ANY_N_CLEAR:
         return "ifanync";
-    case BranchCond::ANY_N_SET:
+    case BRANCH_ANY_N_SET:
         return "ifanyn";
-    case BranchCond::ANY_Z_CLEAR:
+    case BRANCH_ANY_Z_CLEAR:
         return "ifanyzc";
-    case BranchCond::ANY_Z_SET:
+    case BRANCH_ANY_Z_SET:
         return "ifanyz";
     }
     throw CompilationError(
-        CompilationStep::GENERAL, "Invalid branch-condition", std::to_string(static_cast<int>(cond)));
+        CompilationStep::GENERAL, "Invalid branch-condition", std::to_string(static_cast<unsigned>(value)));
 }
 LCOV_EXCL_STOP
+
+BranchCond BranchCond::invert() const
+{
+    switch(*this)
+    {
+    case BRANCH_ALL_C_CLEAR:
+        return BRANCH_ANY_C_SET;
+    case BRANCH_ALL_C_SET:
+        return BRANCH_ANY_C_CLEAR;
+    case BRANCH_ALL_N_CLEAR:
+        return BRANCH_ANY_N_SET;
+    case BRANCH_ALL_N_SET:
+        return BRANCH_ANY_N_CLEAR;
+    case BRANCH_ALL_Z_CLEAR:
+        return BRANCH_ANY_Z_SET;
+    case BRANCH_ALL_Z_SET:
+        return BRANCH_ANY_Z_CLEAR;
+    case BRANCH_ANY_C_CLEAR:
+        return BRANCH_ALL_C_SET;
+    case BRANCH_ANY_C_SET:
+        return BRANCH_ALL_C_CLEAR;
+    case BRANCH_ANY_N_CLEAR:
+        return BRANCH_ALL_N_SET;
+    case BRANCH_ANY_N_SET:
+        return BRANCH_ALL_N_CLEAR;
+    case BRANCH_ANY_Z_CLEAR:
+        return BRANCH_ALL_Z_SET;
+    case BRANCH_ANY_Z_SET:
+        return BRANCH_ALL_Z_CLEAR;
+    }
+    throw CompilationError(
+        CompilationStep::GENERAL, "Invalid branch-condition", std::to_string(static_cast<unsigned>(value)));
+}
+
+bool BranchCond::isInversionOf(BranchCond other) const
+{
+    return other == invert();
+}
+
+ConditionCode BranchCond::toConditionCode() const
+{
+    switch(*this)
+    {
+    case BRANCH_ALL_C_CLEAR:
+    case BRANCH_ANY_C_CLEAR:
+        return COND_CARRY_CLEAR;
+    case BRANCH_ALL_C_SET:
+    case BRANCH_ANY_C_SET:
+        return COND_CARRY_SET;
+    case BRANCH_ALL_N_CLEAR:
+    case BRANCH_ANY_N_CLEAR:
+        return COND_NEGATIVE_CLEAR;
+    case BRANCH_ALL_N_SET:
+    case BRANCH_ANY_N_SET:
+        return COND_NEGATIVE_SET;
+    case BRANCH_ALL_Z_CLEAR:
+    case BRANCH_ANY_Z_CLEAR:
+        return COND_ZERO_CLEAR;
+    case BRANCH_ALL_Z_SET:
+    case BRANCH_ANY_Z_SET:
+        return COND_ZERO_SET;
+    case BRANCH_ALWAYS:
+        return COND_ALWAYS;
+    }
+    throw CompilationError(
+        CompilationStep::GENERAL, "Invalid branch-condition", std::to_string(static_cast<unsigned>(value)));
+}

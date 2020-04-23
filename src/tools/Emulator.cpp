@@ -1587,58 +1587,58 @@ bool QPU::isConditionMet(BranchCond cond) const
     bool checkAll;
     switch(cond)
     {
-    case BranchCond::ALL_C_CLEAR:
+    case BRANCH_ALL_C_CLEAR:
         checkAll = true;
         singleCond = COND_CARRY_CLEAR;
         break;
-    case BranchCond::ALL_C_SET:
+    case BRANCH_ALL_C_SET:
         checkAll = true;
         singleCond = COND_CARRY_SET;
         break;
-    case BranchCond::ALL_N_CLEAR:
+    case BRANCH_ALL_N_CLEAR:
         checkAll = true;
         singleCond = COND_NEGATIVE_CLEAR;
         break;
-    case BranchCond::ALL_N_SET:
+    case BRANCH_ALL_N_SET:
         checkAll = true;
         singleCond = COND_NEGATIVE_SET;
         break;
-    case BranchCond::ALL_Z_CLEAR:
+    case BRANCH_ALL_Z_CLEAR:
         checkAll = true;
         singleCond = COND_ZERO_CLEAR;
         break;
-    case BranchCond::ALL_Z_SET:
+    case BRANCH_ALL_Z_SET:
         checkAll = true;
         singleCond = COND_ZERO_SET;
         break;
-    case BranchCond::ALWAYS:
+    case BRANCH_ALWAYS:
         return true;
-    case BranchCond::ANY_C_CLEAR:
+    case BRANCH_ANY_C_CLEAR:
         checkAll = false;
         singleCond = COND_CARRY_CLEAR;
         break;
-    case BranchCond::ANY_C_SET:
+    case BRANCH_ANY_C_SET:
         checkAll = false;
         singleCond = COND_CARRY_SET;
         break;
-    case BranchCond::ANY_N_CLEAR:
+    case BRANCH_ANY_N_CLEAR:
         checkAll = false;
         singleCond = COND_NEGATIVE_CLEAR;
         break;
-    case BranchCond::ANY_N_SET:
+    case BRANCH_ANY_N_SET:
         checkAll = false;
         singleCond = COND_NEGATIVE_SET;
         break;
-    case BranchCond::ANY_Z_CLEAR:
+    case BRANCH_ANY_Z_CLEAR:
         checkAll = false;
         singleCond = COND_ZERO_CLEAR;
         break;
-    case BranchCond::ANY_Z_SET:
+    case BRANCH_ANY_Z_SET:
         checkAll = false;
         singleCond = COND_ZERO_SET;
         break;
     default:
-        throw CompilationError(CompilationStep::GENERAL, "Unhandled branch condition", toString(cond));
+        throw CompilationError(CompilationStep::GENERAL, "Unhandled branch condition", cond.to_string());
     }
     if(checkAll)
         return std::all_of(flags.begin(), flags.end(),

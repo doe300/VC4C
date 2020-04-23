@@ -25,7 +25,7 @@ namespace vc4c
     class SIMDVector;
     struct VectorFlags;
     struct OpCode;
-    enum class BranchCond : unsigned char;
+    struct BranchCond;
 
     namespace analysis
     {
@@ -54,7 +54,7 @@ namespace vc4c
      *
      * page 28
      */
-    struct ConditionCode : public InstructionPart
+    struct ConditionCode : public InstructionPart<ConditionCode>
     {
         explicit constexpr ConditionCode(unsigned char val) noexcept : InstructionPart(val) {}
 
@@ -158,7 +158,7 @@ namespace vc4c
      *
      * page 29
      */
-    struct Signaling : public InstructionPart
+    struct Signaling : public InstructionPart<Signaling>
     {
         explicit constexpr Signaling(unsigned char val) noexcept : InstructionPart(val) {}
 
@@ -236,6 +236,7 @@ namespace vc4c
      * Load immediate instruction
      */
     constexpr Signaling SIGNAL_LOAD_IMMEDIATE{14};
+    constexpr Signaling SIGNAL_SEMAPHORE = SIGNAL_LOAD_IMMEDIATE;
     /*
      * Branch instruction
      */
@@ -256,7 +257,7 @@ namespace vc4c
      *
      * page 31
      */
-    struct Unpack : public InstructionPart
+    struct Unpack : public InstructionPart<Unpack>
     {
         explicit constexpr Unpack(unsigned char val) noexcept : InstructionPart(val) {}
 
@@ -378,7 +379,7 @@ namespace vc4c
      *
      * Pack modes work completely independent of whether writing of flags is enabled for the associated operation.
      */
-    struct Pack : public InstructionPart
+    struct Pack : public InstructionPart<Pack>
     {
         explicit constexpr Pack(unsigned char val) noexcept : InstructionPart(val) {}
 
@@ -1296,63 +1297,69 @@ namespace vc4c
      *
      * NOTE: The condition for a branch is dependent the flags of all SIMD-elements.
      */
-    enum class BranchCond : unsigned char
+    struct BranchCond : public InstructionPart<BranchCond>
     {
-        /*
-         * All Z flags set - &{Z[15:0]}
-         */
-        ALL_Z_SET = 0,
-        /*
-         * All Z flags clear - &{~Z[15:0]}
-         */
-        ALL_Z_CLEAR = 1,
-        /*
-         * Any Z flags set - |{Z[15:0]}
-         */
-        ANY_Z_SET = 2,
-        /*
-         * Any Z flags clear - |{~Z[15:0]}
-         */
-        ANY_Z_CLEAR = 3,
-        /*
-         * All N flags set - &{N[15:0]}
-         */
-        ALL_N_SET = 4,
-        /*
-         * All N flags clear - &{~N[15:0]}
-         */
-        ALL_N_CLEAR = 5,
-        /*
-         * Any N flags set - |{N[15:0]}
-         */
-        ANY_N_SET = 6,
-        /*
-         * Any N flags clear - |{~N[15:0]}
-         */
-        ANY_N_CLEAR = 7,
-        /*
-         * All C flags set - &{C[15:0]}
-         */
-        ALL_C_SET = 8,
-        /*
-         * All C flags clear - &{~C[15:0]}
-         */
-        ALL_C_CLEAR = 9,
-        /*
-         * Any C flags set - |{C[15:0]}
-         */
-        ANY_C_SET = 10,
-        /*
-         * Any C flags clear - |{~C[15:0]}
-         */
-        ANY_C_CLEAR = 11,
-        // RESERVED 12 - 14
-        /*
-         * Always execute (unconditional)
-         */
-        ALWAYS = 15
+        explicit constexpr BranchCond(unsigned char val) noexcept : InstructionPart(val) {}
+
+        std::string to_string() const;
+        BranchCond invert() const;
+        bool isInversionOf(BranchCond other) const;
+        ConditionCode toConditionCode() const;
     };
-    std::string toString(BranchCond cond);
+
+    /*
+     * All Z flags set - &{Z[15:0]}
+     */
+    constexpr BranchCond BRANCH_ALL_Z_SET{0};
+    /*
+     * All Z flags clear - &{~Z[15:0]}
+     */
+    constexpr BranchCond BRANCH_ALL_Z_CLEAR{1};
+    /*
+     * Any Z flags set - |{Z[15:0]}
+     */
+    constexpr BranchCond BRANCH_ANY_Z_SET{2};
+    /*
+     * Any Z flags clear - |{~Z[15:0]}
+     */
+    constexpr BranchCond BRANCH_ANY_Z_CLEAR{3};
+    /*
+     * All N flags set - &{N[15:0]}
+     */
+    constexpr BranchCond BRANCH_ALL_N_SET{4};
+    /*
+     * All N flags clear - &{~N[15:0]}
+     */
+    constexpr BranchCond BRANCH_ALL_N_CLEAR{5};
+    /*
+     * Any N flags set - |{N[15:0]}
+     */
+    constexpr BranchCond BRANCH_ANY_N_SET{6};
+    /*
+     * Any N flags clear - |{~N[15:0]}
+     */
+    constexpr BranchCond BRANCH_ANY_N_CLEAR{7};
+    /*
+     * All C flags set - &{C[15:0]}
+     */
+    constexpr BranchCond BRANCH_ALL_C_SET{8};
+    /*
+     * All C flags clear - &{~C[15:0]}
+     */
+    constexpr BranchCond BRANCH_ALL_C_CLEAR{9};
+    /*
+     * Any C flags set - |{C[15:0]}
+     */
+    constexpr BranchCond BRANCH_ANY_C_SET{10};
+    /*
+     * Any C flags clear - |{~C[15:0]}
+     */
+    constexpr BranchCond BRANCH_ANY_C_CLEAR{11};
+    // RESERVED 12 - 14
+    /*
+     * Always execute (unconditional)
+     */
+    constexpr BranchCond BRANCH_ALWAYS{15};
 
     /*
      * The way how the branch address is treated

@@ -27,7 +27,7 @@ LCOV_EXCL_START
 std::string BranchInstruction::toASMString() const
 {
     auto s = std::string("br") + (getBranchRelative() == BranchRel::BRANCH_RELATIVE ? "r" : "a") +
-        ((getBranchCondition() == BranchCond::ALWAYS ? "" : std::string(".") + toString(getBranchCondition())) + " ") +
+        ((getBranchCondition() == BRANCH_ALWAYS ? "" : std::string(".") + getBranchCondition().to_string()) + " ") +
         (getAddOut() != REG_NOP.num ? Register{RegisterFile::PHYSICAL_A, getAddOut()}.to_string(true, false) + ", " :
                                       "") +
         (getMulOut() != REG_NOP.num ? Register{RegisterFile::PHYSICAL_B, getMulOut()}.to_string(true, false) + ", " :

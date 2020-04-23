@@ -28,6 +28,7 @@ public:
     void testHalfFloat();
     void testOpCodeFlags();
     void testOpCodeRanges();
+    void testBranchConditions();
 
     void testRegister();
     void testImmediates();

@@ -276,10 +276,10 @@ namespace vc4c
     static_assert(assert_comparable<Bitfield<uint64_t>>::value, "Bitfield is not comparable");
     static_assert(assert_literal<Bitfield<uint64_t>>::value, "Bitfield is not trivial");
 
-    static_assert(assert_assignable<InstructionPart>::value, "InstructionPart is not assignable!");
-    static_assert(assert_comparable<InstructionPart>::value, "InstructionPart is not comparable");
-    static_assert(assert_literal<InstructionPart>::value, "InstructionPart is not trivial");
-    static_assert(sizeof(InstructionPart) == sizeof(uint8_t), "");
+    static_assert(assert_assignable<BranchCond>::value, "InstructionPart is not assignable!");
+    static_assert(assert_comparable<BranchCond>::value, "InstructionPart is not comparable");
+    static_assert(assert_literal<BranchCond>::value, "InstructionPart is not trivial");
+    static_assert(sizeof(BranchCond) == sizeof(uint8_t), "");
 
     // tests triviality-propagation of Variant type
     static_assert(assert_literal<Variant<Literal, DataType, Register>>::value, "");
