@@ -1694,9 +1694,11 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
                     Optional<InstructionWalker> branchCondition{};
                     if(branch && branch->getTarget() == succ->key->getLabel()->getLabel() &&
                         !branch->isUnconditional() &&
-                        (branchCondition = predecessor.key->findLastBranchCondition(lastIt)))
+                        (branchCondition = predecessor.key->findLastSettingOfFlags(lastIt)))
                     {
-                        condVal = branchCondition->get<intermediate::BranchCondition>()->getBranchCondition();
+                        condVal =
+                            intermediate::getBranchCondition(branchCondition->get<intermediate::ExtendedInstruction>())
+                                .first.value();
                         cond = branch->branchCondition.toConditionCode();
                     }
                     else
@@ -1906,9 +1908,10 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     auto condValue = method.addNewLocal(TYPE_BOOL);
     assign(it, condValue) = (BOOL_TRUE, cond);
     assign(it, condValue) = (BOOL_TRUE ^ BOOL_TRUE, cond.invert());
-    it.emplace(new intermediate::BranchCondition(condValue, 1u << std::max(int8_t{0}, mergedValueIndex)));
-    it.nextInBlock();
-    it.emplace((new intermediate::Branch(defaultBlock.getLabel()->getLabel(), COND_ZERO_CLEAR.toBranchCondition()))
+    BranchCond branchCond = BRANCH_ALWAYS;
+    std::tie(it, branchCond) =
+        intermediate::insertBranchCondition(method, it, condValue, 1u << std::max(int8_t{0}, mergedValueIndex));
+    it.emplace((new intermediate::Branch(defaultBlock.getLabel()->getLabel(), branchCond))
                    ->addDecorations(InstructionDecorations::WORK_GROUP_LOOP));
     it.nextInMethod();
     return it;

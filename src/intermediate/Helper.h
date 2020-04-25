@@ -81,11 +81,35 @@ namespace vc4c
          * NOTE: The inserted loop will be a while(conditionValue) loop, so the condition variable needs to be
          * initialized before the loop starts.
          *
-         * NOTE: The loop is repeated as long as the conditionValue matches the repeatCondition. Normal branch condition
+         * NOTE: The loop is repeated as long as the conditionValue is true. Normal branch condition
          * behavior applies, so only the first element of the conditionValue is actually checked!
          */
-        NODISCARD BasicBlock& insertLoop(Method& method, InstructionWalker& it, const Value& conditionValue,
-            ConditionCode repeatCondition, const std::string& label = "");
+        NODISCARD BasicBlock& insertLoop(
+            Method& method, InstructionWalker& it, const Value& conditionValue, const std::string& label = "");
+
+        /**
+         * Inserts the instructions required to set the flags to indicate branching on the given elements of the given
+         * condition value.
+         *
+         * @param conditionValue the variable to set the branch flags on. This needs to be a boolean (also vector) type
+         * or any type where a non-zero value (at the positions indicated by the conditional elements mask) indicates
+         * taking the branch and a zero-value indicates not taking the branch.
+         * @param conditionalElements the optional mask of SIMD elements to be considered for branching.
+         * @param branchOnAllElements if the mask is not a single SIMD element, this indicates whether the branch has to
+         * be taken if ALL (true) or ANY (false) of the selected elements have the correct flags set.
+         */
+        NODISCARD std::pair<InstructionWalker, BranchCond> insertBranchCondition(Method& method, InstructionWalker it,
+            const Value& conditionValue, std::bitset<NATIVE_VECTOR_SIZE> conditionalElements = 0x1,
+            bool branchOnAllElements = false);
+
+        /**
+         * Attempts to determine the original boolean value as well as the SIMD element mask used to set the flags for
+         * the successive branch instructions.
+         *
+         * In other words: tries to recreate the original conditionValue and conditionalElements passed into
+         * #insertBranchCondition(...) which created the given instruction.
+         */
+        std::pair<Optional<Value>, std::bitset<NATIVE_VECTOR_SIZE>> getBranchCondition(const ExtendedInstruction* inst);
     } // namespace intermediate
 } // namespace vc4c
 

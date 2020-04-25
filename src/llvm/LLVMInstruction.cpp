@@ -611,13 +611,11 @@ bool Branch::mapInstruction(Method& method)
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating branch on condition " << cond.to_string() << " to either " << thenLabel.to_string()
                 << " or " << elseLabel.to_string() << logging::endl);
-        method.appendToEnd(new intermediate::BranchCondition(cond));
-        method.appendToEnd(
-            (new intermediate::Branch(thenLabel.local(), COND_ZERO_CLEAR.toBranchCondition() /* condition is true */))
-                ->addDecorations(decorations));
-        method.appendToEnd(
-            (new intermediate::Branch(elseLabel.local(), COND_ZERO_SET.toBranchCondition() /* condition is false */))
-                ->addDecorations(decorations));
+        auto pair = intermediate::insertBranchCondition(method, method.appendToEnd(), cond);
+        method.appendToEnd((new intermediate::Branch(thenLabel.local(), pair.second /* condition is true */))
+                               ->addDecorations(decorations));
+        method.appendToEnd((new intermediate::Branch(elseLabel.local(), pair.second.invert() /* condition is false */))
+                               ->addDecorations(decorations));
     }
 
     return true;
@@ -639,8 +637,8 @@ bool Switch::mapInstruction(Method& method)
         Value tmp = method.addNewLocal(TYPE_BOOL, "%switch");
         method.appendToEnd(new intermediate::Comparison(
             intermediate::COMP_EQ, Value(tmp), std::move(cond), Value(Literal(option.first), TYPE_INT32)));
-        method.appendToEnd(new intermediate::BranchCondition(tmp));
-        method.appendToEnd(new intermediate::Branch(option.second.local(), COND_ZERO_CLEAR.toBranchCondition()));
+        auto pair = intermediate::insertBranchCondition(method, method.appendToEnd(), tmp);
+        method.appendToEnd(new intermediate::Branch(option.second.local(), pair.second));
     }
     // branch default label
     method.appendToEnd(new intermediate::Branch(defaultLabel.local()));

@@ -62,56 +62,6 @@ bool BranchLabel::innerEquals(const IntermediateInstruction& other) const
     return dynamic_cast<const BranchLabel*>(&other);
 }
 
-BranchCondition::BranchCondition(const Value& cond, std::bitset<NATIVE_VECTOR_SIZE> elements) :
-    SignalingInstruction(SIGNAL_NONE), conditionalElements(elements)
-{
-    setArgument(0, cond);
-    this->setFlags = SetFlag::SET_FLAGS;
-}
-
-std::string BranchCondition::to_string() const
-{
-    return "branch on " + getBranchCondition().to_string() + " (elements: " + conditionalElements.to_string('0') +
-        ") " + createAdditionalInfoString();
-}
-
-IntermediateInstruction* BranchCondition::copyFor(
-    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
-{
-    return (
-        new BranchCondition(renameValue(method, getBranchCondition(), localPrefix, localMapping), conditionalElements))
-        ->setOutput(getOutput())
-        ->copyExtrasFrom(this);
-}
-
-qpu_asm::DecoratedInstruction BranchCondition::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
-    const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const
-{
-    throw CompilationError(
-        CompilationStep::CODE_GENERATION, "There should be no more branch conditions at this point", to_string());
-}
-
-bool BranchCondition::isNormalized() const
-{
-    return true;
-}
-
-SideEffectType BranchCondition::getSideEffects() const
-{
-    return add_flag(IntermediateInstruction::getSideEffects(), SideEffectType::FLAGS);
-}
-
-const Value& BranchCondition::getBranchCondition() const
-{
-    return assertArgument(0);
-}
-
-bool BranchCondition::innerEquals(const IntermediateInstruction& other) const
-{
-    auto otherCond = dynamic_cast<const BranchCondition*>(&other);
-    return otherCond && conditionalElements == otherCond->conditionalElements;
-}
-
 Branch::Branch(const Local* target) : Branch(target, BRANCH_ALWAYS) {}
 
 Branch::Branch(const Local* target, BranchCond branchCond) :

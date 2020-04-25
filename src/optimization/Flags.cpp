@@ -74,9 +74,7 @@ static bool rewriteSettingOfFlags(
                     ++condIt;
                 }
                 else if(condIt->get<intermediate::Branch>())
-                    // Skip removing branches, since the flags for branches might not yet be set, they are set in the
-                    // adjustment block. Although for most branches, the flags are already set (since the condition is
-                    // already calculated, this is not required, e.g. this is not the case for work-group-loop branches.
+                    // XXX for now don't rewrite any flags where branches depend on them
                     ++condIt;
                 else
                 {
@@ -149,9 +147,6 @@ InstructionWalker optimizations::combineSameFlags(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     if(it.get() == nullptr || !it->doesSetFlag())
-        return it;
-    // don't combine branch conditions for now
-    if(it.get<intermediate::BranchCondition>())
         return it;
     // only combine writing into NOP-register for now
     if(it->getOutput() && it->getOutput().value() != NOP_REGISTER)

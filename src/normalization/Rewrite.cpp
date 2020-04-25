@@ -90,57 +90,8 @@ InstructionWalker normalization::splitRegisterConflicts(
 void normalization::extendBranches(const Module& module, Method& method, const Configuration& config)
 {
     auto it = method.walkAllInstructions();
-    // we only need to set the same flag once
-    std::tuple<Value, std::bitset<NATIVE_VECTOR_SIZE>> lastSetFlags{UNDEFINED_VALUE, {}};
     while(!it.isEndOfMethod())
     {
-        if(auto branchCond = it.get<intermediate::BranchCondition>())
-        {
-            // TODO can be skipped, if it is checked/guaranteed, that the last instruction setting flags is the
-            // boolean-selection for the given condition  but we need to check more than the last instructions,
-            // since there could be moves inserted by phi
-
-            // skip setting of flags, if the previous setting wrote the same flags
-            if(std::get<0>(lastSetFlags) != branchCond->getBranchCondition() ||
-                std::get<1>(lastSetFlags) != branchCond->conditionalElements)
-            {
-                Value cond = branchCond->getBranchCondition();
-                if(auto lit = cond.getLiteralValue())
-                {
-                    if(auto imm = normalization::toImmediate(*lit))
-                        cond = Value(*imm, cond.type);
-                    else
-                        throw CompilationError(CompilationStep::NORMALIZER,
-                            "Unhandled literal value in branch condition", branchCond->to_string());
-                }
-                /*
-                 * branch usually only depends on scalar value
-                 * -> set any not used vector-element (all except element 0) to a value where it doesn't influence
-                 * the condition
-                 *
-                 * Using ELEMENT_NUMBER sets the vector-elements 1 to 15 to a non-zero value and 0 to either 0 (if
-                 * condition was false) or 1 (if condition was true)
-                 */
-                if(branchCond->conditionalElements == 0x1)
-                    // default case for simple jump on 0th element
-                    assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER | cond, SetFlag::SET_FLAGS);
-                else
-                {
-                    // more special case for jump on different element(s)
-                    auto elementMask = it.getBasicBlock()->getMethod().addNewLocal(TYPE_INT8.toVectorType(16));
-                    it.emplace(new intermediate::LoadImmediate(elementMask,
-                        static_cast<uint32_t>((~branchCond->conditionalElements).to_ulong()),
-                        intermediate::LoadType::PER_ELEMENT_UNSIGNED));
-                    it.nextInBlock();
-                    assign(it, NOP_REGISTER) = (elementMask | cond, SetFlag::SET_FLAGS);
-                }
-            }
-            std::get<0>(lastSetFlags) = branchCond->getBranchCondition();
-            std::get<1>(lastSetFlags) = branchCond->conditionalElements;
-            it.erase();
-            // to not skip the next instruction
-            it.previousInBlock();
-        }
         if(auto branch = it.get<intermediate::Branch>())
         {
             CPPLOG_LAZY(logging::Level::DEBUG, log << "Extending branch: " << branch->to_string() << logging::endl);
@@ -150,11 +101,6 @@ void normalization::extendBranches(const Module& module, Method& method, const C
             it.emplace(new intermediate::Nop(intermediate::DelayType::BRANCH_DELAY));
             it.emplace(new intermediate::Nop(intermediate::DelayType::BRANCH_DELAY));
             it.emplace(new intermediate::Nop(intermediate::DelayType::BRANCH_DELAY));
-        }
-        else if(it.get() && it->doesSetFlag())
-        {
-            // any other instruction setting flags, need to re-set the branch-condition
-            lastSetFlags = {UNDEFINED_VALUE, {}};
         }
         it.nextInMethod();
     }

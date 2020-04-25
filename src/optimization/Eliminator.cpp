@@ -9,6 +9,7 @@
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
 #include "../analysis/AvailableExpressionAnalysis.h"
+#include "../intermediate/Helper.h"
 #include "../normalization/LiteralValues.h"
 #include "../periphery/SFU.h"
 #include "log.h"
@@ -458,7 +459,7 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
         ConditionCode jumpCondition = COND_ALWAYS;
         Value condition(UNDEFINED_VALUE);
         while(blockIt.copy().previousInBlock().get<intermediate::Branch>() ||
-            blockIt.copy().previousInBlock().get<intermediate::BranchCondition>())
+            blockIt.copy().previousInBlock()->doesSetFlag())
         {
             blockIt.previousInBlock();
             auto branch = blockIt.get<intermediate::Branch>();
@@ -467,9 +468,10 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
                 jumpCondition = branch->branchCondition.toConditionCode();
                 if(branch->branchCondition != BRANCH_ALWAYS)
                 {
-                    if(auto branchCondition = bb->findLastBranchCondition(blockIt))
-                        // FIXME could at this point be a set-flags operation?
-                        condition = branchCondition->get<intermediate::BranchCondition>()->getBranchCondition();
+                    if(auto branchCondition = bb->findLastSettingOfFlags(blockIt))
+                        condition =
+                            intermediate::getBranchCondition(branchCondition->get<intermediate::ExtendedInstruction>())
+                                .first.value();
                 }
             }
         }

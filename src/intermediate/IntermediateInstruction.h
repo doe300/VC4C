@@ -315,7 +315,8 @@ namespace vc4c
              *
              * NOTE: This function throws errors on merging incompatible extras (e.g. different non-default pack-modes)
              */
-            virtual IntermediateInstruction* copyExtrasFrom(const IntermediateInstruction* src, bool skipSignal = false);
+            virtual IntermediateInstruction* copyExtrasFrom(
+                const IntermediateInstruction* src, bool skipSignal = false);
             /*
              * Tries to calculate the operation performed by this instruction and returns a constant value if
              * successful. The parameter numIterations determines the number of instructions providing the operands
@@ -612,32 +613,6 @@ namespace vc4c
 
             const Local* getLabel() const;
             Local* getLabel();
-
-        protected:
-            bool innerEquals(const IntermediateInstruction& other) const override;
-        };
-
-        struct BranchCondition final : public SignalingInstruction
-        {
-            BranchCondition(const Value& cond, std::bitset<NATIVE_VECTOR_SIZE> elements = 0x1);
-            ~BranchCondition() override = default;
-
-            std::string to_string() const override;
-            IntermediateInstruction* copyFor(
-                Method& method, const std::string& localPrefix, InlineMapping& localMapping) const override;
-            qpu_asm::DecoratedInstruction convertToAsm(const FastMap<const Local*, Register>& registerMapping,
-                const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
-            bool isNormalized() const override;
-            SideEffectType getSideEffects() const override;
-
-            const Value& getBranchCondition() const;
-
-            /**
-             * The SIMD elements (defaults to element zero) which will be expanded to determine whether the branch is
-             * taken. In other words: All other SIMD elements will be ignored (masked off) when the branch condition is
-             * calculated.
-             */
-            std::bitset<NATIVE_VECTOR_SIZE> conditionalElements;
 
         protected:
             bool innerEquals(const IntermediateInstruction& other) const override;

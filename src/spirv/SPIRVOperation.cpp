@@ -449,11 +449,10 @@ void SPIRVBranch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
                 << defaultLabelID << " or %" << falseLabelID.value() << logging::endl);
         const Value cond = getValue(conditionID.value(), *method.method, types, constants, localTypes, localMapping);
         auto falseLabel = getValue(falseLabelID.value(), *method.method, types, constants, localTypes, localMapping);
-        method.method->appendToEnd(new intermediate::BranchCondition(cond));
+        auto pair = intermediate::insertBranchCondition(*method.method, method.method->appendToEnd(), cond);
+        method.method->appendToEnd(new intermediate::Branch(trueLabel.local(), pair.second /* condition is true */));
         method.method->appendToEnd(
-            new intermediate::Branch(trueLabel.local(), COND_ZERO_CLEAR.toBranchCondition() /* condition is true */));
-        method.method->appendToEnd(
-            new intermediate::Branch(falseLabel.local(), COND_ZERO_SET.toBranchCondition() /* condition is false */));
+            new intermediate::Branch(falseLabel.local(), pair.second.invert() /* condition is false */));
     }
     else
     {
@@ -1143,8 +1142,8 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
         const Value tmp = method.method->addNewLocal(TYPE_BOOL, "%switch");
         method.method->appendToEnd(
             new intermediate::Comparison(intermediate::COMP_EQ, Value(tmp), Value(selector), std::move(comparison)));
-        method.method->appendToEnd(new intermediate::BranchCondition(tmp));
-        method.method->appendToEnd(new intermediate::Branch(destination.local(), COND_ZERO_CLEAR.toBranchCondition()));
+        auto branchCond = intermediate::insertBranchCondition(*method.method, method.method->appendToEnd(), tmp);
+        method.method->appendToEnd(new intermediate::Branch(destination.local(), branchCond.second));
     }
     // branch default label
     method.method->appendToEnd(new intermediate::Branch(defaultLabel.local()));

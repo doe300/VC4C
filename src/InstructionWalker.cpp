@@ -43,8 +43,8 @@ bool InstructionVisitor::visit(const InstructionWalker& start) const
                 auto prevJumpIt = it;
                 if(prevJump != nullptr && jump->branchCondition.isInversionOf(prevJump->branchCondition))
                 {
-                    auto lastBranchCond = it.getBasicBlock()->findLastBranchCondition(jumpIt);
-                    auto secondLastBranchCond = it.getBasicBlock()->findLastBranchCondition(prevJumpIt);
+                    auto lastBranchCond = it.getBasicBlock()->findLastSettingOfFlags(jumpIt);
+                    auto secondLastBranchCond = it.getBasicBlock()->findLastSettingOfFlags(prevJumpIt);
                     if(lastBranchCond == secondLastBranchCond)
                         // the branches are only guaranteed to cover all cases if they refer to the same branch
                         // condition

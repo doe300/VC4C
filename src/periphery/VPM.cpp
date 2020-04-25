@@ -846,7 +846,7 @@ InstructionWalker VPM::insertCopyRAMDynamic(Method& method, InstructionWalker it
     // count from maximum to 0 (exclusive)
     auto counter = assign(it, numEntries.type, "%remaining_iterations") =
         (numEntries, InstructionDecorations::PHI_NODE);
-    auto& block = intermediate::insertLoop(method, it, counter, COND_ZERO_CLEAR, "dynamic_dma_copy");
+    auto& block = intermediate::insertLoop(method, it, counter, "dynamic_dma_copy");
     {
         // inside the loop, a single iteration
         auto inLoopIt = block.walk().nextInBlock();
@@ -928,7 +928,7 @@ InstructionWalker VPM::insertFillRAMDynamic(Method& method, InstructionWalker it
 
     // count from maximum to 0 (exclusive)
     auto counter = assign(it, numCopies.type, "%remaining_iterations") = (numCopies, InstructionDecorations::PHI_NODE);
-    auto& block = intermediate::insertLoop(method, it, counter, COND_ZERO_CLEAR, "dynamic_dma_fill");
+    auto& block = intermediate::insertLoop(method, it, counter, "dynamic_dma_fill");
     {
         // inside the loop, a single iteration
         auto inLoopIt = block.walk().nextInBlock();

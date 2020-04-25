@@ -5,6 +5,7 @@
  */
 #include "ControlFlowLoop.h"
 
+#include "../intermediate/Helper.h"
 #include "ControlFlowGraph.h"
 #include "DataDependencyGraph.h"
 #include "DebugGraph.h"
@@ -384,18 +385,19 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
 
         if(auto branch = tailBranch.get<intermediate::Branch>())
         {
-            if(auto branchCondition = tailBranch.getBasicBlock()->findLastBranchCondition(tailBranch))
+            if(auto branchCondition = tailBranch.getBasicBlock()->findLastSettingOfFlags(tailBranch))
             {
-                auto condInst = branchCondition->get<intermediate::BranchCondition>();
-                if(!condInst || condInst->conditionalElements != 0x1)
+                auto pair = intermediate::getBranchCondition(branchCondition->get<intermediate::ExtendedInstruction>());
+                if(!pair.first || pair.second != 0x1)
                 {
                     // for now we don't support any non-standard conditions. Otherwise we also would need to support all
                     // any/all flags combinations
                     CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Skipping non-default branch condition: " << condInst->to_string() << logging::endl);
+                        log << "Skipping non-default branch condition: " << (*branchCondition)->to_string()
+                            << logging::endl);
                     break;
                 }
-                repeatConditionLocal = condInst->getBranchCondition().local();
+                repeatConditionLocal = pair.first->local();
             }
             // if the tailBranch is the branch to repeat the loop, the repeatCondition is the condition of the
             // tailBranch. If it is the branch to cancel the loop, invert the condition it.

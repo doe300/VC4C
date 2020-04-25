@@ -8,6 +8,7 @@
 #include "Expression.h"
 #include "Method.h"
 #include "Module.h"
+#include "intermediate/Helper.h"
 #include "intermediate/operators.h"
 #include "optimization/Combiner.h"
 #include "optimization/Eliminator.h"
@@ -990,16 +991,15 @@ void TestOptimizationSteps::testSimplifyBranches()
             inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse.next").getLabel()->getLabel();
         outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse.next");
 
-        inIt.emplace(new intermediate::BranchCondition(UNIFORM_REGISTER));
+        BranchCond cond = BRANCH_ALWAYS;
+        std::tie(inIt, cond) = intermediate::insertBranchCondition(inputMethod, inIt, UNIFORM_REGISTER);
+        inIt.emplace(new Branch(ifIn.getLabel()->getLabel(), cond));
         inIt.nextInBlock();
-        inIt.emplace(new Branch(ifIn.getLabel()->getLabel(), COND_ZERO_CLEAR.toBranchCondition()));
-        inIt.nextInBlock();
-        inIt.emplace(new Branch(inNextLabel, COND_ZERO_SET.toBranchCondition()));
+        inIt.emplace(new Branch(inNextLabel, cond.invert()));
         inIt.nextInBlock();
 
-        outIt.emplace(new intermediate::BranchCondition(UNIFORM_REGISTER));
-        outIt.nextInBlock();
-        outIt.emplace(new Branch(ifOut.getLabel()->getLabel(), COND_ZERO_CLEAR.toBranchCondition()));
+        std::tie(outIt, cond) = intermediate::insertBranchCondition(outputMethod, outIt, UNIFORM_REGISTER);
+        outIt.emplace(new Branch(ifOut.getLabel()->getLabel(), cond));
         outIt.nextInBlock();
     }
 
@@ -1010,24 +1010,23 @@ void TestOptimizationSteps::testSimplifyBranches()
         auto inIt = thirdIn.walkEnd();
         auto outIt = thirdOut.walkEnd();
 
-        inIt.emplace(new intermediate::BranchCondition(UNIFORM_REGISTER));
-        inIt.nextInBlock();
-        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), COND_ZERO_CLEAR.toBranchCondition()));
+        BranchCond cond = BRANCH_ALWAYS;
+        std::tie(inIt, cond) = intermediate::insertBranchCondition(inputMethod, inIt, UNIFORM_REGISTER);
+        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), cond));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove1").walkEnd();
-        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), COND_ZERO_CLEAR.toBranchCondition()));
+        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), cond));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove2").walkEnd();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove3").walkEnd();
         inIt.emplace(new Branch(thirdIn.getLabel()->getLabel()));
         inIt.nextInBlock();
 
-        outIt.emplace(new intermediate::BranchCondition(UNIFORM_REGISTER));
-        outIt.nextInBlock();
-        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), COND_ZERO_CLEAR.toBranchCondition()));
+        std::tie(outIt, cond) = intermediate::insertBranchCondition(outputMethod, outIt, UNIFORM_REGISTER);
+        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), cond));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove1").walkEnd();
-        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), COND_ZERO_CLEAR.toBranchCondition()));
+        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), cond));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove2").walkEnd();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove3").walkEnd();
@@ -1099,18 +1098,17 @@ void TestOptimizationSteps::testSimplifyBranches()
         auto outNextLabel =
             outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse2.next").getLabel()->getLabel();
 
-        inIt.emplace(new intermediate::BranchCondition(UNIFORM_REGISTER));
+        BranchCond cond = BRANCH_ALWAYS;
+        std::tie(inIt, cond) = intermediate::insertBranchCondition(inputMethod, inIt, UNIFORM_REGISTER);
+        inIt.emplace(new Branch(inNextLabel, cond));
         inIt.nextInBlock();
-        inIt.emplace(new Branch(inNextLabel, COND_ZERO_CLEAR.toBranchCondition()));
-        inIt.nextInBlock();
-        inIt.emplace(new Branch(ifElseIn.getLabel()->getLabel(), COND_ZERO_SET.toBranchCondition()));
+        inIt.emplace(new Branch(ifElseIn.getLabel()->getLabel(), cond.invert()));
         inIt.nextInBlock();
 
-        outIt.emplace(new intermediate::BranchCondition(UNIFORM_REGISTER));
+        std::tie(outIt, cond) = intermediate::insertBranchCondition(outputMethod, outIt, UNIFORM_REGISTER);
+        outIt.emplace(new Branch(outNextLabel, cond));
         outIt.nextInBlock();
-        outIt.emplace(new Branch(outNextLabel, COND_ZERO_CLEAR.toBranchCondition()));
-        outIt.nextInBlock();
-        outIt.emplace(new Branch(ifElseOut.getLabel()->getLabel(), COND_ZERO_SET.toBranchCondition()));
+        outIt.emplace(new Branch(ifElseOut.getLabel()->getLabel(), cond.invert()));
         outIt.nextInBlock();
     }
 

@@ -104,13 +104,6 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
                 });
         }
         // XXX branch target input (currently not used), is only set by SIMD element 15
-        else if(auto branchCondition = dynamic_cast<const intermediate::BranchCondition*>(inst))
-        {
-            // TODO set the used elements of the input to the conditionalElements mask
-            if(auto loc = branchCondition->getBranchCondition().checkLocal())
-                // TODO could check whether we do have branches for both cases and if not, only insert conditional
-                cache.emplace(loc, COND_ALWAYS).first->second = COND_ALWAYS;
-        }
         else
         {
             // by default, we need all the elements our outputs need
@@ -225,6 +218,7 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
                             }
                         });
                 }
+                // TODO add support for (branch condition) setting of flags with element mask, e.g. loaded via ldui/ldsi
             }
             cache.clear();
             if(inst->checkOutputLocal() && !inst->hasConditionalExecution())

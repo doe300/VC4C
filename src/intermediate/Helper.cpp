@@ -379,8 +379,8 @@ FastSet<const Local*> intermediate::getEquivalenceClass(const Local* local)
     return clazz;
 }
 
-BasicBlock& intermediate::insertLoop(Method& method, InstructionWalker& it, const Value& conditionValue,
-    ConditionCode repeatCondition, const std::string& label)
+BasicBlock& intermediate::insertLoop(
+    Method& method, InstructionWalker& it, const Value& conditionValue, const std::string& label)
 {
     auto loopLabel = method.addNewLocal(TYPE_LABEL, label);
     auto preheaderLabel = method.addNewLocal(TYPE_LABEL, loopLabel.local()->name, "preheader");
@@ -390,11 +390,11 @@ BasicBlock& intermediate::insertLoop(Method& method, InstructionWalker& it, cons
     preheaderIt.nextInBlock();
 
     // in the preheader, jump over loop only when condition becomes false, otherwise fall through loop content block
-    preheaderIt.emplace(new BranchCondition(conditionValue));
+    BranchCond cond = BRANCH_ALWAYS;
+    std::tie(preheaderIt, cond) = insertBranchCondition(method, preheaderIt, conditionValue);
+    preheaderIt.emplace(new Branch(loopLabel.local(), cond));
     preheaderIt.nextInBlock();
-    preheaderIt.emplace(new Branch(loopLabel.local(), repeatCondition.toBranchCondition()));
-    preheaderIt.nextInBlock();
-    preheaderIt.emplace(new Branch(afterLoopLabel.local(), repeatCondition.invert().toBranchCondition()));
+    preheaderIt.emplace(new Branch(afterLoopLabel.local(), cond.invert()));
     preheaderIt.nextInBlock();
 
     auto inLoopIt = method.emplaceLabel(preheaderIt, new BranchLabel(*loopLabel.local()));
@@ -406,4 +406,65 @@ BasicBlock& intermediate::insertLoop(Method& method, InstructionWalker& it, cons
 
     it = method.emplaceLabel(inLoopIt, new BranchLabel(*afterLoopLabel.local()));
     return *inLoopIt.getBasicBlock();
+}
+
+std::pair<InstructionWalker, BranchCond> intermediate::insertBranchCondition(Method& method, InstructionWalker it,
+    const Value& conditionValue, std::bitset<NATIVE_VECTOR_SIZE> conditionalElements, bool branchOnAllElements)
+{
+    /*
+     * branch usually only depends on scalar value
+     * -> set any not used vector-element (all except element 0) to a value where it doesn't influence
+     * the condition
+     *
+     * Using ELEMENT_NUMBER sets the vector-elements 1 to 15 to a non-zero value and 0 to either 0 (if
+     * condition was false) or 1 (if condition was true)
+     */
+    if(conditionalElements == 0x1)
+        // default case for simple jump on 0th element
+        assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER | conditionValue, SetFlag::SET_FLAGS);
+    else
+    {
+        // more special case for jump on different element(s)
+        auto elementMask = it.getBasicBlock()->getMethod().addNewLocal(TYPE_INT8.toVectorType(16));
+        it.emplace(new intermediate::LoadImmediate(elementMask,
+            static_cast<uint32_t>((~conditionalElements).to_ulong()), intermediate::LoadType::PER_ELEMENT_UNSIGNED));
+        it.nextInBlock();
+        assign(it, NOP_REGISTER) = (elementMask | conditionValue, SetFlag::SET_FLAGS);
+    }
+    return std::make_pair(it, BRANCH_ALL_Z_CLEAR);
+}
+
+std::pair<Optional<Value>, std::bitset<NATIVE_VECTOR_SIZE>> intermediate::getBranchCondition(
+    const ExtendedInstruction* inst)
+{
+    if(!inst || !inst->doesSetFlag())
+        return std::make_pair(NO_VALUE, 0);
+
+    auto op = dynamic_cast<const Operation*>(inst);
+    if(!op || op->op != OP_OR)
+        return std::make_pair(NO_VALUE, 0);
+
+    // simple case
+    if(inst->readsRegister(REG_ELEMENT_NUMBER))
+        return std::make_pair(inst->findOtherArgument(ELEMENT_NUMBER_REGISTER), 0x1);
+
+    auto toBitset = [](Literal lit) -> std::bitset<NATIVE_VECTOR_SIZE> {
+        // element is set if at least one of low or high parts are set
+        return (lit.unsignedInt() >> 16u) | (lit.unsignedInt() & 0xFFu);
+    };
+
+    // more special case
+    if(auto writer = dynamic_cast<const LoadImmediate*>(op->getFirstArg().getSingleWriter()))
+    {
+        if(writer->type != LoadType::REPLICATE_INT32)
+            return std::make_pair(op->getSecondArg(), toBitset(writer->getImmediate()));
+    }
+    if(auto writer = dynamic_cast<const LoadImmediate*>(op->assertArgument(1).getSingleWriter()))
+    {
+        if(writer->type != LoadType::REPLICATE_INT32)
+            return std::make_pair(op->getFirstArg(), toBitset(writer->getImmediate()));
+    }
+
+    // failed to determine
+    return std::make_pair(NO_VALUE, 0);
 }
