@@ -214,6 +214,7 @@ namespace vc4c
             std::size_t startIndex;
             std::size_t endIndex;
             std::size_t numAccesses;
+            std::size_t maxUnaccessedRange;
 
             constexpr bool startsWithBlock() const noexcept
             {
@@ -227,10 +228,28 @@ namespace vc4c
 
             constexpr std::size_t size() const noexcept
             {
-                return endIndex - startIndex;
+                return endIndex - startIndex + std::size_t{1} /* the end instruction itself */;
             }
 
             bool operator<(const LocalUsageRange& other) const noexcept;
+
+            std::string to_string() const;
+        };
+
+        /**
+         * A single usage share of a local across the whole kernel
+         */
+        struct LocalUtilization
+        {
+            const Local* local;
+            std::size_t numInstructions;
+            std::size_t numAccesses;
+            std::size_t numLoops;
+            // Calculated from the fields above, this indicates the rating for splitting/spilling this local. This field
+            // also determines the natural ordering. Locals with bigger ratings should be preferred to be split/spilled.
+            std::size_t rating;
+
+            bool operator<(const LocalUtilization& other) const noexcept;
 
             std::string to_string() const;
         };
@@ -254,14 +273,15 @@ namespace vc4c
 
             inline const SortedSet<LocalUsageRange>& getRanges(const BasicBlock& block) const
             {
-                return ranges.at(&block);
+                return detailedRanges.at(&block);
             }
 
             void dumpResults(const Method& method) const;
 
         private:
             const GlobalLivenessAnalysis* livenessAnalysis;
-            FastMap<const BasicBlock*, SortedSet<LocalUsageRange>> ranges;
+            SortedSet<LocalUtilization> overallUsages;
+            FastMap<const BasicBlock*, SortedSet<LocalUsageRange>> detailedRanges;
         };
     } /* namespace analysis */
 } /* namespace vc4c */

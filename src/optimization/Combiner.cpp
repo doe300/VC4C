@@ -104,15 +104,15 @@ bool optimizations::simplifyBranches(const Module& module, Method& method, const
 
 using MergeCondition = std::function<bool(Operation*, Operation*, MoveOperation*, MoveOperation*)>;
 static const std::vector<MergeCondition> mergeConditions = {
-    // check both instructions can be combined and are actually mapped to machine code
+    // check both instructions are actually mapped to machine code
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
-        if(firstOp != nullptr && !(firstOp->canBeCombined && firstOp->mapsToASMInstruction()))
+        if(firstOp != nullptr && !firstOp->mapsToASMInstruction())
             return false;
-        if(firstMove != nullptr && !(firstMove->canBeCombined && firstMove->mapsToASMInstruction()))
+        if(firstMove != nullptr && !firstMove->mapsToASMInstruction())
             return false;
-        if(secondOp != nullptr && !(secondOp->canBeCombined && secondOp->mapsToASMInstruction()))
+        if(secondOp != nullptr && !secondOp->mapsToASMInstruction())
             return false;
-        if(secondMove != nullptr && !(secondMove->canBeCombined && secondMove->mapsToASMInstruction()))
+        if(secondMove != nullptr && !secondMove->mapsToASMInstruction())
             return false;
         return true;
     },
@@ -172,36 +172,50 @@ static const std::vector<MergeCondition> mergeConditions = {
         }
         return true;
     },
-    // check operations use same output and do not have inverted conditions
+    // check operations use same output and do not have inverted conditions. If the first write is unconditional and has
+    // no side-effects, make it conditional on the inversion of the second write.
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
         Value outFirst(UNDEFINED_VALUE);
         ConditionCode condFirst = COND_ALWAYS;
+        bool firstSideEffects = false;
         if(firstOp != nullptr && firstOp->getOutput())
         {
             outFirst = firstOp->getOutput().value();
-            condFirst = firstOp->conditional;
+            condFirst = firstOp->getCondition();
+            firstSideEffects = firstOp->hasSideEffects();
         }
         else if(firstMove != nullptr && firstMove->getOutput())
         {
             outFirst = firstMove->getOutput().value();
-            condFirst = firstMove->conditional;
+            condFirst = firstMove->getCondition();
+            firstSideEffects = firstMove->hasSideEffects();
         }
         Value outSecond(UNDEFINED_VALUE);
         ConditionCode condSecond = COND_ALWAYS;
         if(secondOp != nullptr && secondOp->getOutput())
         {
             outSecond = secondOp->getOutput().value();
-            condSecond = secondOp->conditional;
+            condSecond = secondOp->getCondition();
         }
         else if(secondMove != nullptr && secondMove->getOutput())
         {
             outSecond = secondMove->getOutput().value();
-            condSecond = secondMove->conditional;
+            condSecond = secondMove->getCondition();
         }
         if(outFirst == outSecond || (outFirst.checkLocal() && outSecond.checkLocal() == outFirst.local()))
         {
             if(!condSecond.isInversionOf(condFirst))
-                return false;
+            {
+                if(condFirst == COND_ALWAYS && !firstSideEffects)
+                {
+                    // first write is unconditional and second conditional -> rewrite first write to be conditional on
+                    // inversion of second write, so we can combine them.
+                    (firstOp ? dynamic_cast<ExtendedInstruction*>(firstOp) : firstMove)
+                        ->setCondition(condSecond.invert());
+                }
+                else
+                    return false;
+            }
         }
         return true;
     },
@@ -213,23 +227,23 @@ static const std::vector<MergeCondition> mergeConditions = {
         ConditionCode secondCond = COND_ALWAYS;
         if(firstOp != nullptr)
         {
-            setsFlags = firstOp->setFlags;
-            firstCond = firstOp->conditional;
+            setsFlags = firstOp->getFlags();
+            firstCond = firstOp->getCondition();
         }
         else if(firstMove != nullptr)
         {
-            setsFlags = firstMove->setFlags;
-            firstCond = firstMove->conditional;
+            setsFlags = firstMove->getFlags();
+            firstCond = firstMove->getCondition();
         }
         if(secondOp != nullptr)
         {
             usesFlags = secondOp->hasConditionalExecution();
-            secondCond = secondOp->conditional;
+            secondCond = secondOp->getCondition();
         }
         else if(secondMove != nullptr)
         {
             usesFlags = secondMove->hasConditionalExecution();
-            secondCond = secondMove->conditional;
+            secondCond = secondMove->getCondition();
         }
         if(setsFlags == SetFlag::SET_FLAGS && usesFlags)
         {
@@ -243,17 +257,17 @@ static const std::vector<MergeCondition> mergeConditions = {
     },
     // check MUL ALU sets flags (flags would be set by ADD ALU)
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
-        ConditionCode firstCond = firstOp ? firstOp->conditional : firstMove->conditional;
-        ConditionCode secondCond = secondOp ? secondOp->conditional : secondMove->conditional;
+        ConditionCode firstCond = firstOp ? firstOp->getCondition() : firstMove->getCondition();
+        ConditionCode secondCond = secondOp ? secondOp->getCondition() : secondMove->getCondition();
         if(firstCond.isInversionOf(secondCond))
         {
             // if they have inverted conditions, the ADD ALU can't set the flags, the MUL ALU is supposed to
             return true;
         }
         // XXX handle v8adds, can be on ADD and MUL ALU. Would need to make sure, flag-setting instruction is on ADD ALU
-        if(firstOp != nullptr && firstOp->op.runsOnMulALU() && firstOp->setFlags == SetFlag::SET_FLAGS)
+        if(firstOp != nullptr && firstOp->op.runsOnMulALU() && firstOp->doesSetFlag())
             return false;
-        else if(secondOp != nullptr && secondOp->op.runsOnMulALU() && secondOp->setFlags == SetFlag::SET_FLAGS)
+        else if(secondOp != nullptr && secondOp->op.runsOnMulALU() && secondOp->doesSetFlag())
             return false;
         return true;
     },
@@ -342,40 +356,40 @@ static const std::vector<MergeCondition> mergeConditions = {
 
         Pack firstPack = PACK_NOP;
         Pack secondPack = PACK_NOP;
-        ConditionCode firstCond = firstOp ? firstOp->conditional : firstMove->conditional;
-        ConditionCode secondCond = secondOp ? secondOp->conditional : secondMove->conditional;
+        ConditionCode firstCond = firstOp ? firstOp->getCondition() : firstMove->getCondition();
+        ConditionCode secondCond = secondOp ? secondOp->getCondition() : secondMove->getCondition();
         bool invertedConditions = firstCond.isInversionOf(secondCond);
         if(firstOp != nullptr)
         {
-            firstSignal = firstOp->signal;
+            firstSignal = firstOp->getSignal();
             if(firstOp->getFirstArg().getLiteralValue() || (firstOp->getSecondArg() & &Value::getLiteralValue))
                 firstSignal = SIGNAL_ALU_IMMEDIATE;
-            firstPack = firstOp->packMode;
-            firstUnpack = firstOp->unpackMode;
+            firstPack = firstOp->getPackMode();
+            firstUnpack = firstOp->getUnpackMode();
         }
         if(firstMove != nullptr)
         {
-            firstSignal = firstMove->signal;
+            firstSignal = firstMove->getSignal();
             if(firstMove->getSource().getLiteralValue())
                 firstSignal = SIGNAL_ALU_IMMEDIATE;
-            firstPack = firstMove->packMode;
-            firstUnpack = firstMove->unpackMode;
+            firstPack = firstMove->getPackMode();
+            firstUnpack = firstMove->getUnpackMode();
         }
         if(secondOp != nullptr)
         {
-            secondSignal = secondOp->signal;
+            secondSignal = secondOp->getSignal();
             if(secondOp->getFirstArg().getLiteralValue() || (secondOp->getSecondArg() & &Value::getLiteralValue))
                 secondSignal = SIGNAL_ALU_IMMEDIATE;
-            secondPack = secondOp->packMode;
-            secondUnpack = secondOp->unpackMode;
+            secondPack = secondOp->getPackMode();
+            secondUnpack = secondOp->getUnpackMode();
         }
         if(secondMove != nullptr)
         {
-            secondSignal = secondMove->signal;
+            secondSignal = secondMove->getSignal();
             if(secondMove->getSource().getLiteralValue())
                 secondSignal = SIGNAL_ALU_IMMEDIATE;
-            secondPack = secondMove->packMode;
-            secondUnpack = secondMove->unpackMode;
+            secondPack = secondMove->getPackMode();
+            secondUnpack = secondMove->getUnpackMode();
         }
         // only one signal can be fired (independent of ALU conditions)
         if(firstSignal != SIGNAL_NONE && secondSignal != SIGNAL_NONE && firstSignal != secondSignal)
@@ -495,7 +509,7 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                         // following instructions
                         if(!checkIt.isEndOfBlock())
                         {
-                            if(checkIt->unpackMode.hasEffect())
+                            if(checkIt->hasUnpackMode())
                             {
                                 if(std::any_of(checkIt->getArguments().begin(), checkIt->getArguments().end(),
                                        [instr, nextInstr](const Value& val) -> bool {
@@ -506,10 +520,10 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                                     conditionsMet = false;
                                 }
                             }
-                            if(instr->packMode.hasEffect() && instr->checkOutputLocal() &&
+                            if(instr->hasPackMode() && instr->checkOutputLocal() &&
                                 checkIt->readsLocal(instr->getOutput()->local()))
                                 conditionsMet = false;
-                            if(nextInstr->packMode.hasEffect() && nextInstr->checkOutputLocal() &&
+                            if(nextInstr->hasPackMode() && nextInstr->checkOutputLocal() &&
                                 checkIt->readsLocal(nextInstr->getOutput()->local()))
                                 conditionsMet = false;
                         }
@@ -518,14 +532,13 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                         checkIt = it.copy().previousInBlock();
                         if(!checkIt.isStartOfBlock() && checkIt->checkOutputLocal())
                         {
-                            if(checkIt->packMode.hasEffect() &&
+                            if(checkIt->hasPackMode() &&
                                 (instr->readsLocal(checkIt->getOutput()->local()) ||
                                     nextInstr->readsLocal(checkIt->getOutput()->local())))
                                 conditionsMet = false;
-                            if(instr->unpackMode.hasEffect() && instr->readsLocal(checkIt->getOutput()->local()))
+                            if(instr->hasUnpackMode() && instr->readsLocal(checkIt->getOutput()->local()))
                                 conditionsMet = false;
-                            if(nextInstr->unpackMode.hasEffect() &&
-                                nextInstr->readsLocal(checkIt->getOutput()->local()))
+                            if(nextInstr->hasUnpackMode() && nextInstr->readsLocal(checkIt->getOutput()->local()))
                                 conditionsMet = false;
                         }
                     }
@@ -572,8 +585,8 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                         }
                         else if(move != nullptr && nextMove != nullptr)
                         {
-                            bool firstOnMul = (move->packMode.hasEffect() && move->packMode.supportsMulALU()) ||
-                                (nextMove->packMode.hasEffect() && !nextMove->packMode.supportsMulALU()) ||
+                            bool firstOnMul = (move->hasPackMode() && move->getPackMode().supportsMulALU()) ||
+                                (nextMove->hasPackMode() && !nextMove->getPackMode().supportsMulALU()) ||
                                 nextMove->doesSetFlag();
                             Operation* newMove0 = move->combineWith(firstOnMul ? OP_ADD : OP_MUL24);
                             Operation* newMove1 = nextMove->combineWith(firstOnMul ? OP_MUL24 : OP_ADD);
@@ -766,8 +779,10 @@ InstructionWalker optimizations::combineSelectionWithZero(
         return it;
     if(it->getOutput().value() != nextIt->getOutput().value())
         return it;
-    if(!it->hasConditionalExecution() || !nextIt->hasConditionalExecution() ||
-        !it->conditional.isInversionOf(nextIt->conditional))
+    auto extendedInst = it.get<intermediate::ExtendedInstruction>();
+    auto nextExtendedInst = nextIt.get<intermediate::ExtendedInstruction>();
+    if(!it->hasConditionalExecution() || !nextIt->hasConditionalExecution() || !extendedInst || !nextExtendedInst ||
+        !extendedInst->getCondition().isInversionOf(nextExtendedInst->getCondition()))
         return it;
     // For conditional moves, the source could be written conditionally
     for(auto inst : {move, nextMove})
@@ -860,7 +875,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                 }
             }
 
-            if(rot->getSource().checkLocal() && !rot->hasUnpackMode() && !rot->signal.hasSideEffects())
+            if(rot->getSource().checkLocal() && !rot->hasUnpackMode() && !rot->getSignal().hasSideEffects())
             {
                 auto writer = dynamic_cast<const LoadImmediate*>(rot->getSource().getSingleWriter());
                 if(writer && !writer->hasPackMode())
@@ -871,8 +886,8 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                         CPPLOG_LAZY(logging::Level::DEBUG,
                             log << "Replacing rotation of constant load with constant load: " << rot->to_string()
                                 << logging::endl);
-                        it.reset(
-                            (new LoadImmediate(it->getOutput().value(), writer->getImmediate()))->copyExtrasFrom(rot));
+                        it.reset((new LoadImmediate(it->getOutput().value(), writer->getImmediate()))
+                                     ->copyExtrasFrom(rot, true));
                         hasChanged = true;
                         continue;
                     }
@@ -887,7 +902,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                             log << "Replacing rotation of masked load with rotated masked load: " << rot->to_string()
                                 << logging::endl);
                         it.reset((new LoadImmediate(it->getOutput().value(), upper | lower, writer->type))
-                                     ->copyExtrasFrom(rot));
+                                     ->copyExtrasFrom(rot, true));
                         hasChanged = true;
                         continue;
                     }
