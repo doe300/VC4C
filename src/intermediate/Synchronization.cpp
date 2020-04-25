@@ -11,7 +11,8 @@ using namespace vc4c;
 using namespace vc4c::intermediate;
 
 SemaphoreAdjustment::SemaphoreAdjustment(const Semaphore semaphore, const bool increase) :
-    IntermediateInstruction(Optional<Value>{}), semaphore(semaphore), increase(increase)
+    ExtendedInstruction(SIGNAL_SEMAPHORE, COND_ALWAYS, SetFlag::DONT_SET, PACK_NOP), semaphore(semaphore),
+    increase(increase)
 {
 }
 
@@ -200,7 +201,7 @@ bool LifetimeBoundary::innerEquals(const IntermediateInstruction& other) const
 
 static const Value MUTEX_REGISTER(REG_MUTEX, TYPE_BOOL);
 
-MutexLock::MutexLock(MutexAccess accessType) : IntermediateInstruction(Optional<Value>{}), accessType(accessType)
+MutexLock::MutexLock(MutexAccess accessType) : SignalingInstruction(SIGNAL_NONE), accessType(accessType)
 {
     if(locksMutex())
         setArgument(0, MUTEX_REGISTER);

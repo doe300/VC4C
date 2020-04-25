@@ -15,6 +15,7 @@
 using namespace vc4c;
 using namespace vc4c::operators;
 
+// TODO test constant/convergence limit for nested expressions
 // TODO test all different types of combination + expressions which should not be combined
 
 TestExpressions::TestExpressions()
@@ -38,8 +39,7 @@ void TestExpressions::testCreation()
 
     {
         // skip instruction with side-effects
-        it.emplace(new intermediate::MoveOperation(NOP_REGISTER, INT_ONE));
-        it->setSetFlags(SetFlag::SET_FLAGS);
+        it.emplace((new intermediate::MoveOperation(NOP_REGISTER, INT_ONE))->setSetFlags(SetFlag::SET_FLAGS));
         TEST_ASSERT(!Expression::createExpression(*it.get()))
     }
 
@@ -57,7 +57,7 @@ void TestExpressions::testCreation()
 
     {
         // skip branch instruction, semaphore
-        it.emplace(new intermediate::Branch(method.begin()->getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        it.emplace(new intermediate::Branch(method.begin()->getLabel()->getLabel()));
         TEST_ASSERT(!Expression::createExpression(*it.get()))
 
         it.emplace(new intermediate::SemaphoreAdjustment(Semaphore::BARRIER_WORK_ITEM_0, false));
@@ -717,6 +717,8 @@ void TestExpressions::testConvergence()
     TEST_ASSERT_EQUALS(529_val, (Expression{Expression::FAKEOP_UMUL, intVal, intVal}).getConvergenceLimit(23_lit))
     TEST_ASSERT_EQUALS(
         INT_MINUS_ONE /* UINT_MAX */, (Expression{Expression::FAKEOP_UMUL, intVal, intVal}).getConvergenceLimit())
+
+    // TODO (un)pack modes
 }
 
 void TestExpressions::testValueRange()
@@ -816,4 +818,6 @@ void TestExpressions::testValueRange()
         TEST_ASSERT(!!range)
         TEST_ASSERT_EQUALS(ValueRange(42.0, 42.0), range)
     }
+
+    // TODO (un)pack modes
 }

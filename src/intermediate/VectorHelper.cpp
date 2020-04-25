@@ -471,9 +471,9 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
             }
             else
             {
-                it.emplace(new LoadImmediate(
-                    NOP_REGISTER, static_cast<uint32_t>(sources.second.to_ulong()), LoadType::PER_ELEMENT_UNSIGNED));
-                it->setSetFlags(SetFlag::SET_FLAGS);
+                it.emplace((new LoadImmediate(NOP_REGISTER, static_cast<uint32_t>(sources.second.to_ulong()),
+                                LoadType::PER_ELEMENT_UNSIGNED))
+                               ->setSetFlags(SetFlag::SET_FLAGS));
                 it.nextInBlock();
                 cond = COND_ZERO_CLEAR;
             }

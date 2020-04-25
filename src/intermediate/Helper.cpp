@@ -390,9 +390,11 @@ BasicBlock& intermediate::insertLoop(Method& method, InstructionWalker& it, cons
     preheaderIt.nextInBlock();
 
     // in the preheader, jump over loop only when condition becomes false, otherwise fall through loop content block
-    preheaderIt.emplace(new Branch(loopLabel.local(), repeatCondition, conditionValue));
+    preheaderIt.emplace(new BranchCondition(conditionValue));
     preheaderIt.nextInBlock();
-    preheaderIt.emplace(new Branch(afterLoopLabel.local(), repeatCondition.invert(), conditionValue));
+    preheaderIt.emplace(new Branch(loopLabel.local(), repeatCondition.toBranchCondition()));
+    preheaderIt.nextInBlock();
+    preheaderIt.emplace(new Branch(afterLoopLabel.local(), repeatCondition.invert().toBranchCondition()));
     preheaderIt.nextInBlock();
 
     auto inLoopIt = method.emplaceLabel(preheaderIt, new BranchLabel(*loopLabel.local()));

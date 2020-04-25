@@ -33,7 +33,7 @@ bool Dependency::canBeInserted(const intermediate::IntermediateInstruction* inst
 {
     if((has_flag(type, DependencyType::SIGNAL_READ_AFTER_WRITE) ||
            has_flag(type, DependencyType::SIGNAL_WRITE_AFTER_WRITE)) &&
-        instr->signal.hasSideEffects())
+        instr->getSignal().hasSideEffects())
     {
         // valid as long as the other instruction does not trigger a signal
         return false;
@@ -45,7 +45,7 @@ bool Dependency::canBeInserted(const intermediate::IntermediateInstruction* inst
     }
     if((has_flag(type, DependencyType::FLAGS_READ_AFTER_WRITE) ||
            has_flag(type, DependencyType::FLAGS_WRITE_AFTER_WRITE)) &&
-        instr->setFlags == SetFlag::SET_FLAGS)
+        instr->doesSetFlag())
     {
         // valid as long as the other instruction does not set flags
         return false;
@@ -242,13 +242,13 @@ static void createFlagDependencies(DependencyGraph& graph, DependencyNode& node,
         auto& otherNode = graph.assertNode(lastSettingOfFlags);
         addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::FLAGS_READ_AFTER_WRITE);
     }
-    if(node.key->setFlags == SetFlag::SET_FLAGS && lastSettingOfFlags != nullptr)
+    if(node.key->doesSetFlag() && lastSettingOfFlags != nullptr)
     {
         // any setting of flags must be ordered after the previous setting of flags
         auto& otherNode = graph.assertNode(lastSettingOfFlags);
         addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::FLAGS_WRITE_AFTER_WRITE);
     }
-    if(node.key->setFlags == SetFlag::SET_FLAGS && lastConditional != nullptr)
+    if(node.key->doesSetFlag() && lastConditional != nullptr)
     {
         // any setting of flags must be ordered after any previous use of these flags
         auto& otherNode = graph.assertNode(lastConditional);
@@ -279,7 +279,7 @@ static void createR4Dependencies(DependencyGraph& graph, DependencyNode& node,
         addDependency(
             otherNode.getOrCreateEdge(&node).data, DependencyType::SIGNAL_READ_AFTER_WRITE, delayCycles, fixedDelay);
     }
-    if(node.key->signal.triggersReadOfR4() || (node.key->checkOutputRegister() & &Register::triggersReadOfR4))
+    if(node.key->getSignal().triggersReadOfR4() || (node.key->checkOutputRegister() & &Register::triggersReadOfR4))
     {
         // XXX Although it might not be necessary to order signals of reading from TMU and the actual reads of r4 (e.g.
         // load_tmu0; read r4; load_tmu1; read r4), we still do so, since it has not been tested whether the QPU hsa
@@ -607,14 +607,14 @@ static void createTMUCoordinateDependencies(DependencyGraph& graph, DependencyNo
     // 8 instructions inserted increase execution time almost not at all (a bit due to instruction fetching), 9+ do
     // noticeably
     const unsigned tmuLoadDelay = 8;
-    if(node.key->signal == SIGNAL_LOAD_TMU0)
+    if(node.key->getSignal() == SIGNAL_LOAD_TMU0)
     {
         // triggering of read from the FIFO depends on the memory address being set previously which fills the FIFO from
         // memory (thus taking longer)
         auto& otherNode = graph.assertNode(lastTMU0CoordsWrite);
         addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::PERIPHERY_ORDER, tmuLoadDelay);
     }
-    if(node.key->signal == SIGNAL_LOAD_TMU1)
+    if(node.key->getSignal() == SIGNAL_LOAD_TMU1)
     {
         // triggering of read from the FIFO depends on the memory address being set previously which fills the FIFO from
         // memory (thus taking longer)
@@ -690,14 +690,14 @@ static void createThreadEndDependencies(DependencyGraph& graph, DependencyNode& 
     }
 
     // program end depends on host interrupt
-    if(node.key->signal == SIGNAL_END_PROGRAM)
+    if(node.key->getSignal() == SIGNAL_END_PROGRAM)
     {
         addDependency(
             graph.assertNode(lastHostInterrupt).getOrCreateEdge(&node).data, DependencyType::THREAD_END_ORDER);
     }
 
     // program end nops depend on program end signal
-    if(node.key->signal != SIGNAL_END_PROGRAM && dynamic_cast<const intermediate::Nop*>(node.key) &&
+    if(node.key->getSignal() != SIGNAL_END_PROGRAM && dynamic_cast<const intermediate::Nop*>(node.key) &&
         dynamic_cast<const intermediate::Nop*>(node.key)->type == intermediate::DelayType::THREAD_END)
     {
         addDependency(graph.assertNode(lastProgramEnd).getOrCreateEdge(&node).data, DependencyType::THREAD_END_ORDER);
@@ -780,12 +780,12 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
         }
 
         // update the cached values
-        if(inst->setFlags == SetFlag::SET_FLAGS || (branch && !branch->isUnconditional()))
+        if(inst->doesSetFlag() || (branch && !branch->isUnconditional()))
             // conditional branches may introduce setting of flags
             lastSettingOfFlags = inst.get();
         if(inst->hasConditionalExecution() || (branch && !branch->isUnconditional()))
             lastConditional = inst.get();
-        if(inst->signal.triggersReadOfR4() || (inst->checkOutputRegister() & &Register::triggersReadOfR4))
+        if(inst->getSignal().triggersReadOfR4() || (inst->checkOutputRegister() & &Register::triggersReadOfR4))
             lastTriggerOfR4 = inst.get();
         if(inst->readsRegister(REG_SFU_OUT))
             lastReadOfR4 = inst.get();
@@ -852,7 +852,7 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
             lastReadOfR5 = inst.get();
         if(inst->writesRegister(REG_HOST_INTERRUPT))
             lastHostInterrupt = inst.get();
-        if(inst->signal == SIGNAL_END_PROGRAM)
+        if(inst->getSignal() == SIGNAL_END_PROGRAM)
             lastProgramEnd = inst.get();
         if(dynamic_cast<const intermediate::MemoryBarrier*>(inst.get()))
             lastMemFence = inst.get();

@@ -234,10 +234,10 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
         switch(dest.type.getScalarBitCount())
         {
         case 8:
-            it->setPackMode(PACK_INT_TO_CHAR_TRUNCATE);
+            it.get<ExtendedInstruction>()->setPackMode(PACK_INT_TO_CHAR_TRUNCATE);
             break;
         case 16:
-            it->setPackMode(PACK_INT_TO_SHORT_TRUNCATE);
+            it.get<ExtendedInstruction>()->setPackMode(PACK_INT_TO_SHORT_TRUNCATE);
             break;
         case 32:
             // no pack mode
@@ -273,8 +273,7 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
     {
         // if we zero-extend from register-file A, use unpack-modes
         // this is applied e.g. for unpacking parameters in code-generation, since the source is UNIFORM
-        it.emplace(new MoveOperation(dest, src, conditional, setFlags));
-        it->setUnpackMode(UNPACK_CHAR_TO_INT_ZEXT);
+        it.emplace((new MoveOperation(dest, src, conditional, setFlags))->setUnpackMode(UNPACK_CHAR_TO_INT_ZEXT));
     }
     else if(allowLiteral)
     {
@@ -334,8 +333,7 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
     {
         // if we sign-extend from register-file A, use unpack-modes
         // this is applied e.g. for unpacking parameters in code-generation, since the source is UNIFORM
-        it.emplace(new MoveOperation(dest, src, conditional, setFlags));
-        it->setUnpackMode(UNPACK_SHORT_TO_INT_SEXT);
+        it.emplace((new MoveOperation(dest, src, conditional, setFlags))->setUnpackMode(UNPACK_SHORT_TO_INT_SEXT));
     }
     else
     {

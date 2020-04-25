@@ -30,10 +30,10 @@ static bool isFlagDefined(ConditionCode cond, ElementFlags flags)
 static bool rewriteSettingOfFlags(
     InstructionWalker setFlags, FastAccessList<InstructionWalker>&& conditionalInstructions)
 {
-    if(conditionalInstructions.empty())
+    if(conditionalInstructions.empty() && setFlags.get<intermediate::ExtendedInstruction>())
     {
         // flags are set but never used
-        if(setFlags->writesRegister(REG_NOP) && !setFlags->signal.hasSideEffects())
+        if(setFlags->writesRegister(REG_NOP) && !setFlags->getSignal().hasSideEffects())
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Removing unused setting of flags: " << setFlags->to_string() << logging::endl);
@@ -42,7 +42,7 @@ static bool rewriteSettingOfFlags(
         }
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Removing unused SetFlags bit from instruction: " << setFlags->to_string() << logging::endl);
-        setFlags->setSetFlags(SetFlag::DONT_SET);
+        setFlags.get<intermediate::ExtendedInstruction>()->setSetFlags(SetFlag::DONT_SET);
         return true;
     }
     Optional<Value> precalc;
@@ -58,20 +58,18 @@ static bool rewriteSettingOfFlags(
         bool changedInstructions = false;
         while(condIt != conditionalInstructions.end())
         {
-            if(isFlagDefined((*condIt)->conditional, flags))
+            auto cond = (*condIt).get<intermediate::ExtendedInstruction>() ?
+                (*condIt).get<intermediate::ExtendedInstruction>()->getCondition() :
+                COND_ALWAYS;
+            if(isFlagDefined(cond, flags))
             {
-                if(flags.matchesCondition((*condIt)->conditional))
+                if(flags.matchesCondition(cond))
                 {
                     // condition is statically matched, remove conditional
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Making instruction with constant condition unconditional: " << (*condIt)->to_string()
                             << logging::endl);
-                    (*condIt)->conditional = COND_ALWAYS;
-                    if(auto branch = condIt->get<intermediate::Branch>())
-                        // just for cosmetics, reset branch condition to "bool true"
-                        // XXX since this removes some branches/makes some unconditional, it would be useful to re-run
-                        // the basic-block/branching optimizations afterwards
-                        branch->replaceValue(branch->getCondition(), BOOL_TRUE, LocalUse::Type::READER);
+                    (*condIt).get<intermediate::ExtendedInstruction>()->setCondition(COND_ALWAYS);
                     changedInstructions = true;
                     ++condIt;
                 }
@@ -120,6 +118,8 @@ bool optimizations::removeUselessFlags(const Module& module, Method& method, con
             }
             if(it->hasConditionalExecution())
                 conditionalInstructions.push_back(it);
+            if(it.get<intermediate::Branch>() && !it.get<intermediate::Branch>()->isUnconditional())
+                conditionalInstructions.push_back(it);
             if(it->doesSetFlag())
             {
                 if(lastSettingOfFlags)
@@ -148,13 +148,16 @@ bool optimizations::removeUselessFlags(const Module& module, Method& method, con
 InstructionWalker optimizations::combineSameFlags(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-    if(it.get() == nullptr || it->setFlags != SetFlag::SET_FLAGS)
+    if(it.get() == nullptr || !it->doesSetFlag())
+        return it;
+    // don't combine branch conditions for now
+    if(it.get<intermediate::BranchCondition>())
         return it;
     // only combine writing into NOP-register for now
     if(it->getOutput() && it->getOutput().value() != NOP_REGISTER)
         return it;
     // only remove this setting of flags, if we have no other side effects and don't execute conditionally
-    if(it->signal.hasSideEffects() || it->conditional != COND_ALWAYS)
+    if(it->getSignal().hasSideEffects() || it->hasConditionalExecution())
         return it;
     // only combine setting flags from moves (e.g. for PHI-nodes) for now
     if(it.get<intermediate::MoveOperation>() == nullptr)
@@ -167,7 +170,7 @@ InstructionWalker optimizations::combineSameFlags(
         if(checkIt.get() && checkIt->doesSetFlag())
         {
             if(checkIt.get<intermediate::MoveOperation>() != nullptr &&
-                checkIt.get<intermediate::MoveOperation>()->getSource() == src && checkIt->conditional == COND_ALWAYS)
+                checkIt.get<intermediate::MoveOperation>()->getSource() == src && !checkIt->hasConditionalExecution())
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Removing duplicate setting of same flags: " << it->to_string() << logging::endl);
@@ -199,7 +202,7 @@ InstructionWalker optimizations::combineFlagWithOutput(
         // only combine setting flags from moves (e.g. for PHI-nodes) for now
         return it;
     const auto& in = it->assertArgument(0);
-    if(it->signal.hasSideEffects() || it->hasConditionalExecution() ||
+    if(it->getSignal().hasSideEffects() || it->hasConditionalExecution() ||
         (in.checkRegister() && in.reg().hasSideEffectsOnRead()))
         // only remove this setting of flags, if we have no other side effects and don't execute conditionally
         return it;
@@ -263,7 +266,7 @@ InstructionWalker optimizations::combineFlagWithOutput(
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Combining move to set flags '" << it->to_string()
                 << "' with move to output: " << resultIt->to_string() << logging::endl);
-        resultIt->setSetFlags(SetFlag::SET_FLAGS);
+        resultIt.get<intermediate::ExtendedInstruction>()->setSetFlags(SetFlag::SET_FLAGS);
         // TODO decorations? If input is the same, most decorations are also the same?! Also, setflags usually don't
         // have that many!?
         it.erase();

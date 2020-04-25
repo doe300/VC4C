@@ -106,9 +106,15 @@ std::shared_ptr<Expression> Expression::createExpression(const intermediate::Int
     auto code = dynamic_cast<const intermediate::Operation*>(&instr) != nullptr ?
         dynamic_cast<const intermediate::Operation&>(instr).op :
         OP_V8MIN;
+    auto unpackMode = (check(dynamic_cast<const intermediate::UnpackingInstruction*>(&instr)) &
+        &intermediate::UnpackingInstruction::getUnpackMode)
+                          .value_or(UNPACK_NOP);
+    auto packMode = (check(dynamic_cast<const intermediate::ExtendedInstruction*>(&instr)) &
+        &intermediate::ExtendedInstruction::getPackMode)
+                        .value_or(PACK_NOP);
     return std::make_shared<Expression>(code, instr.getArgument(0).value(),
-        instr.getArgument(1) ? instr.getArgument(1) : code == OP_V8MIN ? instr.getArgument(0) : NO_VALUE,
-        instr.unpackMode, instr.packMode, instr.decoration);
+        instr.getArgument(1) ? instr.getArgument(1) : code == OP_V8MIN ? instr.getArgument(0) : NO_VALUE, unpackMode,
+        packMode, instr.decoration);
 }
 
 static std::shared_ptr<Expression> createRecursiveExpressionInner(const intermediate::IntermediateInstruction& instr,
@@ -820,7 +826,7 @@ intermediate::IntermediateInstruction* Expression::toInstruction(const Value& ou
         // check for fake opcodes
         return nullptr;
 
-    intermediate::IntermediateInstruction* inst;
+    intermediate::Operation* inst;
     auto firstVal = arg0.checkValue();
     auto secondVal = arg1.checkValue();
     if(firstVal && code.numOperands == 1)

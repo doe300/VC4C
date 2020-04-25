@@ -843,7 +843,7 @@ static void generateStopSegment(Method& method)
     method.appendToEnd(
         (new intermediate::Operation(OP_NOT, Value(REG_HOST_INTERRUPT, TYPE_INT8), Value(REG_QPU_NUMBER, TYPE_INT8)))
             ->addDecorations(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
-    intermediate::IntermediateInstruction* nop = new intermediate::Nop(intermediate::DelayType::THREAD_END);
+    auto nop = new intermediate::Nop(intermediate::DelayType::THREAD_END);
     // set signals to stop thread/program
     nop->setSignaling(SIGNAL_END_PROGRAM);
     method.appendToEnd(nop);
@@ -1691,11 +1691,13 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
                 ConditionCode cond = COND_ALWAYS;
                 {
                     auto branch = lastIt.get<intermediate::Branch>();
+                    Optional<InstructionWalker> branchCondition{};
                     if(branch && branch->getTarget() == succ->key->getLabel()->getLabel() &&
-                        branch->hasConditionalExecution())
+                        !branch->isUnconditional() &&
+                        (branchCondition = predecessor.key->findLastBranchCondition(lastIt)))
                     {
-                        condVal = branch->getCondition();
-                        cond = branch->conditional;
+                        condVal = branchCondition->get<intermediate::BranchCondition>()->getBranchCondition();
+                        cond = branch->branchCondition.toConditionCode();
                     }
                     else
                     {
@@ -1735,9 +1737,9 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
                     // possible
                     for(auto loc : nonlocalLocals)
                     {
-                        if(lastIt->writesLocal(loc))
+                        if(lastIt->writesLocal(loc) && lastIt.get<ExtendedInstruction>())
                         {
-                            lastIt->setCondition(cond);
+                            lastIt.get<ExtendedInstruction>()->setCondition(cond);
                             break;
                         }
                     }
@@ -1825,8 +1827,7 @@ static void resetReturnBranches(Method& method, BasicBlock& lastBlock, BasicBloc
                     log << "Resetting branch to last block to jump to first work-group repetition block instead: "
                         << walker->to_string() << logging::endl);
                 // need to reset the instruction to correctly update the CFG
-                walker.reset((new intermediate::Branch(
-                                  resetBlock.getLabel()->getLabel(), branch->conditional, branch->getCondition()))
+                walker.reset((new intermediate::Branch(resetBlock.getLabel()->getLabel(), branch->branchCondition))
                                  ->copyExtrasFrom(branch));
             }
         }
@@ -1905,8 +1906,9 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     auto condValue = method.addNewLocal(TYPE_BOOL);
     assign(it, condValue) = (BOOL_TRUE, cond);
     assign(it, condValue) = (BOOL_TRUE ^ BOOL_TRUE, cond.invert());
-    it.emplace((new intermediate::Branch(defaultBlock.getLabel()->getLabel(), COND_ZERO_CLEAR, condValue,
-                    1u << std::max(int8_t{0}, mergedValueIndex)))
+    it.emplace(new intermediate::BranchCondition(condValue, 1u << std::max(int8_t{0}, mergedValueIndex)));
+    it.nextInBlock();
+    it.emplace((new intermediate::Branch(defaultBlock.getLabel()->getLabel(), COND_ZERO_CLEAR.toBranchCondition()))
                    ->addDecorations(InstructionDecorations::WORK_GROUP_LOOP));
     it.nextInMethod();
     return it;

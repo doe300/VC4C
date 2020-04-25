@@ -45,8 +45,6 @@ std::string intermediate::toString(const InstructionDecorations decoration)
         res.append("unsigned ");
     if(has_flag(decoration, InstructionDecorations::PHI_NODE))
         res.append("phi ");
-    if(has_flag(decoration, InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
-        res.append("all_elements ");
     if(has_flag(decoration, InstructionDecorations::ELEMENT_INSERTION))
         res.append("single_element ");
     if(has_flag(decoration, InstructionDecorations::AUTO_VECTORIZED))
@@ -127,11 +125,9 @@ bool intermediate::isGroupBuiltin(InstructionDecorations decorations, bool inclu
     return false;
 }
 
-IntermediateInstruction::IntermediateInstruction(
-    Optional<Value>&& output, ConditionCode cond, SetFlag setFlags, Pack packMode) :
-    signal(SIGNAL_NONE),
-    unpackMode(UNPACK_NOP), packMode(packMode), conditional(cond), setFlags(setFlags), canBeCombined(true),
-    decoration(InstructionDecorations::NONE), output(std::move(output)), arguments()
+IntermediateInstruction::IntermediateInstruction(Optional<Value>&& output) :
+    decoration(InstructionDecorations::NONE), signal(SIGNAL_NONE), unpackMode(UNPACK_NOP), packMode(PACK_NOP),
+    conditional(COND_ALWAYS), setFlags(SetFlag::DONT_SET), output(std::move(output)), arguments()
 {
     if(this->output)
         addAsUserToValue(this->output.value(), LocalUse::Type::WRITER);
@@ -150,8 +146,7 @@ bool IntermediateInstruction::operator==(const IntermediateInstruction& other) c
     if(this == &other)
         return true;
     if(signal != other.signal || unpackMode != other.unpackMode || packMode != other.packMode ||
-        conditional != other.conditional || setFlags != other.setFlags || canBeCombined != other.canBeCombined ||
-        decoration != other.decoration)
+        conditional != other.conditional || setFlags != other.setFlags || decoration != other.decoration)
         return false;
     if(output != other.output || arguments != other.arguments)
         return false;
@@ -253,36 +248,6 @@ IntermediateInstruction* IntermediateInstruction::setOutput(Optional<Value>&& ou
     return this;
 }
 
-IntermediateInstruction* IntermediateInstruction::setSignaling(const Signaling signal)
-{
-    this->signal = signal;
-    return this;
-}
-
-IntermediateInstruction* IntermediateInstruction::setPackMode(const Pack packMode)
-{
-    this->packMode = packMode;
-    return this;
-}
-
-IntermediateInstruction* IntermediateInstruction::setCondition(const ConditionCode condition)
-{
-    this->conditional = condition;
-    return this;
-}
-
-IntermediateInstruction* IntermediateInstruction::setSetFlags(const SetFlag setFlags)
-{
-    this->setFlags = setFlags;
-    return this;
-}
-
-IntermediateInstruction* IntermediateInstruction::setUnpackMode(const Unpack unpackMode)
-{
-    this->unpackMode = unpackMode;
-    return this;
-}
-
 IntermediateInstruction* IntermediateInstruction::addDecorations(const InstructionDecorations decorations)
 {
     this->decoration = add_flag(this->decoration, decorations);
@@ -322,6 +287,11 @@ bool IntermediateInstruction::hasOtherSideEffects(SideEffectType ignoreEffects) 
     return remove_flag(getSideEffects(), ignoreEffects) != SideEffectType::NONE;
 }
 
+Signaling IntermediateInstruction::getSignal() const
+{
+    return signal;
+}
+
 bool IntermediateInstruction::hasUnpackMode() const
 {
     return unpackMode.hasEffect();
@@ -337,27 +307,31 @@ bool IntermediateInstruction::hasConditionalExecution() const
     return conditional != COND_ALWAYS;
 }
 
-IntermediateInstruction* IntermediateInstruction::copyExtrasFrom(const IntermediateInstruction* src)
+IntermediateInstruction* IntermediateInstruction::copyExtrasFrom(const IntermediateInstruction* src, bool skipSignal)
 {
     if(conditional != COND_ALWAYS && src->conditional != COND_ALWAYS && conditional != src->conditional)
-        throw CompilationError(CompilationStep::GENERAL, "Failed to merge two distinct conditions", to_string());
+        throw CompilationError(CompilationStep::GENERAL, "Failed to merge two distinct conditions",
+            to_string() + " and " + src->to_string());
     if(conditional == COND_ALWAYS)
-        this->setCondition(src->conditional);
+        this->conditional = src->conditional;
     this->addDecorations(add_flag(this->decoration, src->decoration));
     if(packMode.hasEffect() && src->packMode.hasEffect() && packMode != src->packMode)
-        throw CompilationError(CompilationStep::GENERAL, "Failed to merge two distinct pack-modes", to_string());
+        throw CompilationError(CompilationStep::GENERAL, "Failed to merge two distinct pack-modes",
+            to_string() + " and " + src->to_string());
     if(!packMode.hasEffect())
-        this->setPackMode(src->packMode);
+        this->packMode = src->packMode;
     if(setFlags == SetFlag::DONT_SET)
-        this->setSetFlags(src->setFlags);
-    if(signal != SIGNAL_NONE && src->signal != SIGNAL_NONE && signal != src->signal)
-        throw CompilationError(CompilationStep::GENERAL, "Failed to merge two distinct signals", to_string());
-    if(signal == SIGNAL_NONE)
-        this->setSignaling(src->signal);
+        this->setFlags = src->setFlags;
+    if(!skipSignal && signal != SIGNAL_NONE && src->signal != SIGNAL_NONE && signal != src->signal)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Failed to merge two distinct signals", to_string() + " and " + src->to_string());
+    if(!skipSignal && signal == SIGNAL_NONE)
+        this->signal = src->signal;
     if(unpackMode.hasEffect() && src->unpackMode.hasEffect() && unpackMode != src->unpackMode)
-        throw CompilationError(CompilationStep::GENERAL, "Failed to merge two distinct unpack-modes", to_string());
+        throw CompilationError(CompilationStep::GENERAL, "Failed to merge two distinct unpack-modes",
+            to_string() + " and " + src->to_string());
     if(!unpackMode.hasEffect())
-        this->setUnpackMode(src->unpackMode);
+        this->unpackMode = src->unpackMode;
     return this;
 }
 
@@ -616,4 +590,76 @@ void IntermediateInstruction::addAsUserToValue(const Value& value, LocalUse::Typ
 bool IntermediateInstruction::doesSetFlag() const
 {
     return setFlags == SetFlag::SET_FLAGS;
+}
+
+SetFlag IntermediateInstruction::getFlags() const
+{
+    return setFlags;
+}
+
+SignalingInstruction::SignalingInstruction(Signaling signal, Optional<Value>&& output) :
+    IntermediateInstruction(std::move(output))
+{
+    this->signal = signal;
+}
+
+SignalingInstruction* SignalingInstruction::setSignaling(const Signaling signal)
+{
+    this->signal = signal;
+    return this;
+}
+
+ExtendedInstruction::ExtendedInstruction(
+    Signaling signal, ConditionCode cond, SetFlag setFlags, Pack packMode, Optional<Value>&& output) :
+    SignalingInstruction(signal, std::move(output))
+{
+    this->conditional = cond;
+    this->setFlags = setFlags;
+    this->packMode = packMode;
+}
+
+Pack ExtendedInstruction::getPackMode() const
+{
+    return packMode;
+}
+
+ExtendedInstruction* ExtendedInstruction::setPackMode(const Pack packMode)
+{
+    this->packMode = packMode;
+    return this;
+}
+
+ConditionCode ExtendedInstruction::getCondition() const
+{
+    return conditional;
+}
+
+ExtendedInstruction* ExtendedInstruction::setCondition(const ConditionCode condition)
+{
+    this->conditional = condition;
+    return this;
+}
+
+ExtendedInstruction* ExtendedInstruction::setSetFlags(const SetFlag setFlags)
+{
+    this->setFlags = setFlags;
+    return this;
+}
+
+UnpackingInstruction::UnpackingInstruction(Signaling signal, ConditionCode cond, SetFlag setFlags, Pack packMode,
+    Unpack unpackMode, Optional<Value>&& output) :
+    ExtendedInstruction(signal, cond, setFlags, packMode, std::move(output))
+{
+    this->unpackMode = unpackMode;
+}
+
+Unpack UnpackingInstruction::getUnpackMode() const
+{
+    return unpackMode;
+}
+
+UnpackingInstruction* UnpackingInstruction::setUnpackMode(const Unpack unpackMode)
+{
+    this->unpackMode = unpackMode;
+    return this;
 }

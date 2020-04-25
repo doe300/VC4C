@@ -117,9 +117,9 @@ static void lowerLongOperation(
     {
         // %a - %b => %a + -%b
         // build two's complement by inverting all bits and adding one
-        auto tmp = assign(it, op.getSecondArg()->type) = (~op.getSecondArg().value(), op.conditional, op.decoration);
+        auto tmp = assign(it, op.getSecondArg()->type) = (~op.getSecondArg().value(), op.getCondition(), op.decoration);
         auto firstIt = it.copy().previousInBlock();
-        tmp = assign(it, op.getSecondArg()->type) = (tmp + 1_val, op.conditional, op.decoration);
+        tmp = assign(it, op.getSecondArg()->type) = (tmp + 1_val, op.getCondition(), op.decoration);
         auto secondIt = it.copy().previousInBlock();
         op.op = OP_ADD;
         op.setArgument(1, tmp);
@@ -132,7 +132,7 @@ static void lowerLongOperation(
     }
     else if(op.op == OP_NOT)
     {
-        assign(it, out->lower->createReference()) = (~in0Low, op.conditional, op.decoration);
+        assign(it, out->lower->createReference()) = (~in0Low, op.getCondition(), op.decoration);
         op.setOutput(out->upper->createReference());
         op.setArgument(0, in0Up);
     }
@@ -149,8 +149,8 @@ static void lowerLongOperation(
     else if(op.op == OP_SHR || op.op == OP_ASR)
     {
         auto offsetType = TYPE_INT8.toVectorType(outLocal->type.getVectorWidth());
-        it.emplace(new intermediate::Operation(OP_MIN, NOP_REGISTER, 32_val, in1Low.value()));
-        it->setSetFlags(SetFlag::SET_FLAGS);
+        it.emplace((new intermediate::Operation(OP_MIN, NOP_REGISTER, 32_val, in1Low.value()))
+                       ->setSetFlags(SetFlag::SET_FLAGS));
         it.nextInBlock();
         auto cond = COND_CARRY_CLEAR;
         auto zeroCond = COND_ZERO_SET;
@@ -198,8 +198,8 @@ static void lowerLongOperation(
     else if(op.op == OP_SHL)
     {
         auto offsetType = TYPE_INT8.toVectorType(outLocal->type.getVectorWidth());
-        it.emplace(new intermediate::Operation(OP_MIN, NOP_REGISTER, 32_val, in1Low.value()));
-        it->setSetFlags(SetFlag::SET_FLAGS);
+        it.emplace((new intermediate::Operation(OP_MIN, NOP_REGISTER, 32_val, in1Low.value()))
+                       ->setSetFlags(SetFlag::SET_FLAGS));
         it.nextInBlock();
         auto cond = COND_CARRY_CLEAR;
         auto zeroCond = COND_ZERO_SET;
@@ -262,8 +262,8 @@ static void lowerLongOperation(
         auto upperEqualOrLessLower = assign(it, out->lower->type, "%long_max") = (upperEqualLower, equalCond);
         assign(it, upperEqualOrLessLower) = (in1Low.value(), equalCond.invert());
 
-        it.emplace(new intermediate::Operation(OP_MAX, out->upper->createReference(), in0Up, in1Up.value()));
-        it->setSetFlags(SetFlag::SET_FLAGS);
+        it.emplace((new intermediate::Operation(OP_MAX, out->upper->createReference(), in0Up, in1Up.value()))
+                       ->setSetFlags(SetFlag::SET_FLAGS));
         it.nextInBlock();
 
         assign(it, out->lower->createReference()) = (in0Low, COND_CARRY_SET);
@@ -302,8 +302,8 @@ static void lowerLongOperation(
         assign(it, upperEqualOrGreaterLower) = (in1Low.value(), equalCond.invert());
 
         // min(a, b) sets carry flag is a > b, so we invert operands to set carry if %a < %b
-        it.emplace(new intermediate::Operation(OP_MIN, out->upper->createReference(), in1Up.value(), in0Up));
-        it->setSetFlags(SetFlag::SET_FLAGS);
+        it.emplace((new intermediate::Operation(OP_MIN, out->upper->createReference(), in1Up.value(), in0Up))
+                       ->setSetFlags(SetFlag::SET_FLAGS));
         it.nextInBlock();
 
         assign(it, out->lower->createReference()) = (in0Low, COND_CARRY_SET);
@@ -407,15 +407,15 @@ void normalization::lowerLongOperation(
 
         if(out && call->methodName.find("vc4cl_int_to_long") != std::string::npos)
         {
-            it = intermediate::insertSignExtension(it, method, call->assertArgument(0), outLoc->createReference(), true,
-                call->conditional, call->setFlags);
+            it =
+                intermediate::insertSignExtension(it, method, call->assertArgument(0), outLoc->createReference(), true);
             it.erase();
         }
         else if(out && call->methodName.find("vc4cl_int_to_ulong") != std::string::npos)
         {
             // see "zext" above
-            it = intermediate::insertZeroExtension(it, method, call->assertArgument(0), outLoc->createReference(), true,
-                call->conditional, call->setFlags);
+            it =
+                intermediate::insertZeroExtension(it, method, call->assertArgument(0), outLoc->createReference(), true);
             it.erase();
         }
         else if(src && call->methodName.find("vc4cl_long_to_int_sat") != std::string::npos)
@@ -451,8 +451,7 @@ void normalization::lowerLongOperation(
         else if(src && call->methodName.find("vc4cl_long_to_int") != std::string::npos)
         {
             // TODO correct for signed??
-            assign(it, call->getOutput().value()) =
-                (src->lower->createReference(), call->conditional, call->decoration);
+            assign(it, call->getOutput().value()) = (src->lower->createReference(), call->decoration);
             it.erase();
         }
         else if(out && src && call->methodName.find("vc4cl_bitcast_long") != std::string::npos)

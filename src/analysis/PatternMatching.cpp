@@ -362,7 +362,7 @@ static bool matchesOnly(const intermediate::IntermediateInstruction* inst, Instr
         return false;
 
     // pack/unpack modes and signals with side-effects are not supported
-    if(inst->hasPackMode() || inst->hasUnpackMode() || inst->signal.hasSideEffects())
+    if(inst->hasPackMode() || inst->hasUnpackMode() || inst->getSignal().hasSideEffects())
         return false;
 
     if(!matchesValue(inst->getOutput(), pattern.output, previousCache, newCache))
@@ -378,9 +378,12 @@ static bool matchesOnly(const intermediate::IntermediateInstruction* inst, Instr
         return false;
     if(!matchesValue(inst->getArgument(1), pattern.secondArgument, previousCache, newCache))
         return false;
-    if(!matchesCondition(inst->conditional, pattern.condition, previousCache, newCache))
+    auto cond = (check(dynamic_cast<const intermediate::ExtendedInstruction*>(inst)) &
+        &intermediate::ExtendedInstruction::getCondition)
+                    .value_or(COND_ALWAYS);
+    if(!matchesCondition(cond, pattern.condition, previousCache, newCache))
         return false;
-    if(!matchesFlag(inst->setFlags, pattern.flags, previousCache, newCache))
+    if(!matchesFlag(inst->getFlags(), pattern.flags, previousCache, newCache))
         return false;
 
     return true;
@@ -395,8 +398,11 @@ static void updateOnly(const intermediate::IntermediateInstruction* inst, Instru
     // -> how to (for capture) decide, which way around to capture??
     updateMatch(inst->getArgument(0), pattern.firstArgument);
     updateMatch(inst->getArgument(1), pattern.secondArgument);
-    updateMatch(inst->conditional, pattern.condition);
-    updateMatch(inst->setFlags, pattern.flags);
+    auto cond = (check(dynamic_cast<const intermediate::ExtendedInstruction*>(inst)) &
+        &intermediate::ExtendedInstruction::getCondition)
+                    .value_or(COND_ALWAYS);
+    updateMatch(cond, pattern.condition);
+    updateMatch(inst->getFlags(), pattern.flags);
 }
 
 bool pattern::matches(const intermediate::IntermediateInstruction* inst, InstructionPattern& pattern)
@@ -511,7 +517,7 @@ static InstructionWalker searchInnerGapped(InstructionWalker start, Pattern& pat
         {
             // this instruction does not match - it is an unrelated gap
             // check for side-effects, determine written locals
-            if(it.has() && (it->signal.hasSideEffects() || it->doesSetFlag()))
+            if(it.has() && (it->getSignal().hasSideEffects() || it->doesSetFlag()))
                 // some side-effects in a gap instruction which don't allow for pattern to continue
                 // XXX for flags, only abort if flags are actually used
                 return InstructionWalker{};

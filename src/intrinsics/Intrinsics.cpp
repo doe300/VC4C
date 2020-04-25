@@ -63,11 +63,11 @@ static IntrinsicFunction intrinsifyUnaryALUInstruction(const std::string& opCode
                 (new Operation(OpCode::toOpCode(opCode), callSite->getOutput().value(), callSite->assertArgument(0)))
                     ->copyExtrasFrom(callSite));
         if(packMode.hasEffect())
-            it->setPackMode(packMode);
+            it.get<ExtendedInstruction>()->setPackMode(packMode);
         if(unpackMode.hasEffect())
-            it->setUnpackMode(unpackMode);
+            it.get<UnpackingInstruction>()->setUnpackMode(unpackMode);
         if(setFlags)
-            it->setSetFlags(SetFlag::SET_FLAGS);
+            it.get<ExtendedInstruction>()->setSetFlags(SetFlag::SET_FLAGS);
 
         if(useSignFlag && isUnsigned)
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
@@ -90,11 +90,11 @@ static IntrinsicFunction intrinsifyBinaryALUInstruction(const std::string& opCod
                       callSite->assertArgument(1)))
                      ->copyExtrasFrom(callSite));
         if(packMode.hasEffect())
-            it->setPackMode(packMode);
+            it.get<ExtendedInstruction>()->setPackMode(packMode);
         if(unpackMode.hasEffect())
-            it->setUnpackMode(unpackMode);
+            it.get<UnpackingInstruction>()->setUnpackMode(unpackMode);
         if(setFlags)
-            it->setSetFlags(SetFlag::SET_FLAGS);
+            it.get<ExtendedInstruction>()->setSetFlags(SetFlag::SET_FLAGS);
 
         if(useSignFlag && isUnsigned)
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
@@ -531,8 +531,7 @@ static bool intrinsifyUnary(Method& method, InstructionWalker it)
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Intrinsifying unary '" << callSite->to_string()
                         << "' to pre-calculated value: " << result->to_string() << logging::endl);
-                it.reset(new MoveOperation(
-                    callSite->getOutput().value(), result.value(), callSite->conditional, callSite->setFlags));
+                it.reset(new MoveOperation(callSite->getOutput().value(), result.value()));
             }
             else
                 pair.second.func(method, it, callSite);
@@ -550,8 +549,7 @@ static bool intrinsifyUnary(Method& method, InstructionWalker it)
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Intrinsifying type-cast '" << callSite->to_string()
                         << "' to pre-calculated value: " << result->to_string() << logging::endl);
-                it.reset(new MoveOperation(
-                    callSite->getOutput().value(), result.value(), callSite->conditional, callSite->setFlags));
+                it.reset(new MoveOperation(callSite->getOutput().value(), result.value()));
             }
             else if(!pair.second.second) // there is no value to apply -> simple move
             {
@@ -597,8 +595,7 @@ static bool intrinsifyBinary(Method& method, InstructionWalker it)
                     log << "Intrinsifying binary '" << callSite->to_string() << "' to pre-calculated value"
                         << logging::endl);
                 it.reset(new MoveOperation(callSite->getOutput().value(),
-                    pair.second.binaryInstr.value()(callSite->assertArgument(0), callSite->assertArgument(1)).value(),
-                    callSite->conditional, callSite->setFlags));
+                    pair.second.binaryInstr.value()(callSite->assertArgument(0), callSite->assertArgument(1)).value()));
             }
             else
                 pair.second.func(method, it, callSite);
@@ -677,8 +674,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
                 log << "Calculating result for multiplication with constants: " << op->to_string() << logging::endl);
             it.reset((new MoveOperation(Value(op->getOutput()->local(), arg0.type),
                           Value(Literal(arg0.getLiteralValue()->signedInt() * arg1.getLiteralValue()->signedInt()),
-                              arg0.type),
-                          op->conditional, op->setFlags))
+                              arg0.type)))
                          ->copyExtrasFrom(it.get()));
         }
         else if(arg0.getLiteralValue() && arg0.getLiteralValue()->signedInt() > 0 &&
@@ -689,8 +685,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
                 log << "Intrinsifying multiplication with left-shift: " << op->to_string() << logging::endl);
             it.reset(
                 (new Operation(OP_SHL, op->getOutput().value(), arg1,
-                     Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt()))), arg0.type),
-                     op->conditional, op->setFlags))
+                     Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt()))), arg0.type)))
                     ->copyExtrasFrom(it.get()));
         }
         else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
@@ -701,16 +696,14 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
                 log << "Intrinsifying multiplication with left-shift: " << op->to_string() << logging::endl);
             it.reset(
                 (new Operation(OP_SHL, op->getOutput().value(), op->getFirstArg(),
-                     Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt()))), arg1.type),
-                     op->conditional, op->setFlags))
+                     Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt()))), arg1.type)))
                     ->copyExtrasFrom(it.get()));
         }
         else if(std::max(arg0.type.getScalarBitCount(), arg1.type.getScalarBitCount()) <= 24)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying multiplication of small integers to mul24: " << op->to_string() << logging::endl);
-            it.reset((new Operation(OP_MUL24, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1),
-                          op->conditional, op->setFlags))
+            it.reset((new Operation(OP_MUL24, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1)))
                          ->copyExtrasFrom(it.get()));
         }
         else if(arg0.getLiteralValue() && arg0.getLiteralValue()->signedInt() > 0 &&
@@ -722,12 +715,9 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
             // TODO could make more general, similar to "binary method" implementation/integrate into that
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying multiplication with left-shift and minus: " << op->to_string() << logging::endl);
-            auto tmp = assign(it, arg1.type, "%mul_shift") =
-                (arg1 << Value(
-                     Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt() + 1))), arg0.type),
-                    op->conditional);
-            it.reset((new Operation(OP_SUB, op->getOutput().value(), tmp, arg1, op->conditional, op->setFlags))
-                         ->copyExtrasFrom(it.get()));
+            auto tmp = assign(it, arg1.type, "%mul_shift") = (arg1
+                << Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt() + 1))), arg0.type));
+            it.reset((new Operation(OP_SUB, op->getOutput().value(), tmp, arg1))->copyExtrasFrom(it.get()));
         }
         else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
             isPowerTwo(arg1.getLiteralValue()->unsignedInt() + 1))
@@ -735,12 +725,9 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
             // x * (2^k - 1) = x * 2^k - x = x << k - x
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying multiplication with left-shift and minus: " << op->to_string() << logging::endl);
-            auto tmp = assign(it, arg0.type, "%mul_shift") =
-                (arg0 << Value(
-                     Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt() + 1))), arg0.type),
-                    op->conditional);
-            it.reset((new Operation(OP_SUB, op->getOutput().value(), tmp, arg0, op->conditional, op->setFlags))
-                         ->copyExtrasFrom(it.get()));
+            auto tmp = assign(it, arg0.type, "%mul_shift") = (arg0
+                << Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt() + 1))), arg0.type));
+            it.reset((new Operation(OP_SUB, op->getOutput().value(), tmp, arg0))->copyExtrasFrom(it.get()));
         }
         else if(canOptimizeMultiplicationWithBinaryMethod(*op))
         {
@@ -771,8 +758,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
                 log << "Calculating result for division with constants: " << op->to_string() << logging::endl);
             it.reset((new MoveOperation(Value(op->getOutput()->local(), arg0.type),
                           Value(Literal(arg0.getLiteralValue()->unsignedInt() / arg1.getLiteralValue()->unsignedInt()),
-                              arg0.type),
-                          op->conditional, op->setFlags))
+                              arg0.type)))
                          ->copyExtrasFrom(it.get()));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
@@ -784,8 +770,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
                 log << "Intrinsifying division with right-shift: " << op->to_string() << logging::endl);
             it.reset(
                 (new Operation(OP_SHR, op->getOutput().value(), op->getFirstArg(),
-                     Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->unsignedInt()))), arg1.type),
-                     op->conditional, op->setFlags))
+                     Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->unsignedInt()))), arg1.type)))
                     ->copyExtrasFrom(it.get()));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
@@ -809,8 +794,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
                 log << "Calculating result for signed division with constants: " << op->to_string() << logging::endl);
             it.reset((new MoveOperation(Value(op->getOutput()->local(), arg0.type),
                           Value(Literal(arg0.getLiteralValue()->signedInt() / arg1.getLiteralValue()->signedInt()),
-                              arg0.type),
-                          op->conditional, op->setFlags))
+                              arg0.type)))
                          ->copyExtrasFrom(it.get()));
         }
         // a / 2^n = (abs(a) >> n) * sign(a)
@@ -825,7 +809,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
             it = insertMakePositive(it, method, arg0, tmp, sign);
             Value tmpResult = assign(it, op->getOutput()->type) = (as_unsigned{tmp} >>
                     Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->unsignedInt()))), arg1.type),
-                op->conditional, op->setFlags, InstructionDecorations::UNSIGNED_RESULT);
+                InstructionDecorations::UNSIGNED_RESULT);
             Value tmpResult2 = op->getOutput().value();
             it = insertRestoreSign(it, method, tmpResult, tmpResult2, sign);
             if(!(tmpResult2 == op->getOutput().value()))
@@ -876,8 +860,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
                 log << "Calculating result for modulo with constants: " << op->to_string() << logging::endl);
             it.reset((new MoveOperation(Value(op->getOutput()->local(), arg0.type),
                           Value(Literal(arg0.getLiteralValue()->unsignedInt() % arg1.getLiteralValue()->unsignedInt()),
-                              arg0.type),
-                          op->conditional, op->setFlags))
+                              arg0.type)))
                          ->copyExtrasFrom(it.get()));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
@@ -887,8 +870,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying unsigned modulo by power of two: " << op->to_string() << logging::endl);
             it.reset((new Operation(OP_AND, op->getOutput().value(), op->getFirstArg(),
-                          Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type), op->conditional,
-                          op->setFlags))
+                          Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type)))
                          ->copyExtrasFrom(it.get()));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
@@ -909,8 +891,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
                 log << "Calculating result for signed modulo with constants: " << op->to_string() << logging::endl);
             it.reset((new MoveOperation(Value(op->getOutput()->local(), arg0.type),
                           Value(Literal(arg0.getLiteralValue()->signedInt() % arg1.getLiteralValue()->signedInt()),
-                              arg0.type),
-                          op->conditional, op->setFlags))
+                              arg0.type)))
                          ->copyExtrasFrom(it.get()));
         }
         // a % 2^n = (abs(a) & 2^n-1) * sign(a)
@@ -923,8 +904,8 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
             Value sign = UNDEFINED_VALUE;
             it = insertMakePositive(it, method, arg0, tmp, sign);
             Value tmpResult = assign(it, op->getOutput()->type) =
-                (tmp & Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type), op->conditional,
-                    op->setFlags, InstructionDecorations::UNSIGNED_RESULT);
+                (tmp & Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type),
+                    InstructionDecorations::UNSIGNED_RESULT);
             Value tmpResult2 = op->getOutput().value();
             it = insertRestoreSign(it, method, tmpResult, tmpResult2, sign);
             if(!(tmpResult2 == op->getOutput().value()))
@@ -952,8 +933,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Calculating result for signed division with constants: " << op->to_string() << logging::endl);
             it.reset((new MoveOperation(Value(op->getOutput()->local(), arg0.type),
-                          Value(Literal(arg0.getLiteralValue()->real() / arg1.getLiteralValue()->real()), arg0.type),
-                          op->conditional, op->setFlags))
+                          Value(Literal(arg0.getLiteralValue()->real() / arg1.getLiteralValue()->real()), arg0.type)))
                          ->copyExtrasFrom(it.get()));
         }
         else if(arg1.getLiteralValue() || arg1.checkVector())
@@ -962,7 +942,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
                 log << "Intrinsifying floating division with multiplication of constant inverse: " << op->to_string()
                     << logging::endl);
             it.reset((new Operation(OP_FMUL, op->getOutput().value(), op->getFirstArg(),
-                          periphery::precalculateSFU(REG_SFU_RECIP, arg1).value(), op->conditional, op->setFlags))
+                          periphery::precalculateSFU(REG_SFU_RECIP, arg1).value()))
                          ->copyExtrasFrom(it.get()));
         }
         else if(op->hasDecoration(InstructionDecorations::ALLOW_RECIP) ||
@@ -973,7 +953,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
                     << logging::endl);
             it = periphery::insertSFUCall(REG_SFU_RECIP, it, arg1);
             it.reset((new Operation(OP_FMUL, op->getOutput().value(), op->getFirstArg(),
-                          Value(REG_SFU_OUT, op->getFirstArg().type), op->conditional, op->setFlags))
+                          Value(REG_SFU_OUT, op->getFirstArg().type)))
                          ->copyExtrasFrom(it.get()));
         }
         else
@@ -1011,16 +991,14 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
             auto src = op->getFirstArg();
             if(auto data = Local::getLocalData<MultiRegisterData>(src.checkLocal()))
                 src = data->lower->createReference();
-            it.reset(
-                (new MoveOperation(op->getOutput().value(), src, op->conditional, op->setFlags))->copyExtrasFrom(op));
+            it.reset((new MoveOperation(op->getOutput().value(), src))->copyExtrasFrom(op));
         }
         // if dest < i32 -> orig & dest-bits or pack-code
         else if(op->getOutput()->type.getScalarBitCount() < 32)
         {
             CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying truncate with and" << logging::endl);
             it.reset((new Operation(OP_AND, op->getOutput().value(), op->getFirstArg(),
-                          Value(Literal(op->getOutput()->type.getScalarWidthMask()), TYPE_INT32), op->conditional,
-                          op->setFlags))
+                          Value(Literal(op->getOutput()->type.getScalarWidthMask()), TYPE_INT32)))
                          ->copyExtrasFrom(it.get()));
         }
         else
@@ -1048,14 +1026,12 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
             // done (e.g. when directly loaded from TMU)
             // TODO need some central/better way of correctly sign-extending the values always!
             auto tmp = method.addNewLocal(op->getFirstArg().type, "%asr.sext");
-            it = insertSignExtension(it, method, op->getFirstArg(), tmp, true, op->conditional);
-            it.reset((new Operation(
-                          OP_ASR, op->getOutput().value(), tmp, op->assertArgument(1), op->conditional, op->setFlags))
-                         ->copyExtrasFrom(it.get()));
+            it = insertSignExtension(it, method, op->getFirstArg(), tmp, true);
+            it.reset(
+                (new Operation(OP_ASR, op->getOutput().value(), tmp, op->assertArgument(1)))->copyExtrasFrom(it.get()));
         }
         else
-            it.reset((new Operation(OP_ASR, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1),
-                          op->conditional, op->setFlags))
+            it.reset((new Operation(OP_ASR, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1)))
                          ->copyExtrasFrom(it.get()));
         return true;
     }
@@ -1067,9 +1043,9 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
         if(op->getFirstArg().type.getScalarBitCount() < 32)
         {
             tmp = method.addNewLocal(TYPE_INT32, "%sitofp");
-            it = insertSignExtension(it, method, op->getFirstArg(), tmp, true, op->conditional);
+            it = insertSignExtension(it, method, op->getFirstArg(), tmp, true);
         }
-        it.reset(new Operation(OP_ITOF, op->getOutput().value(), tmp, op->conditional, op->setFlags));
+        it.reset(new Operation(OP_ITOF, op->getOutput().value(), tmp));
         return true;
     }
     else if(op->opCode == "uitofp")
@@ -1079,8 +1055,8 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
         {
             // make sure, leading bits are zeroes
             const uint32_t mask = op->getFirstArg().type.getScalarWidthMask();
-            assign(it, tmp) = (op->getFirstArg() & Value(Literal(mask), TYPE_INT32), op->conditional);
-            it.reset(new Operation(OP_ITOF, op->getOutput().value(), tmp, op->conditional, op->setFlags));
+            assign(it, tmp) = (op->getFirstArg() & Value(Literal(mask), TYPE_INT32));
+            it.reset(new Operation(OP_ITOF, op->getOutput().value(), tmp));
         }
         else if(op->getFirstArg().type.getScalarBitCount() > 32)
         {
@@ -1116,8 +1092,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
             it.reset((new MoveOperation(*op->getOutput(), tmp))->copyExtrasFrom(op));
         }
         else
-            it.reset((new Operation(OP_FTOI, op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags))
-                         ->copyExtrasFrom(it.get()));
+            it.reset((new Operation(OP_FTOI, op->getOutput().value(), op->getFirstArg()))->copyExtrasFrom(it.get()));
         return true;
     }
     // float to unsigned integer
@@ -1152,7 +1127,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
         else
         {
             // converting negative float values to unsigned types is implementation defined anyway
-            it.reset(new Operation(OP_FTOI, op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags));
+            it.reset(new Operation(OP_FTOI, op->getOutput().value(), op->getFirstArg()));
             it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
         return true;
@@ -1162,8 +1137,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying sign extension with shifting: " << op->to_string() << logging::endl);
-        it = insertSignExtension(
-            it, method, op->getFirstArg(), op->getOutput().value(), true, op->conditional, op->setFlags);
+        it = insertSignExtension(it, method, op->getFirstArg(), op->getOutput().value(), true);
         // remove 'sext'
         it.erase();
         return true;
@@ -1173,8 +1147,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying zero extension with and: " << op->to_string() << logging::endl);
-        it = insertZeroExtension(
-            it, method, op->getFirstArg(), op->getOutput().value(), true, op->conditional, op->setFlags);
+        it = insertZeroExtension(it, method, op->getFirstArg(), op->getOutput().value(), true);
         // remove 'zext'
         it.erase();
         return true;

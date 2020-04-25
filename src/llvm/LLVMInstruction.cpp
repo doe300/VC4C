@@ -581,7 +581,7 @@ bool Selection::mapInstruction(Method& method)
          * selected."
          */
         auto it = intermediate::insertReplication(method.appendToEnd(), cond, NOP_REGISTER, true);
-        it.previousInBlock()->setFlags = SetFlag::SET_FLAGS;
+        it.previousInBlock().get<intermediate::ExtendedInstruction>()->setSetFlags(SetFlag::SET_FLAGS);
     }
     else
         method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, cond, COND_ALWAYS, SetFlag::SET_FLAGS));
@@ -604,18 +604,20 @@ bool Branch::mapInstruction(Method& method)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating unconditional branch to " << thenLabel.to_string() << logging::endl);
-        method.appendToEnd(
-            (new intermediate::Branch(thenLabel.local()))->addDecorations(decorations));
+        method.appendToEnd((new intermediate::Branch(thenLabel.local()))->addDecorations(decorations));
     }
     else
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating branch on condition " << cond.to_string() << " to either " << thenLabel.to_string()
                 << " or " << elseLabel.to_string() << logging::endl);
-        method.appendToEnd((new intermediate::Branch(thenLabel.local(), COND_ZERO_CLEAR /* condition is true */, cond))
-                               ->addDecorations(decorations));
-        method.appendToEnd((new intermediate::Branch(elseLabel.local(), COND_ZERO_SET /* condition is false */, cond))
-                               ->addDecorations(decorations));
+        method.appendToEnd(new intermediate::BranchCondition(cond));
+        method.appendToEnd(
+            (new intermediate::Branch(thenLabel.local(), COND_ZERO_CLEAR.toBranchCondition() /* condition is true */))
+                ->addDecorations(decorations));
+        method.appendToEnd(
+            (new intermediate::Branch(elseLabel.local(), COND_ZERO_SET.toBranchCondition() /* condition is false */))
+                ->addDecorations(decorations));
     }
 
     return true;
@@ -637,7 +639,8 @@ bool Switch::mapInstruction(Method& method)
         Value tmp = method.addNewLocal(TYPE_BOOL, "%switch");
         method.appendToEnd(new intermediate::Comparison(
             intermediate::COMP_EQ, Value(tmp), std::move(cond), Value(Literal(option.first), TYPE_INT32)));
-        method.appendToEnd(new intermediate::Branch(option.second.local(), COND_ZERO_CLEAR, tmp));
+        method.appendToEnd(new intermediate::BranchCondition(tmp));
+        method.appendToEnd(new intermediate::Branch(option.second.local(), COND_ZERO_CLEAR.toBranchCondition()));
     }
     // branch default label
     method.appendToEnd(new intermediate::Branch(defaultLabel.local()));

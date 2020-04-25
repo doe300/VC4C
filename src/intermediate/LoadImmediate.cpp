@@ -20,7 +20,7 @@ using namespace vc4c;
 using namespace vc4c::intermediate;
 
 LoadImmediate::LoadImmediate(const Value& dest, const Literal& source, ConditionCode cond, const SetFlag setFlags) :
-    IntermediateInstruction(dest, cond, setFlags), type(LoadType::REPLICATE_INT32)
+    ExtendedInstruction(SIGNAL_LOAD_IMMEDIATE, cond, setFlags, PACK_NOP, dest), type(LoadType::REPLICATE_INT32)
 {
     // 32-bit integers are loaded through all SIMD-elements!
     // "[...] write either a 32-bit immediate across the entire SIMD array" (p. 33)
@@ -28,7 +28,7 @@ LoadImmediate::LoadImmediate(const Value& dest, const Literal& source, Condition
 }
 
 LoadImmediate::LoadImmediate(const Value& dest, uint32_t mask, LoadType type, ConditionCode cond, SetFlag setFlags) :
-    IntermediateInstruction(dest, cond, setFlags), type(type)
+    ExtendedInstruction(SIGNAL_LOAD_IMMEDIATE, cond, setFlags, PACK_NOP, dest), type(type)
 {
     setArgument(0, Value(Literal(mask), TYPE_INT32));
 }

@@ -193,11 +193,13 @@ bool BasicBlock::fallsThroughToNextBlock(bool useCFGIfAvailable) const
     do
     {
         it.previousInBlock();
-        if(it.get() && it->signal == SIGNAL_END_PROGRAM)
+        if(it.get() && it->getSignal() == SIGNAL_END_PROGRAM)
             return false;
     } while(it.get<const intermediate::Nop>());
+    auto lastBranchIt = it;
     const intermediate::Branch* lastBranch = it.get<const intermediate::Branch>();
     const intermediate::Branch* secondLastBranch = nullptr;
+    ConstInstructionWalker secondLastBranchIt;
     if(!it.isStartOfBlock())
     {
         do
@@ -208,6 +210,7 @@ bool BasicBlock::fallsThroughToNextBlock(bool useCFGIfAvailable) const
             it.previousInBlock();
         } while(!it.get<const intermediate::Branch>());
         secondLastBranch = it.get<const intermediate::Branch>();
+        secondLastBranchIt = it;
     }
     if(lastBranch != nullptr && lastBranch->isUnconditional())
     {
@@ -216,11 +219,13 @@ bool BasicBlock::fallsThroughToNextBlock(bool useCFGIfAvailable) const
     // for either-there-or-there branches, we need to check the two last instructions and see if they cover all
     // conditions
     if(lastBranch != nullptr && secondLastBranch != nullptr &&
-        lastBranch->getCondition() == secondLastBranch->getCondition() &&
-        lastBranch->conditionalElements == secondLastBranch->conditionalElements &&
-        lastBranch->conditional.isInversionOf(secondLastBranch->conditional))
+        lastBranch->branchCondition.isInversionOf(secondLastBranch->branchCondition))
     {
-        return false;
+        auto lastBranchCond = findLastBranchCondition(lastBranchIt);
+        auto secondLastBranchCond = findLastBranchCondition(secondLastBranchIt);
+        if(lastBranchCond == secondLastBranchCond)
+            // the branches are only guaranteed to cover all cases if they refer to the same branch condition
+            return false;
     }
     return true;
 }
@@ -244,13 +249,32 @@ Optional<InstructionWalker> BasicBlock::findLastSettingOfFlags(const Instruction
     InstructionWalker it = start.copy().previousInBlock();
     while(!it.isStartOfBlock())
     {
-        if(it->setFlags == SetFlag::SET_FLAGS)
+        if(it->doesSetFlag())
             return it;
         if(auto comb = it.get<intermediate::CombinedOperation>())
         {
-            if(comb->op1 && comb->op1->setFlags == SetFlag::SET_FLAGS)
+            if(comb->op1 && comb->op1->doesSetFlag())
                 return it;
-            if(comb->op2 && comb->op2->setFlags == SetFlag::SET_FLAGS)
+            if(comb->op2 && comb->op2->doesSetFlag())
+                return it;
+        }
+        it.previousInBlock();
+    }
+    return {};
+}
+
+Optional<ConstInstructionWalker> BasicBlock::findLastSettingOfFlags(const ConstInstructionWalker start) const
+{
+    auto it = start.copy().previousInBlock();
+    while(!it.isStartOfBlock())
+    {
+        if(it->doesSetFlag())
+            return it;
+        if(auto comb = it.get<const intermediate::CombinedOperation>())
+        {
+            if(comb->op1 && comb->op1->doesSetFlag())
+                return it;
+            if(comb->op2 && comb->op2->doesSetFlag())
                 return it;
         }
         it.previousInBlock();
@@ -275,6 +299,30 @@ Optional<InstructionWalker> BasicBlock::findLastWritingOfRegister(InstructionWal
         it.previousInBlock();
     }
     return {};
+}
+
+Optional<InstructionWalker> BasicBlock::findLastBranchCondition(const InstructionWalker start) const
+{
+    InstructionWalker it = start.copy().previousInBlock();
+    while(!it.isStartOfBlock())
+    {
+        if(it.get<const intermediate::BranchCondition>())
+            return it;
+        it.previousInBlock();
+    }
+    return findLastSettingOfFlags(start);
+}
+
+Optional<ConstInstructionWalker> BasicBlock::findLastBranchCondition(const ConstInstructionWalker start) const
+{
+    auto it = start.copy().previousInBlock();
+    while(!it.isStartOfBlock())
+    {
+        if(it.get<const intermediate::BranchCondition>())
+            return it;
+        it.previousInBlock();
+    }
+    return findLastSettingOfFlags(start);
 }
 
 bool BasicBlock::isStartOfMethod() const

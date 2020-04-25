@@ -21,7 +21,7 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
     {
         int priority = 0;
         // prioritizing conditional instructions keeps setting flags and their uses together
-        if(inst->conditional != COND_ALWAYS)
+        if(inst->hasConditionalExecution())
         {
             priority += 100;
         }
@@ -44,7 +44,7 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
 
         // prioritize triggering read of TMU and reading from TMU to be directly scheduled after the delay is up to free
         // queue space
-        if(inst->signal.triggersReadOfR4() || inst->readsRegister(REG_TMU_OUT))
+        if(inst->getSignal().triggersReadOfR4() || inst->readsRegister(REG_TMU_OUT))
             priority += 30;
 
         // Increasing semaphores gets higher priority, decreasing it lower to reduce stall time
@@ -59,7 +59,7 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
 
         // Triggering of TMU reads gets lower priority to leave enough space between setting address and reading value
         // to utilize delay
-        if(inst->signal.triggersReadOfR4())
+        if(inst->getSignal().triggersReadOfR4())
             priority -= 30;
 
         // give vector rotations lower priority to make the usage-range of the accumulator used smaller
@@ -69,7 +69,7 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
 
         // for conditional instructions setting flags themselves not preceding the other instructions depending on same
         // flags
-        if(inst->setFlags == SetFlag::SET_FLAGS)
+        if(inst->doesSetFlag())
             priority -= 60;
 
         // loading/calculation of literals get smaller priority, since they are used mostly locally

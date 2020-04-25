@@ -38,7 +38,7 @@ std::string CFGRelation::getLabel() const
         return "" + std::move(extra);
     const auto converter = [](const std::pair<const BasicBlock*, Optional<InstructionWalker>>& pair) -> std::string {
         if(pair.second && pair.second->get<const intermediate::Branch>())
-            return "br " + pair.second->get<const intermediate::Branch>()->conditional.to_string();
+            return "br " + pair.second->get<const intermediate::Branch>()->branchCondition.to_string();
         return "";
     };
     return std::accumulate(predecessors.begin(), predecessors.end(), std::string{},
@@ -315,8 +315,7 @@ void ControlFlowGraph::dumpGraph(const std::string& path, bool dumpConstantLoadI
         }
     };
     auto edgeLabelFunc = [](const CFGRelation& r) -> std::string { return r.getLabel(); };
-    DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(
-        *this, path, nameFunc,
+    DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(*this, path, nameFunc,
         [](const CFGRelation& rel) -> bool {
             return std::all_of(rel.predecessors.begin(), rel.predecessors.end(),
                 [](const auto& pair) -> bool { return !pair.second; });

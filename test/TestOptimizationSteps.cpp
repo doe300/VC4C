@@ -564,8 +564,7 @@ void TestOptimizationSteps::testFoldConstants()
     assignNop(outIt) = 22_val;
 
     // transfer signal
-    inIt.emplace(new Operation(OP_ADD, NOP_REGISTER, 17_val, 7_val));
-    inIt->setSignaling(SIGNAL_LOAD_ALPHA);
+    inIt.emplace((new Operation(OP_ADD, NOP_REGISTER, 17_val, 7_val))->setSignaling(SIGNAL_LOAD_ALPHA));
     inIt.nextInBlock();
     assignNop(outIt) = (24_val, SIGNAL_LOAD_ALPHA);
 
@@ -575,8 +574,7 @@ void TestOptimizationSteps::testFoldConstants()
     assignNop(outIt) = (25_val, COND_CARRY_CLEAR);
 
     // transfer flags
-    inIt.emplace(new Operation(OP_ADD, NOP_REGISTER, 17_val, 4_val));
-    inIt->setSetFlags(SetFlag::SET_FLAGS);
+    inIt.emplace((new Operation(OP_ADD, NOP_REGISTER, 17_val, 4_val))->setSetFlags(SetFlag::SET_FLAGS));
     inIt.nextInBlock();
     assignNop(outIt) = (21_val, SetFlag::SET_FLAGS);
 
@@ -587,8 +585,7 @@ void TestOptimizationSteps::testFoldConstants()
     assignNop(outIt) = (13_val, InstructionDecorations::UNSIGNED_RESULT);
 
     // transfer pack mode
-    inIt.emplace(new Operation(OP_SUB, NOP_REGISTER, 17_val, 17_val));
-    inIt->setPackMode(PACK_32_16A_S);
+    inIt.emplace((new Operation(OP_SUB, NOP_REGISTER, 17_val, 17_val))->setPackMode(PACK_32_16A_S));
     inIt.nextInBlock();
     assignNop(outIt) = (0_val, PACK_32_16A_S);
 
@@ -598,8 +595,7 @@ void TestOptimizationSteps::testFoldConstants()
     assignNop(outIt) = 17_val + UNIFORM_REGISTER;
 
     // unpack modes not folded (don't know which input to unpack)
-    inIt.emplace(new Operation(OP_ADD, NOP_REGISTER, 17_val, 11_val));
-    inIt->setUnpackMode(UNPACK_16A_32);
+    inIt.emplace((new Operation(OP_ADD, NOP_REGISTER, 17_val, 11_val))->setUnpackMode(UNPACK_16A_32));
     inIt.nextInBlock();
     assignNop(outIt) = (17_val + 11_val, UNPACK_16A_32);
 
@@ -954,20 +950,20 @@ void TestOptimizationSteps::testSimplifyBranches()
         auto inIt = oneIn.walkEnd();
         auto outIt = oneOut.walkEnd();
 
-        inIt.emplace(new Branch(oneIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(oneIn.getLabel()->getLabel()));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one.remove1").walkEnd();
-        inIt.emplace(new Branch(oneIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(oneIn.getLabel()->getLabel()));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one.remove2").walkEnd();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one.remove3").walkEnd();
-        inIt.emplace(new Branch(oneIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(oneIn.getLabel()->getLabel()));
         inIt.nextInBlock();
 
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one.remove1").walkEnd();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one.remove2").walkEnd();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one.remove3").walkEnd();
-        outIt.emplace(new Branch(oneOut.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        outIt.emplace(new Branch(oneOut.getLabel()->getLabel()));
         outIt.nextInBlock();
     }
 
@@ -976,7 +972,7 @@ void TestOptimizationSteps::testSimplifyBranches()
         auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%second").walkEnd();
         auto inNextLabel =
             inputMethod.createAndInsertNewBlock(inputMethod.end(), "%second.next").getLabel()->getLabel();
-        inIt.emplace(new Branch(inNextLabel, COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(inNextLabel));
         inIt.nextInBlock();
 
         outputMethod.createAndInsertNewBlock(outputMethod.end(), "%second");
@@ -994,12 +990,16 @@ void TestOptimizationSteps::testSimplifyBranches()
             inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse.next").getLabel()->getLabel();
         outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse.next");
 
-        inIt.emplace(new Branch(ifIn.getLabel()->getLabel(), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        inIt.emplace(new intermediate::BranchCondition(UNIFORM_REGISTER));
         inIt.nextInBlock();
-        inIt.emplace(new Branch(inNextLabel, COND_ZERO_SET, UNIFORM_REGISTER));
+        inIt.emplace(new Branch(ifIn.getLabel()->getLabel(), COND_ZERO_CLEAR.toBranchCondition()));
+        inIt.nextInBlock();
+        inIt.emplace(new Branch(inNextLabel, COND_ZERO_SET.toBranchCondition()));
         inIt.nextInBlock();
 
-        outIt.emplace(new Branch(ifOut.getLabel()->getLabel(), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        outIt.emplace(new intermediate::BranchCondition(UNIFORM_REGISTER));
+        outIt.nextInBlock();
+        outIt.emplace(new Branch(ifOut.getLabel()->getLabel(), COND_ZERO_CLEAR.toBranchCondition()));
         outIt.nextInBlock();
     }
 
@@ -1010,24 +1010,28 @@ void TestOptimizationSteps::testSimplifyBranches()
         auto inIt = thirdIn.walkEnd();
         auto outIt = thirdOut.walkEnd();
 
-        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        inIt.emplace(new intermediate::BranchCondition(UNIFORM_REGISTER));
+        inIt.nextInBlock();
+        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), COND_ZERO_CLEAR.toBranchCondition()));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove1").walkEnd();
-        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), COND_ZERO_CLEAR.toBranchCondition()));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove2").walkEnd();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove3").walkEnd();
-        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel()));
         inIt.nextInBlock();
 
-        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        outIt.emplace(new intermediate::BranchCondition(UNIFORM_REGISTER));
+        outIt.nextInBlock();
+        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), COND_ZERO_CLEAR.toBranchCondition()));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove1").walkEnd();
-        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), COND_ZERO_CLEAR.toBranchCondition()));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove2").walkEnd();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove3").walkEnd();
-        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel()));
         outIt.nextInBlock();
     }
 
@@ -1038,22 +1042,22 @@ void TestOptimizationSteps::testSimplifyBranches()
         auto inIt = otherIn.walkEnd();
         auto outIt = otherOut.walkEnd();
 
-        inIt.emplace(new Branch(otherIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(otherIn.getLabel()->getLabel()));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%other.notremove1").walkEnd();
-        inIt.emplace(new Branch(oneIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(oneIn.getLabel()->getLabel()));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%other.notremove2").walkEnd();
-        inIt.emplace(new Branch(otherIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(otherIn.getLabel()->getLabel()));
         inIt.nextInBlock();
 
-        outIt.emplace(new Branch(otherOut.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        outIt.emplace(new Branch(otherOut.getLabel()->getLabel()));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%other.notremove1").walkEnd();
-        outIt.emplace(new Branch(oneOut.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        outIt.emplace(new Branch(oneOut.getLabel()->getLabel()));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%other.notremove2").walkEnd();
-        outIt.emplace(new Branch(otherOut.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        outIt.emplace(new Branch(otherOut.getLabel()->getLabel()));
         outIt.nextInBlock();
     }
 
@@ -1064,22 +1068,22 @@ void TestOptimizationSteps::testSimplifyBranches()
         auto inIt = someIn.walkEnd();
         auto outIt = someOut.walkEnd();
 
-        inIt.emplace(new Branch(someIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(someIn.getLabel()->getLabel()));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%some.notremove1").walkEnd();
         inIt.emplace(new MoveOperation(UNIFORM_REGISTER, INT_ONE));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%some.notremove2").walkEnd();
-        inIt.emplace(new Branch(someIn.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        inIt.emplace(new Branch(someIn.getLabel()->getLabel()));
         inIt.nextInBlock();
 
-        outIt.emplace(new Branch(someOut.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        outIt.emplace(new Branch(someOut.getLabel()->getLabel()));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%some.notremove1").walkEnd();
         outIt.emplace(new MoveOperation(UNIFORM_REGISTER, INT_ONE));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%some.notremove2").walkEnd();
-        outIt.emplace(new Branch(someOut.getLabel()->getLabel(), COND_ALWAYS, BOOL_TRUE));
+        outIt.emplace(new Branch(someOut.getLabel()->getLabel()));
         outIt.nextInBlock();
     }
 
@@ -1095,14 +1099,18 @@ void TestOptimizationSteps::testSimplifyBranches()
         auto outNextLabel =
             outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse2.next").getLabel()->getLabel();
 
-        inIt.emplace(new Branch(inNextLabel, COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        inIt.emplace(new intermediate::BranchCondition(UNIFORM_REGISTER));
         inIt.nextInBlock();
-        inIt.emplace(new Branch(ifElseIn.getLabel()->getLabel(), COND_ZERO_SET, UNIFORM_REGISTER));
+        inIt.emplace(new Branch(inNextLabel, COND_ZERO_CLEAR.toBranchCondition()));
+        inIt.nextInBlock();
+        inIt.emplace(new Branch(ifElseIn.getLabel()->getLabel(), COND_ZERO_SET.toBranchCondition()));
         inIt.nextInBlock();
 
-        outIt.emplace(new Branch(outNextLabel, COND_ZERO_CLEAR, UNIFORM_REGISTER));
+        outIt.emplace(new intermediate::BranchCondition(UNIFORM_REGISTER));
         outIt.nextInBlock();
-        outIt.emplace(new Branch(ifElseOut.getLabel()->getLabel(), COND_ZERO_SET, UNIFORM_REGISTER));
+        outIt.emplace(new Branch(outNextLabel, COND_ZERO_CLEAR.toBranchCondition()));
+        outIt.nextInBlock();
+        outIt.emplace(new Branch(ifElseOut.getLabel()->getLabel(), COND_ZERO_SET.toBranchCondition()));
         outIt.nextInBlock();
     }
 
@@ -1553,17 +1561,17 @@ void TestOptimizationSteps::testCombineRotations()
         inIt.emplace(new VectorRotation(a, in, SmallImmediate::fromRotationOffset(4), RotationType::FULL));
         inIt->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         inIt.nextInBlock();
-        inIt.emplace(new VectorRotation(b, a, VECTOR_ROTATE_R5, RotationType::ANY));
+        inIt.emplace((new VectorRotation(b, a, VECTOR_ROTATE_R5, RotationType::ANY))
+                         ->setCondition(COND_NEGATIVE_SET)
+                         ->setSetFlags(SetFlag::SET_FLAGS));
         inIt->addDecorations(InstructionDecorations::ALLOW_RECIP);
-        inIt->setCondition(COND_NEGATIVE_SET);
-        inIt->setSetFlags(SetFlag::SET_FLAGS);
         inIt.nextInBlock();
 
-        outIt.emplace(new VectorRotation(b, in, SmallImmediate::fromRotationOffset(15), RotationType::FULL));
+        outIt.emplace((new VectorRotation(b, in, SmallImmediate::fromRotationOffset(15), RotationType::FULL))
+                          ->setCondition(COND_NEGATIVE_SET)
+                          ->setSetFlags(SetFlag::SET_FLAGS));
         outIt->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         outIt->addDecorations(InstructionDecorations::ALLOW_RECIP);
-        outIt->setCondition(COND_NEGATIVE_SET);
-        outIt->setSetFlags(SetFlag::SET_FLAGS);
         outIt.nextInBlock();
     }
 
@@ -1572,16 +1580,16 @@ void TestOptimizationSteps::testCombineRotations()
         auto c = inputMethod.addNewLocal(TYPE_INT32, "%c");
         auto d = inputMethod.addNewLocal(TYPE_INT32, "%d");
 
-        inIt.emplace(new VectorRotation(c, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
-        inIt->setUnpackMode(UNPACK_8A_32);
+        inIt.emplace((new VectorRotation(c, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
+                         ->setUnpackMode(UNPACK_8A_32));
         inIt.nextInBlock();
-        inIt.emplace(new VectorRotation(d, c, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
-        inIt->setPackMode(PACK_32_8888);
+        inIt.emplace((new VectorRotation(d, c, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD))
+                         ->setPackMode(PACK_32_8888));
         inIt.nextInBlock();
 
-        outIt.emplace(new VectorRotation(d, in, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD));
-        outIt->setUnpackMode(UNPACK_8A_32);
-        outIt->setPackMode(PACK_32_8888);
+        outIt.emplace((new VectorRotation(d, in, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD))
+                          ->setUnpackMode(UNPACK_8A_32)
+                          ->setPackMode(PACK_32_8888));
         outIt.nextInBlock();
     }
 
@@ -1607,8 +1615,7 @@ void TestOptimizationSteps::testCombineRotations()
         inIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
         inIt.nextInBlock();
         assign(inIt, ROTATION_REGISTER) = 16_val;
-        inIt.emplace(new VectorRotation(j, in, VECTOR_ROTATE_R5, RotationType::FULL));
-        inIt->setPackMode(PACK_32_16B_S);
+        inIt.emplace((new VectorRotation(j, in, VECTOR_ROTATE_R5, RotationType::FULL))->setPackMode(PACK_32_16B_S));
         inIt.nextInBlock();
 
         assign(outIt, f) = in;
@@ -1644,14 +1651,14 @@ void TestOptimizationSteps::testCombineRotations()
         auto C = inputMethod.addNewLocal(TYPE_INT32, "%C");
         auto D = inputMethod.addNewLocal(TYPE_INT32, "%D");
 
-        inIt.emplace(new VectorRotation(C, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
-        inIt->setPackMode(PACK_32_16A_S);
+        inIt.emplace((new VectorRotation(C, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
+                         ->setPackMode(PACK_32_16A_S));
         inIt.nextInBlock();
         inIt.emplace(new VectorRotation(D, C, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
         inIt.nextInBlock();
 
-        outIt.emplace(new VectorRotation(C, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
-        outIt->setPackMode(PACK_32_16A_S);
+        outIt.emplace((new VectorRotation(C, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
+                          ->setPackMode(PACK_32_16A_S));
         outIt.nextInBlock();
         outIt.emplace(new VectorRotation(D, C, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
         outIt.nextInBlock();
@@ -1664,14 +1671,14 @@ void TestOptimizationSteps::testCombineRotations()
 
         inIt.emplace(new VectorRotation(E, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
         inIt.nextInBlock();
-        inIt.emplace(new VectorRotation(F, E, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
-        inIt->setUnpackMode(UNPACK_8A_32);
+        inIt.emplace((new VectorRotation(F, E, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD))
+                         ->setUnpackMode(UNPACK_8A_32));
         inIt.nextInBlock();
 
         outIt.emplace(new VectorRotation(E, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
         outIt.nextInBlock();
-        outIt.emplace(new VectorRotation(F, E, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
-        outIt->setUnpackMode(UNPACK_8A_32);
+        outIt.emplace((new VectorRotation(F, E, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD))
+                          ->setUnpackMode(UNPACK_8A_32));
         outIt.nextInBlock();
     }
 
@@ -1680,14 +1687,14 @@ void TestOptimizationSteps::testCombineRotations()
         auto G = inputMethod.addNewLocal(TYPE_INT32, "%G");
         auto H = inputMethod.addNewLocal(TYPE_INT32, "%H");
 
-        inIt.emplace(new VectorRotation(G, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
-        inIt->setSetFlags(SetFlag::SET_FLAGS);
+        inIt.emplace((new VectorRotation(G, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
+                         ->setSetFlags(SetFlag::SET_FLAGS));
         inIt.nextInBlock();
         inIt.emplace(new VectorRotation(H, G, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD));
         inIt.nextInBlock();
 
-        outIt.emplace(new VectorRotation(G, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
-        outIt->setSetFlags(SetFlag::SET_FLAGS);
+        outIt.emplace((new VectorRotation(G, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
+                          ->setSetFlags(SetFlag::SET_FLAGS));
         outIt.nextInBlock();
         outIt.emplace(new VectorRotation(H, G, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD));
         outIt.nextInBlock();
@@ -1721,8 +1728,8 @@ void TestOptimizationSteps::testCombineRotations()
         // test rewrite rotation of masked load to rotated load of mask (full and quad rotation) (part 1)
         inIt.emplace(new LoadImmediate(o, 0x12340000, LoadType::PER_ELEMENT_SIGNED));
         inIt.nextInBlock();
-        inIt.emplace(new VectorRotation(p, o, SmallImmediate::fromRotationOffset(4), RotationType::FULL));
-        inIt->setSetFlags(SetFlag::SET_FLAGS);
+        inIt.emplace((new VectorRotation(p, o, SmallImmediate::fromRotationOffset(4), RotationType::FULL))
+                         ->setSetFlags(SetFlag::SET_FLAGS));
         inIt.nextInBlock();
         inIt.emplace(new LoadImmediate(r, 0x00001234, LoadType::PER_ELEMENT_UNSIGNED));
         inIt.nextInBlock();
@@ -1751,8 +1758,8 @@ void TestOptimizationSteps::testCombineRotations()
         // test rewrite rotation of masked load to rotated load of mask (full and quad rotation) (part 2)
         outIt.emplace(new LoadImmediate(o, 0x12340000, LoadType::PER_ELEMENT_SIGNED));
         outIt.nextInBlock();
-        outIt.emplace(new LoadImmediate(p, 0x34120000, LoadType::PER_ELEMENT_SIGNED));
-        outIt->setSetFlags(SetFlag::SET_FLAGS);
+        outIt.emplace(
+            (new LoadImmediate(p, 0x34120000, LoadType::PER_ELEMENT_SIGNED))->setSetFlags(SetFlag::SET_FLAGS));
         outIt.nextInBlock();
         outIt.emplace(new LoadImmediate(r, 0x00001234, LoadType::PER_ELEMENT_UNSIGNED));
         outIt.nextInBlock();

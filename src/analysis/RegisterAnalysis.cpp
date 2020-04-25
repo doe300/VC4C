@@ -56,21 +56,22 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
             }
             return first;
         }
+        auto extendedInst = dynamic_cast<const intermediate::ExtendedInstruction*>(inst);
         if(inst->checkOutputLocal() &&
             (!inst->hasConditionalExecution() ||
-                (cache.find(inst->getOutput()->local()) != cache.end() &&
-                    cache.at(inst->getOutput()->local()).isInversionOf(inst->conditional))))
+                (extendedInst && cache.find(inst->getOutput()->local()) != cache.end() &&
+                    cache.at(inst->getOutput()->local()).isInversionOf(extendedInst->getCondition()))))
         {
             // TODO for exact check, would also need to compare the instruction setting the flags
             values.erase(inst->getOutput()->local());
         }
-        else if(inst->checkOutputLocal() && inst->hasConditionalExecution())
+        else if(inst->checkOutputLocal() && extendedInst && inst->hasConditionalExecution())
         {
             auto it = cache.find(inst->getOutput()->local());
-            if(it != cache.end() && it->second.isInversionOf(inst->conditional))
+            if(it != cache.end() && it->second.isInversionOf(extendedInst->getCondition()))
                 it->second = COND_ALWAYS;
             else
-                cache.emplace(inst->getOutput()->local(), inst->conditional);
+                cache.emplace(inst->getOutput()->local(), extendedInst->getCondition());
         }
         UsedElements newValues;
         if(inst->writesRegister(REG_VPM_DMA_LOAD_ADDR) || inst->writesRegister(REG_VPM_DMA_STORE_ADDR) ||
@@ -102,17 +103,13 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
                     }
                 });
         }
-        else if(auto branch = dynamic_cast<const intermediate::Branch*>(inst))
+        // XXX branch target input (currently not used), is only set by SIMD element 15
+        else if(auto branchCondition = dynamic_cast<const intermediate::BranchCondition*>(inst))
         {
-            // XXX branch target input (currently not used), is only set by SIMD element 15
-            if(branch->hasConditionalExecution() && branch->getCondition().checkLocal())
-            {
-                auto it = cache.find(branch->getCondition().local());
-                if(it != cache.end() && it->second.isInversionOf(branch->conditional))
-                    it->second = COND_ALWAYS;
-                else
-                    cache.emplace(branch->getCondition().local(), branch->conditional);
-            }
+            // TODO set the used elements of the input to the conditionalElements mask
+            if(auto loc = branchCondition->getBranchCondition().checkLocal())
+                // TODO could check whether we do have branches for both cases and if not, only insert conditional
+                cache.emplace(loc, COND_ALWAYS).first->second = COND_ALWAYS;
         }
         else
         {
@@ -231,7 +228,8 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
             }
             cache.clear();
             if(inst->checkOutputLocal() && !inst->hasConditionalExecution())
-                cache.emplace(inst->getOutput()->local(), inst->conditional);
+                // TODO is this correct??
+                cache.emplace(inst->getOutput()->local(), COND_ALWAYS);
         }
         for(const auto& val : newValues)
             values[val.first] |= val.second;

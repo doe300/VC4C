@@ -17,7 +17,7 @@ using namespace vc4c::intermediate;
 
 Operation::Operation(
     const OpCode& opCode, const Value& dest, const Value& arg0, const ConditionCode cond, const SetFlag setFlags) :
-    IntermediateInstruction(dest, cond, setFlags),
+    UnpackingInstruction(SIGNAL_NONE, cond, setFlags, PACK_NOP, UNPACK_NOP, dest),
     op(opCode), parent(nullptr)
 {
     if(opCode.numOperands != 1)
@@ -27,7 +27,8 @@ Operation::Operation(
 }
 
 Operation::Operation(OpCode opCode, Value&& dest, Value&& arg0, ConditionCode cond, SetFlag setFlags) :
-    IntermediateInstruction(std::move(dest), cond, setFlags), op(std::move(opCode)), parent(nullptr)
+    UnpackingInstruction(SIGNAL_NONE, cond, setFlags, PACK_NOP, UNPACK_NOP, std::move(dest)), op(std::move(opCode)),
+    parent(nullptr)
 {
     if(opCode.numOperands != 1)
         throw CompilationError(
@@ -37,7 +38,7 @@ Operation::Operation(OpCode opCode, Value&& dest, Value&& arg0, ConditionCode co
 
 Operation::Operation(const OpCode& opCode, const Value& dest, const Value& arg0, const Value& arg1,
     const ConditionCode cond, const SetFlag setFlags) :
-    IntermediateInstruction(dest, cond, setFlags),
+    UnpackingInstruction(SIGNAL_NONE, cond, setFlags, PACK_NOP, UNPACK_NOP, dest),
     op(opCode), parent(nullptr)
 {
     if(opCode.numOperands != 2)
@@ -48,7 +49,8 @@ Operation::Operation(const OpCode& opCode, const Value& dest, const Value& arg0,
 }
 
 Operation::Operation(OpCode opCode, Value&& dest, Value&& arg0, Value&& arg1, ConditionCode cond, SetFlag setFlags) :
-    IntermediateInstruction(std::move(dest), cond, setFlags), op(opCode), parent(nullptr)
+    UnpackingInstruction(SIGNAL_NONE, cond, setFlags, PACK_NOP, UNPACK_NOP, std::move(dest)), op(opCode),
+    parent(nullptr)
 {
     if(opCode.numOperands != 2)
         throw CompilationError(
@@ -411,18 +413,14 @@ bool Operation::innerEquals(const IntermediateInstruction& other) const
     return false;
 }
 
-IntrinsicOperation::IntrinsicOperation(
-    std::string&& opCode, Value&& dest, Value&& arg0, const ConditionCode cond, const SetFlag setFlags) :
-    IntermediateInstruction(std::move(dest), cond, setFlags),
-    opCode(opCode)
+IntrinsicOperation::IntrinsicOperation(std::string&& opCode, Value&& dest, Value&& arg0) :
+    IntermediateInstruction(std::move(dest)), opCode(opCode)
 {
     setArgument(0, std::move(arg0));
 }
 
-IntrinsicOperation::IntrinsicOperation(
-    std::string&& opCode, Value&& dest, Value&& arg0, Value&& arg1, const ConditionCode cond, const SetFlag setFlags) :
-    IntermediateInstruction(std::move(dest), cond, setFlags),
-    opCode(opCode)
+IntrinsicOperation::IntrinsicOperation(std::string&& opCode, Value&& dest, Value&& arg0, Value&& arg1) :
+    IntermediateInstruction(std::move(dest)), opCode(opCode)
 {
     setArgument(0, std::move(arg0));
     setArgument(1, std::move(arg1));
@@ -442,12 +440,12 @@ IntermediateInstruction* IntrinsicOperation::copyFor(
     if(!getSecondArg())
         return (new IntrinsicOperation(std::string(opCode),
                     renameValue(method, getOutput().value(), localPrefix, localMapping),
-                    renameValue(method, getFirstArg(), localPrefix, localMapping), conditional, setFlags))
+                    renameValue(method, getFirstArg(), localPrefix, localMapping)))
             ->copyExtrasFrom(this);
     return (
         new IntrinsicOperation(std::string(opCode), renameValue(method, getOutput().value(), localPrefix, localMapping),
             renameValue(method, getFirstArg(), localPrefix, localMapping),
-            renameValue(method, assertArgument(1), localPrefix, localMapping), conditional, setFlags))
+            renameValue(method, assertArgument(1), localPrefix, localMapping)))
         ->copyExtrasFrom(this);
 }
 
@@ -485,13 +483,13 @@ bool IntrinsicOperation::innerEquals(const IntermediateInstruction& other) const
 }
 
 MoveOperation::MoveOperation(const Value& dest, const Value& arg, const ConditionCode cond, const SetFlag setFlags) :
-    IntermediateInstruction(dest, cond, setFlags)
+    UnpackingInstruction(SIGNAL_NONE, cond, setFlags, PACK_NOP, UNPACK_NOP, dest)
 {
     setArgument(0, arg);
 }
 
 MoveOperation::MoveOperation(Value&& dest, Value&& arg, const ConditionCode cond, const SetFlag setFlags) :
-    IntermediateInstruction(std::move(dest), cond, setFlags)
+    UnpackingInstruction(SIGNAL_NONE, cond, setFlags, PACK_NOP, UNPACK_NOP, std::move(dest))
 {
     setArgument(0, std::move(arg));
 }
@@ -528,9 +526,9 @@ qpu_asm::DecoratedInstruction MoveOperation::convertToAsm(const FastMap<const Lo
 {
     // simply call this method for intermediate-operation
     Operation op(OP_OR, getOutput().value(), getSource(), getSource(), conditional, setFlags);
-    op.packMode = packMode;
-    op.signal = signal;
-    op.unpackMode = unpackMode;
+    op.setPackMode(packMode);
+    op.setSignaling(signal);
+    op.setUnpackMode(unpackMode);
     return op.convertToAsm(registerMapping, labelMapping, instructionIndex);
 }
 
@@ -553,9 +551,9 @@ Operation* MoveOperation::combineWith(const OpCode& otherOpCode) const
     }
     if(op != nullptr)
     {
-        op->packMode = packMode;
-        op->unpackMode = unpackMode;
-        op->signal = signal;
+        op->setPackMode(packMode);
+        op->setUnpackMode(unpackMode);
+        op->setSignaling(signal);
         op->decoration = decoration;
     }
     // if the combination failed, the instructions remain separate
@@ -747,11 +745,7 @@ static std::string toTypeString(DelayType delay)
 }
 LCOV_EXCL_STOP
 
-Nop::Nop(const DelayType type, const Signaling signal) : IntermediateInstruction(Optional<Value>{}), type(type)
-{
-    this->signal = signal;
-    this->canBeCombined = false;
-}
+Nop::Nop(const DelayType type, const Signaling signal) : SignalingInstruction(signal), type(type) {}
 
 LCOV_EXCL_START
 std::string Nop::to_string() const

@@ -384,17 +384,29 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
 
         if(auto branch = tailBranch.get<intermediate::Branch>())
         {
-            repeatConditionLocal = branch->getCondition().local();
+            if(auto branchCondition = tailBranch.getBasicBlock()->findLastBranchCondition(tailBranch))
+            {
+                auto condInst = branchCondition->get<intermediate::BranchCondition>();
+                if(!condInst || condInst->conditionalElements != 0x1)
+                {
+                    // for now we don't support any non-standard conditions. Otherwise we also would need to support all
+                    // any/all flags combinations
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Skipping non-default branch condition: " << condInst->to_string() << logging::endl);
+                    break;
+                }
+                repeatConditionLocal = condInst->getBranchCondition().local();
+            }
             // if the tailBranch is the branch to repeat the loop, the repeatCondition is the condition of the
             // tailBranch. If it is the branch to cancel the loop, invert the condition it.
             auto successorIt = std::find_if(successors.begin(), successors.end(),
                 [&](const CFGNode* node) -> bool { return node->key->getLabel()->getLabel() == branch->getTarget(); });
             if(successorIt == successors.end())
                 // repetition branch
-                repeatCondition = branch->conditional;
+                repeatCondition = branch->branchCondition.toConditionCode();
             else
                 // cancellation branch
-                repeatCondition = branch->conditional.invert();
+                repeatCondition = branch->branchCondition.invert().toConditionCode();
         }
 
         if(!repeatConditionLocal)
@@ -466,7 +478,10 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
                         ConditionCode zeroSetCondition = COND_NEVER;
                         repeatConditionLocal->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) {
                             if(writer->precalculate().first == INT_ZERO)
-                                zeroSetCondition = writer->conditional;
+                                zeroSetCondition =
+                                    (check(dynamic_cast<const intermediate::ExtendedInstruction*>(writer)) &
+                                        &intermediate::ExtendedInstruction::getCondition)
+                                        .value_or(COND_ALWAYS);
                         });
 
                         /*
@@ -792,7 +807,7 @@ FastSet<InstructionWalker> ControlFlowLoop::findLoopInvariants()
         auto it = node->key->walk();
         while(!it.isEndOfBlock())
         {
-            if(it.has() && !it.get<intermediate::BranchLabel>() && !it->signal.hasSideEffects() &&
+            if(it.has() && !it.get<intermediate::BranchLabel>() && !it->getSignal().hasSideEffects() &&
                 std::all_of(it->getArguments().begin(), it->getArguments().end(), checkArgInvariant))
             {
                 bool invariantCondition = false;

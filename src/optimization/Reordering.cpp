@@ -287,10 +287,7 @@ static bool replaceNOPs(BasicBlock& basicBlock, Method& method, const Configurat
                 // are wrong!)
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Replacing NOP with: " << replacementIt->to_string() << logging::endl);
-                bool cannotBeCombined = !it->canBeCombined;
                 it.reset(replacementIt.release());
-                if(cannotBeCombined)
-                    it->canBeCombined = false;
                 hasChanged = true;
 
                 // make sure to not create a new conflict and insert NOP instead (which might be replaced again later

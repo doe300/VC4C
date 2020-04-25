@@ -449,10 +449,11 @@ void SPIRVBranch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
                 << defaultLabelID << " or %" << falseLabelID.value() << logging::endl);
         const Value cond = getValue(conditionID.value(), *method.method, types, constants, localTypes, localMapping);
         auto falseLabel = getValue(falseLabelID.value(), *method.method, types, constants, localTypes, localMapping);
+        method.method->appendToEnd(new intermediate::BranchCondition(cond));
         method.method->appendToEnd(
-            new intermediate::Branch(trueLabel.local(), COND_ZERO_CLEAR /* condition is true */, cond));
+            new intermediate::Branch(trueLabel.local(), COND_ZERO_CLEAR.toBranchCondition() /* condition is true */));
         method.method->appendToEnd(
-            new intermediate::Branch(falseLabel.local(), COND_ZERO_SET /* condition is false */, cond));
+            new intermediate::Branch(falseLabel.local(), COND_ZERO_SET.toBranchCondition() /* condition is false */));
     }
     else
     {
@@ -1088,7 +1089,7 @@ void SPIRVSelect::mapInstruction(TypeMapping& types, ConstantMapping& constants,
         // if a vector is selected on a scalar value, the whole vector needs to be selected -> replicate the condition
         // to all elements
         auto it = intermediate::insertReplication(method.method->appendToEnd(), condition, NOP_REGISTER, true);
-        it.previousInBlock()->setFlags = SetFlag::SET_FLAGS;
+        it.previousInBlock().get<intermediate::ExtendedInstruction>()->setSetFlags(SetFlag::SET_FLAGS);
     }
     else
         method.method->appendToEnd(
@@ -1142,7 +1143,8 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
         const Value tmp = method.method->addNewLocal(TYPE_BOOL, "%switch");
         method.method->appendToEnd(
             new intermediate::Comparison(intermediate::COMP_EQ, Value(tmp), Value(selector), std::move(comparison)));
-        method.method->appendToEnd(new intermediate::Branch(destination.local(), COND_ZERO_CLEAR, tmp));
+        method.method->appendToEnd(new intermediate::BranchCondition(tmp));
+        method.method->appendToEnd(new intermediate::Branch(destination.local(), COND_ZERO_CLEAR.toBranchCondition()));
     }
     // branch default label
     method.method->appendToEnd(new intermediate::Branch(defaultLabel.local()));

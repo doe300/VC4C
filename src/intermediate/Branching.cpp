@@ -62,38 +62,79 @@ bool BranchLabel::innerEquals(const IntermediateInstruction& other) const
     return dynamic_cast<const BranchLabel*>(&other);
 }
 
-Branch::Branch(const Local* target) : Branch(target, COND_ALWAYS, BOOL_TRUE) {}
-
-Branch::Branch(
-    const Local* target, const ConditionCode condCode, const Value& cond, std::bitset<NATIVE_VECTOR_SIZE> elements) :
-    IntermediateInstruction({}, condCode),
-    conditionalElements(elements)
+BranchCondition::BranchCondition(const Value& cond, std::bitset<NATIVE_VECTOR_SIZE> elements) :
+    SignalingInstruction(SIGNAL_NONE), conditionalElements(elements)
 {
-    if(condCode != COND_ALWAYS && condCode != COND_ZERO_CLEAR && condCode != COND_ZERO_SET)
-        // only allow always and comparison for zero, since branches only work on boolean values (0, 1)
-        throw CompilationError(CompilationStep::GENERAL, "Invalid condition for branches", condCode.to_string());
+    setArgument(0, cond);
+    this->setFlags = SetFlag::SET_FLAGS;
+}
+
+std::string BranchCondition::to_string() const
+{
+    return "branch on " + getBranchCondition().to_string() + " (elements: " + conditionalElements.to_string('0') +
+        ") " + createAdditionalInfoString();
+}
+
+IntermediateInstruction* BranchCondition::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
+{
+    return (
+        new BranchCondition(renameValue(method, getBranchCondition(), localPrefix, localMapping), conditionalElements))
+        ->setOutput(getOutput())
+        ->copyExtrasFrom(this);
+}
+
+qpu_asm::DecoratedInstruction BranchCondition::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+    const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const
+{
+    throw CompilationError(
+        CompilationStep::CODE_GENERATION, "There should be no more branch conditions at this point", to_string());
+}
+
+bool BranchCondition::isNormalized() const
+{
+    return true;
+}
+
+SideEffectType BranchCondition::getSideEffects() const
+{
+    return add_flag(IntermediateInstruction::getSideEffects(), SideEffectType::FLAGS);
+}
+
+const Value& BranchCondition::getBranchCondition() const
+{
+    return assertArgument(0);
+}
+
+bool BranchCondition::innerEquals(const IntermediateInstruction& other) const
+{
+    auto otherCond = dynamic_cast<const BranchCondition*>(&other);
+    return otherCond && conditionalElements == otherCond->conditionalElements;
+}
+
+Branch::Branch(const Local* target) : Branch(target, BRANCH_ALWAYS) {}
+
+Branch::Branch(const Local* target, BranchCond branchCond) :
+    SignalingInstruction(SIGNAL_BRANCH), branchCondition(branchCond)
+{
     setArgument(0, target->createReference());
-    setArgument(1, cond);
 }
 
 LCOV_EXCL_START
 std::string Branch::to_string() const
 {
-    if(getCondition() == BOOL_TRUE)
+    if(branchCondition == BRANCH_ALWAYS)
     {
         return std::string("br ") + getTarget()->name + createAdditionalInfoString();
     }
-    return std::string("br.") + (conditional.to_string() + " ") + getTarget()->name +
-        (getCondition() != BOOL_TRUE ? std::string(" (on ") + getCondition().to_string(false, false) + ")" : "") +
-        createAdditionalInfoString();
+    return std::string("br.") + (branchCondition.to_string() + " ") + getTarget()->name + createAdditionalInfoString();
 }
 LCOV_EXCL_STOP
 
 IntermediateInstruction* Branch::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new Branch(renameValue(method, assertArgument(0), localPrefix, localMapping).local(), conditional,
-                renameValue(method, getCondition(), localPrefix, localMapping)))
+    return (new Branch(renameValue(method, assertArgument(0), localPrefix, localMapping).local(), branchCondition))
         ->setOutput(getOutput())
         ->copyExtrasFrom(this);
 }
@@ -116,25 +157,12 @@ qpu_asm::DecoratedInstruction Branch::convertToAsm(const FastMap<const Local*, R
     const int64_t branchOffset = static_cast<int64_t>(labelPos->second) -
         static_cast<int64_t>(
             (instructionIndex + 4 /*  NOPs */) * sizeof(uint64_t)) /* convert instruction-index to byte-index */;
-    BranchCond cond = BranchCond::ALWAYS;
-    if(conditional != COND_ALWAYS && has_flag(decoration, InstructionDecorations::BRANCH_ON_ALL_ELEMENTS))
-    {
-        if(conditional == COND_ZERO_CLEAR)
-            cond = BranchCond::ALL_Z_CLEAR;
-        else if(conditional == COND_ZERO_SET)
-            cond = BranchCond::ALL_Z_SET;
-        else
-            throw CompilationError(CompilationStep::CODE_GENERATION,
-                "Unhandled branch condition depending on all elements", conditional.to_string());
-    }
-    else
-        cond = conditional.toBranchCondition();
     if(branchOffset < static_cast<int64_t>(std::numeric_limits<int32_t>::min()) ||
         branchOffset > static_cast<int64_t>(std::numeric_limits<int32_t>::max()))
         throw CompilationError(CompilationStep::CODE_GENERATION,
             "Cannot jump a distance not fitting into 32-bit integer", std::to_string(branchOffset));
     return qpu_asm::DecoratedInstruction(
-        qpu_asm::BranchInstruction(cond, BranchRel::BRANCH_RELATIVE, BranchReg::NONE,
+        qpu_asm::BranchInstruction(branchCondition, BranchRel::BRANCH_RELATIVE, BranchReg::NONE,
             0 /* only 5 bits, so REG_NOP doesn't fit */, REG_NOP.num, REG_NOP.num, static_cast<int32_t>(branchOffset)),
         "to " + this->getTarget()->name);
 }
@@ -156,23 +184,17 @@ const Local* Branch::getTarget() const
 
 bool Branch::isUnconditional() const
 {
-    return conditional == COND_ALWAYS || getCondition() == BOOL_TRUE;
-}
-
-const Value& Branch::getCondition() const
-{
-    return assertArgument(1);
+    return branchCondition == BRANCH_ALWAYS;
 }
 
 bool Branch::innerEquals(const IntermediateInstruction& other) const
 {
-    // no extra fields to check
-    return dynamic_cast<const Branch*>(&other);
+    auto otherBranch = dynamic_cast<const Branch*>(&other);
+    return otherBranch && branchCondition == otherBranch->branchCondition;
 }
 
-PhiNode::PhiNode(
-    Value&& dest, std::vector<std::pair<Value, const Local*>>&& labelPairs, ConditionCode cond, SetFlag setFlags) :
-    IntermediateInstruction(std::move(dest), cond, setFlags)
+PhiNode::PhiNode(Value&& dest, std::vector<std::pair<Value, const Local*>>&& labelPairs) :
+    IntermediateInstruction(std::move(dest))
 {
     for(std::size_t i = 0; i < labelPairs.size(); ++i)
     {
@@ -207,8 +229,7 @@ IntermediateInstruction* PhiNode::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     IntermediateInstruction* tmp =
-        (new PhiNode(renameValue(method, getOutput().value(), localPrefix, localMapping), {}, conditional, setFlags))
-            ->copyExtrasFrom(this);
+        (new PhiNode(renameValue(method, getOutput().value(), localPrefix, localMapping), {}))->copyExtrasFrom(this);
     for(std::size_t i = 0; i < getArguments().size(); ++i)
     {
         tmp->setArgument(i, renameValue(method, assertArgument(i), localPrefix, localMapping));

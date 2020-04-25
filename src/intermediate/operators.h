@@ -116,18 +116,18 @@ namespace vc4c
 
             NODISCARD intermediate::IntermediateInstruction* toInstruction(const Value& result)
             {
-                intermediate::IntermediateInstruction* res = nullptr;
+                intermediate::UnpackingInstruction* res = nullptr;
                 if(op == OP_V8MIN)
                     res = new intermediate::MoveOperation(result, arg0);
                 else if(op.numOperands == 1)
                     res = new intermediate::Operation(op, result, arg0);
                 else
                     res = new intermediate::Operation(op, result, arg0, arg1.value());
-                return res->setSignaling(signal)
-                    ->setUnpackMode(unpackMode)
+                return res->setUnpackMode(unpackMode)
                     ->setPackMode(packMode)
                     ->setCondition(conditional)
                     ->setSetFlags(setFlags)
+                    ->setSignaling(signal)
                     ->addDecorations(decoration);
             }
         };
@@ -145,8 +145,7 @@ namespace vc4c
             {
             }
 
-            NODISCARD inline ConditionCode operator()(
-                InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) const
+            NODISCARD inline ConditionCode operator()(InstructionWalker& it, const Value& out) const
             {
                 func(it, out, arg0, arg1);
                 return code;
@@ -441,7 +440,7 @@ namespace vc4c
 
             NODISCARD ConditionCode operator=(ComparisonWrapper&& op) &&
             {
-                return op(it, result, op.arg0, op.arg1);
+                return op(it, result);
             }
         };
 
@@ -539,8 +538,7 @@ namespace vc4c
          */
         inline void nop(InstructionWalker& it, intermediate::DelayType type, Signaling signal = SIGNAL_NONE)
         {
-            it.emplace(new intermediate::Nop(type));
-            it->signal = signal;
+            it.emplace((new intermediate::Nop(type))->setSignaling(signal));
             it.nextInBlock();
         }
 
@@ -670,8 +668,8 @@ namespace vc4c
             // VideoCore IV considers NaN > Inf for min/fmax/fminabs/fmaxabs
             // isinf(a) || isnan(a) <=> fmaxabs(a, highest-float) -> sets carry
             static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
-                it.emplace(new intermediate::Operation(OP_FMAXABS, out, arg0, Value(Literal(0x7F7FFFFFu), TYPE_FLOAT)));
-                it->setFlags = SetFlag::SET_FLAGS;
+                it.emplace((new intermediate::Operation(OP_FMAXABS, out, arg0, Value(Literal(0x7F7FFFFFu), TYPE_FLOAT)))
+                               ->setSetFlags(SetFlag::SET_FLAGS));
                 it.nextInBlock();
             };
             return ComparisonWrapper{COND_CARRY_SET, val.val, UNDEFINED_VALUE, func};
@@ -702,9 +700,9 @@ namespace vc4c
         NODISCARD inline ComparisonWrapper selectSIMDElements(std::bitset<NATIVE_VECTOR_SIZE> indices)
         {
             static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
-                it.emplace(new intermediate::LoadImmediate(
-                    out, arg0.getLiteralValue().value().unsignedInt(), intermediate::LoadType::PER_ELEMENT_UNSIGNED));
-                it->setSetFlags(SetFlag::SET_FLAGS);
+                it.emplace((new intermediate::LoadImmediate(out, arg0.getLiteralValue().value().unsignedInt(),
+                                intermediate::LoadType::PER_ELEMENT_UNSIGNED))
+                               ->setSetFlags(SetFlag::SET_FLAGS));
                 it.nextInBlock();
             };
             return ComparisonWrapper{COND_ZERO_CLEAR,

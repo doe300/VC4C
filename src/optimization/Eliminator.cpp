@@ -137,7 +137,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                         }
                     }
                 }
-                else if(move->getSource().hasRegister(REG_UNIFORM) && !move->signal.hasSideEffects())
+                else if(move->getSource().hasRegister(REG_UNIFORM) && !move->getSignal().hasSideEffects())
                 {
                     // if the added work-group info UNIFORMs are never read, we can remove them (and their flag)
                     auto dest = instr->getOutput()->local()->as<BuiltinLocal>();
@@ -270,7 +270,7 @@ InstructionWalker optimizations::simplifyOperation(
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Replacing obsolete " << op->to_string() << " with move 1" << logging::endl);
                 it.reset((new intermediate::MoveOperation(
-                              op->getOutput().value(), leftAbsorbing.value(), op->conditional, op->setFlags))
+                              op->getOutput().value(), leftAbsorbing.value(), op->getCondition(), op->getFlags()))
                              ->addDecorations(it->decoration));
             }
             else if(rightAbsorbing && secondArg && secondArg->hasLiteral(rightAbsorbing->getLiteralValue().value()))
@@ -278,7 +278,7 @@ InstructionWalker optimizations::simplifyOperation(
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Replacing obsolete " << op->to_string() << " with move 2" << logging::endl);
                 it.reset((new intermediate::MoveOperation(
-                              op->getOutput().value(), rightAbsorbing.value(), op->conditional, op->setFlags))
+                              op->getOutput().value(), rightAbsorbing.value(), op->getCondition(), op->getFlags()))
                              ->addDecorations(it->decoration));
             }
             // both operands are the same and the operation is self-inverse <=> f(a, a) = 0
@@ -289,7 +289,7 @@ InstructionWalker optimizations::simplifyOperation(
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Replacing obsolete " << op->to_string() << " with move 7" << logging::endl);
                 it.reset((new intermediate::MoveOperation(op->getOutput().value(),
-                              Value(Literal(0u), op->getOutput()->type), op->conditional, op->setFlags))
+                              Value(Literal(0u), op->getOutput()->type), op->getCondition(), op->getFlags()))
                              ->addDecorations(it->decoration));
             }
             // writes into the input -> can be removed, if it doesn't do anything
@@ -338,7 +338,7 @@ InstructionWalker optimizations::simplifyOperation(
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Replacing obsolete " << op->to_string() << " with move 3" << logging::endl);
                     it.reset((new intermediate::MoveOperation(
-                                  op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags))
+                                  op->getOutput().value(), op->getFirstArg(), op->getCondition(), op->getFlags()))
                                  ->addDecorations(it->decoration));
                 }
                 // check whether first argument does nothing
@@ -347,7 +347,7 @@ InstructionWalker optimizations::simplifyOperation(
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Replacing obsolete " << op->to_string() << " with move 4" << logging::endl);
                     it.reset((new intermediate::MoveOperation(
-                                  op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags))
+                                  op->getOutput().value(), op->assertArgument(1), op->getCondition(), op->getFlags()))
                                  ->addDecorations(it->decoration));
                 }
                 // check whether operation does not really calculate anything
@@ -360,7 +360,7 @@ InstructionWalker optimizations::simplifyOperation(
                         logging::debug() << "Replacing obsolete " << op->to_string() << " with move 5" << logging::endl;
                     });
                     it.reset((new intermediate::MoveOperation(
-                                  op->getOutput().value(), op->assertArgument(1), op->conditional, op->setFlags))
+                                  op->getOutput().value(), op->assertArgument(1), op->getCondition(), op->getFlags()))
                                  ->addDecorations(it->decoration));
                 }
                 else if(op->op == OP_XOR && op->getFirstArg().getLiteralValue() == Literal(-1))
@@ -369,15 +369,15 @@ InstructionWalker optimizations::simplifyOperation(
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Replacing XOR " << op->to_string() << " with NOT" << logging::endl);
                     it.reset((new intermediate::Operation(OP_NOT, op->getOutput().value(), op->getSecondArg().value(),
-                                  op->conditional, op->setFlags))
+                                  op->getCondition(), op->getFlags()))
                                  ->addDecorations(it->decoration));
                 }
                 else if(op->op == OP_XOR && (op->getSecondArg() & &Value::getLiteralValue) == Literal(-1))
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Replacing XOR " << op->to_string() << " with NOT" << logging::endl);
-                    it.reset((new intermediate::Operation(
-                                  OP_NOT, op->getOutput().value(), op->getFirstArg(), op->conditional, op->setFlags))
+                    it.reset((new intermediate::Operation(OP_NOT, op->getOutput().value(), op->getFirstArg(),
+                                  op->getCondition(), op->getFlags()))
                                  ->addDecorations(it->decoration));
                 }
             }
@@ -400,7 +400,7 @@ InstructionWalker optimizations::simplifyOperation(
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Replacing obsolete " << move->to_string() << " with move 6" << logging::endl);
             it.reset((new intermediate::MoveOperation(
-                          move->getOutput().value(), move->getSource(), move->conditional, move->setFlags))
+                          move->getOutput().value(), move->getSource(), move->getCondition(), move->getFlags()))
                          ->addDecorations(it->decoration));
         }
     }
@@ -417,7 +417,7 @@ InstructionWalker optimizations::foldConstants(
         // calculations with literals can be pre-calculated
         if(op->getFirstArg().getLiteralValue() && (!op->getSecondArg() || op->assertArgument(1).getLiteralValue()))
         {
-            if(op->conditional != COND_ALWAYS && op->op == OP_XOR && op->getSecondArg() == op->getFirstArg())
+            if(op->hasConditionalExecution() && op->op == OP_XOR && op->getSecondArg() == op->getFirstArg())
             {
                 // skip "xor ?, true, true", so it can be optimized (combined with "move ?, true") afterwards
                 // also skip any "xor ?, val, val", since they are created on purpose (by combineSelectionWithZero to
@@ -457,13 +457,20 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
         InstructionWalker blockIt = bb->walkEnd();
         ConditionCode jumpCondition = COND_ALWAYS;
         Value condition(UNDEFINED_VALUE);
-        while(blockIt.copy().previousInBlock().get<intermediate::Branch>())
+        while(blockIt.copy().previousInBlock().get<intermediate::Branch>() ||
+            blockIt.copy().previousInBlock().get<intermediate::BranchCondition>())
         {
             blockIt.previousInBlock();
-            if(blockIt.get<intermediate::Branch>()->getTarget() == label)
+            auto branch = blockIt.get<intermediate::Branch>();
+            if(branch && branch->getTarget() == label)
             {
-                jumpCondition = blockIt->conditional;
-                condition = blockIt.get<intermediate::Branch>()->getCondition();
+                jumpCondition = branch->branchCondition.toConditionCode();
+                if(branch->branchCondition != BRANCH_ALWAYS)
+                {
+                    if(auto branchCondition = bb->findLastBranchCondition(blockIt))
+                        // FIXME could at this point be a set-flags operation?
+                        condition = branchCondition->get<intermediate::BranchCondition>()->getBranchCondition();
+                }
             }
         }
         // Since originally the value of the PHI node is set after the jump (at the start of the destination basic
@@ -553,7 +560,7 @@ static bool isNoReadBetween(InstructionWalker first, InstructionWalker second, R
     while(!first.isEndOfBlock() && first != second)
     {
         // just to be sure (e.g. for reading TMU/SFU/VPM), check triggering load of r4 and releasing of mutex too
-        if(first->readsRegister(reg) || first->writesRegister(reg) || first->signal.triggersReadOfR4() ||
+        if(first->readsRegister(reg) || first->writesRegister(reg) || first->getSignal().triggersReadOfR4() ||
             first->writesRegister(REG_MUTEX))
             return false;
         // for reading VPM, check also VPM read setup
@@ -694,7 +701,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
             if(move->getSource() == move->getOutput().value() &&
                 !move->hasOtherSideEffects(intermediate::SideEffectType::SIGNAL))
             {
-                if(move->signal == SIGNAL_NONE)
+                if(move->getSignal() == SIGNAL_NONE)
                 {
                     CPPLOG_LAZY(
                         logging::Level::DEBUG, log << "Removing obsolete move: " << it->to_string() << logging::endl);
@@ -707,7 +714,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Removing obsolete move with nop: " << it->to_string() << logging::endl);
-                    it.reset(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER, move->signal));
+                    it.reset(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER, move->getSignal()));
                     codeChanged = true;
                 }
             }
@@ -736,7 +743,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                     // FIXME this re-orders UNIFORM reads (e.g. in test_branches.cl) ||
                     // !((*sourceWriter)->signal.hasSideEffects() || (*sourceWriter)->doesSetFlag()))
                     ) &&
-                !it->signal.hasSideEffects() &&
+                !it->getSignal().hasSideEffects() &&
                 // TODO don't know why this does not work (maybe because of some other optimization applied to the
                 // result?), but rewriting moves to rotation registers screw up the
                 // TestVectorFunctions#testShuffle2Vector16 test
@@ -752,20 +759,21 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                     log << "Replacing obsolete move with instruction calculating its source: " << it->to_string()
                         << logging::endl);
                 auto output = it->getOutput();
-                auto setFlags = it->setFlags;
+                auto setFlags = it->doesSetFlag();
                 auto sourceDecorations = intermediate::forwardDecorations((*sourceWriter)->decoration);
                 it.reset(sourceWriter->release());
                 sourceWriter->erase();
                 it->setOutput(std::move(output));
-                it->setSetFlags(setFlags);
+                if(auto extended = it.get<intermediate::ExtendedInstruction>())
+                    extended->setSetFlags(setFlags ? SetFlag::SET_FLAGS : SetFlag::DONT_SET);
                 it->addDecorations(sourceDecorations);
                 codeChanged = true;
             }
             else if(move->getSource().checkRegister() && destUsedOnce &&
                 (destUsedOnceWithoutLiteral || has_flag(move->getSource().reg().file, RegisterFile::PHYSICAL_ANY) ||
                     has_flag(move->getSource().reg().file, RegisterFile::ACCUMULATOR)) &&
-                destinationReader && !move->signal.hasSideEffects() && move->setFlags == SetFlag::DONT_SET &&
-                !(*destinationReader)->hasUnpackMode() && (*destinationReader)->conditional == COND_ALWAYS &&
+                destinationReader && !move->getSignal().hasSideEffects() && !move->doesSetFlag() &&
+                !(*destinationReader)->hasUnpackMode() && !(*destinationReader)->hasConditionalExecution() &&
                 !(*destinationReader)->readsRegister(move->getSource().reg()) &&
                 isNoReadBetween(it, destinationReader.value(), move->getSource().reg()) &&
                 /* Tests have shown that an instruction cannot read and write VPM at the same time */

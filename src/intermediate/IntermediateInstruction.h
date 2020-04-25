@@ -59,8 +59,6 @@ namespace vc4c
             UNSIGNED_RESULT = 1u << 13u,
             // The result is a value of a PHI-node being set
             PHI_NODE = 1u << 14u,
-            // The conditional branch depends on ALL flags, not just the flag of the first SIMD-element
-            BRANCH_ON_ALL_ELEMENTS = 1u << 15u,
             // The instructions inserts a single element into a vector
             ELEMENT_INSERTION = 1u << 16u,
             // The instruction was already processed by auto-vectorization
@@ -139,8 +137,6 @@ namespace vc4c
         class IntermediateInstruction
         {
         public:
-            explicit IntermediateInstruction(Optional<Value>&& output = {}, ConditionCode cond = COND_ALWAYS,
-                SetFlag setFlags = SetFlag::DONT_SET, Pack packMode = PACK_NOP);
             IntermediateInstruction(const IntermediateInstruction&) = delete;
             IntermediateInstruction(IntermediateInstruction&&) noexcept = delete;
             virtual ~IntermediateInstruction();
@@ -276,11 +272,6 @@ namespace vc4c
 
             IntermediateInstruction* setOutput(const Optional<Value>& output);
             IntermediateInstruction* setOutput(Optional<Value>&& output);
-            IntermediateInstruction* setSignaling(Signaling signal);
-            IntermediateInstruction* setPackMode(Pack packMode);
-            IntermediateInstruction* setCondition(ConditionCode condition);
-            IntermediateInstruction* setSetFlags(SetFlag setFlags);
-            IntermediateInstruction* setUnpackMode(Unpack unpackMode);
             IntermediateInstruction* addDecorations(InstructionDecorations decorations);
             bool hasDecoration(InstructionDecorations deco) const noexcept;
 
@@ -297,6 +288,10 @@ namespace vc4c
             virtual SideEffectType getSideEffects() const;
             bool hasOtherSideEffects(SideEffectType ignoreEffects) const;
 
+            /**
+             * The signal that is fired, if any
+             */
+            Signaling getSignal() const;
             /*
              * Whether an unpack-mode is set
              */
@@ -313,13 +308,14 @@ namespace vc4c
              * Whether does the instruction set flag
              */
             bool doesSetFlag() const;
+            SetFlag getFlags() const;
 
             /*
              * Copies all the extras (signal, pack-modes, etc.) from the given instruction.
              *
              * NOTE: This function throws errors on merging incompatible extras (e.g. different non-default pack-modes)
              */
-            IntermediateInstruction* copyExtrasFrom(const IntermediateInstruction* src);
+            virtual IntermediateInstruction* copyExtrasFrom(const IntermediateInstruction* src, bool skipSignal = false);
             /*
              * Tries to calculate the operation performed by this instruction and returns a constant value if
              * successful. The parameter numIterations determines the number of instructions providing the operands
@@ -338,15 +334,17 @@ namespace vc4c
              */
             bool isConstantInstruction() const;
 
+            InstructionDecorations decoration;
+
+        protected:
             Signaling signal;
             Unpack unpackMode;
             Pack packMode;
             ConditionCode conditional;
             SetFlag setFlags;
-            bool canBeCombined;
-            InstructionDecorations decoration;
 
-        protected:
+            explicit IntermediateInstruction(Optional<Value>&& output = {});
+
             Value renameValue(
                 Method& method, const Value& orig, const std::string& prefix, InlineMapping& localMapping) const;
 
@@ -364,9 +362,45 @@ namespace vc4c
             void addAsUserToValue(const Value& value, LocalUse::Type type);
         };
 
+        class SignalingInstruction : public IntermediateInstruction
+        {
+        public:
+            SignalingInstruction* setSignaling(Signaling signal);
+
+        protected:
+            explicit SignalingInstruction(Signaling signal, Optional<Value>&& output = {});
+        };
+
+        class ExtendedInstruction : public SignalingInstruction
+        {
+        public:
+            Pack getPackMode() const;
+            ExtendedInstruction* setPackMode(Pack packMode);
+
+            ConditionCode getCondition() const;
+            ExtendedInstruction* setCondition(ConditionCode condition);
+
+            ExtendedInstruction* setSetFlags(SetFlag setFlags);
+
+        protected:
+            explicit ExtendedInstruction(
+                Signaling signal, ConditionCode cond, SetFlag setFlags, Pack packMode, Optional<Value>&& output = {});
+        };
+
+        class UnpackingInstruction : public ExtendedInstruction
+        {
+        public:
+            Unpack getUnpackMode() const;
+            UnpackingInstruction* setUnpackMode(Unpack unpackMode);
+
+        protected:
+            explicit UnpackingInstruction(Signaling signal, ConditionCode cond, SetFlag setFlags, Pack packMode,
+                Unpack unpackMode, Optional<Value>&& output = {});
+        };
+
         struct CombinedOperation;
 
-        struct Operation final : public IntermediateInstruction
+        struct Operation final : public UnpackingInstruction
         {
             Operation(const OpCode& opCode, const Value& dest, const Value& arg0, ConditionCode cond = COND_ALWAYS,
                 SetFlag setFlags = SetFlag::DONT_SET);
@@ -410,10 +444,8 @@ namespace vc4c
          */
         struct IntrinsicOperation : public IntermediateInstruction
         {
-            IntrinsicOperation(std::string&& opCode, Value&& dest, Value&& arg0, ConditionCode cond = COND_ALWAYS,
-                SetFlag setFlags = SetFlag::DONT_SET);
-            IntrinsicOperation(std::string&& opCode, Value&& dest, Value&& arg0, Value&& arg1,
-                ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+            IntrinsicOperation(std::string&& opCode, Value&& dest, Value&& arg0);
+            IntrinsicOperation(std::string&& opCode, Value&& dest, Value&& arg0, Value&& arg1);
             ~IntrinsicOperation() override = default;
 
             std::string to_string() const override;
@@ -476,7 +508,7 @@ namespace vc4c
             bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
-        struct MoveOperation : public IntermediateInstruction
+        struct MoveOperation : public UnpackingInstruction
         {
             MoveOperation(const Value& dest, const Value& arg, ConditionCode cond = COND_ALWAYS,
                 SetFlag setFlags = SetFlag::DONT_SET);
@@ -585,11 +617,36 @@ namespace vc4c
             bool innerEquals(const IntermediateInstruction& other) const override;
         };
 
-        struct Branch final : public IntermediateInstruction
+        struct BranchCondition final : public SignalingInstruction
+        {
+            BranchCondition(const Value& cond, std::bitset<NATIVE_VECTOR_SIZE> elements = 0x1);
+            ~BranchCondition() override = default;
+
+            std::string to_string() const override;
+            IntermediateInstruction* copyFor(
+                Method& method, const std::string& localPrefix, InlineMapping& localMapping) const override;
+            qpu_asm::DecoratedInstruction convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+                const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
+            bool isNormalized() const override;
+            SideEffectType getSideEffects() const override;
+
+            const Value& getBranchCondition() const;
+
+            /**
+             * The SIMD elements (defaults to element zero) which will be expanded to determine whether the branch is
+             * taken. In other words: All other SIMD elements will be ignored (masked off) when the branch condition is
+             * calculated.
+             */
+            std::bitset<NATIVE_VECTOR_SIZE> conditionalElements;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
+        };
+
+        struct Branch final : public SignalingInstruction
         {
             explicit Branch(const Local* target);
-            Branch(const Local* target, ConditionCode condCode, const Value& cond,
-                std::bitset<NATIVE_VECTOR_SIZE> elements = 0x1);
+            Branch(const Local* target, BranchCond branchCond);
             ~Branch() override = default;
 
             std::string to_string() const override;
@@ -603,14 +660,8 @@ namespace vc4c
             const Local* getTarget() const;
 
             bool isUnconditional() const;
-            const Value& getCondition() const;
 
-            /**
-             * The SIMD elements (defaults to element zero) which will be expanded to determine whether the branch is
-             * taken. In other words: All other SIMD elements will be ignored (masked off) when the branch condition is
-             * calculated.
-             */
-            std::bitset<NATIVE_VECTOR_SIZE> conditionalElements;
+            BranchCond branchCondition;
 
         protected:
             bool innerEquals(const IntermediateInstruction& other) const override;
@@ -636,7 +687,7 @@ namespace vc4c
             WAIT_VPM
         };
 
-        struct Nop final : public IntermediateInstruction
+        struct Nop final : public SignalingInstruction
         {
         public:
             explicit Nop(DelayType type, Signaling signal = SIGNAL_NONE);
@@ -787,7 +838,7 @@ namespace vc4c
          * NOTE: Conditional loads also apply per element (like any ALU instruction). This allows for some elements to
          * be overridden in the load, while other stay unchanged.
          */
-        struct LoadImmediate final : public IntermediateInstruction
+        struct LoadImmediate final : public ExtendedInstruction
         {
         public:
             LoadImmediate(const Value& dest, const Literal& source, ConditionCode cond = COND_ALWAYS,
@@ -835,7 +886,7 @@ namespace vc4c
          * Semaphore instruction MUST NOT write to any hardware register which can stall (e.g. TMU, SFU)
          *
          */
-        struct SemaphoreAdjustment final : public IntermediateInstruction
+        struct SemaphoreAdjustment final : public ExtendedInstruction
         {
         public:
             SemaphoreAdjustment(Semaphore semaphore, bool increase);
@@ -859,8 +910,7 @@ namespace vc4c
         struct PhiNode final : public IntermediateInstruction
         {
         public:
-            PhiNode(Value&& dest, std::vector<std::pair<Value, const Local*>>&& labelPairs,
-                ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
+            PhiNode(Value&& dest, std::vector<std::pair<Value, const Local*>>&& labelPairs);
             ~PhiNode() override = default;
 
             std::string to_string() const override;
@@ -981,7 +1031,7 @@ namespace vc4c
         /*
          * Instruction accessing (locking/unlocking) the hardware-mutex
          */
-        struct MutexLock final : IntermediateInstruction
+        struct MutexLock final : SignalingInstruction
         {
         public:
             explicit MutexLock(MutexAccess accessType);

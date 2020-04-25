@@ -709,7 +709,7 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
                     // requires load immediate
                     CPPLOG_LAZY(
                         logging::Level::DEBUG, log << "Loading immediate value: " << lit->to_string() << logging::endl);
-                    it.emplace(new intermediate::LoadImmediate(tmp, *lit, op->conditional));
+                    it.emplace(new intermediate::LoadImmediate(tmp, *lit, op->getCondition()));
                     // propagate the decorations so the loads are displayed as setups, not value loads
                     if(op->hasDecoration(intermediate::InstructionDecorations::VPM_READ_CONFIGURATION))
                         it->addDecorations(intermediate::InstructionDecorations::VPM_READ_CONFIGURATION);
@@ -727,10 +727,10 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
                             << logging::endl);
                     if(mapped.opCode.numOperands == 1)
                         it.emplace(new intermediate::Operation(
-                            mapped.opCode, tmp, Value(mapped.immediate, type), op->conditional));
+                            mapped.opCode, tmp, Value(mapped.immediate, type), op->getCondition()));
                     else
                         it.emplace(new intermediate::Operation(mapped.opCode, tmp, Value(mapped.immediate, type),
-                            Value(mapped.immediate, type), op->conditional));
+                            Value(mapped.immediate, type), op->getCondition()));
                     it.nextInBlock();
                     op->setArgument(i, std::move(tmp));
                 }
@@ -836,8 +836,8 @@ static Optional<Value> findPreviousUseWithImmediate(
 
     while(instRemaining > 0 && !it.isStartOfBlock())
     {
-        if(it.get<intermediate::MoveOperation>() && it.get<intermediate::MoveOperation>()->isSimpleMove() &&
-            it->getArgument(0) == arg && it->conditional == COND_ALWAYS &&
+        auto move = it.get<intermediate::MoveOperation>();
+        if(move && move->isSimpleMove() && it->getArgument(0) == arg && !move->hasConditionalExecution() &&
             (it->getOutput() & [&](const Value& val) -> bool {
                 return val.checkLocal() &&
                     (

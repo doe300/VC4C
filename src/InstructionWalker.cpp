@@ -28,6 +28,7 @@ bool InstructionVisitor::visit(const InstructionWalker& start) const
             if(followJumps && it.get<intermediate::Branch>())
             {
                 intermediate::Branch* jump = it.get<intermediate::Branch>();
+                auto jumpIt = it;
                 if(auto nextBlock = it.getBasicBlock()->method.findBasicBlock(jump->getTarget()))
                 {
                     bool cont = visit(nextBlock->walk());
@@ -39,11 +40,16 @@ bool InstructionVisitor::visit(const InstructionWalker& start) const
                     return true;
                 // handle either-or-jumps, check previous instruction
                 intermediate::Branch* prevJump = it.copy().previousInBlock().get<intermediate::Branch>();
-                if(prevJump != nullptr && prevJump->getCondition() == jump->getCondition() &&
-                    jump->conditionalElements == prevJump->conditionalElements &&
-                    jump->conditional.isInversionOf(prevJump->conditional))
-                    // the control-flow always jumps, both destinations are already processed
-                    return true;
+                auto prevJumpIt = it;
+                if(prevJump != nullptr && jump->branchCondition.isInversionOf(prevJump->branchCondition))
+                {
+                    auto lastBranchCond = it.getBasicBlock()->findLastBranchCondition(jumpIt);
+                    auto secondLastBranchCond = it.getBasicBlock()->findLastBranchCondition(prevJumpIt);
+                    if(lastBranchCond == secondLastBranchCond)
+                        // the branches are only guaranteed to cover all cases if they refer to the same branch
+                        // condition
+                        return true;
+                }
             }
             if(stopAtBlock)
             {

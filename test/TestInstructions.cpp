@@ -1939,10 +1939,10 @@ void TestInstructions::testInstructionEquality()
     }
 
     {
-        intermediate::Branch inst(method.addNewLocal(TYPE_LABEL).local(), COND_ZERO_CLEAR, UNIFORM_REGISTER);
+        intermediate::Branch inst(method.addNewLocal(TYPE_LABEL).local(), BRANCH_ALL_Z_CLEAR);
         op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
-        inst.setCondition(COND_ZERO_SET);
+        inst.branchCondition = BRANCH_ANY_N_SET;
         TEST_ASSERT(inst != *op2)
     }
 
