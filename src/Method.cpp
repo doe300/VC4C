@@ -153,13 +153,27 @@ const BuiltinLocal* Method::findOrCreateBuiltin(BuiltinLocal::Type type)
         CompilationStep::GENERAL, "Unhandled built-in type", std::to_string(static_cast<unsigned>(type)));
 }
 
+static std::size_t removeUser(
+    tools::SmallSortedPointerMap<const LocalUser*, LocalUse>& remainingUsers, const LocalUser* user)
+{
+    auto numUsers = remainingUsers.erase(user);
+    if(auto comb = dynamic_cast<const intermediate::CombinedOperation*>(user))
+    {
+        if(comb->op1)
+            numUsers += remainingUsers.erase(comb->op1.get());
+        if(comb->op2)
+            numUsers += remainingUsers.erase(comb->op2.get());
+    }
+    return numUsers;
+}
+
 static NODISCARD bool removeUsagesInBasicBlock(const Method& method, const BasicBlock& bb, const Local* locale,
     tools::SmallSortedPointerMap<const LocalUser*, LocalUse>& remainingUsers, int& usageRangeLeft)
 {
     auto it = bb.walk();
     while(usageRangeLeft >= 0 && !it.isEndOfMethod())
     {
-        remainingUsers.erase(it.get());
+        removeUser(remainingUsers, it.get());
         --usageRangeLeft;
         if(auto branch = dynamic_cast<const intermediate::Branch*>(it.get()))
         {
@@ -182,11 +196,11 @@ bool Method::isLocallyLimited(InstructionWalker curIt, const Local* locale, cons
     // this happens e.g. for comparisons
     if(!curIt.isStartOfBlock())
     {
-        remainingUsers.erase(curIt.copy().previousInBlock().get());
+        removeUser(remainingUsers, curIt.copy().previousInBlock().get());
     }
     while(usageRangeLeft >= 0 && !curIt.isEndOfMethod())
     {
-        remainingUsers.erase(curIt.get());
+        removeUser(remainingUsers, curIt.get());
         --usageRangeLeft;
         if(auto branch = curIt.get<intermediate::Branch>())
         {

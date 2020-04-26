@@ -108,35 +108,6 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                         hasChanged = true;
                         continue;
                     }
-                    if(move->checkOutputLocal() && !move->hasConditionalExecution())
-                    {
-                        // check whether move output is overridden in the same basic block before being read
-                        auto output = move->checkOutputLocal();
-                        auto checkIt = it.copy().nextInBlock();
-                        auto nextWrite = it.getBasicBlock()->walkEnd();
-                        while(!checkIt.isEndOfBlock())
-                        {
-                            if(checkIt->readsLocal(output))
-                                break;
-                            if(checkIt->writesLocal(output) && !checkIt->hasConditionalExecution())
-                            {
-                                nextWrite = checkIt;
-                                break;
-                            }
-                            checkIt.nextInBlock();
-                        }
-                        if(!nextWrite.isEndOfBlock())
-                        {
-                            CPPLOG_LAZY(logging::Level::DEBUG,
-                                log << "Removing simple move into output local which is fully overridden before the "
-                                       "next read: "
-                                    << move->to_string() << logging::endl);
-                            // skip ++it, so next instructions is looked at too
-                            it.erase();
-                            hasChanged = true;
-                            continue;
-                        }
-                    }
                 }
                 else if(move->getSource().hasRegister(REG_UNIFORM) && !move->getSignal().hasSideEffects())
                 {
@@ -232,6 +203,29 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                 continue;
             }
         }
+        // remove unnecessary writes which are immediately overwritten
+        if((op || move || load) && instr->checkOutputLocal() && !instr->hasSideEffects())
+        {
+            auto loc = instr->checkOutputLocal();
+            auto checkIt = it.copy().nextInBlock();
+            while(!checkIt.isEndOfBlock())
+            {
+                if(checkIt.has() && checkIt->readsLocal(loc))
+                    break;
+                if(checkIt.has() && checkIt->writesLocal(loc) && !checkIt->hasConditionalExecution())
+                    break;
+                checkIt.nextInBlock();
+            }
+            if(!checkIt.isEndOfBlock() && !checkIt->readsLocal(loc))
+            {
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Removing write to local which is overridden before the next read: " << it->to_string()
+                        << logging::endl);
+                it.erase();
+                hasChanged = true;
+                continue;
+            }
+        }
         it.nextInMethod();
     }
     // remove unused locals. This is actually not required, but gives us some feedback about the effect of this
@@ -256,9 +250,10 @@ InstructionWalker optimizations::simplifyOperation(
                     op->getFirstArg().getSingleWriter()->precalculate(3).first :
                     NO_VALUE)
                                        .value_or(op->getFirstArg());
-            const Optional<Value> secondArg = (op->getSecondArg() & &Value::getSingleWriter) ?
-                op->assertArgument(1).getSingleWriter()->precalculate(3).first :
-                op->getSecondArg();
+
+            Optional<Value> secondArg = op->getSecondArg();
+            if(auto writer = (secondArg & &Value::getSingleWriter))
+                secondArg = writer->precalculate(3).first | secondArg;
 
             Optional<Value> rightIdentity = OpCode::getRightIdentity(op->op);
             Optional<Value> leftIdentity = OpCode::getLeftIdentity(op->op);
@@ -413,10 +408,13 @@ InstructionWalker optimizations::foldConstants(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     intermediate::Operation* op = it.get<intermediate::Operation>();
-    if(op != nullptr && !op->hasUnpackMode())
+    // Don't pre-calculate on flags, since i.e. carry flags cannot be set by moves!
+    // Similarly for (un)pack modes (esp. 32-bit saturation) XXX we could precalculate them in the compiler
+    if(op != nullptr && op->isSimpleOperation())
     {
         // calculations with literals can be pre-calculated
-        if(op->getFirstArg().getLiteralValue() && (!op->getSecondArg() || op->assertArgument(1).getLiteralValue()))
+        if((op->getFirstArg().getConstantValue() & &Value::getLiteralValue) &&
+            (!op->getSecondArg() || (op->assertArgument(1).getConstantValue() & &Value::getLiteralValue)))
         {
             if(op->hasConditionalExecution() && op->op == OP_XOR && op->getSecondArg() == op->getFirstArg())
             {
@@ -425,8 +423,7 @@ InstructionWalker optimizations::foldConstants(
                 // allow for combination with the other case)
                 return it;
             }
-            const Optional<Value> value = op->precalculate(3).first;
-            if(value)
+            if(auto value = op->precalculate(3).first)
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Replacing '" << op->to_string() << "' with constant value: " << value.to_string()

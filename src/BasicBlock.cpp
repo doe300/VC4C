@@ -66,6 +66,18 @@ bool BasicBlock::isLocallyLimited(InstructionWalker curIt, const Local* locale, 
 {
     auto remainingUsers = locale->getUsers();
 
+    auto removeUser = [&](const LocalUser* user) -> std::size_t {
+        auto numUsers = remainingUsers.erase(user);
+        if(auto comb = dynamic_cast<const intermediate::CombinedOperation*>(user))
+        {
+            if(comb->op1)
+                numUsers += remainingUsers.erase(comb->op1.get());
+            if(comb->op2)
+                numUsers += remainingUsers.erase(comb->op2.get());
+        }
+        return numUsers;
+    };
+
     int32_t usageRangeLeft = static_cast<int32_t>(threshold);
     // check whether the local is written in the instruction(s) before (and this)
     // this happens e.g. for comparisons and for assembling vectors
@@ -73,12 +85,12 @@ bool BasicBlock::isLocallyLimited(InstructionWalker curIt, const Local* locale, 
     while(!prevIt.isStartOfBlock())
     {
         prevIt.previousInBlock();
-        if(remainingUsers.erase(prevIt.get()) > 0)
+        if(removeUser(prevIt.get()) > 0)
             --usageRangeLeft;
     }
     while(usageRangeLeft >= 0 && !curIt.isEndOfBlock())
     {
-        remainingUsers.erase(curIt.get());
+        removeUser(curIt.get());
         --usageRangeLeft;
         curIt.nextInBlock();
     }

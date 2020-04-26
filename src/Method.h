@@ -225,6 +225,14 @@ namespace vc4c
             return basicBlocks.size();
         }
 
+        /**
+         * @return whether this method contains no instructions (except possibly a single label)
+         */
+        bool empty() const
+        {
+            return size() == 0 || (size() == 1 && begin()->empty());
+        }
+
         /*
          * Inserts the given label at the position and returns a iterator to it.
          *

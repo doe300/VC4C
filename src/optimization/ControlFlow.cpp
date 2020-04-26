@@ -709,6 +709,8 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
 
 bool optimizations::vectorizeLoops(const Module& module, Method& method, const Configuration& config)
 {
+    if(method.empty())
+        return false;
     // 1. find loops
     auto& cfg = method.getCFG();
     auto loops = cfg.findLoops(false);
@@ -1316,6 +1318,8 @@ static const Local* findSourceBlock(const Local* label, const FastMap<const Loca
 
 bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config)
 {
+    if(method.empty())
+        return false;
     auto& graph = method.getCFG();
 
     std::vector<std::pair<const Local*, const Local*>> blocksToMerge;
@@ -1409,6 +1413,8 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
 
 bool optimizations::reorderBasicBlocks(const Module& module, Method& method, const Configuration& config)
 {
+    if(method.empty())
+        return false;
     auto& cfg = method.getCFG();
     auto blockIt = method.begin();
     auto prevIt = method.begin();
@@ -1621,6 +1627,8 @@ static FastAccessList<IfElseBlock> findIfElseBlocks(ControlFlowGraph& graph)
 
 bool optimizations::simplifyConditionalBlocks(const Module& module, Method& method, const Configuration& config)
 {
+    if(method.empty())
+        return false;
     // NOTE: boost-compute/test_binary_search.cl/calls to atomic_min are good test candidates!
     bool changedCode = false;
     for(const auto& block : findIfElseBlocks(method.getCFG()))

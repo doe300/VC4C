@@ -857,70 +857,84 @@ static Optional<Value> findPreviousUseWithImmediate(
     return NO_VALUE;
 }
 
+/**
+ * - for all locals used together with small immediate values
+ * - if the range of the local exceeds the accumulator threshold
+ * -> copy the local before the use into a new temporary, which is used with the immediate instead
+ * -> fixes blocked register-file B for long-living locals
+ */
+static InstructionWalker handleOperationWithImmediate(const Module& module, Method& method, InstructionWalker it,
+    intermediate::Operation& op, const Configuration& config)
+{
+    if(op.readsLiteral())
+    {
+        // at least one immediate value is used
+        const auto& args = op.getArguments();
+        const auto localIt =
+            std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.checkLocal(); });
+        if(localIt != args.end() &&
+            !it.getBasicBlock()->isLocallyLimited(findWriteOfLocal(it, localIt->local()), localIt->local(),
+                config.additionalOptions.accumulatorThreshold))
+        {
+            // one other local is used and its range is greater than the accumulator threshold
+            // check if we have introduced an earlier use-with-immediate for the same value within the
+            // accumulator-range
+            Optional<Value> prefTemp =
+                findPreviousUseWithImmediate(it, *localIt, config.additionalOptions.accumulatorThreshold);
+            const Local* oldLocal = localIt->local();
+            if(prefTemp)
+            {
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Re-using temporary to split up use of long-living local with immediate value: "
+                        << op.to_string() << logging::endl);
+                op.replaceLocal(oldLocal, prefTemp->local(), LocalUse::Type::READER);
+            }
+            else
+            {
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Inserting temporary to split up use of long-living local with immediate value: "
+                        << op.to_string() << logging::endl);
+                Value tmp = method.addNewLocal(localIt->type, localPrefix);
+                if(auto data = localIt->local()->get<ReferenceData>())
+                    // the use-with literal also references the value referenced by the original local
+                    tmp.local()->set(ReferenceData(*data));
+                it.emplace(new intermediate::MoveOperation(tmp, *localIt));
+                // since we simply move the source, some decorations for the writing of the source still apply
+                // TODO or more generally propagate (unsigned) decoration for every moves and some operations (e.g.
+                // and with constant/unsigned, etc.)
+                if(localIt->getSingleWriter() != nullptr)
+                    it->addDecorations(intermediate::forwardDecorations(localIt->getSingleWriter()->decoration));
+                it.nextInBlock();
+                op.replaceLocal(oldLocal, tmp.local(), LocalUse::Type::READER);
+            }
+        }
+        const auto registerIt =
+            std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.checkRegister(); });
+        if(registerIt != args.end() && registerIt->reg().file == RegisterFile::PHYSICAL_B)
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Inserting temporary to split up use of physical register on file B with immediate value: "
+                    << op.to_string() << logging::endl);
+            auto tmp = method.addNewLocal(registerIt->type);
+            it.emplace(new intermediate::MoveOperation(tmp, *registerIt));
+            it.nextInBlock();
+            op.replaceValue(*registerIt, tmp, LocalUse::Type::READER);
+        }
+    }
+    return it;
+}
+
 InstructionWalker normalization::handleUseWithImmediate(
     const Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
-    //- for all locals used together with small immediate values
-    //- if the range of the local exceeds the accumulator threshold
-    //-> copy the local before the use into a new temporary, which is used with the immediate instead
-    //-> fixes blocked register-file B for long-living locals
     if(auto op = it.get<intermediate::Operation>())
+        it = handleOperationWithImmediate(module, method, it, *op, config);
+    else if(auto op = it.get<intermediate::CombinedOperation>())
     {
-        if(op->readsLiteral())
-        {
-            // at least one immediate value is used
-            const auto& args = op->getArguments();
-            const auto localIt =
-                std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.checkLocal(); });
-            if(localIt != args.end() &&
-                !it.getBasicBlock()->isLocallyLimited(findWriteOfLocal(it, localIt->local()), localIt->local(),
-                    config.additionalOptions.accumulatorThreshold))
-            {
-                // one other local is used and its range is greater than the accumulator threshold
-                // check if we have introduced an earlier use-with-immediate for the same value within the
-                // accumulator-range
-                Optional<Value> prefTemp =
-                    findPreviousUseWithImmediate(it, *localIt, config.additionalOptions.accumulatorThreshold);
-                const Local* oldLocal = localIt->local();
-                if(prefTemp)
-                {
-                    CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Re-using temporary to split up use of long-living local with immediate value: "
-                            << op->to_string() << logging::endl);
-                    op->replaceLocal(oldLocal, prefTemp->local(), LocalUse::Type::READER);
-                }
-                else
-                {
-                    CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Inserting temporary to split up use of long-living local with immediate value: "
-                            << op->to_string() << logging::endl);
-                    Value tmp = method.addNewLocal(localIt->type, localPrefix);
-                    if(auto data = localIt->local()->get<ReferenceData>())
-                        // the use-with literal also references the value referenced by the original local
-                        tmp.local()->set(ReferenceData(*data));
-                    it.emplace(new intermediate::MoveOperation(tmp, *localIt));
-                    // since we simply move the source, some decorations for the writing of the source still apply
-                    // TODO or more generally propagate (unsigned) decoration for every moves and some operations (e.g.
-                    // and with constant/unsigned, etc.)
-                    if(localIt->getSingleWriter() != nullptr)
-                        it->addDecorations(intermediate::forwardDecorations(localIt->getSingleWriter()->decoration));
-                    it.nextInBlock();
-                    op->replaceLocal(oldLocal, tmp.local(), LocalUse::Type::READER);
-                }
-            }
-            const auto registerIt =
-                std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.checkRegister(); });
-            if(registerIt != args.end() && registerIt->reg().file == RegisterFile::PHYSICAL_B)
-            {
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Inserting temporary to split up use of physical register on file B with immediate value: "
-                        << op->to_string() << logging::endl);
-                auto tmp = method.addNewLocal(registerIt->type);
-                it.emplace(new intermediate::MoveOperation(tmp, *registerIt));
-                it.nextInBlock();
-                op->replaceValue(*registerIt, tmp, LocalUse::Type::READER);
-            }
-        }
+        if(auto op1 = dynamic_cast<intermediate::Operation*>(op->op1.get()))
+            it = handleOperationWithImmediate(module, method, it, *op1, config);
+        if(auto op2 = dynamic_cast<intermediate::Operation*>(op->op2.get()))
+            it = handleOperationWithImmediate(module, method, it, *op2, config);
     }
 
     return it;
