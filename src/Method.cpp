@@ -519,15 +519,39 @@ void Method::calculateStackOffsets()
 
     // Simple version: reserve extra space for every stack-allocation
     std::size_t currentOffset = 0;
-    for(auto it = stackAllocations.begin(); it != stackAllocations.end(); ++it)
+    for(auto& stackAllocation : stackAllocations)
     {
-        if(it->isLowered)
-            // is lowered into VPM, does not participate in in-memory-stack
+        if(stackAllocation.isLowered)
+            // is lowered into VPM or register, does not participate in in-memory-stack
             continue;
-        if((stackBaseOffset + currentOffset) % it->alignment != 0)
-            currentOffset += it->alignment - ((stackBaseOffset + currentOffset) % it->alignment);
-        const_cast<std::size_t&>(it->offset) = currentOffset;
-        currentOffset += it->size;
+        if((stackBaseOffset + currentOffset) % stackAllocation.alignment != 0)
+            currentOffset +=
+                stackAllocation.alignment - ((stackBaseOffset + currentOffset) % stackAllocation.alignment);
+        const_cast<std::size_t&>(stackAllocation.offset) = currentOffset;
+        currentOffset += stackAllocation.size;
+    }
+
+    /*
+     * If a stack allocation is lowered to VPM or a register, we don't care about its "memory address". But, e.g. for
+     * handling conditionally addressed registers (see #insertAddressToElementOffset), we do have to make sure that
+     * its "memory address" is unique.
+     *
+     * Since lowered stack allocations have (so far) a calculated offset of zero, they all get assigned the same "memory
+     * address" in #resolveStackAllocation. Thus, we make up some arbitrary address that
+     * a) does not conflict with any actual address and
+     * b) guarantees no other "memory range" for lowered stack allocations overlap with this one (e.g. we "reserve"
+     * enough memory for the stack allocation to actually fit in)
+     */
+    for(auto& stackAllocation : stackAllocations)
+    {
+        if(!stackAllocation.isLowered)
+            // already handled above
+            continue;
+        if((stackBaseOffset + currentOffset) % stackAllocation.alignment != 0)
+            currentOffset +=
+                stackAllocation.alignment - ((stackBaseOffset + currentOffset) % stackAllocation.alignment);
+        const_cast<std::size_t&>(stackAllocation.offset) = currentOffset;
+        currentOffset += stackAllocation.size;
     }
 }
 
@@ -539,13 +563,14 @@ std::size_t Method::calculateStackSize() const
     for(const StackAllocation& s : stackAllocations)
     {
         if(s.isLowered)
-            // is lowered into VPM, does not participate in in-memory-stack
+            // is lowered into VPM or register, does not participate in actual in-memory-stack
             continue;
         if(s.offset + s.size > max->offset + max->size)
             max = &s;
     }
     if(max->isLowered)
-        // stack allocation with highest offset is lowered to VPM -> all stack allocations are lowered to VPM
+        // stack allocation with highest offset is lowered to VPM or register
+        // -> all stack allocations are lowered to VPM or register
         return 0;
 
     std::size_t stackSize = max->offset + max->size;

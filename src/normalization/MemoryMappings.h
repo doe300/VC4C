@@ -76,8 +76,22 @@ namespace vc4c
          * - the source memory location is constant
          * - the index is constant or the value can be determined without knowing the exact index (e.g. all elements are
          * the same)
+         *
+         * NOTE: This function returns the whole container value!
          */
-        Optional<Value> getConstantValue(const Value& source);
+        Optional<Value> getConstantContainerValue(const Value& source);
+
+        /*
+         * Returns the constant value which will be read from the given memory access instruction.
+         *
+         * The value is constant if:
+         * - the source memory location is constant
+         * - the index is constant or the value can be determined without knowing the exact index (e.g. all elements are
+         * the same)
+         *
+         * NOTE: This function only returns single element values!
+         */
+        Optional<Value> getConstantElementValue(const Value& source);
 
         /*
          * Checks whether the memory location can be mapped to the preferred location specified in the MemoryAccess

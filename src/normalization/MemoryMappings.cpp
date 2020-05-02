@@ -109,6 +109,8 @@ InstructionWalker normalization::mapMemoryAccess(Method& method, InstructionWalk
 #define ASSERT_SINGLE_SOURCE(type)                                                                                     \
     if(srcInfos.size() != 1)                                                                                           \
     {                                                                                                                  \
+        if(mem)                                                                                                        \
+            logging::error() << "Memory instruction: " << mem->to_string() << logging::endl;                           \
         logging::error() << "Accessed memory locations: " << to_string<const MemoryInfo*>(srcInfos) << logging::endl;  \
         throw CompilationError(                                                                                        \
             CompilationStep::NORMALIZER, "This type of memory mapping does not yet support multiple sources", type);   \
@@ -118,6 +120,8 @@ InstructionWalker normalization::mapMemoryAccess(Method& method, InstructionWalk
 #define ASSERT_SINGLE_DESTINATION(type)                                                                                \
     if(destInfos.size() != 1)                                                                                          \
     {                                                                                                                  \
+        if(mem)                                                                                                        \
+            logging::error() << "Memory instruction: " << mem->to_string() << logging::endl;                           \
         logging::error() << "Accessed memory locations: " << to_string<const MemoryInfo*>(srcInfos) << logging::endl;  \
         throw CompilationError(CompilationStep::NORMALIZER,                                                            \
             "This type of memory mapping does not yet support multiple destinations", type);                           \
@@ -129,6 +133,24 @@ static bool copiesWholeRegister(const Value& numEntries, const DataType& element
     // for copying of byte* where actually the whole vector is copied
     return numEntries.getLiteralValue() &&
         numEntries.getLiteralValue()->unsignedInt() * elementType.getLogicalWidth() == registerType.getLogicalWidth();
+}
+
+static tools::SmallSortedPointerSet<const Local*> getBaseAddresses(
+    const tools::SmallSortedPointerSet<const MemoryInfo*>& memoryInfos)
+{
+    tools::SmallSortedPointerSet<const Local*> result;
+    for(const auto& info : memoryInfos)
+        result.emplace(info->local);
+    return result;
+}
+
+static FastMap<const Local*, Value> getBaseAddressesAndContainers(
+    const tools::SmallSortedPointerSet<const MemoryInfo*>& memoryInfos)
+{
+    FastMap<const Local*, Value> result;
+    for(const auto& info : memoryInfos)
+        result.emplace(info->local, info->mappedRegisterOrConstant.value());
+    return result;
 }
 
 /*
@@ -157,18 +179,24 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
             CompilationStep::NORMALIZER, "Cannot perform a non-read operation on constant memory", mem->to_string());
 
     Value tmpIndex = UNDEFINED_VALUE;
+    Value selectedContainer = UNDEFINED_VALUE;
     it = insertAddressToElementOffset(
-        it, method, tmpIndex, srcInfo.local, *srcInfo.mappedRegisterOrConstant, mem, mem->getSource());
+        it, method, tmpIndex, getBaseAddressesAndContainers(srcInfos), selectedContainer, mem, mem->getSource());
     // TODO check whether index is guaranteed to be in range [0, 16[
     auto elementType = srcInfo.convertedRegisterType ? *srcInfo.convertedRegisterType :
                                                        srcInfo.mappedRegisterOrConstant->type.getElementType();
 
     auto wholeRegister = srcInfo.convertedRegisterType &&
         copiesWholeRegister(mem->getNumEntries(), mem->getDestinationElementType(), *srcInfo.convertedRegisterType);
+    if(!srcInfo.convertedRegisterType && srcInfo.mappedRegisterOrConstant & &Value::checkLiteral)
+        // check additionally, whether we copy the whole constant "vector"
+        wholeRegister |= copiesWholeRegister(
+            mem->getNumEntries(), mem->getDestinationElementType(), srcInfo.mappedRegisterOrConstant->type);
     Value tmpVal(UNDEFINED_VALUE);
     if(mem->op == MemoryOperation::COPY && wholeRegister)
         // there is no need to calculate the index, if we copy the whole object
-        tmpVal = *srcInfo.convertedRegisterType;
+        tmpVal = srcInfo.convertedRegisterType ? Value(*srcInfo.convertedRegisterType) :
+                                                 srcInfo.mappedRegisterOrConstant.value();
     else
     {
         tmpVal = method.addNewLocal(elementType, "%lowered_constant");
@@ -230,8 +258,7 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
             return it;
         }
     }
-    auto constant = getConstantValue(mem->getSource());
-    if(constant)
+    if(auto constant = getConstantElementValue(mem->getSource()))
     {
         if(mem->op == MemoryOperation::COPY)
         {
@@ -275,38 +302,44 @@ static InstructionWalker lowerMemoryReadWriteToRegister(Method& method, Instruct
     const tools::SmallSortedPointerSet<const MemoryInfo*>& srcInfos,
     const tools::SmallSortedPointerSet<const MemoryInfo*>& destInfos)
 {
-    const MemoryInfo* loweredInfo = nullptr;
     if(mem->op == MemoryOperation::READ)
     {
-        ASSERT_SINGLE_SOURCE("lowerMemoryReadWriteToRegister");
-        loweredInfo = &srcInfo;
+        for(const auto& entry : srcInfos)
+            if(!entry->mappedRegisterOrConstant)
+                throw CompilationError(CompilationStep::NORMALIZER,
+                    "Cannot map memory location to register without mapping register specified", mem->to_string());
     }
     else
     {
-        ASSERT_SINGLE_DESTINATION("lowerMemoryReadWriteToRegister");
-        loweredInfo = &destInfo;
+        for(const auto& entry : destInfos)
+            if(!entry->mappedRegisterOrConstant)
+                throw CompilationError(CompilationStep::NORMALIZER,
+                    "Cannot map memory location to register without mapping register specified", mem->to_string());
     }
-    if(!loweredInfo->mappedRegisterOrConstant)
-        throw CompilationError(CompilationStep::NORMALIZER,
-            "Cannot map memory location to register without mapping register specified", mem->to_string());
-    const auto& loweredRegister = loweredInfo->mappedRegisterOrConstant.value();
-    const auto local = loweredInfo->local;
+
     // TODO check whether index is guaranteed to be in range [0, 16[
     if(mem->op == MemoryOperation::READ)
     {
         Value tmpIndex = UNDEFINED_VALUE;
-        it = insertAddressToElementOffset(it, method, tmpIndex, local, loweredRegister, mem, mem->getSource());
-        it = insertVectorExtraction(it, method, loweredRegister, tmpIndex, mem->getDestination());
+        Value selectedContainer = UNDEFINED_VALUE;
+        it = insertAddressToElementOffset(
+            it, method, tmpIndex, getBaseAddressesAndContainers(srcInfos), selectedContainer, mem, mem->getSource());
+        it = insertVectorExtraction(it, method, selectedContainer, tmpIndex, mem->getDestination());
     }
     else if(mem->op == MemoryOperation::WRITE)
     {
+        ASSERT_SINGLE_DESTINATION("lowerMemoryReadWriteToRegister");
+        // TODO copying the container does not work, since we need to write back...
         Value tmpIndex = UNDEFINED_VALUE;
-        it = insertAddressToElementOffset(it, method, tmpIndex, local, loweredRegister, mem, mem->getDestination());
-        it = insertVectorInsertion(it, method, loweredRegister, tmpIndex, mem->getSource());
+        Value selectedContainer = UNDEFINED_VALUE;
+        it = insertAddressToElementOffset(it, method, tmpIndex, getBaseAddressesAndContainers(destInfos),
+            selectedContainer, mem, mem->getDestination());
+        it = insertVectorInsertion(it, method, destInfo.mappedRegisterOrConstant.value(), tmpIndex, mem->getSource());
     }
     else if(mem->op == MemoryOperation::FILL && mem->getSource().type.isScalarType())
     {
-        it = insertReplication(it, mem->getSource(), loweredRegister);
+        ASSERT_SINGLE_DESTINATION("lowerMemoryReadWriteToRegister");
+        it = insertReplication(it, mem->getSource(), destInfo.mappedRegisterOrConstant.value());
     }
     else
         throw CompilationError(
@@ -453,19 +486,33 @@ static InstructionWalker lowerMemoryWriteToVPM(Method& method, InstructionWalker
     const tools::SmallSortedPointerSet<const MemoryInfo*>& srcInfos,
     const tools::SmallSortedPointerSet<const MemoryInfo*>& destInfos)
 {
-    ASSERT_SINGLE_DESTINATION("lowerMemoryWriteToVPM");
-    if(destInfo.type == MemoryAccessType::VPM_PER_QPU && !destInfo.local->is<StackAllocation>())
-        throw CompilationError(
-            CompilationStep::NORMALIZER, "Unhandled case of per-QPU memory buffer", destInfo.local->to_string());
-    if(!destInfo.area)
-        throw CompilationError(CompilationStep::NORMALIZER, "Cannot lower into VPM without VPM area", mem->to_string());
+    bool allAreasArePerQPU = true;
+    bool allAreasAreShared = true;
+    for(auto destInfo : destInfos)
+    {
+        if(destInfo->type == MemoryAccessType::VPM_PER_QPU && !destInfo->local->is<StackAllocation>())
+            throw CompilationError(
+                CompilationStep::NORMALIZER, "Unhandled case of per-QPU memory buffer", destInfo->local->to_string());
+        if(!destInfo->area)
+            throw CompilationError(
+                CompilationStep::NORMALIZER, "Cannot lower into VPM without VPM area", mem->to_string());
+        if(destInfo->type != MemoryAccessType::VPM_PER_QPU)
+            allAreasArePerQPU = false;
+        if(destInfo->type != MemoryAccessType::VPM_SHARED_ACCESS)
+            allAreasAreShared = false;
+    }
 
-    if(destInfo.type == MemoryAccessType::VPM_PER_QPU)
+    if(allAreasArePerQPU)
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Lowering write to stack allocation into VPM: " << mem->to_string() << logging::endl);
-    else
+    else if(allAreasAreShared)
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Lowering write to shared local memory into VPM: " << mem->to_string() << logging::endl);
+    else
+        throw CompilationError(CompilationStep::NORMALIZER,
+            "Cannot lower conditional access to per-QPU and shared VPM memory", mem->to_string());
+
+    ASSERT_SINGLE_DESTINATION("lowerMemoryWriteToVPM");
 
     Value inAreaOffset = UNDEFINED_VALUE;
     it = insertToInVPMAreaOffset(method, it, inAreaOffset, destInfo, mem, mem->getDestination());
@@ -660,8 +707,6 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
      * RAM     |   DMA read   | DMA read + DMA write |
      *
      */
-    ASSERT_SINGLE_SOURCE("mapMemoryCopy");
-    ASSERT_SINGLE_DESTINATION("mapMemoryCopy");
 
     // srcInRegister is handled by another function
     bool destInRegister = std::all_of(destInfos.begin(), destInfos.end(),
@@ -672,12 +717,16 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
     bool srcInRAM = std::all_of(srcInfos.begin(), srcInfos.end(), [](const MemoryInfo* info) {
         return info->type == MemoryAccessType::RAM_LOAD_TMU || info->type == MemoryAccessType::RAM_READ_WRITE_VPM;
     });
+    bool srcAreas = std::all_of(srcInfos.begin(), srcInfos.end(), [](const MemoryInfo* info) { return info->area; });
     bool destInVPM = std::all_of(destInfos.begin(), destInfos.end(), [](const MemoryInfo* info) {
         return info->type == MemoryAccessType::VPM_PER_QPU || info->type == MemoryAccessType::VPM_SHARED_ACCESS;
     });
     bool destInRAM = std::all_of(destInfos.begin(), destInfos.end(), [](const MemoryInfo* info) {
         return info->type == MemoryAccessType::RAM_LOAD_TMU || info->type == MemoryAccessType::RAM_READ_WRITE_VPM;
     });
+    bool destAreas = std::all_of(destInfos.begin(), destInfos.end(), [](const MemoryInfo* info) { return info->area; });
+    bool destConvertedRegisters = std::all_of(
+        destInfos.begin(), destInfos.end(), [](const MemoryInfo* info) { return info->convertedRegisterType; });
 
     for(auto srcInfo : srcInfos)
     {
@@ -694,8 +743,9 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
     // to convert it back to the actual number of elements of the given type
     auto numEntries = mem->getNumEntries();
     Optional<DataType> vpmRowType{};
-    if(numEntries.getLiteralValue() && srcInfo.area && mem->getSourceElementType() == TYPE_INT8)
+    if(numEntries.getLiteralValue() && srcAreas && mem->getSourceElementType() == TYPE_INT8)
     {
+        ASSERT_SINGLE_SOURCE("mapMemoryCopy");
         auto origType = srcInfo.local->type.getElementType();
         auto numBytes = numEntries.getLiteralValue()->unsignedInt();
         if(numBytes != origType.getInMemoryWidth())
@@ -716,8 +766,9 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
                 CompilationStep::NORMALIZER, "Unsupported element type for memory copy into VPM", mem->to_string());
     }
 
-    if(numEntries.getLiteralValue() && destInfo.area && mem->getDestinationElementType() == TYPE_INT8)
+    if(numEntries.getLiteralValue() && destAreas && mem->getDestinationElementType() == TYPE_INT8)
     {
+        ASSERT_SINGLE_DESTINATION("mapMemoryCopy");
         auto origType = destInfo.local->type.getElementType();
         auto numBytes = numEntries.getLiteralValue()->unsignedInt();
         if(numBytes != origType.getInMemoryWidth())
@@ -770,6 +821,7 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
     else if(srcInVPM && destInRAM)
     {
         // copy from VPM into RAM -> DMA write
+        ASSERT_SINGLE_SOURCE("mapMemoryCopy");
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Mapping copy from VPM into RAM to DMA write: " << mem->to_string() << logging::endl);
         Value inAreaOffset = UNDEFINED_VALUE;
@@ -782,6 +834,7 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
     else if(srcInRAM && destInVPM)
     {
         // copy from RAM into VPM -> DMA read
+        ASSERT_SINGLE_DESTINATION("mapMemoryCopy");
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Mapping copy from RAM into VPM to DMA read: " << mem->to_string() << logging::endl);
         Value inAreaOffset = UNDEFINED_VALUE;
@@ -813,9 +866,10 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
         }
         return it.erase();
     }
-    else if(destInRegister && destInfo.convertedRegisterType)
+    else if(destInRegister && destConvertedRegisters)
     {
         // copy from VPM/RAM into register -> read from VPM/RAM + write to register
+        ASSERT_SINGLE_DESTINATION("mapMemoryCopy");
         if(copiesWholeRegister(numEntries, mem->getSourceElementType(), *destInfo.convertedRegisterType))
         {
             // e.g. for copying 32 bytes into float[8] register -> just read 1 float16 vector
@@ -868,6 +922,7 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
         else
         {
             // copy an dynamic (or constant but too big fitting) area of VPM/RAM (via TMU or VPM) to register
+            ASSERT_SINGLE_SOURCE("mapMemoryCopy");
             logging::error() << to_string<const MemoryInfo*>(srcInfos) << " - " << srcInfo.to_string() << logging::endl;
             logging::error() << to_string<const MemoryInfo*>(destInfos) << " - " << destInfo.to_string()
                              << logging::endl;
@@ -879,13 +934,15 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
     else
     {
         LCOV_EXCL_START
-        logging::error() << "Source: " << (srcInfo.local ? srcInfo.local->to_string() : "?") << " - "
-                         << static_cast<unsigned>(srcInfo.type) << " - "
-                         << (srcInfo.area ? srcInfo.area->to_string() : "") << logging::endl;
+        for(const auto& srcInfo : srcInfos)
+            logging::error() << "Source: " << (srcInfo->local ? srcInfo->local->to_string() : "?") << " - "
+                             << static_cast<unsigned>(srcInfo->type) << " - "
+                             << (srcInfo->area ? srcInfo->area->to_string() : "") << logging::endl;
 
-        logging::error() << "Destination: " << (destInfo.local ? destInfo.local->to_string() : "?") << " - "
-                         << static_cast<unsigned>(destInfo.type) << " - "
-                         << (destInfo.area ? destInfo.area->to_string() : "") << logging::endl;
+        for(const auto& destInfo : destInfos)
+            logging::error() << "Destination: " << (destInfo->local ? destInfo->local->to_string() : "?") << " - "
+                             << static_cast<unsigned>(destInfo->type) << " - "
+                             << (destInfo->area ? destInfo->area->to_string() : "") << logging::endl;
 
         throw CompilationError(
             CompilationStep::NORMALIZER, "Unhandled case for handling memory copy", mem->to_string());

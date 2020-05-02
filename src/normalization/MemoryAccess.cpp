@@ -691,6 +691,7 @@ void normalization::resolveStackAllocation(
         const Value& arg = it->assertArgument(i);
         if(arg.checkLocal() && arg.type.getPointerType() && arg.local()->is<StackAllocation>())
         {
+            auto stackAllocation = arg.local()->as<StackAllocation>();
             // 2.remove the life-time instructions
             if(it.get<intermediate::LifetimeBoundary>() != nullptr)
             {
@@ -700,7 +701,7 @@ void normalization::resolveStackAllocation(
                 // to not skip the next instruction
                 it.previousInBlock();
             }
-            else if(stackBaseOffset == 0 && maximumStackSize == 0 && arg.local()->as<StackAllocation>()->isLowered)
+            else if(stackBaseOffset == 0 && maximumStackSize == 0 && stackAllocation->isLowered)
             {
                 /*
                  * Stack objects which are lowered into VPM (or registers) have a special address calculation.
@@ -750,8 +751,7 @@ void normalization::resolveStackAllocation(
                 auto addrTemp = assign(it, arg.type, "%stack_addr") =
                     qpuOffset + method.findOrCreateBuiltin(BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)->createReference();
                 auto finalAddr = assign(it, arg.type, "%stack_addr") = addrTemp +
-                    Value(Literal(static_cast<uint32_t>(arg.local()->as<StackAllocation>()->offset + stackBaseOffset)),
-                        TYPE_INT32);
+                    Value(Literal(static_cast<uint32_t>(stackAllocation->offset + stackBaseOffset)), TYPE_INT32);
                 finalAddr.local()->set(ReferenceData(*arg.local(), ANY_ELEMENT));
                 it->setArgument(i, std::move(finalAddr));
             }

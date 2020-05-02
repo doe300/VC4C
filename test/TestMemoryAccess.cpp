@@ -235,10 +235,13 @@ TestMemoryAccess::TestMemoryAccess(const Configuration& config) : TestEmulator(f
     TEST_ADD(TestMemoryAccess::testWriteSelectParameter);
     TEST_ADD(TestMemoryAccess::testReadSelectParameter);
     TEST_ADD(TestMemoryAccess::testReadWriteSelectParameter);
+    TEST_ADD(TestMemoryAccess::testCopySelectParameter);
     TEST_ADD(TestMemoryAccess::testWritePhiParameter);
     TEST_ADD(TestMemoryAccess::testReadPhiParameter);
     TEST_ADD(TestMemoryAccess::testReadWritePhiParameter);
+    TEST_ADD(TestMemoryAccess::testCopyPhiParameter);
     TEST_ADD(TestMemoryAccess::testReadSelectParameterOrLocal);
+    TEST_ADD(TestMemoryAccess::testReadSelectRegister);
 }
 
 TestMemoryAccess::~TestMemoryAccess() = default;
@@ -1008,6 +1011,55 @@ void TestMemoryAccess::testReadWriteSelectParameter()
     }
 }
 
+void TestMemoryAccess::testCopySelectParameter()
+{
+    std::stringstream code;
+    compileFile(code, "testing/test_conditional_address.cl", "", true);
+
+    constexpr unsigned NUM_ITEMS = 30;
+
+    auto tmp = generateInput<unsigned, 1 * NUM_ITEMS>(true);
+    std::vector<unsigned> mem0{tmp.begin(), tmp.end()};
+    tmp = generateInput<unsigned, 1 * NUM_ITEMS>(true);
+    std::vector<unsigned> mem1(tmp.begin(), tmp.end());
+
+    std::unique_ptr<vc4c::tools::EmulationResult> result;
+    emulateKernel(code, "test_select_copy_address_simple", NUM_ITEMS, result, {mem0, mem1});
+
+    auto& result0 = result->results[0].second.value();
+    auto& result1 = result->results[1].second.value();
+
+    for(unsigned i = 0; i < NUM_ITEMS; ++i)
+    {
+        if(i & 1)
+        {
+            if((mem0[i]) != result1[i])
+            {
+                TEST_ASSERT_EQUALS(
+                    std::to_string(mem0[i]) + " for copied element " + std::to_string(i), std::to_string(result1[i]));
+            }
+            if(mem0[i] != result0[i])
+            {
+                TEST_ASSERT_EQUALS(std::to_string(mem0[i]) + " for unmodified element " + std::to_string(i),
+                    std::to_string(result0[i]));
+            }
+        }
+        else
+        {
+            if((mem1[i]) != result0[i])
+            {
+                TEST_ASSERT_EQUALS(
+                    std::to_string(mem1[i]) + " for copied element " + std::to_string(i), std::to_string(result0[i]));
+            }
+            if(mem1[i] != result1[i])
+            {
+                TEST_ASSERT_EQUALS(std::to_string(mem1[i]) + " for unmodified element " + std::to_string(i),
+                    std::to_string(result1[i]));
+            }
+        }
+    }
+}
+
 void TestMemoryAccess::testWritePhiParameter()
 {
     std::stringstream code;
@@ -1181,6 +1233,64 @@ void TestMemoryAccess::testReadWritePhiParameter()
     }
 }
 
+void TestMemoryAccess::testCopyPhiParameter()
+{
+    std::stringstream code;
+    compileFile(code, "testing/test_conditional_address.cl", "", true);
+
+    constexpr unsigned NUM_ITEMS = 16;
+    constexpr unsigned ITERATION_COUNT = 3;
+
+    auto tmp = generateInput<unsigned, 1 * NUM_ITEMS * ITERATION_COUNT>(true);
+    std::vector<unsigned> mem0{tmp.begin(), tmp.end()};
+    tmp = generateInput<unsigned, 1 * NUM_ITEMS * ITERATION_COUNT>(true);
+    std::vector<unsigned> mem1(tmp.begin(), tmp.end());
+
+    std::unique_ptr<vc4c::tools::EmulationResult> result;
+    emulateKernel(code, "test_phi_copy_address_simple", NUM_ITEMS, result, {mem0, mem1, {ITERATION_COUNT}});
+
+    auto& result0 = result->results[0].second.value();
+    auto& result1 = result->results[1].second.value();
+
+    for(unsigned i = 0; i < NUM_ITEMS; ++i)
+    {
+        if(i & 1)
+        {
+            for(unsigned k = 0; k < ITERATION_COUNT; ++k)
+            {
+                auto n = i + NUM_ITEMS * k;
+                if((mem0[n]) != result1[n])
+                {
+                    TEST_ASSERT_EQUALS(std::to_string(mem0[i]) + " for copied element " + std::to_string(i),
+                        std::to_string(result1[i]));
+                }
+                if(mem0[n] != result0[n])
+                {
+                    TEST_ASSERT_EQUALS(std::to_string(mem0[n]) + " for unmodified element " + std::to_string(n),
+                        std::to_string(result0[n]));
+                }
+            }
+        }
+        else
+        {
+            for(unsigned k = 0; k < ITERATION_COUNT; ++k)
+            {
+                auto n = i + NUM_ITEMS * k;
+                if((mem1[n]) != result0[n])
+                {
+                    TEST_ASSERT_EQUALS(std::to_string(mem1[i]) + " for copied element " + std::to_string(i),
+                        std::to_string(result0[i]));
+                }
+                if(mem1[n] != result1[n])
+                {
+                    TEST_ASSERT_EQUALS(std::to_string(mem1[n]) + " for unmodified element " + std::to_string(n),
+                        std::to_string(result1[n]));
+                }
+            }
+        }
+    }
+}
+
 void TestMemoryAccess::testReadSelectParameterOrLocal()
 {
     std::stringstream code;
@@ -1218,6 +1328,61 @@ void TestMemoryAccess::testReadSelectParameterOrLocal()
                 TEST_ASSERT_EQUALS(std::to_string(in0[i]) + " + 17 = " + std::to_string(in0[i] + 17) +
                         " for modified element " + std::to_string(i),
                     std::to_string(resultOut[i]) + " (before " + std::to_string(out[i]) + ")");
+            }
+        }
+    }
+}
+
+void TestMemoryAccess::testReadSelectRegister()
+{
+    std::stringstream code;
+    compileFile(code, "testing/test_conditional_address.cl", "", true);
+
+    // Needs to be at most the size of the __private buffer in the kernel
+    constexpr unsigned NUM_ITEMS = 16;
+
+    auto tmp = generateInput<unsigned, 1 * NUM_ITEMS>(true);
+    std::vector<unsigned> in{tmp.begin(), tmp.end()};
+    tmp = generateInput<unsigned, 1 * NUM_ITEMS>(true);
+    std::vector<unsigned> out(tmp.begin(), tmp.end());
+
+    std::unique_ptr<vc4c::tools::EmulationResult> result;
+    emulateKernel(code, "test_select_read_address_private", NUM_ITEMS, result, {in, out});
+
+    auto& resultOut = result->results[1].second.value();
+
+    for(unsigned i = 0; i < NUM_ITEMS; ++i)
+    {
+        // both private buffers are set to the input at position local_id
+        // either private buffer is read at position global_id
+        if(i < 8)
+        {
+            // for the first work-group, local_id is equal to global_id
+            if((in[i] + 17u) != resultOut[i])
+            {
+                TEST_ASSERT_EQUALS(std::to_string(in[i]) + " + 17 = " + std::to_string(in[i] + 17) +
+                        " for modified element " + std::to_string(i),
+                    std::to_string(resultOut[i]) + " (before " + std::to_string(out[i]) + ")");
+            }
+        }
+        else
+        {
+            // for the second work-group, they read either the original 17 or 42
+            if(i & 1)
+            {
+                if((17u + 17u) != resultOut[i])
+                {
+                    TEST_ASSERT_EQUALS("17 + 17 = 34 for unmodified element " + std::to_string(i),
+                        std::to_string(resultOut[i]) + " (before " + std::to_string(out[i]) + ")");
+                }
+            }
+            else
+            {
+                if((42u + 17u) != resultOut[i])
+                {
+                    TEST_ASSERT_EQUALS("42 + 17 = 59 for unmodified element " + std::to_string(i),
+                        std::to_string(resultOut[i]) + " (before " + std::to_string(out[i]) + ")");
+                }
             }
         }
     }

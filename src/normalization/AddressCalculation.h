@@ -12,6 +12,7 @@
 #include "../analysis/ValueRange.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../performance.h"
+#include "../tools/SmallSet.h"
 
 namespace vc4c
 {
@@ -31,12 +32,16 @@ namespace vc4c
         /*
          * Converts an address (e.g. an index chain) and the corresponding base pointer to the pointer difference
          *
+         * If the given baseAddresses set has more than one entry, the most fitting baseAddress is chosen at run-time.
+         * More exactly, the largest candidate base address which is smaller than the given pointer value is selected.
+         *
          * NOTE: The result itself is still in "memory-address mode", meaning the offset is the number of bytes
          *
          * Returns (char*)address - (char*)baseAddress
          */
         NODISCARD InstructionWalker insertAddressToOffset(InstructionWalker it, Method& method, Value& out,
-            const Local* baseAddress, const intermediate::MemoryInstruction* mem, const Value& ptrValue);
+            const tools::SmallSortedPointerSet<const Local*>& baseAddresses, const intermediate::MemoryInstruction* mem,
+            const Value& ptrValue);
 
         /*
          * Converts an address (e.g. an index-chain) and a base-address to the offset of the vector denoting the element
@@ -60,8 +65,8 @@ namespace vc4c
          * Return ((char*)address - (char*)baseAddress) / sizeof(elementType)
          */
         NODISCARD InstructionWalker insertAddressToElementOffset(InstructionWalker it, Method& method, Value& out,
-            const Local* baseAddress, const Value& container, const intermediate::MemoryInstruction* mem,
-            const Value& ptrValue);
+            const FastMap<const Local*, Value>& baseAddressesAndContainers, Value& outContainer,
+            const intermediate::MemoryInstruction* mem, const Value& ptrValue);
 
         /*
          * Converts an address (e.g. index-chain) which contains work-group uniform and work-item specific parts (as

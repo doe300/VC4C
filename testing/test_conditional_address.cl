@@ -25,14 +25,13 @@ __kernel void test_select_read_write_address_simple(__global int* mem0, __global
     out[gid] = tmp + 17;
 }
 
-// TODO not yet implemented
-// __kernel void test_select_copy_address_simple(__global int* mem0, __global int* mem1)
-// {
-//     uint gid = (uint) get_global_id(0);
-//     __global int* in = (gid & 1) ? mem0 : mem1;
-//     __global int* out = !(gid & 1) ? mem0 : mem1;
-//     out[gid] = in[gid];
-// }
+__kernel void test_select_copy_address_simple(__global int* mem0, __global int* mem1)
+{
+    uint gid = (uint) get_global_id(0);
+    __global int* in = (gid & 1) ? mem0 : mem1;
+    __global int* out = !(gid & 1) ? mem0 : mem1;
+    out[gid] = in[gid];
+}
 
 // Little bit more advanced case, addresses of same type (__global parameter) are selected via phi node
 __kernel void test_phi_write_address_simple(
@@ -82,22 +81,20 @@ __kernel void test_phi_read_write_address_simple(__global int* mem0, __global in
     }
 }
 
-// TODO not yet implemented
-// __kernel void test_phi_copy_address_simple(__global int* mem0, __global int* mem1, __global unsigned* cnt)
-// {
-//     unsigned count = *cnt;
-//     uint gid = (uint) get_global_id(0);
-//     uint gsize = (uint) get_global_size(0);
-//     __global int* in = (gid & 1) ? mem0 : mem1;
-//     __global int* out = !(gid & 1) ? mem0 : mem1;
-//     for(unsigned i = 0; i < count; ++i)
-//     {
-//         int tmp = in[gid];
-//         out[gid] = in[gid];
-//         in += count;
-//         out += gsize;
-//     }
-// }
+__kernel void test_phi_copy_address_simple(__global int* mem0, __global int* mem1, __global unsigned* cnt)
+{
+    unsigned count = *cnt;
+    uint gid = (uint) get_global_id(0);
+    uint gsize = (uint) get_global_size(0);
+    __global int* in = (gid & 1) ? mem0 : mem1;
+    __global int* out = !(gid & 1) ? mem0 : mem1;
+    for(unsigned i = 0; i < count; ++i)
+    {
+        out[gid] = in[gid];
+        in += gsize;
+        out += gsize;
+    }
+}
 
 // // More advanced case, addresses of different type (__local parameter vs. __local buffer) are accessed via selection
 // TODO not yet implemented
@@ -125,5 +122,47 @@ __kernel void test_select_read_address_local(const __local int* in0, __global in
     out[gid] = tmp + 17;
 }
 
+// TODO not yet implemented
+// __kernel void test_select_write_address_private(__global int* in, __global int* out)
+// {
+//     __private int priv0[16] = {17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17};
+//     __private int priv1[16] = {42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42};
+//     uint lid = (uint) get_local_id(0);
+//     uint gid = (uint) get_global_id(0);
+
+//     __private int* ptr = (gid & 1) ? priv0 : priv1;
+//     ptr[lid] = in[gid] + 17;
+//     out[gid] = priv0[lid] + priv1[lid];
+// }
+
+__kernel void test_select_read_address_private(__global int* in, __global int* out)
+{
+    __private int priv0[16] = {17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17};
+    __private int priv1[16] = {42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42};
+    uint lid = (uint) get_local_id(0);
+    uint gid = (uint) get_global_id(0);
+    // non-conditional write, required so our data is not compile-time constant
+    priv0[lid] = in[gid];
+    priv1[lid] = in[gid];
+
+    const __private int* ptr = (gid & 1) ? priv0 : priv1;
+    int tmp = ptr[gid];
+    out[gid] = tmp + 17;
+}
+
+// // TODO not yet implemented
+// __kernel void test_select_read_write_address_private(__global int* in, __global int* out)
+// {
+//     __private int priv0[16] = {17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17};
+//     __private int priv1[16] = {42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42};
+//     uint lid = (uint) get_local_id(0);
+//     uint gid = (uint) get_global_id(0);
+
+//     __private int* ptr = (gid & 1) ? priv0 : priv1;
+//     ptr[lid] += in[gid] + 17;
+//     out[gid] = priv0[lid] + priv1[lid];
+// }
+
 // TODO add test or address modified in loop, with base at least partially referring to itself -> test elimination of
 // loop phi-nodes
+// TODO add test for lowered (register, VPM private, VPM shared) memory areas

@@ -43,7 +43,7 @@ MemoryInfo normalization::checkMemoryMapping(Method& method, const Local* baseAd
     return CHECKS[static_cast<unsigned>(access.preferred)](method, baseAddr, access);
 }
 
-Optional<Value> normalization::getConstantValue(const Value& source)
+Optional<Value> normalization::getConstantContainerValue(const Value& source)
 {
     // can only read from constant global data, so the global is always the source
     const Global* global = source.local()->getBase(true)->as<Global>();
@@ -51,30 +51,56 @@ Optional<Value> normalization::getConstantValue(const Value& source)
         return NO_VALUE;
     if(auto literal = global->initialValue.getScalar())
         // scalar value
-        return Value(*literal, global->initialValue.type.getElementType());
+        return Value(*literal, global->initialValue.type);
     if(global->initialValue.isZeroInitializer())
         // all entries are the same
-        return Value::createZeroInitializer(global->initialValue.type.getElementType());
+        return Value::createZeroInitializer(global->initialValue.type);
     if(global->initialValue.isUndefined())
         // all entries are undefined
-        return Value(global->initialValue.type.getElementType());
+        return Value(global->initialValue.type);
+    // all entries are the same
+    auto value = global->initialValue.toValue();
+    if(value)
+    {
+        if(value->checkVector() && value->checkVector()->isElementNumber())
+            return ELEMENT_NUMBER_REGISTER;
+        // rewrite array fitting into vector to vector for better handling (esp. for lowered registers)
+        auto arrayType = value->type.getArrayType();
+        if(arrayType && arrayType->size <= NATIVE_VECTOR_SIZE)
+            value->type = arrayType->elementType.toVectorType(static_cast<uint8_t>(arrayType->size));
+    }
+    return value;
+}
+
+Optional<Value> normalization::getConstantElementValue(const Value& source)
+{
+    // can only read from constant global data, so the global is always the source
+    const Global* global = source.local()->getBase(true)->as<Global>();
+    if(!global)
+        return NO_VALUE;
+    if(auto container = getConstantContainerValue(source))
+    {
+        if(container->isUndefined())
+            return Value(container->type.getElementType());
+        if(auto lit = container->getLiteralValue())
+            return Value(*lit, container->type.getElementType());
+        if(auto vec = container->checkVector())
+        {
+            if(auto lit = vec->getAllSame())
+                return Value(*lit, container->type.getElementType());
+            if(vec->isElementNumber())
+                return ELEMENT_NUMBER_REGISTER;
+        }
+        if(auto reg = container->checkRegister())
+            return container;
+    }
     auto globalContainer = global->initialValue.getCompound();
-    if(global->initialValue.isAllSame())
-        // all entries are the same
-        return globalContainer->at(0).toValue();
     auto sourceData = source.local()->get<ReferenceData>();
     if(globalContainer && sourceData && sourceData->offset >= 0)
         // fixed index
         // TODO this might be wrong! The offset is not necessarily the offset directly into the global, it could be a
         // sub-offset!
         return globalContainer->at(static_cast<std::size_t>(sourceData->offset)).toValue();
-    if(auto val = global->initialValue.toValue())
-    {
-        if(auto vector = val->checkVector())
-        {
-            return vector->isElementNumber() ? ELEMENT_NUMBER_REGISTER : NO_VALUE;
-        }
-    }
     return NO_VALUE;
 }
 
@@ -659,7 +685,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                     if(isMemoryOnlyRead(local))
                     {
                         // global buffer
-                        if(getConstantValue(memInstr->getSource()))
+                        if(getConstantElementValue(memInstr->getSource()))
                         {
                             CPPLOG_LAZY(logging::Level::DEBUG,
                                 log << "Constant element of constant buffer '" << local->to_string()
@@ -722,17 +748,6 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                             << "' will not be mapped, these sources can be mapped instead: " << logging::endl);
                     for(auto writer : *conditonalWrites)
                     {
-                        if(writer->hasDecoration(InstructionDecorations::PHI_NODE) || writer->hasConditionalExecution())
-                        {
-                            auto sourceValue = dynamic_cast<const MoveOperation*>(writer) ? writer->assertArgument(0) :
-                                                                                            writer->getOutput().value();
-                            auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
-                            entry.second.emplace(&*tmp.first);
-                            CPPLOG_LAZY(logging::Level::DEBUG,
-                                log << "\tconditional write " << writer->to_string()
-                                    << " to conditional write: " << writer->to_string() << logging::endl);
-                            continue;
-                        }
                         if(const Local* loc = writer->assertArgument(0).local())
                         {
                             loc = loc->getBase(true);
@@ -742,7 +757,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                                 entry.second.emplace(&*tmp.first);
                                 CPPLOG_LAZY(logging::Level::DEBUG,
                                     log << "\tconditional write " << writer->to_string()
-                                        << " to memory area: " << loc->to_string(true) << logging::endl);
+                                        << " of memory area: " << loc->to_string(true) << logging::endl);
                                 continue;
                             }
                             if(loc->getSingleWriter() &&
@@ -753,14 +768,27 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                                 auto sourceValue = dynamic_cast<const MoveOperation*>(writer) ?
                                     writer->assertArgument(0) :
                                     writer->getOutput().value();
+                                auto sourceWriter = check(sourceValue.getSingleWriter()) | check(writer);
                                 auto tmp =
                                     conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
                                 entry.second.emplace(&*tmp.first);
                                 CPPLOG_LAZY(logging::Level::DEBUG,
                                     log << "\tconditional write " << writer->to_string()
-                                        << " to conditional write: " << writer->to_string() << logging::endl);
+                                        << " of address write: " << sourceWriter->to_string() << logging::endl);
                                 continue;
                             }
+                        }
+                        if(writer->hasDecoration(InstructionDecorations::PHI_NODE) || writer->hasConditionalExecution())
+                        {
+                            auto sourceValue = dynamic_cast<const MoveOperation*>(writer) ? writer->assertArgument(0) :
+                                                                                            writer->getOutput().value();
+                            auto sourceWriter = check(sourceValue.getSingleWriter()) | check(writer);
+                            auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
+                            entry.second.emplace(&*tmp.first);
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "\tconditional write " << writer->to_string()
+                                    << " of address write: " << sourceWriter->to_string() << logging::endl);
+                            continue;
                         }
                         throw CompilationError(CompilationStep::NORMALIZER,
                             "Unhandled case of conditional address write used as source for memory access",
@@ -936,7 +964,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
 static MemoryInfo canLowerToRegisterReadOnly(Method& method, const Local* baseAddr, MemoryAccess& access)
 {
     // a) the global is a constant scalar/vector which fits into a single register
-    if(auto constant = getConstantValue(baseAddr->createReference()))
+    if(auto constant = getConstantContainerValue(baseAddr->createReference()))
     {
         return MemoryInfo{baseAddr, MemoryAccessType::QPU_REGISTER_READONLY, nullptr, {}, constant};
     }
@@ -955,7 +983,7 @@ static MemoryInfo canLowerToRegisterReadOnly(Method& method, const Local* baseAd
     // have constant indices and therefore all accessed elements can be determined at compile time
     if(std::all_of(access.accessInstructions.begin(), access.accessInstructions.end(), [&](const auto& entry) -> bool {
            return baseAddr == entry.second &&
-               getConstantValue(entry.first.template get<const intermediate::MemoryInstruction>()->getSource())
+               getConstantElementValue(entry.first.template get<const intermediate::MemoryInstruction>()->getSource())
                    .has_value();
        }))
         return MemoryInfo{baseAddr, MemoryAccessType::QPU_REGISTER_READONLY};

@@ -78,13 +78,16 @@ public:
     void testWriteSelectParameter();
     void testReadSelectParameter();
     void testReadWriteSelectParameter();
-    // TODO void testCopySelectParameter();
+    void testCopySelectParameter();
     void testWritePhiParameter();
     void testReadPhiParameter();
     void testReadWritePhiParameter();
-    // TODO void testCopyPhiParameter();
+    void testCopyPhiParameter();
     // TODO void testWriteSelectParameterOrLocal();
     void testReadSelectParameterOrLocal();
+    // TODO void testWriteSelectRegister();
+    void testReadSelectRegister();
+    // TODO void testReadWriteSelectRegister();
 
 private:
     void onMismatch(const std::string& expected, const std::string& result);

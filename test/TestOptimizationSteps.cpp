@@ -574,10 +574,10 @@ void TestOptimizationSteps::testFoldConstants()
     inIt.nextInBlock();
     assignNop(outIt) = (25_val, COND_CARRY_CLEAR);
 
-    // transfer flags
+    // flags not folded (move cannot set carry flag)
     inIt.emplace((new Operation(OP_ADD, NOP_REGISTER, 17_val, 4_val))->setSetFlags(SetFlag::SET_FLAGS));
     inIt.nextInBlock();
-    assignNop(outIt) = (21_val, SetFlag::SET_FLAGS);
+    assignNop(outIt) = (17_val + 4_val, SetFlag::SET_FLAGS);
 
     // transfer decorations
     inIt.emplace(new Operation(OP_SUB, NOP_REGISTER, 17_val, 4_val));
@@ -585,10 +585,11 @@ void TestOptimizationSteps::testFoldConstants()
     inIt.nextInBlock();
     assignNop(outIt) = (13_val, InstructionDecorations::UNSIGNED_RESULT);
 
-    // transfer pack mode
+    // pack mode not folded (move can't 32-bit saturate, some other pack modes also rely on that)
     inIt.emplace((new Operation(OP_SUB, NOP_REGISTER, 17_val, 17_val))->setPackMode(PACK_32_16A_S));
     inIt.nextInBlock();
-    assignNop(outIt) = (0_val, PACK_32_16A_S);
+    outIt.emplace((new Operation(OP_SUB, NOP_REGISTER, 17_val, 17_val))->setPackMode(PACK_32_16A_S));
+    outIt.nextInBlock();
 
     // non-constants not folded
     inIt.emplace(new Operation(OP_ADD, NOP_REGISTER, 17_val, UNIFORM_REGISTER));
