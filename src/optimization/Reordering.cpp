@@ -34,8 +34,8 @@ static NODISCARD InstructionWalker findPreviousInstruction(BasicBlock& basicBloc
 /*
  * Finds an instruction within the basic block that does not access any of the given values
  */
-static NODISCARD InstructionWalker findInstructionNotAccessing(
-    BasicBlock& basicBlock, const InstructionWalker pos, FastSet<Value>& excludedValues, unsigned replaceNopThreshold)
+static NODISCARD InstructionWalker findInstructionNotAccessing(BasicBlock& basicBlock, const InstructionWalker pos,
+    FastSet<Value>& excludedValues, unsigned replaceNopThreshold, unsigned accumulatorThreshold)
 {
     std::size_t instructionsLeft = replaceNopThreshold;
     auto it = pos;
@@ -97,6 +97,14 @@ static NODISCARD InstructionWalker findInstructionNotAccessing(
         {
             // skip every instruction, which is not mapped to machine code, since otherwise the delay for the NOP will
             // be violated
+            validReplacement = false;
+        }
+        if(validReplacement && it->checkOutputLocal() &&
+            (replaceNopThreshold - instructionsLeft) > accumulatorThreshold &&
+            it.getBasicBlock()->isLocallyLimited(it, it->checkOutputLocal(), accumulatorThreshold))
+        {
+            // skip any local which is currently locally limited enough to fit into an accumulator to not force it to a
+            // physical register (unless the instruction would only be moved a little bit)
             validReplacement = false;
         }
         if(validReplacement)
@@ -213,8 +221,8 @@ static NODISCARD InstructionWalker findReplacementCandidate(
             excludedValues.emplace(Value(REG_REPLICATE_QUAD, TYPE_UNKNOWN));
         }
         PROFILE_START(findInstructionNotAccessing);
-        replacementIt =
-            findInstructionNotAccessing(basicBlock, pos, excludedValues, config.additionalOptions.replaceNopThreshold);
+        replacementIt = findInstructionNotAccessing(basicBlock, pos, excludedValues,
+            config.additionalOptions.replaceNopThreshold, config.additionalOptions.accumulatorThreshold);
         PROFILE_END(findInstructionNotAccessing);
         break;
     }
@@ -230,8 +238,8 @@ static NODISCARD InstructionWalker findReplacementCandidate(
         excludedValues.emplace(Value(REG_TMU0_ADDRESS, TYPE_VOID_POINTER));
         excludedValues.emplace(Value(REG_TMU1_ADDRESS, TYPE_VOID_POINTER));
         PROFILE_START(findInstructionNotAccessing);
-        replacementIt =
-            findInstructionNotAccessing(basicBlock, pos, excludedValues, config.additionalOptions.replaceNopThreshold);
+        replacementIt = findInstructionNotAccessing(basicBlock, pos, excludedValues,
+            config.additionalOptions.replaceNopThreshold, config.additionalOptions.accumulatorThreshold);
         PROFILE_END(findInstructionNotAccessing);
         break;
     }
@@ -280,6 +288,7 @@ static bool replaceNOPs(BasicBlock& basicBlock, Method& method, const Configurat
         // only replace NOPs without side-effects (e.g. signal)
         if(nop != nullptr && !nop->hasSideEffects())
         {
+            auto isMandatoryDelay = has_flag(nop->decoration, InstructionDecorations::MANDATORY_DELAY);
             InstructionWalker replacementIt = findReplacementCandidate(basicBlock, it, nop->type, config);
             if(!replacementIt.isEndOfBlock())
             {
@@ -288,6 +297,8 @@ static bool replaceNOPs(BasicBlock& basicBlock, Method& method, const Configurat
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Replacing NOP with: " << replacementIt->to_string() << logging::endl);
                 it.reset(replacementIt.release());
+                if(isMandatoryDelay)
+                    it->addDecorations(InstructionDecorations::MANDATORY_DELAY);
                 hasChanged = true;
 
                 // make sure to not create a new conflict and insert NOP instead (which might be replaced again later
@@ -308,7 +319,7 @@ static bool replaceNOPs(BasicBlock& basicBlock, Method& method, const Configurat
                     replacementIt.reset(new Nop(DelayType::WAIT_REGISTER));
                 }
             }
-            else if(nop->type == DelayType::WAIT_VPM)
+            else if(nop->type == DelayType::WAIT_VPM && !isMandatoryDelay)
             {
                 // nops inserted to wait for VPM to finish can be removed again,
                 // since the wait-instruction will correctly wait the remaining number of instructions

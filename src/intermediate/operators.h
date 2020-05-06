@@ -689,7 +689,7 @@ namespace vc4c
 
         NODISCARD inline ComparisonWrapper selectSIMDElement(uint8_t index)
         {
-            return as_unsigned{ELEMENT_NUMBER_REGISTER} == as_unsigned{Value(Literal(index), TYPE_INT8)};
+            return as_unsigned{ELEMENT_NUMBER_REGISTER} == as_unsigned{Value(SmallImmediate(index), TYPE_INT8)};
         }
 
         NODISCARD inline ComparisonWrapper selectSIMDElement(const Value& index)

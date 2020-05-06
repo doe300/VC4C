@@ -745,7 +745,13 @@ static std::string toTypeString(DelayType delay)
 }
 LCOV_EXCL_STOP
 
-Nop::Nop(const DelayType type, const Signaling signal) : SignalingInstruction(signal), type(type) {}
+Nop::Nop(const DelayType type, const Signaling signal) : SignalingInstruction(signal), type(type)
+{
+    // add mandatory-delay marker for delays which cannot be removed
+    if(type == DelayType::BRANCH_DELAY || type == DelayType::WAIT_REGISTER || type == DelayType::WAIT_SFU ||
+        type == DelayType::WAIT_UNIFORM)
+        decoration = InstructionDecorations::MANDATORY_DELAY;
+}
 
 LCOV_EXCL_START
 std::string Nop::to_string() const

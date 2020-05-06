@@ -410,7 +410,7 @@ InstructionWalker optimizations::foldConstants(
     intermediate::Operation* op = it.get<intermediate::Operation>();
     // Don't pre-calculate on flags, since i.e. carry flags cannot be set by moves!
     // Similarly for (un)pack modes (esp. 32-bit saturation) XXX we could precalculate them in the compiler
-    if(op != nullptr && op->isSimpleOperation())
+    if(op != nullptr && !op->doesSetFlag() && !op->hasUnpackMode() && !op->hasPackMode())
     {
         // calculations with literals can be pre-calculated
         if((op->getFirstArg().getConstantValue() & &Value::getLiteralValue) &&

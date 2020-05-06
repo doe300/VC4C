@@ -59,6 +59,9 @@ namespace vc4c
             UNSIGNED_RESULT = 1u << 13u,
             // The result is a value of a PHI-node being set
             PHI_NODE = 1u << 14u,
+            // The instruction is within a mandatory delay (e.g. between accesses to SFU or branches) and cannot be
+            // completely removed
+            MANDATORY_DELAY = 1u << 15u,
             // The instructions inserts a single element into a vector
             ELEMENT_INSERTION = 1u << 16u,
             // The instruction was already processed by auto-vectorization

@@ -121,6 +121,17 @@ static const std::vector<MergeCondition> mergeConditions = {
         return (firstMove == nullptr || dynamic_cast<VectorRotation*>(firstMove) == nullptr) &&
             (secondMove == nullptr || dynamic_cast<VectorRotation*>(secondMove) == nullptr);
     },
+    // check at most one instruction is a mandatory delay
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
+        unsigned numDelays = 0;
+        if((check<IntermediateInstruction>(firstOp) | check<IntermediateInstruction>(firstMove))
+                ->hasDecoration(InstructionDecorations::MANDATORY_DELAY))
+            ++numDelays;
+        if((check<IntermediateInstruction>(secondOp) | check<IntermediateInstruction>(secondMove))
+                ->hasDecoration(InstructionDecorations::MANDATORY_DELAY))
+            ++numDelays;
+        return numDelays <= 1;
+    },
     // check both instructions use different ALUs
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
         if(firstOp != nullptr && secondOp != nullptr)
@@ -634,6 +645,11 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                                         << (code.opAdd == 0 ? "MUL" : "ADD") << " ALU: " << comb->op2->to_string()
                                         << logging::endl);
                             }
+
+                            // mark combined instruction as delay, if one of the combined instructions is
+                            if(comb->op1->hasDecoration(InstructionDecorations::MANDATORY_DELAY) ||
+                                comb->op2->hasDecoration(InstructionDecorations::MANDATORY_DELAY))
+                                comb->addDecorations(InstructionDecorations::MANDATORY_DELAY);
                         }
                     }
                 }
