@@ -136,7 +136,7 @@ namespace vc4c
          * Maximum number of instructions to check for reordering.
          * This prevents long runs for huge linear programs at the cost of less performant code
          */
-        unsigned replaceNopThreshold = 64;
+        unsigned replaceNopThreshold = 16;
 
         /*
          * Maximum number of rounds the register-checker tries to resolve conflicts

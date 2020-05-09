@@ -19,7 +19,6 @@ using namespace vc4c::intermediate;
  */
 static NODISCARD InstructionWalker findPreviousInstruction(BasicBlock& basicBlock, const InstructionWalker pos)
 {
-    PROFILE_START(findPreviousInstruction);
     auto it = pos;
     while(!it.isStartOfBlock())
     {
@@ -27,7 +26,6 @@ static NODISCARD InstructionWalker findPreviousInstruction(BasicBlock& basicBloc
             break;
         it.previousInBlock();
     }
-    PROFILE_END(findPreviousInstruction);
     return it;
 }
 
@@ -118,14 +116,15 @@ static NODISCARD InstructionWalker findInstructionNotAccessing(BasicBlock& basic
 
         // otherwise add all outputs by instructions in between (the NOP and the replacement), since they could be used
         // as input in the following instructions
-        if(it->getOutput() && !it->writesRegister(REG_NOP))
+        auto out = NO_VALUE;
+        if((out = it->getOutput()) && !out->hasRegister(REG_NOP))
         {
-            excludedValues.insert(it->getOutput().value());
+            excludedValues.insert(out.value());
             // make sure, SFU/TMU calls are not moved over other SFU/TMU calls
             // this prevents nop-sfu-... from being replaced with sfu-sfu-...
-            if(it->writesRegister(REG_SFU_EXP2) || it->writesRegister(REG_SFU_LOG2) ||
-                it->writesRegister(REG_SFU_RECIP) || it->writesRegister(REG_SFU_RECIP_SQRT) ||
-                it->writesRegister(REG_TMU0_ADDRESS) || it->writesRegister(REG_TMU1_ADDRESS))
+            if(out->hasRegister(REG_SFU_EXP2) || out->hasRegister(REG_SFU_LOG2) || out->hasRegister(REG_SFU_RECIP) ||
+                out->hasRegister(REG_SFU_RECIP_SQRT) || out->hasRegister(REG_TMU0_ADDRESS) ||
+                out->hasRegister(REG_TMU1_ADDRESS))
             {
                 excludedValues.emplace(Value(REG_SFU_EXP2, TYPE_FLOAT));
                 excludedValues.emplace(Value(REG_SFU_LOG2, TYPE_FLOAT));
@@ -135,8 +134,8 @@ static NODISCARD InstructionWalker findInstructionNotAccessing(BasicBlock& basic
                 excludedValues.emplace(Value(REG_TMU0_ADDRESS, TYPE_VOID_POINTER));
                 excludedValues.emplace(Value(REG_TMU1_ADDRESS, TYPE_VOID_POINTER));
             }
-            if(it->writesRegister(REG_ACC5) || it->writesRegister(REG_REPLICATE_ALL) ||
-                it->writesRegister(REG_REPLICATE_QUAD))
+            if(out->hasRegister(REG_ACC5) || out->hasRegister(REG_REPLICATE_ALL) ||
+                out->hasRegister(REG_REPLICATE_QUAD))
             {
                 excludedValues.emplace(Value(REG_ACC5, TYPE_UNKNOWN));
                 excludedValues.emplace(Value(REG_REPLICATE_ALL, TYPE_UNKNOWN));
@@ -175,18 +174,15 @@ static NODISCARD InstructionWalker findInstructionNotAccessing(BasicBlock& basic
 static NODISCARD InstructionWalker findReplacementCandidate(
     BasicBlock& basicBlock, const InstructionWalker pos, const DelayType nopReason, const Configuration& config)
 {
-    PROFILE_START(findReplacementCandidate);
     FastSet<Value> excludedValues;
     InstructionWalker replacementIt = basicBlock.walkEnd();
     switch(nopReason)
     {
     case DelayType::BRANCH_DELAY:
         // This type of NOPs do not yet exist (they are created in CodeGenerator)
-        PROFILE_END(findReplacementCandidate);
         return basicBlock.walkEnd();
     case DelayType::THREAD_END:
         // there are no more instructions after THREND
-        PROFILE_END(findReplacementCandidate);
         return basicBlock.walkEnd();
     case DelayType::WAIT_VPM:
     case DelayType::WAIT_REGISTER:
@@ -245,10 +241,8 @@ static NODISCARD InstructionWalker findReplacementCandidate(
     }
     case DelayType::WAIT_UNIFORM:
         // TODO could reorder, as long as we do not access uniforms ??
-        PROFILE_END(findReplacementCandidate);
         return basicBlock.walkEnd();
     }
-    PROFILE_END(findReplacementCandidate);
     return replacementIt;
 }
 
@@ -289,7 +283,9 @@ static bool replaceNOPs(BasicBlock& basicBlock, Method& method, const Configurat
         if(nop != nullptr && !nop->hasSideEffects())
         {
             auto isMandatoryDelay = has_flag(nop->decoration, InstructionDecorations::MANDATORY_DELAY);
+            PROFILE_START(findReplacementCandidate);
             InstructionWalker replacementIt = findReplacementCandidate(basicBlock, it, nop->type, config);
+            PROFILE_END(findReplacementCandidate);
             if(!replacementIt.isEndOfBlock())
             {
                 // replace NOP with instruction, reset instruction at position (do not yet erase, otherwise iterators
