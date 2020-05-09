@@ -62,9 +62,11 @@ namespace vc4c
             DataType toDataType(Module& module, const llvm::Type* type);
             Value parseInlineGetElementPtr(
                 Module& module, Method& method, LLVMInstructionList& instructions, const llvm::Value* pointerOperand);
-            Value toValue(Method& method, const llvm::Value* val);
-            Value toConstant(Module& module, const llvm::Value* val);
-            Value precalculateConstantExpression(Module& module, const llvm::ConstantExpr* expr);
+            Value toValue(Method& method, const llvm::Value* val, LLVMInstructionList* instructions);
+            Value toConstant(Module& module, const llvm::Value* val, Method* method = nullptr,
+                LLVMInstructionList* instructions = nullptr);
+            Value precalculateConstantExpression(
+                Module& module, const llvm::ConstantExpr* expr, Method* method, LLVMInstructionList* instructions);
 
             CompoundConstant toConstantGlobal(Module& module, const llvm::Value* val);
         };

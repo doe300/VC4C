@@ -278,6 +278,11 @@ namespace vc4c
 
             void dumpResults(const Method& method) const;
 
+            inline const SortedSet<LocalUtilization>& getOverallUsages() const
+            {
+                return overallUsages;
+            }
+
         private:
             const GlobalLivenessAnalysis* livenessAnalysis;
             SortedSet<LocalUtilization> overallUsages;

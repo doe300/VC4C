@@ -713,7 +713,7 @@ void BitcodeReader::parseFunctionBody(
     for(const llvm::BasicBlock& block : func)
     {
         // need to extract label from basic block
-        instructions.emplace_back(new LLVMLabel(toValue(method, &block)));
+        instructions.emplace_back(new LLVMLabel(toValue(method, &block, &instructions)));
         for(const llvm::Instruction& inst : block)
         {
             parseInstruction(module, method, instructions, inst);
@@ -827,10 +827,11 @@ void BitcodeReader::parseInstruction(
     {
         const llvm::BranchInst* br = llvm::cast<const llvm::BranchInst>(&inst);
         if(br->isUnconditional())
-            instructions.emplace_back(new Branch(toValue(method, br->getSuccessor(0))));
+            instructions.emplace_back(new Branch(toValue(method, br->getSuccessor(0), &instructions)));
         else
-            instructions.emplace_back(new Branch(toValue(method, br->getCondition()),
-                toValue(method, br->getSuccessor(0)), toValue(method, br->getSuccessor(1))));
+            instructions.emplace_back(new Branch(toValue(method, br->getCondition(), &instructions),
+                toValue(method, br->getSuccessor(0), &instructions),
+                toValue(method, br->getSuccessor(1), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -840,22 +841,22 @@ void BitcodeReader::parseInstruction(
         if(ret->getReturnValue() == nullptr)
             instructions.emplace_back(new ValueReturn());
         else
-            instructions.emplace_back(new ValueReturn(toValue(method, ret->getReturnValue())));
+            instructions.emplace_back(new ValueReturn(toValue(method, ret->getReturnValue(), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
     }
     case TermOps::Switch:
     {
         const llvm::SwitchInst* switchIns = llvm::cast<const llvm::SwitchInst>(&inst);
-        Value cond = toValue(method, switchIns->getCondition());
-        Value defaultLabel = toValue(method, switchIns->getDefaultDest());
+        Value cond = toValue(method, switchIns->getCondition(), &instructions);
+        Value defaultLabel = toValue(method, switchIns->getDefaultDest(), &instructions);
         FastMap<int, Value> caseLabels;
         // NOTE: cannot be const auto&, since older LLVM versions have getCaseValue() and getCaseSuccessor() only as
         // non-const member
         for(auto& casePair : switchIns->cases())
         {
             caseLabels.emplace(static_cast<int>(casePair.getCaseValue()->getSExtValue()),
-                toValue(method, casePair.getCaseSuccessor()));
+                toValue(method, casePair.getCaseSuccessor(), &instructions));
         }
         instructions.emplace_back(new Switch(std::move(cond), std::move(defaultLabel), std::move(caseLabels)));
         instructions.back()->setDecorations(deco);
@@ -898,8 +899,9 @@ void BitcodeReader::parseInstruction(
     case BinaryOps::Xor:
     {
         const llvm::BinaryOperator* binOp = llvm::cast<const llvm::BinaryOperator>(&inst);
-        instructions.emplace_back(new BinaryOperator(binOp->getOpcodeName(), toValue(method, binOp),
-            toValue(method, binOp->getOperand(0)), toValue(method, binOp->getOperand(1))));
+        instructions.emplace_back(new BinaryOperator(binOp->getOpcodeName(), toValue(method, binOp, &instructions),
+            toValue(method, binOp->getOperand(0), &instructions),
+            toValue(method, binOp->getOperand(1), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -923,9 +925,10 @@ void BitcodeReader::parseInstruction(
         std::vector<Value> indices;
         // TODO for isInBounds(), mark all indices as IN_BOUNDS, can be used for memory access?
         std::for_each(indexOf->idx_begin(), indexOf->idx_end(),
-            [this, &method, &indices](const llvm::Value* val) -> void { indices.emplace_back(toValue(method, val)); });
-        instructions.emplace_back(
-            new IndexOf(toValue(method, indexOf), toValue(method, indexOf->getPointerOperand()), std::move(indices)));
+            [this, &method, &indices, &instructions](
+                const llvm::Value* val) -> void { indices.emplace_back(toValue(method, val, &instructions)); });
+        instructions.emplace_back(new IndexOf(toValue(method, indexOf, &instructions),
+            toValue(method, indexOf->getPointerOperand(), &instructions), std::move(indices)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -936,12 +939,12 @@ void BitcodeReader::parseInstruction(
         if(load->getPointerOperand()->getValueID() == llvm::Constant::ConstantExprVal)
             src = parseInlineGetElementPtr(module, method, instructions, load->getPointerOperand());
         else
-            src = toValue(method, load->getPointerOperand());
+            src = toValue(method, load->getPointerOperand(), &instructions);
         // TODO for volatile, mark argument pointer as VOLATILE
         if(load->isVolatile() && src.checkLocal() && src.local()->is<Parameter>())
             src.local()->as<Parameter>()->decorations =
                 add_flag(src.local()->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
-        instructions.emplace_back(new Copy(toValue(method, load), std::move(src), true, true));
+        instructions.emplace_back(new Copy(toValue(method, load, &instructions), std::move(src), true, true));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -952,12 +955,13 @@ void BitcodeReader::parseInstruction(
         if(store->getPointerOperand()->getValueID() == llvm::Constant::ConstantExprVal)
             dest = parseInlineGetElementPtr(module, method, instructions, store->getPointerOperand());
         else
-            dest = toValue(method, store->getPointerOperand());
+            dest = toValue(method, store->getPointerOperand(), &instructions);
         // TODO for volatile, mark argument pointer as VOLATILE
         if(store->isVolatile() && dest.checkLocal() && dest.local()->is<Parameter>())
             dest.local()->as<Parameter>()->decorations =
                 add_flag(dest.local()->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
-        instructions.emplace_back(new Copy(std::move(dest), toValue(method, store->getValueOperand()), true, false));
+        instructions.emplace_back(
+            new Copy(std::move(dest), toValue(method, store->getValueOperand(), &instructions), true, false));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -966,8 +970,8 @@ void BitcodeReader::parseInstruction(
         FALL_THROUGH
     case CastOps::BitCast:
     {
-        instructions.emplace_back(
-            new Copy(toValue(method, &inst), toValue(method, inst.getOperand(0)), false, false, true));
+        instructions.emplace_back(new Copy(toValue(method, &inst, &instructions),
+            toValue(method, inst.getOperand(0), &instructions), false, false, true));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -987,8 +991,8 @@ void BitcodeReader::parseInstruction(
         FALL_THROUGH
     case CastOps::UIToFP:
     {
-        instructions.emplace_back(
-            new UnaryOperator(inst.getOpcodeName(), toValue(method, &inst), toValue(method, inst.getOperand(0))));
+        instructions.emplace_back(new UnaryOperator(inst.getOpcodeName(), toValue(method, &inst, &instructions),
+            toValue(method, inst.getOperand(0), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -1002,8 +1006,8 @@ void BitcodeReader::parseInstruction(
          * Both inttoptr-cast and ptrtoint-case say:
          * "by applying either a zero extension or a truncation"
          */
-        instructions.emplace_back(
-            new UnaryOperator("zext", toValue(method, &inst), toValue(method, inst.getOperand(0))));
+        instructions.emplace_back(new UnaryOperator(
+            "zext", toValue(method, &inst, &instructions), toValue(method, inst.getOperand(0), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -1013,7 +1017,7 @@ void BitcodeReader::parseInstruction(
         std::vector<Value> args;
         for(unsigned i = 0; i < call->getNumArgOperands(); ++i)
         {
-            args.emplace_back(toValue(method, call->getArgOperand(i)));
+            args.emplace_back(toValue(method, call->getArgOperand(i), &instructions));
         }
         const llvm::Function* func = call->getCalledFunction();
         if(func == nullptr)
@@ -1034,13 +1038,14 @@ void BitcodeReader::parseInstruction(
         {
             // functions without definitions (e.g. intrinsic functions)
             std::string funcName = func->getName();
-            instructions.emplace_back(new CallSite(toValue(method, call),
+            instructions.emplace_back(new CallSite(toValue(method, call, &instructions),
                 cleanMethodName(funcName.find("_Z") == 0 ? std::string("@") + funcName : funcName), std::move(args)));
         }
         else
         {
             Method& dest = parseFunction(module, *func);
-            instructions.emplace_back(new CallSite(toValue(method, call), dest, std::move(args), func->isVarArg()));
+            instructions.emplace_back(
+                new CallSite(toValue(method, call, &instructions), dest, std::move(args), func->isVarArg()));
         }
 
         instructions.back()->setDecorations(deco);
@@ -1048,8 +1053,8 @@ void BitcodeReader::parseInstruction(
     }
     case OtherOps::ExtractElement:
     {
-        instructions.emplace_back(new ContainerExtraction(
-            toValue(method, &inst), toValue(method, inst.getOperand(0)), toValue(method, inst.getOperand(1))));
+        instructions.emplace_back(new ContainerExtraction(toValue(method, &inst, &instructions),
+            toValue(method, inst.getOperand(0), &instructions), toValue(method, inst.getOperand(1), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -1062,9 +1067,9 @@ void BitcodeReader::parseInstruction(
             throw CompilationError(
                 CompilationStep::PARSER, "Container extraction with multi-level indices is not yet implemented!");
         }
-        instructions.emplace_back(
-            new ContainerExtraction(toValue(method, extraction), toValue(method, extraction->getAggregateOperand()),
-                Value(Literal(extraction->getIndices().front()), TYPE_INT32)));
+        instructions.emplace_back(new ContainerExtraction(toValue(method, extraction, &instructions),
+            toValue(method, extraction->getAggregateOperand(), &instructions),
+            Value(Literal(extraction->getIndices().front()), TYPE_INT32)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -1074,16 +1079,18 @@ void BitcodeReader::parseInstruction(
     {
         const llvm::CmpInst* comp = llvm::cast<const llvm::CmpInst>(&inst);
         auto tmp = toComparison(comp->getPredicate());
-        instructions.emplace_back(new Comparison(toValue(method, &inst), std::move(tmp.first),
-            toValue(method, inst.getOperand(0)), toValue(method, inst.getOperand(1)), std::move(tmp.second)));
+        instructions.emplace_back(new Comparison(toValue(method, &inst, &instructions), std::move(tmp.first),
+            toValue(method, inst.getOperand(0), &instructions), toValue(method, inst.getOperand(1), &instructions),
+            std::move(tmp.second)));
         instructions.back()->setDecorations(deco);
         break;
     }
 
     case OtherOps::InsertElement:
     {
-        instructions.emplace_back(new ContainerInsertion(toValue(method, &inst), toValue(method, inst.getOperand(0)),
-            toValue(method, inst.getOperand(1)), toValue(method, inst.getOperand(2))));
+        instructions.emplace_back(new ContainerInsertion(toValue(method, &inst, &instructions),
+            toValue(method, inst.getOperand(0), &instructions), toValue(method, inst.getOperand(1), &instructions),
+            toValue(method, inst.getOperand(2), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -1096,8 +1103,9 @@ void BitcodeReader::parseInstruction(
             throw CompilationError(
                 CompilationStep::PARSER, "Container insertion with multi-level indices is not yet implemented!");
         }
-        instructions.emplace_back(new ContainerInsertion(toValue(method, insertion),
-            toValue(method, insertion->getAggregateOperand()), toValue(method, insertion->getInsertedValueOperand()),
+        instructions.emplace_back(new ContainerInsertion(toValue(method, insertion, &instructions),
+            toValue(method, insertion->getAggregateOperand(), &instructions),
+            toValue(method, insertion->getInsertedValueOperand(), &instructions),
             Value(Literal(insertion->getIndices().front()), TYPE_INT32)));
         instructions.back()->setDecorations(deco);
         break;
@@ -1108,26 +1116,30 @@ void BitcodeReader::parseInstruction(
         std::vector<std::pair<Value, const Local*>> labels;
         for(unsigned i = 0; i < phi->getNumIncomingValues(); ++i)
         {
-            labels.emplace_back(std::make_pair(
-                toValue(method, phi->getIncomingValue(i)), toValue(method, phi->getIncomingBlock(i)).local()));
+            labels.emplace_back(std::make_pair(toValue(method, phi->getIncomingValue(i), &instructions),
+                toValue(method, phi->getIncomingBlock(i), &instructions).local()));
         }
-        instructions.emplace_back(new PhiNode(toValue(method, phi), std::move(labels)));
+        instructions.emplace_back(new PhiNode(toValue(method, phi, &instructions), std::move(labels)));
         instructions.back()->setDecorations(deco);
         break;
     }
     case OtherOps::Select:
     {
         const llvm::SelectInst* selection = llvm::cast<const llvm::SelectInst>(&inst);
-        instructions.emplace_back(new Selection(toValue(method, selection), toValue(method, selection->getCondition()),
-            toValue(method, selection->getTrueValue()), toValue(method, selection->getFalseValue())));
+        instructions.emplace_back(new Selection(toValue(method, selection, &instructions),
+            toValue(method, selection->getCondition(), &instructions),
+            toValue(method, selection->getTrueValue(), &instructions),
+            toValue(method, selection->getFalseValue(), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
     }
     case OtherOps::ShuffleVector:
     {
         const llvm::ShuffleVectorInst* shuffle = llvm::cast<const llvm::ShuffleVectorInst>(&inst);
-        instructions.emplace_back(new ShuffleVector(toValue(method, shuffle), toValue(method, shuffle->getOperand(0)),
-            toValue(method, shuffle->getOperand(1)), toValue(method, shuffle->getMask())));
+        instructions.emplace_back(new ShuffleVector(toValue(method, shuffle, &instructions),
+            toValue(method, shuffle->getOperand(0), &instructions),
+            toValue(method, shuffle->getOperand(1), &instructions),
+            toValue(method, shuffle->getMask(), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -1158,7 +1170,7 @@ Value BitcodeReader::parseInlineGetElementPtr(
             constExpr = llvm::cast<llvm::ConstantExpr>(constExpr->getOperand(0));
         else
         {
-            return toValue(method, constExpr->getOperand(0));
+            return toValue(method, constExpr->getOperand(0), &instructions);
         }
     }
     if(constExpr != nullptr)
@@ -1173,7 +1185,7 @@ Value BitcodeReader::parseInlineGetElementPtr(
         // in a global map...
         auto indexOf = llvm::cast<llvm::GetElementPtrInst>(constExpr->getAsInstruction());
         parseInstruction(module, method, instructions, *indexOf);
-        auto tmp = toValue(method, indexOf);
+        auto tmp = toValue(method, indexOf, &instructions);
         // required so LLVM can clean up the constant expression correctly
         indexOf->dropAllReferences();
         return tmp;
@@ -1181,7 +1193,7 @@ Value BitcodeReader::parseInlineGetElementPtr(
     return UNDEFINED_VALUE;
 }
 
-Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
+Value BitcodeReader::toValue(Method& method, const llvm::Value* val, LLVMInstructionList* instructions)
 {
     auto it = localMap.find(val);
     if(it != localMap.end())
@@ -1205,7 +1217,7 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
     const DataType type = toDataType(const_cast<Module&>(method.module), val->getType());
     if(llvm::dyn_cast<const llvm::Constant>(val) != nullptr)
     {
-        return toConstant(const_cast<Module&>(method.module), val);
+        return toConstant(const_cast<Module&>(method.module), val, &method, instructions);
     }
     // locals of any kind have no name (most of the time)
     if(!val->getName().empty())
@@ -1216,7 +1228,8 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val)
     return loc->createReference();
 }
 
-Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
+Value BitcodeReader::toConstant(
+    Module& module, const llvm::Value* val, Method* method, LLVMInstructionList* instructions)
 {
     const DataType type = toDataType(module, val->getType());
     if(auto constant = llvm::dyn_cast<const llvm::ConstantInt>(val))
@@ -1244,7 +1257,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         SIMDVector aggregate;
         for(unsigned i = 0; i < constant->getNumOperands(); ++i)
         {
-            aggregate[i] = *toConstant(module, constant->getOperand(i)).getLiteralValue();
+            aggregate[i] = *toConstant(module, constant->getOperand(i), method, instructions).getLiteralValue();
         }
         return module.storeVector(std::move(aggregate), type);
     }
@@ -1254,7 +1267,8 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
         SIMDVector aggregate;
         for(unsigned i = 0; i < constant->getNumElements(); ++i)
         {
-            aggregate[i] = *toConstant(module, constant->getElementAsConstant(i)).getLiteralValue();
+            aggregate[i] =
+                *toConstant(module, constant->getElementAsConstant(i), method, instructions).getLiteralValue();
         }
         return module.storeVector(std::move(aggregate), type);
     }
@@ -1272,7 +1286,7 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantExpr>(val))
     {
-        return precalculateConstantExpression(module, constant);
+        return precalculateConstantExpression(module, constant, method, instructions);
     }
     else if(auto global = llvm::dyn_cast<const llvm::GlobalVariable>(val))
     {
@@ -1305,12 +1319,13 @@ Value BitcodeReader::toConstant(Module& module, const llvm::Value* val)
     }
 }
 
-Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::ConstantExpr* expr)
+Value BitcodeReader::precalculateConstantExpression(
+    Module& module, const llvm::ConstantExpr* expr, Method* method, LLVMInstructionList* instructions)
 {
     if(expr->getOpcode() == llvm::Instruction::CastOps::BitCast ||
         expr->getOpcode() == llvm::Instruction::CastOps::AddrSpaceCast)
     {
-        Value result = toConstant(module, expr->getOperand(0));
+        Value result = toConstant(module, expr->getOperand(0), method, instructions);
         if(expr->getOperand(0)->getType()->getScalarSizeInBits() != expr->getType()->getScalarSizeInBits())
         {
             dumpLLVM(expr);
@@ -1325,22 +1340,37 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
         // e.g. in-line getelementptr in load or store instructions
         if(llvm::dyn_cast<const llvm::GlobalVariable>(expr->getOperand(0)) != nullptr)
         {
-            Value srcGlobal = toConstant(module, expr->getOperand(0));
-
-            // for now, we only support indices of all zero -> reference to the global itself (or the first entry)
+            Value srcGlobal = toConstant(module, expr->getOperand(0), method, instructions);
+            std::vector<Value> indices;
+            bool allIndicesAreZero = true;
+            indices.reserve(expr->getNumOperands());
             for(unsigned i = 1; i < expr->getNumOperands(); ++i)
             {
-                if(!toConstant(module, expr->getOperand(i)).isZeroInitializer())
-                {
-                    dumpLLVM(expr);
-                    throw CompilationError(CompilationStep::PARSER,
-                        "Only constant getelementptr without offsets are supported for now", expr->getName());
-                }
+                indices.emplace_back(toConstant(module, expr->getOperand(i), method, instructions));
+                if(!indices.back().isZeroInitializer())
+                    allIndicesAreZero = false;
             }
 
-            // we need to make the type of the value fit the return-type expected
-            srcGlobal.type = toDataType(module, expr->getType());
-            return srcGlobal;
+            if(allIndicesAreZero)
+            {
+                // indices of all zero -> reference to the global itself (or the first entry)
+                // we need to make the type of the value fit the return-type expected
+                srcGlobal.type = toDataType(module, expr->getType());
+                return srcGlobal;
+            }
+            else if(method && instructions)
+            {
+                // insert dynamic calculation of indices
+                auto elementOffset = method->addNewLocal(toDataType(module, expr->getType()), "%constant_offset");
+                instructions->emplace_back(new IndexOf(Value(elementOffset), std::move(srcGlobal), std::move(indices)));
+                return elementOffset;
+            }
+            else
+            {
+                dumpLLVM(expr);
+                throw CompilationError(CompilationStep::PARSER,
+                    "Only constant global getelementptr without offsets are supported for now", expr->getName());
+            }
         }
     }
     if(expr->getOpcode() == llvm::Instruction::CastOps::PtrToInt ||
@@ -1348,7 +1378,7 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
         expr->getOpcode() == llvm::Instruction::CastOps::ZExt)
     {
         // int <-> pointer cast is a zext (+ type conversion)
-        const Value src = toConstant(module, expr->getOperand(0));
+        const Value src = toConstant(module, expr->getOperand(0), method, instructions);
         const DataType destType = toDataType(module, expr->getType());
         // if the bit-widths of the source and destination are the the same width, simply return the source
         // otherwise, simply truncate or zero-extend
@@ -1397,8 +1427,8 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
         const DataType destType = toDataType(module, expr->getType());
         const DataType boolType = TYPE_BOOL.toVectorType(destType.getVectorWidth());
 
-        const Value src0 = toConstant(module, expr->getOperand(0));
-        const Value src1 = toConstant(module, expr->getOperand(1));
+        const Value src0 = toConstant(module, expr->getOperand(0), method, instructions);
+        const Value src1 = toConstant(module, expr->getOperand(1), method, instructions);
 
         auto predicate = expr->getPredicate();
 
@@ -1464,9 +1494,11 @@ Value BitcodeReader::precalculateConstantExpression(Module& module, const llvm::
 
     Optional<Value> result = NO_VALUE;
     if(opCode.numOperands == 1)
-        result = opCode(toConstant(module, expr->getOperand(0)), NO_VALUE).first;
+        result = opCode(toConstant(module, expr->getOperand(0), method, instructions), NO_VALUE).first;
     else if(opCode.numOperands == 2)
-        result = opCode(toConstant(module, expr->getOperand(0)), toConstant(module, expr->getOperand(1))).first;
+        result = opCode(toConstant(module, expr->getOperand(0), method, instructions),
+            toConstant(module, expr->getOperand(1), method, instructions))
+                     .first;
 
     if(result)
         return result.value();
