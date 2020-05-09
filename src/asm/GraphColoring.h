@@ -10,6 +10,7 @@
 #include "../Graph.h"
 #include "../InstructionWalker.h"
 #include "../analysis/InterferenceGraph.h"
+#include "../analysis/LivenessAnalysis.h"
 #include "../performance.h"
 
 #include <bitset>
@@ -125,19 +126,34 @@ namespace vc4c
              */
             GraphColoring(Method& method, InstructionWalker it);
 
+            /*!
+             * Tries to color the local interference graph to assign every local to a color (register).
+             *
+             * \return whether all locals were assigned correctly
+             */
             NODISCARD bool colorGraph();
 
             /*!
-             * \return Whether all errors have been fixed
+             * Tries to run some smaller rewrites to make the next iteration of the graph coloring find a suitable
+             * register for all locals.
+             *
+             * \return whether all errors have been fixed
              */
             NODISCARD bool fixErrors();
 
             FastMap<const Local*, Register> toRegisterMap() const;
 
+            /*!
+             * \return the liveness analysis created and updated by #colorGraph() to be reused for more advanced
+             * rewrites/register association fixes.
+             */
+            const analysis::GlobalLivenessAnalysis& getLivenessAnalysis() const;
+
         private:
             Method& method;
             FastSet<const Local*> closedSet;
             FastSet<const Local*> openSet;
+            analysis::GlobalLivenessAnalysis livenessAnalysis;
             std::unique_ptr<analysis::InterferenceGraph> interferenceGraph;
             FastMap<const Local*, LocalUsage> localUses;
 

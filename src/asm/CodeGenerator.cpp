@@ -15,6 +15,7 @@
 #include "../Profiler.h"
 #include "GraphColoring.h"
 #include "KernelInfo.h"
+#include "RegisterFixes.h"
 #include "log.h"
 
 #include <cassert>
@@ -67,6 +68,16 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
     return labelsMap;
 }
 
+static FixupResult runRegisterFixupStep(const std::pair<std::string, RegisterFixupStep>& step, Method& method,
+    const Configuration& config, std::unique_ptr<GraphColoring>& coloredGraph)
+{
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Running register fix-up step: " << step.first << "..." << logging::endl);
+    PROFILE_START(runRegisterFixupStep);
+    auto result = step.second(method, config, *coloredGraph);
+    PROFILE_END(runRegisterFixupStep);
+    return result;
+}
+
 const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(Method& method)
 {
     PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 0, "CodeGeneration (before)", method.countInstructions());
@@ -79,23 +90,52 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
 #endif
 
     // check and fix possible errors with register-association
-    PROFILE_START(initializeLocalsUses);
-    GraphColoring coloring(method, method.walkAllInstructions());
-    PROFILE_END(initializeLocalsUses);
-    PROFILE_START(colorGraph);
+    std::unique_ptr<GraphColoring> coloredGraph;
     std::size_t round = 0;
-    while(round < config.additionalOptions.registerResolverMaxRounds && !coloring.colorGraph())
+    auto stepIt = FIXUP_STEPS.begin();
+    FixupResult lastResult = FixupResult::FIXES_APPLIED_RECREATE_GRAPH;
+    while(round < config.additionalOptions.registerResolverMaxRounds && stepIt != FIXUP_STEPS.end())
     {
-        if(coloring.fixErrors())
+        if(!coloredGraph || lastResult == FixupResult::FIXES_APPLIED_RECREATE_GRAPH)
+        {
+            PROFILE_START(initializeLocalsUses);
+            coloredGraph = std::make_unique<GraphColoring>(method, method.walkAllInstructions());
+            PROFILE_END(initializeLocalsUses);
+        }
+        if(lastResult != FixupResult::NOTHING_FIXED)
+        {
+            // only recolor the graph if we did anything at all
+            PROFILE_START(colorGraph);
+            bool hasErrors = !coloredGraph->colorGraph();
+            PROFILE_END(colorGraph);
+            if(!hasErrors)
+                // no more errors
+                break;
+        }
+        lastResult = runRegisterFixupStep(*stepIt, method, config, coloredGraph);
+        if(lastResult == FixupResult::ALL_FIXED)
+            // all errors were fixed
             break;
         ++round;
+        ++stepIt;
     }
-    if(round >= config.additionalOptions.registerResolverMaxRounds)
+
+    if(round >= config.additionalOptions.registerResolverMaxRounds || stepIt == FIXUP_STEPS.end())
     {
         logging::warn() << "Register conflict resolver has exceeded its maximum rounds, there might still be errors!"
                         << logging::endl;
+        if(!coloredGraph || lastResult == FixupResult::FIXES_APPLIED_RECREATE_GRAPH)
+        {
+            PROFILE_START(initializeLocalsUses);
+            coloredGraph = std::make_unique<GraphColoring>(method, method.walkAllInstructions());
+            PROFILE_END(initializeLocalsUses);
+        }
+        PROFILE_START(colorGraph);
+        auto hasError = coloredGraph->colorGraph();
+        // the call to #toRegisterMap() below will fail anyway and has better error information
+        (void) hasError;
+        PROFILE_END(colorGraph);
     }
-    PROFILE_END(colorGraph);
 
     // create label-map + remove labels
     const auto labelMap = mapLabels(method);
@@ -105,9 +145,7 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
 
     // map to registers
     PROFILE_START(toRegisterMap);
-    PROFILE_START(toRegisterMapGraph);
-    auto registerMapping = coloring.toRegisterMap();
-    PROFILE_END(toRegisterMapGraph);
+    auto registerMapping = coloredGraph->toRegisterMap();
     PROFILE_END(toRegisterMap);
 
     CPPLOG_LAZY(logging::Level::DEBUG, log << "-----" << logging::endl);

@@ -215,7 +215,30 @@ namespace vc4c
 				// std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/pocl/test_structs_as_args.cl", "test_kernel",
 				// 	{toParameter(std::vector<unsigned>{0x01001001, 0x02002002, 0x03003003, 0x04004004, 0x05005005, 0x06006006, 0x07007007, 0x48008008, 0x09009009, 0x0A00A00A, 0x0B00B00B, 0x0C00C00C}), toParameter(std::vector<unsigned>(10))}, {}, maxExecutionCycles),
 				// 	addVector({}, 1, std::vector<unsigned>{0x01001001, 0x02002002, 0x03003003, 0x05, 0x06006006, 131584, 0x9009, 0x0A00A00A, 48, 8})
-				// )
+				// ),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/min_max_constant_args.cl", "sample_test",
+					// has 65 parameters, 64 inputs and 1 output
+					{toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)), toParameter(toRange(0, 8)),
+						toParameter(std::vector<unsigned>(8))
+					}, toConfig(4, 1, 1, 2), maxExecutionCycles),
+				    // dest[gid] = sum(src0[gid], src1[gid], ..., src63[gid])
+	                addVector({}, 64, std::vector<unsigned>{0 * 64, 1 * 64, 2 * 64, 3 * 64, 4 * 64, 5 * 64, 6 * 64, 7 * 64})
+				)
 		};
 
 		//TODO NVIDIA/matrixMul, NVIDIA/transpose, OpenCLIPP/Arithmetic, OpenCLIPP/Logic, OpenCLIPP/Thresholding, test_signedness

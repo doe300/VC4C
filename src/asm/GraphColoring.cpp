@@ -406,7 +406,7 @@ static void fixLocals(const InstructionWalker it, FastMap<const Local*, LocalUsa
 }
 
 GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
-    method(method), closedSet(), openSet(), interferenceGraph(), localUses()
+    method(method), closedSet(), openSet(), livenessAnalysis(true), localUses()
 {
     closedSet.reserve(method.getNumLocals());
     openSet.reserve(method.getNumLocals());
@@ -481,7 +481,12 @@ static void insertR5Node(ColoredGraph& graph)
 
 void GraphColoring::createGraph()
 {
-    interferenceGraph = analysis::InterferenceGraph::createGraph(method);
+    // We need to update these every time, since fix in the previous iteration may have changed the livenesses and will
+    // have changed the local interferences.
+    livenessAnalysis = analysis::GlobalLivenessAnalysis(true);
+    livenessAnalysis(method);
+    interferenceGraph = analysis::InterferenceGraph::createGraph(method, &livenessAnalysis);
+
     graph.reserveNodeSize(localUses.size());
     insertR5Node(graph);
     // 1. iteration: set files and locals used together and map to start/end of range
@@ -547,19 +552,6 @@ void GraphColoring::createGraph()
     }
     PROFILE_END(createColoredNodes);
 
-    // TODO if this method works, could here spill all locals with more than XX (64) neighbors!?!
-    // TODO can't fix on some number, since there are kernels where a node has > 240 neighbors and register association
-    // works! Need to try first and if register mapping fails, spill node with largest number of neighbors, smallest
-    // usage count and largest usage range (-> need to find some balance!).
-    // TODO before actually spilling, try to split up large usage-ranges first by inserting a move
-    for(const auto& node : interferenceGraph->findOverfullNodes(256))
-    {
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Spill candidate: " << node->key->to_string() << " (with " << node->getEdgesSize()
-                << " neighbors and " << node->key->getUsers().size() << " uses)" << logging::endl);
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 5, "SpillCandidates", 1);
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 6, "SpillCandidates (uses)", node->key->getUsers().size());
-    }
     // 2. iteration: associate locals used together
     PROFILE_START(InterferenceToColoredGraph);
     for(const auto& interferenceNode : interferenceGraph->getNodes())
@@ -1077,12 +1069,8 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
         }
         else if(!moveToFileA && !moveToFileB)
         {
-            // there are no more free register AT ALL
-            // since we do not spill, we can only about
-            logging::error() << "Local " << node.key->to_string() << " cannot be assigned to ANY register, aborting!"
-                             << logging::endl;
-            throw CompilationError(CompilationStep::LABEL_REGISTER_MAPPING, "Failed to assign local to ANY register",
-                node.key->to_string());
+            // there are no more free register AT ALL, so we cannot do anything useful here
+            return false;
         }
 
         CPPLOG_LAZY(logging::Level::DEBUG,
@@ -1160,6 +1148,11 @@ FastMap<const Local*, Register> GraphColoring::toRegisterMap() const
     }
 
     return result;
+}
+
+const analysis::GlobalLivenessAnalysis& GraphColoring::getLivenessAnalysis() const
+{
+    return livenessAnalysis;
 }
 
 void GraphColoring::resetGraph()
