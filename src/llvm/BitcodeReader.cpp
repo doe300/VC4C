@@ -1237,8 +1237,15 @@ Value BitcodeReader::toConstant(
         if(constant->getSExtValue() > std::numeric_limits<uint32_t>::max() ||
             constant->getSExtValue() < std::numeric_limits<int32_t>::min())
         {
+            if(method && instructions)
+            {
+                // insert instruction loading the 64-bit constant, since we cannot handle 64-bit literals
+                auto constantValue = method->addNewLocal(type, "%constant");
+                instructions->emplace_back(new LongConstant(Value(constantValue), constant->getSExtValue()));
+                return constantValue;
+            }
             dumpLLVM(constant);
-            throw CompilationError(CompilationStep::PARSER, "Constant value is out of valid range",
+            throw CompilationError(CompilationStep::PARSER, "Constant global value is out of valid range",
                 std::to_string(constant->getSExtValue()));
         }
         if(constant->isNegative())
@@ -1255,22 +1262,69 @@ Value BitcodeReader::toConstant(
     {
         // element types are stored as operands
         SIMDVector aggregate;
+        // to allow for 64-bit vectors, we need to handle elements not fitting into literals
+        std::vector<Value> elements;
+        elements.reserve(constant->getNumOperands());
+        bool allElementsAreLiterals = true;
         for(unsigned i = 0; i < constant->getNumOperands(); ++i)
         {
-            aggregate[i] = *toConstant(module, constant->getOperand(i), method, instructions).getLiteralValue();
+            auto element = toConstant(module, constant->getOperand(i), method, instructions);
+            // don't check for Value#getLiteralValue(), since we want to allow UNDEFINED literal elements
+            if(element.checkLocal())
+                allElementsAreLiterals = false;
+            else
+                aggregate[i] = *element.getLiteralValue();
+            elements.emplace_back(std::move(element));
         }
-        return module.storeVector(std::move(aggregate), type);
+        if(allElementsAreLiterals)
+            return module.storeVector(std::move(aggregate), type);
+        else if(method && instructions)
+        {
+            // e.g. for 64-bit vectors, the elements do not fit into literals, so we need to build up the vector
+            // manually
+            auto constantValue = method->addNewLocal(type, "%constant");
+            instructions->emplace_back(new LongConstant(Value(constantValue), std::move(elements)));
+            return constantValue;
+        }
+        else
+        {
+            dumpLLVM(constant);
+            throw CompilationError(CompilationStep::PARSER, "64-bit constant global vectors are not yet implemented");
+        }
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantDataSequential>(val))
     {
         // vector/array constant, but packed in storage
         SIMDVector aggregate;
+        // to allow for 64-bit vectors, we need to handle elements not fitting into literals
+        std::vector<Value> elements;
+        elements.reserve(constant->getNumElements());
+        bool allElementsAreLiterals = true;
         for(unsigned i = 0; i < constant->getNumElements(); ++i)
         {
-            aggregate[i] =
-                *toConstant(module, constant->getElementAsConstant(i), method, instructions).getLiteralValue();
+            auto element = toConstant(module, constant->getElementAsConstant(i), method, instructions);
+            // don't check for Value#getLiteralValue(), since we want to allow UNDEFINED literal elements
+            if(element.checkLocal())
+                allElementsAreLiterals = false;
+            else
+                aggregate[i] = *element.getLiteralValue();
+            elements.emplace_back(std::move(element));
         }
-        return module.storeVector(std::move(aggregate), type);
+        if(allElementsAreLiterals)
+            return module.storeVector(std::move(aggregate), type);
+        else if(method && instructions)
+        {
+            // e.g. for 64-bit vectors, the elements do not fit into literals, so we need to build up the vector
+            // manually
+            auto constantValue = method->addNewLocal(type, "%constant");
+            instructions->emplace_back(new LongConstant(Value(constantValue), std::move(elements)));
+            return constantValue;
+        }
+        else
+        {
+            dumpLLVM(constant);
+            throw CompilationError(CompilationStep::PARSER, "64-bit constant global vectors are not yet implemented");
+        }
     }
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantAggregateZero>(val))
     {

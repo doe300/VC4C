@@ -98,6 +98,22 @@ namespace vc4c
             InstructionWalker it, Method& method, const Value& dest, std::vector<ElementSource>&& sources);
 
         /**
+         * Assembles a vector into the given output variable by inserting the given scalar values at their positions.
+         *
+         * Any SIMD vector entry not explicitly set will be considered UNDEFINED and its value depend on the
+         * instructions used to assemble the vector.
+         *
+         * E.g. if the elements vector has 5 entries, elements[0] will be inserted into SIMD element 0, elements[1] into
+         * SIMD element 1, ... and elements[4] into SIMD element 4.
+         *
+         * Applies some further optimizations to generate a small number of instructions, where applicable. E.g.
+         * - If all elements are the same, the first element is replicated across all elements
+         * - If an element is a literal value, the vector rotation is skipped
+         */
+        NODISCARD InstructionWalker insertAssembleVector(
+            InstructionWalker it, Method& method, const Value& dest, const std::vector<Value>& elements);
+
+        /**
          * Inserts operations to fold the given input vector to the given output value using the given binary operation
          *
          * The folding is done by:

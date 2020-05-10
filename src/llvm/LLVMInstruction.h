@@ -256,6 +256,23 @@ namespace vc4c
             Value defaultLabel;
             FastMap<int, Value> jumpLabels;
         };
+
+        class LongConstant final : public LLVMInstruction
+        {
+        public:
+            // Scalar constant
+            LongConstant(Value&& dest, int64_t constant);
+            // Vector constant
+            LongConstant(Value&& dest, std::vector<Value>&& elements);
+            ~LongConstant() noexcept override = default;
+
+            bool mapInstruction(Method& method) override;
+
+        private:
+            Value dest;
+            int64_t value;
+            std::vector<Value> elements;
+        };
     } // namespace llvm2qasm
 } // namespace vc4c
 #endif /* LLVMINSTRUCTION_H */

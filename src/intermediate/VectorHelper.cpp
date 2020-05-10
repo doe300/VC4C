@@ -934,6 +934,28 @@ InstructionWalker intermediate::insertAssembleVector(
     return it;
 }
 
+InstructionWalker intermediate::insertAssembleVector(
+    InstructionWalker it, Method& method, const Value& dest, const std::vector<Value>& elements)
+{
+    if(elements.empty())
+        throw CompilationError(CompilationStep::GENERAL, "Can't assemble vector without elements", dest.to_string());
+
+    if(std::all_of(elements.begin(), elements.end(), [&](const Value& val) { return val == elements.front(); }))
+        return insertReplication(it, elements.front(), dest);
+
+    // insert per element
+    if(elements.size() < NATIVE_VECTOR_SIZE)
+        // just to make sure we have an unconditional write, so our register allocation is happy
+        assign(it, dest) = INT_ZERO;
+    uint8_t index = 0;
+    for(auto& elem : elements)
+    {
+        it = insertVectorInsertion(it, method, dest, Value(Literal(index), TYPE_INT8), elem);
+        ++index;
+    }
+    return it;
+}
+
 InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& method, const Value& dest,
     const Value& src, OpCode foldingOp, InstructionDecorations decorations)
 {
