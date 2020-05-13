@@ -9,11 +9,13 @@
 
 #include "../HalfType.h"
 #include "../performance.h"
+#include "../tools/SmallSet.h"
+#include "Analysis.h"
 #include "Optional.h"
 
 #include <algorithm>
-#include <inttypes.h>
 #include <limits>
+#include <memory>
 
 namespace vc4c
 {
@@ -32,6 +34,8 @@ namespace vc4c
 
     namespace analysis
     {
+        struct ValueRanges;
+
         /*
          * Contains a the value range for a certain value/expression
          *
@@ -46,7 +50,7 @@ namespace vc4c
         {
         public:
             explicit ValueRange() = default;
-            explicit ValueRange(Literal lit);
+            explicit ValueRange(Literal lit, DataType type);
             explicit ValueRange(DataType type);
             constexpr ValueRange(double min, double max) : minValue(min), maxValue(max) {}
 
@@ -93,10 +97,11 @@ namespace vc4c
 
             static Optional<ValueRange> getValueRange(
                 intermediate::InstructionDecorations deco, const Method* method = nullptr);
+            static ValueRange getValueRange(const intermediate::IntermediateInstruction& inst, const Method* method,
+                const ValueRanges& knownRanges);
             static ValueRange getValueRange(const Value& val, const Method* method = nullptr);
             static ValueRange getValueRangeRecursive(const Value& val, const Method* method = nullptr);
             static ValueRange getValueRange(const Expression& expr, const Method* method = nullptr);
-            static FastMap<const Local*, ValueRange> determineValueRanges(Method& method);
 
             constexpr ValueRange operator*(double val) const noexcept
             {
@@ -117,6 +122,9 @@ namespace vc4c
             {
                 return ValueRange{minValue - val, maxValue - val};
             }
+
+            ValueRange operator|(const ValueRange& other) const noexcept;
+            ValueRange& operator|=(const ValueRange& other) noexcept;
 
             bool operator==(const ValueRange& other) const;
             bool operator!=(const ValueRange& other) const
@@ -144,6 +152,8 @@ namespace vc4c
             static void processedOpenSet(const Method* method, FastMap<const Local*, ValueRange>& ranges,
                 FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
                 FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet);
+
+            friend class ValueRangeAnalysis;
         };
 
         extern ValueRange RANGE_HALF;
@@ -161,6 +171,40 @@ namespace vc4c
             static_cast<double>(std::numeric_limits<uint32_t>::max())};
         constexpr ValueRange RANGE_INT{static_cast<double>(std::numeric_limits<int32_t>::min()),
             static_cast<double>(std::numeric_limits<int32_t>::max())};
+
+        struct PartialRange
+        {
+            FastAccessList<
+                std::pair<const intermediate::IntermediateInstruction*, tools::SmallSortedPointerSet<const Local*>>>
+                generatingExpressions;
+        };
+
+        struct ValueRanges
+        {
+            FastMap<const Local*, ValueRange> fullRanges;
+            FastMap<const Local*, PartialRange> partialRanges;
+        };
+
+        /**
+         * Analysis the value ranges of every local written in a single basic block
+         */
+        class ValueRangeAnalysis : public LocalAnalysis<AnalysisDirection::FORWARD, ValueRanges>
+        {
+        public:
+            explicit ValueRangeAnalysis(ValueRanges&& initialRanges = {});
+
+            static std::string to_string(const ValueRanges& knownRanges);
+
+            /**
+             * Updates the given previously known value ranges with the operation executed in the given instruction.
+             *
+             * NOTE: If only the value ranges at a certain point are of interest (and the value ranges at any point in
+             * the basic block), this function should be directly called instead of the analysis run over the whole
+             * block and the previous result should be passed in as new input to reduce the memory overhead!
+             */
+            static ValueRanges analyzeRanges(const intermediate::IntermediateInstruction* inst,
+                const ValueRanges& previousRanges, const void* dummy);
+        };
 
     } /* namespace analysis */
 } /* namespace vc4c */
