@@ -43,6 +43,7 @@ public:
     void testPartialMD5();
     void testCRC16();
     void testPearson16();
+    void testPi();
 
     void printProfilingInfo();
 

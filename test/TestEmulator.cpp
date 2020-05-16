@@ -19,12 +19,27 @@
 #include <fstream>
 #include <sstream>
 
+static std::function<unsigned(unsigned)> get_local_id;
+static std::function<unsigned(unsigned)> get_local_size;
+static std::function<unsigned(unsigned)> get_group_id;
+#define CLK_LOCAL_MEM_FENCE 0
+void barrier(unsigned) {}
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#pragma GCC diagnostic ignored "-Wconversion"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #define __kernel static
 #define __constant static const
 #define __global
+#define __local
 #define __private
+#include "../testing/HandsOnOpenCL/pi_ocl.cl"
 #include "../testing/test_hashes.cl"
 #include "../testing/test_partial_md5.cl"
+#pragma GCC diagnostic pop
 
 using namespace vc4c;
 using namespace vc4c::tools;
@@ -54,6 +69,7 @@ TestEmulator::TestEmulator(const vc4c::Configuration& config) : config(config), 
 #endif
     TEST_ADD(TestEmulator::testCRC16);
     TEST_ADD(TestEmulator::testPearson16);
+    TEST_ADD(TestEmulator::testPi);
     TEST_ADD(TestEmulator::printProfilingInfo);
 }
 
@@ -466,7 +482,7 @@ void TestEmulator::testFloatingEmulation(
                  * So we allow up to 1 ULP error
                  */
                 TEST_ASSERT_ULP(e, o, maxULP)
-                auto delta = e * maxULP * std::numeric_limits<float>::epsilon();
+                auto delta = e * static_cast<float>(maxULP) * std::numeric_limits<float>::epsilon();
                 if(!Test::Comparisons::inMaxDistance(e, o, delta))
                 {
                     TEST_ASSERT_EQUALS("", "element " + std::to_string(i))
@@ -580,6 +596,79 @@ void TestEmulator::testPearson16()
         ++resultIt;
         ++expectedIt;
     }
+}
+
+void TestEmulator::testPi()
+{
+    const uint32_t numIterations = 32;
+    unsigned workGroupSize = 8;
+    unsigned numSteps = 1024;
+    auto numWorkGroups = numSteps / (numIterations * workGroupSize);
+    if(numWorkGroups == 0)
+    {
+        numWorkGroups = 1;
+        workGroupSize = numSteps / (numIterations * numWorkGroups);
+    }
+    numSteps = workGroupSize * numIterations * numWorkGroups;
+    auto stepSize = 1.0f / static_cast<float>(numSteps);
+
+    TEST_ASSERT_EQUALS(4u, numWorkGroups);
+    TEST_ASSERT_EQUALS(1024u, numSteps);
+
+    std::stringstream buffer;
+    compileFile(buffer, "./testing/HandsOnOpenCL/pi_ocl.cl", "", cachePrecompilation);
+
+    EmulationData data;
+    data.kernelName = "pi";
+    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.module = std::make_pair("", &buffer);
+    data.workGroup.localSizes = {workGroupSize, 1, 1};
+    data.workGroup.numGroups = {numWorkGroups, 1, 1};
+
+    data.parameter.emplace_back(numIterations, Optional<std::vector<uint32_t>>{});
+    data.parameter.emplace_back(vc4c::bit_cast<float, uint32_t>(stepSize), Optional<std::vector<uint32_t>>{});
+    data.parameter.emplace_back(0, std::vector<uint32_t>(workGroupSize));
+    data.parameter.emplace_back(0, std::vector<uint32_t>(numWorkGroups));
+
+    const auto result = emulate(data);
+    TEST_ASSERT(result.executionSuccessful)
+    TEST_ASSERT_EQUALS(4u, result.results.size())
+
+    // host-side calculation
+    std::vector<float> hostLocal(workGroupSize);
+    std::vector<float> hostPartial(numWorkGroups);
+
+    // execute all local IDs, but separate, since we need to fake the work-group functions
+    get_local_size = [=](unsigned) { return workGroupSize; };
+    for(unsigned group = 0; group < numWorkGroups; ++group)
+    {
+        get_group_id = [=](unsigned) { return group; };
+        // iterate in descending order, since we have special handling for local ID 0
+        for(int localId = static_cast<int>(workGroupSize); localId >= 0; --localId)
+        {
+            get_local_id = [=](unsigned) { return localId; };
+            pi(numIterations, stepSize, hostLocal.data(), hostPartial.data());
+        }
+    }
+
+    auto expectedIt = hostPartial.begin();
+    auto& resultBuffer = *result.results.at(3).second;
+    auto resultIt = resultBuffer.begin();
+    while(expectedIt != hostPartial.end())
+    {
+        TEST_ASSERT_ULP(static_cast<float>(*expectedIt), (bit_cast<uint32_t, float>(*resultIt)), 4)
+
+        ++resultIt;
+        ++expectedIt;
+    }
+
+    auto hostPi = std::accumulate(hostPartial.begin(), hostPartial.end(), 0.0f);
+    auto devicePi = std::accumulate(resultBuffer.begin(), resultBuffer.end(), 0.0f,
+        [](float f, unsigned u) { return f + bit_cast<unsigned, float>(u); });
+    hostPi *= stepSize;
+    devicePi *= stepSize;
+    std::cout << "Host calculated PI: " << hostPi << std::endl;
+    std::cout << "(emulated) Device calculated PI: " << devicePi << std::endl;
 }
 
 void TestEmulator::printProfilingInfo()
