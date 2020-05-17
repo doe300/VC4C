@@ -28,6 +28,8 @@
 #include <string>
 #include <vector>
 
+#include <iostream>
+
 using namespace vc4c;
 using namespace vc4c::normalization;
 
@@ -235,6 +237,157 @@ static void runNormalizationStep(
     }
 }
 
+class ValueExpr
+{
+  virtual std::string to_string() const = 0;
+};
+
+class ValueBinaryOp : public ValueExpr
+{
+public:
+  enum class BinaryOp
+  {
+    Add, Sub, Mul, Div, Other,
+  };
+
+  ValueBinaryOp(std::unique_ptr<ValueExpr> left, BinaryOp op, std::unique_ptr<ValueExpr> right) :
+    left(std::move(left)), op(op), right(std::move(right)) {}
+
+  std::string binaryOpToString()
+  {
+    switch (op)
+    {
+      case BinaryOp::Add: return "add";
+      case BinaryOp::Sub: return "sub";
+      case BinaryOp::Mul: return "mul";
+      case BinaryOp::Div: return "div";
+      case BinaryOp::Other: return "other";
+    }
+  }
+
+  std::string to_string() const override
+  {
+    return left->to_string() + " " + binaryOpToString(op) + " " + right->to_string();
+  }
+
+  std::unique_ptr<ValueExpr> left;
+  BinaryOp op;
+  std::unique_ptr<ValueExpr> right;
+};
+
+class ValueLocal : public ValueExpr
+{
+public:
+  ValueLocal(const Local *local) : local(local) {}
+
+  std::string to_string() const override
+  {
+    return local->to_string();
+  }
+
+  const Local *local;
+};
+
+std::unique_ptr<ValueExpr> makeValueBinaryOpFromLocal(const Local* left, ValueBinaryOp::BinaryOp binOp, const Local* right)
+{
+  // TODO: Check left and right are not nullptr.
+
+  return std::make_unique<ValueBinaryOp>(
+      std::make_unique<ValueLocal>(left),
+      binOp,
+      std::make_unique<ValueLocal>(right));
+}
+
+std::unique_ptr<ValueExpr> iiToExpr(const Local* local, const LocalUser* inst)
+{
+  using BO = ValueBinaryOp::BinaryOp;
+  BO binOp = BO::Other;
+
+  // add, sub
+  if (auto op = dynamic_cast<const intermediate::Operation*>(inst))
+  {
+    if (op->op == OP_ADD)
+    {
+      binOp = BO::Add;
+    }
+    else if (op->op == OP_SUB)
+    {
+      binOp = BO::Sub;
+    }
+    else
+    {
+      // If op is neither add nor sub, return local as-is.
+      return std::make_unique<ValueLocal>(local);
+    }
+
+    auto left = op->getFirstArg().checkLocal();
+    auto right = op->getSecondArg()->checkLocal();
+    return makeValueBinaryOpFromLocal(left, binOp, right);
+  }
+  // mul, div
+  else if (auto op = dynamic_cast<const intermediate::IntrinsicOperation*>(inst))
+  {
+    if (op->opCode == "mul")
+    {
+      binOp = BO::Mul;
+    }
+    else if (op->opCode == "div")
+    {
+      binOp = BO::Div;
+    }
+    else
+    {
+      // If op is neither add nor sub, return local as-is.
+      return std::make_unique<ValueLocal>(local);
+    }
+
+    auto left = op->getFirstArg().checkLocal();
+    auto right = op->getSecondArg()->checkLocal();
+    return makeValueBinaryOpFromLocal(left, binOp, right);
+  }
+
+  return std::make_unique<ValueLocal>(local);
+}
+
+void combineDMALoads(const Module& module, Method& method, const Configuration& config)
+{
+  // vload16(unsigned int, unsigned char*)
+  const std::string VLOAD16_METHOD_NAME = "_Z7vload16jPU3AS1Kh";
+
+  std::vector<Value> addrValues;
+
+  auto it = method.walkAllInstructions();
+  while(!it.isEndOfMethod())
+  {
+    // Find all method calls
+    if(auto call = it.get<intermediate::MethodCall>())
+    {
+      if (call->methodName == VLOAD16_METHOD_NAME)
+      {
+        auto addr = *call->getArgument(0);
+        logging::debug() << "method call = " << call->to_string() << ", " << call->methodName << ", " << addr.to_string() << logging::endl;
+        addrValues.push_back(addr);
+      }
+    }
+
+    it.nextInMethod();
+  }
+
+  std::vector<std::pair<Local*, std::unique_ptr<ValueExpr>>> addrExprs;
+
+  for (auto &addrValue : addrValues)
+  {
+    if(auto loc = addrValue.checkLocal())
+    {
+      if (auto writer = loc->getSingleWriter())
+      {
+        logging::debug() << "addr - writer: " << writer->to_string() << logging::endl;
+        addrExprs.push_back(std::make_pair(loc, iiToExpr(loc, writer)));
+      }
+    }
+  }
+}
+
 void Normalizer::normalize(Module& module) const
 {
     // 1. eliminate phi on all methods
@@ -253,6 +406,15 @@ void Normalizer::normalize(Module& module) const
         PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 2, "Eliminate Phi-nodes (after)",
             method->countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 1);
     }
+
+    {
+      auto kernels = module.getKernels();
+      for(Method* kernelFunc : kernels)
+      {
+        combineDMALoads(module, *kernelFunc, config);
+      }
+    }
+
     auto kernels = module.getKernels();
     // 2. inline kernel-functions
     for(Method* kernelFunc : kernels)
@@ -266,6 +428,23 @@ void Normalizer::normalize(Module& module) const
         PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 5, "Inline (after)",
             kernel.countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 4);
     }
+
+    {
+      logging::info() << "=====================================" << __FILE__ << " : " << __LINE__ << logging::endl;
+      for (auto &method : module) {
+        auto it = method->walkAllInstructions();
+        while (!it.isEndOfMethod()) {
+          auto ii = it.get();
+          logging::info() << ii->to_string() << logging::endl;
+          it = it.nextInMethod();
+        }
+      }
+
+      std::string a;
+      std::cin >> a;
+    }
+
+
     // 3. run other normalization steps on kernel functions
     const auto f = [&module, this](Method* kernelFunc) -> void { normalizeMethod(module, *kernelFunc); };
     ThreadPool::scheduleAll<Method*>("Normalization", kernels, f, THREAD_LOGGER.get());
