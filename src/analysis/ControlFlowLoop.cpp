@@ -23,7 +23,7 @@ const CFGNode* ControlFlowLoop::findPredecessor() const
     for(const CFGNode* node : *this)
     {
         node->forAllIncomingEdges([this, &predecessor](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
-            if(std::find(begin(), end(), &neighbor) == end())
+            if(find(&neighbor) == end())
             {
                 // the relation is backwards and node is not within this loop -> predecessor
                 CPPLOG_LAZY(logging::Level::DEBUG,
@@ -49,7 +49,7 @@ FastAccessList<const CFGNode*> ControlFlowLoop::findPredecessors() const
     for(const CFGNode* node : *this)
     {
         node->forAllIncomingEdges([this, &predecessors](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
-            if(std::find(begin(), end(), &neighbor) == end())
+            if(find(&neighbor) == end())
             {
                 predecessors.push_back(&neighbor);
             }
@@ -65,7 +65,7 @@ const CFGNode* ControlFlowLoop::findSuccessor() const
     for(const CFGNode* node : *this)
     {
         node->forAllOutgoingEdges([this, &successor](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
-            if(std::find(begin(), end(), &neighbor) == end())
+            if(find(&neighbor) == end())
             {
                 // the relation is forward and node is not within this loop -> successor
                 CPPLOG_LAZY(logging::Level::DEBUG,
@@ -91,7 +91,7 @@ FastAccessList<const CFGNode*> ControlFlowLoop::findSuccessors() const
     for(const CFGNode* node : *this)
     {
         node->forAllOutgoingEdges([this, &successors](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
-            if(std::find(begin(), end(), &neighbor) == end())
+            if(find(&neighbor) == end())
                 successors.emplace_back(&neighbor);
             return true;
         });
@@ -111,16 +111,13 @@ Optional<InstructionWalker> ControlFlowLoop::findInLoop(const intermediate::Inte
 
 bool ControlFlowLoop::includes(const ControlFlowLoop& other) const
 {
-    if(*this == other)
+    if(*this == other || size() <= other.size())
         return false;
 
     for(auto otherItr : other)
     {
-        auto thisItr = std::find_if(begin(), end(), [&](const CFGNode* node) { return node->key == otherItr->key; });
-        if(thisItr == end())
-        {
+        if(find(otherItr) == end())
             return false;
-        }
     }
 
     return true;
@@ -357,7 +354,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
                 // This should never really happen, unless there is a goto somewhere...
                 break;
             successors.front()->forAllIncomingEdges([&](const CFGNode& pred, const CFGEdge& edge) {
-                auto predIt = std::find(begin(), end(), &pred);
+                auto predIt = find(&pred);
                 if(predIt != end())
                 {
                     if(tail)
@@ -706,39 +703,20 @@ const CFGNode* ControlFlowLoop::getHeader() const
 
     if(size() == 1)
         // special case for single-block loops
-        return front();
+        return *begin();
 
-    for(auto& node : *this)
+    // we also know that the header is one of the nodes adjacent to the back edge, so only check these two
+    for(auto& node : backEdge->getNodes())
     {
         node->forAllIncomingEdges([&](const CFGNode& pred, const CFGEdge& edge) {
-            auto predIt = std::find(begin(), end(), &pred);
-            if(predIt == end())
+            if(find(&pred) == end())
             {
                 // node inside the loop with predecessor outside of it
-                if(header)
-                {
-                    // multiple candidates
-                    header = nullptr;
-                    return false;
-                }
                 header = node;
+                return false;
             }
             return true;
         });
-    }
-
-    // some cleanup for our work-group loops
-    if(!header && !empty())
-    {
-        // check all edges of adjacent nodes within this loop
-        for(auto it = ++begin(); it != end(); ++it)
-        {
-            if(auto edge = (*(it - 1))->getEdge(*it))
-            {
-                if(edge->data.isWorkGroupLoop)
-                    return *(it - 1);
-            }
-        }
     }
 
     return header;
@@ -746,31 +724,14 @@ const CFGNode* ControlFlowLoop::getHeader() const
 
 const CFGNode* ControlFlowLoop::getTail() const
 {
-    // Since there might be multiple nodes from which a jump to the header (and to outside of the loop) is performed
-    // (i.e. for nested loops), we check for the node where the back edge to the header is part of the loop, i.e. the
-    // node which directly precedes the header and has an edge to the header node.
+    // The tail is defined as the node (inside the loop) which has the back-edge to the header
 
     if(size() == 1)
         // special case for single block loops
-        return back();
+        return *begin();
 
     if(auto header = getHeader())
-    {
-        for(auto it = ++begin(); it != end(); ++it)
-        {
-            if(*(it - 1) != header)
-                continue;
-            if(auto edge = (*(it - 1))->getEdge(*it))
-                return *it;
-        }
-
-        // final check between last and first
-        if(auto edge = front()->getEdge(back()))
-        {
-            if(back() == header)
-                return front();
-        }
-    }
+        return &backEdge->getOtherNode(*header);
     return nullptr;
 }
 
@@ -835,18 +796,20 @@ FastSet<InstructionWalker> ControlFlowLoop::findLoopInvariants()
 bool ControlFlowLoop::isWorkGroupLoop() const
 {
     // check all edges of adjacent nodes within this loop
-    for(auto it = ++begin(); it != end(); ++it)
+    for(const auto& node : *this)
     {
-        if(auto edge = (*(it - 1))->getEdge(*it))
-        {
-            if(edge->data.isWorkGroupLoop)
-                return true;
-        }
-    }
-    // final check between last and first
-    if(auto edge = front()->getEdge(back()))
-        if(edge->data.isWorkGroupLoop)
+        bool hasWorkGroupLoop = false;
+        node->forAllOutgoingEdges([&](const CFGNode& successor, const CFGEdge& edge) -> bool {
+            if(edge.data.isWorkGroupLoop && find(&successor) != end())
+            {
+                hasWorkGroupLoop = true;
+                return false;
+            }
             return true;
+        });
+        if(hasWorkGroupLoop)
+            return true;
+    }
     return false;
 }
 
@@ -854,33 +817,30 @@ bool ControlFlowLoop::operator==(const ControlFlowLoop& other) const noexcept
 {
     if(size() != other.size())
         return false;
+    if(backEdge != other.backEdge)
+        return false;
     if(empty())
         return true;
-    // the loops could be rotated by a fixed offset
-    auto otherIt = std::find(other.begin(), other.end(), front());
-    if(otherIt != other.end())
-    {
-        auto thisIt = begin();
-        while(otherIt != other.end() && thisIt != end())
-        {
-            if(*otherIt != *thisIt)
-                return false;
-            ++otherIt;
-            ++thisIt;
-            if(otherIt == other.end())
-                otherIt = other.begin();
-        }
-        return true;
-    }
-    return false;
+    return std::equal_to<FastSet<const CFGNode*>>{}(*this, other);
 }
 
 std::string ControlFlowLoop::to_string() const
 {
-    // since the blocks are in "reverse order", we print from the back
     std::stringstream ss;
-    for(auto it = rbegin(); it != rend(); ++it)
-        ss << ((*it) && (*it)->key ? (*it)->key->to_string() : "(null)") << " -> ";
+    if(auto head = getHeader())
+        ss << head->key->to_string();
+    else
+        ss << "(unknown header)";
+    ss << " -> ";
+    if(auto tail = getTail())
+        ss << tail->key->to_string();
+    else
+        ss << "(unknown tail)";
+
+    ss << " (" << size() << ") {";
+    for(const auto& node : *this)
+        ss << node->key->to_string() << ", ";
+    ss << '}';
     return ss.str();
 }
 
@@ -947,7 +907,7 @@ bool LoopInclusionTreeNodeBase::hasCFGNodeInChildren(const CFGNode* node) const
         auto* child = castToTreeNode(&childBase);
         auto nodes = child->key;
 
-        auto targetNode = std::find(nodes->begin(), nodes->end(), node);
+        auto targetNode = nodes->find(node);
         if(targetNode != nodes->end())
         {
             found = true;
@@ -968,7 +928,9 @@ bool LoopInclusionTreeNodeBase::hasCFGNodeInChildren(const CFGNode* node) const
 std::string LoopInclusionTreeNodeBase::dumpLabel() const
 {
     auto* self = castToTreeNode(this);
-    return (*self->key->rbegin())->key->getLabel()->to_string();
+    if(auto header = self->key->getHeader())
+        return header->key->getLabel()->to_string();
+    return "(unknown header)";
 }
 
 std::unique_ptr<LoopInclusionTree> analysis::createLoopInclusingTree(FastAccessList<ControlFlowLoop>& loops)

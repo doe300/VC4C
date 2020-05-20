@@ -138,15 +138,14 @@ static Optional<unsigned> determineVectorizationFactor(const ControlFlowLoop& lo
     const InductionVariable& inductionVariable, Literal lowerBound, Literal upperBound, Literal stepValue)
 {
     unsigned char maxTypeWidth = 1;
-    InstructionWalker it = loop.front()->key->walk();
-    while(!it.isEndOfMethod() && it != loop.back()->key->walkEnd())
+    for(const auto& node : loop)
     {
-        if(it->getOutput())
+        for(const auto& it : *node->key)
         {
-            // TODO is this check enough?
-            maxTypeWidth = std::max(maxTypeWidth, it->getOutput()->type.getVectorWidth());
+            if(it && it->getOutput())
+                // TODO is this check enough?
+                maxTypeWidth = std::max(maxTypeWidth, it->getOutput()->type.getVectorWidth());
         }
-        it.nextInMethod();
     }
 
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -192,63 +191,67 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
     SortedSet<const Local*> readAddresses;
     SortedSet<const Local*> writtenAddresses;
 
-    InstructionWalker it = loop.front()->key->walk();
-    while(!it.isEndOfMethod() && it != loop.back()->key->walkEnd())
+    for(const auto& node : loop)
     {
-        if(it.has())
+        for(const auto& it : *node->key)
         {
-            if(it->getOutput() & [](const Value& out) -> bool {
-                   return out.hasRegister(REG_VPM_DMA_LOAD_ADDR) || out.hasRegister(REG_TMU0_ADDRESS) ||
-                       out.hasRegister(REG_TMU1_ADDRESS);
-               })
+            if(it)
             {
-                for(const Value& arg : it->getArguments())
+                if(it->getOutput() & [](const Value& out) -> bool {
+                       return out.hasRegister(REG_VPM_DMA_LOAD_ADDR) || out.hasRegister(REG_TMU0_ADDRESS) ||
+                           out.hasRegister(REG_TMU1_ADDRESS);
+                   })
                 {
-                    if(auto loc = arg.checkLocal())
+                    for(const Value& arg : it->getArguments())
                     {
-                        readAddresses.emplace(loc);
-                        if(auto data = loc->get<ReferenceData>())
-                            readAddresses.emplace(data->base);
+                        if(auto loc = arg.checkLocal())
+                        {
+                            readAddresses.emplace(loc);
+                            if(auto data = loc->get<ReferenceData>())
+                                readAddresses.emplace(data->base);
+                        }
                     }
                 }
-            }
-            else if(it->getOutput() && it->getOutput()->hasRegister(REG_VPM_DMA_STORE_ADDR))
-            {
-                for(const Value& arg : it->getArguments())
+                else if(it->getOutput() && it->getOutput()->hasRegister(REG_VPM_DMA_STORE_ADDR))
                 {
-                    if(auto loc = arg.checkLocal())
+                    for(const Value& arg : it->getArguments())
                     {
-                        writtenAddresses.emplace(loc);
-                        if(auto data = loc->get<ReferenceData>())
-                            writtenAddresses.emplace(data->base);
+                        if(auto loc = arg.checkLocal())
+                        {
+                            writtenAddresses.emplace(loc);
+                            if(auto data = loc->get<ReferenceData>())
+                                writtenAddresses.emplace(data->base);
+                        }
                     }
                 }
+                else if(dynamic_cast<const intermediate::VectorRotation*>(it.get()))
+                {
+                    // abort
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Cannot vectorize loops containing vector rotations: " << it->to_string()
+                            << logging::endl);
+                    return std::numeric_limits<int>::min();
+                }
+                else if(dynamic_cast<const intermediate::MemoryBarrier*>(it.get()))
+                {
+                    // abort
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Cannot vectorize loops containing memory barriers: " << it->to_string()
+                            << logging::endl);
+                    return std::numeric_limits<int>::min();
+                }
+                else if(dynamic_cast<const intermediate::SemaphoreAdjustment*>(it.get()))
+                {
+                    // abort
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Cannot vectorize loops containing semaphore calls: " << it->to_string()
+                            << logging::endl);
+                    return std::numeric_limits<int>::min();
+                }
             }
-            else if(it.get<intermediate::VectorRotation>())
-            {
-                // abort
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Cannot vectorize loops containing vector rotations: " << it->to_string() << logging::endl);
-                return std::numeric_limits<int>::min();
-            }
-            else if(it.get<intermediate::MemoryBarrier>())
-            {
-                // abort
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Cannot vectorize loops containing memory barriers: " << it->to_string() << logging::endl);
-                return std::numeric_limits<int>::min();
-            }
-            else if(it.get<intermediate::SemaphoreAdjustment>())
-            {
-                // abort
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Cannot vectorize loops containing semaphore calls: " << it->to_string() << logging::endl);
-                return std::numeric_limits<int>::min();
-            }
-        }
 
-        // TODO check and increase costs
-        it.nextInMethod();
+            // TODO check and increase costs
+        }
     }
 
     // constant cost - loading immediate for iteration-step for vector-width > 15 (no longer fitting into small
@@ -452,56 +455,60 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
 
 static std::size_t fixVPMSetups(ControlFlowLoop& loop, unsigned vectorizationFactor)
 {
-    InstructionWalker it = loop.front()->key->walk();
     std::size_t numVectorized = 0;
 
-    while(!it.isEndOfMethod() && it != loop.back()->key->walkEnd())
+    for(auto& node : loop)
     {
-        if(it->writesRegister(REG_VPM_OUT_SETUP))
+        auto it = node->key->walk();
+        while(!it.isEndOfBlock())
         {
-            periphery::VPWSetupWrapper vpwSetup(static_cast<intermediate::LoadImmediate*>(nullptr));
-            if(auto load = it.get<intermediate::LoadImmediate>())
-                vpwSetup = periphery::VPWSetupWrapper(load);
-            else if(auto move = it.get<intermediate::MoveOperation>())
-                vpwSetup = periphery::VPWSetupWrapper(move);
-            else
-                throw CompilationError(CompilationStep::OPTIMIZER,
-                    "Unsupported instruction to write VPM for vectorized value", it->to_string());
-
-            auto vpmWrite = periphery::findRelatedVPMInstructions(it, false).vpmAccess;
-            if(vpwSetup.isDMASetup() && vpmWrite &&
-                (*vpmWrite)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
+            if(it->writesRegister(REG_VPM_OUT_SETUP))
             {
-                // Since this is only true for values actually vectorized, the corresponding VPM-write is checked
-                vpwSetup.dmaSetup.setDepth(static_cast<uint8_t>(vpwSetup.dmaSetup.getDepth() * vectorizationFactor));
-                ++numVectorized;
-                it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
-            }
-        }
-        else if(it->writesRegister(REG_VPM_IN_SETUP))
-        {
-            periphery::VPRSetupWrapper vprSetup(static_cast<intermediate::LoadImmediate*>(nullptr));
-            if(auto load = it.get<intermediate::LoadImmediate>())
-                vprSetup = periphery::VPRSetupWrapper(load);
-            else if(auto move = it.get<intermediate::MoveOperation>())
-                vprSetup = periphery::VPRSetupWrapper(move);
-            else
-                throw CompilationError(CompilationStep::OPTIMIZER,
-                    "Unsupported instruction to write VPM for vectorized value", it->to_string());
+                periphery::VPWSetupWrapper vpwSetup(static_cast<intermediate::LoadImmediate*>(nullptr));
+                if(auto load = it.get<intermediate::LoadImmediate>())
+                    vpwSetup = periphery::VPWSetupWrapper(load);
+                else if(auto move = it.get<intermediate::MoveOperation>())
+                    vpwSetup = periphery::VPWSetupWrapper(move);
+                else
+                    throw CompilationError(CompilationStep::OPTIMIZER,
+                        "Unsupported instruction to write VPM for vectorized value", it->to_string());
 
-            auto vpmRead = periphery::findRelatedVPMInstructions(it, true).vpmAccess;
-            if(vprSetup.isDMASetup() && vpmRead &&
-                (*vpmRead)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
+                auto vpmWrite = periphery::findRelatedVPMInstructions(it, false).vpmAccess;
+                if(vpwSetup.isDMASetup() && vpmWrite &&
+                    (*vpmWrite)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
+                {
+                    // Since this is only true for values actually vectorized, the corresponding VPM-write is checked
+                    vpwSetup.dmaSetup.setDepth(
+                        static_cast<uint8_t>(vpwSetup.dmaSetup.getDepth() * vectorizationFactor));
+                    ++numVectorized;
+                    it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+                }
+            }
+            else if(it->writesRegister(REG_VPM_IN_SETUP))
             {
-                // See VPM write
-                vprSetup.dmaSetup.setRowLength(
-                    (vprSetup.dmaSetup.getRowLength() * vectorizationFactor) % 16 /* 0 => 16 */);
-                ++numVectorized;
-                it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
-            }
-        }
+                periphery::VPRSetupWrapper vprSetup(static_cast<intermediate::LoadImmediate*>(nullptr));
+                if(auto load = it.get<intermediate::LoadImmediate>())
+                    vprSetup = periphery::VPRSetupWrapper(load);
+                else if(auto move = it.get<intermediate::MoveOperation>())
+                    vprSetup = periphery::VPRSetupWrapper(move);
+                else
+                    throw CompilationError(CompilationStep::OPTIMIZER,
+                        "Unsupported instruction to write VPM for vectorized value", it->to_string());
 
-        it.nextInMethod();
+                auto vpmRead = periphery::findRelatedVPMInstructions(it, true).vpmAccess;
+                if(vprSetup.isDMASetup() && vpmRead &&
+                    (*vpmRead)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
+                {
+                    // See VPM write
+                    vprSetup.dmaSetup.setRowLength(
+                        (vprSetup.dmaSetup.getRowLength() * vectorizationFactor) % 16 /* 0 => 16 */);
+                    ++numVectorized;
+                    it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+                }
+            }
+
+            it.nextInBlock();
+        }
     }
 
     return numVectorized;
@@ -1224,16 +1231,14 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 {
                     for(auto& block : method)
                     {
-                        auto loopBB = std::find_if(targetLoop->begin(), targetLoop->end(),
-                            [&block](const CFGNode* node) { return node->key == &block; });
-                        if(loopBB != targetLoop->end())
+                        auto& blockNode = cfg->assertNode(&block);
+                        if(targetLoop->find(&blockNode) != targetLoop->end())
                         {
                             // the predecessor block must exist before targetLoop.
                             break;
                         }
 
-                        auto bb = std::find_if(predecessors.begin(), predecessors.end(),
-                            [&block](const CFGNode* node) { return node->key == &block; });
+                        auto bb = std::find(predecessors.begin(), predecessors.end(), blockNode);
                         if(bb != predecessors.end())
                         {
                             targetCFGNode = *bb;

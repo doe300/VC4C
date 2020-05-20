@@ -608,7 +608,8 @@ analysis::ControlFlowGraph& Method::getCFG()
 {
     if(!cfg)
     {
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "CFG created/updated for function: " << name << logging::endl);
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Creating/updating CFG for function: " << name << "..." << logging::endl);
         cfg = analysis::ControlFlowGraph::createCFG(*this);
     }
     return *cfg;

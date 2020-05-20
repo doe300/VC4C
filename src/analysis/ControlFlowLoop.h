@@ -46,23 +46,20 @@ namespace vc4c
             Optional<std::pair<const char*, Value>> repeatCondition = {};
         };
 
-        /*
-         * A loop in the control-flow represented by the basic-blocks taking part in it
+        /**
+         * A natural loop in the control-flow represented by the basic-blocks taking part in it
+         *
+         * A natural loop is defined as:
+         *   "The natural loop of a back edge (m -> n), where n dominates m, is the set of nodes x such that n dominates
+         *   x and there is a path from x to m not containing n"
+         * Source: https://www.cs.colostate.edu/~mstrout/CS553Fall09/Slides/lecture12-control.ppt.pdf#page=6
          *
          * NOTE: A control-flow loop can only be used within the life-time of the ControlFlowGraph it is created from!
-         *
-         * NOTE: The loop member blocks are in reverse relative order, i.e. their order is inverted to the "normal"
-         * control flow. Also their absolute order is not guaranteed, i.e. it is not guaranteed for the head to be the
-         * last entry in the block list.
-         *
-         * NOTE: Since a control-flow loop can contain choices (if-else, switch-case blocks) as well as other (inner)
-         * loops, the order of the nodes in the loop structure does only partially guarantee the block domination, but
-         * not the order of execution, i.e. not all blocks in the loop have to be executed and not all blocks are
-         * executed at most 1 time.
          */
-        struct ControlFlowLoop : public FastAccessList<const CFGNode*>
+        class ControlFlowLoop : public FastSet<const CFGNode*>
         {
-            ControlFlowLoop() = default;
+        public:
+            ControlFlowLoop(const CFGNode::EdgeType* backEdge) : backEdge(backEdge) {}
 
             /*
              * Returns the basic-block(s) in the CFG preceding the first node in the loop, the node from which the loop
@@ -141,6 +138,9 @@ namespace vc4c
             bool operator==(const ControlFlowLoop& other) const noexcept;
 
             std::string to_string() const;
+
+        private:
+            const CFGNode::EdgeType* backEdge;
         };
 
         /*

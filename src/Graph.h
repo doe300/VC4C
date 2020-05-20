@@ -478,6 +478,16 @@ namespace vc4c
     class DirectedEdge
     {
     public:
+        FastSet<Node*> getNodes()
+        {
+            return FastSet<Node*>{&first, &second};
+        }
+
+        FastSet<const Node*> getNodes() const
+        {
+            return FastSet<const Node*>{&first, &second};
+        }
+
         bool isInput(const Node& node) const
         {
             return (&node == &first && firstInput) || (&node == &second && secondInput);
