@@ -7,13 +7,15 @@
 #ifndef VC4C_TEST_STDLIB_H
 #define VC4C_TEST_STDLIB_H
 
-#include "TestEmulator.h"
+#include "cpptest.h"
 
-class TestMathFunctions : public TestEmulator
+#include "TestCompilationHelper.h"
+
+class TestMathFunctions : public Test::Suite, private TestCompilationHelper
 {
 public:
     TestMathFunctions(const vc4c::Configuration& config = {});
-    
+
     void testAcos();
     void testAcosh();
     void testAcosPi();
@@ -81,7 +83,7 @@ public:
     void testTanPi();
     void testTgamma();
     void testTrunc();
-    
+
 private:
     void onMismatch(const std::string& expected, const std::string& result);
 };

@@ -7,7 +7,9 @@
 #ifndef VC4C_TEST_MEMORY_ACCESS_H
 #define VC4C_TEST_MEMORY_ACCESS_H
 
-#include "TestEmulator.h"
+#include "cpptest.h"
+
+#include "TestCompilationHelper.h"
 
 namespace vc4c
 {
@@ -17,7 +19,7 @@ namespace vc4c
     } // namespace tools
 } // namespace vc4c
 
-class TestMemoryAccess : public TestEmulator
+class TestMemoryAccess : public Test::Suite, private TestCompilationHelper
 {
 public:
     TestMemoryAccess(const vc4c::Configuration& config = {});

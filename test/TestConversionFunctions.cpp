@@ -54,7 +54,7 @@ __kernel void test(__global OUT* out, const __global IN* in1, const __global IN*
 }
 )";
 
-TestConversionFuntions::TestConversionFuntions(const vc4c::Configuration& config) : TestEmulator(false, config)
+TestConversionFuntions::TestConversionFuntions(const vc4c::Configuration& config) : TestCompilationHelper(config)
 {
     TEST_ADD(TestConversionFuntions::testSignedTruncation);
     TEST_ADD(TestConversionFuntions::testUnsignedTruncation);

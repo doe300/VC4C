@@ -9,9 +9,9 @@
 
 #include "cpptest.h"
 
-#include "TestEmulator.h"
+#include "TestCompilationHelper.h"
 
-class TestIntrinsicFunctions : public TestEmulator
+class TestIntrinsicFunctions : public Test::Suite, private TestCompilationHelper
 {
 public:
     TestIntrinsicFunctions(const vc4c::Configuration& config = {});

@@ -10,6 +10,7 @@
 #include "cpptest.h"
 
 #include "Precompiler.h"
+#include "TestCompilationHelper.h"
 #include "config.h"
 
 #include <map>
@@ -23,7 +24,7 @@ namespace vc4c
     }
 } // namespace vc4c
 
-class TestEmulator : public Test::Suite
+class TestEmulator : public Test::Suite, protected TestCompilationHelper
 {
 public:
     TestEmulator(const vc4c::Configuration& config = {});
@@ -53,12 +54,7 @@ protected:
     void testFloatingEmulation(vc4c::tools::EmulationData& data,
         std::map<uint32_t, std::vector<uint32_t>>& expectedResults, unsigned maxULP = 1);
 
-    void compileFile(std::stringstream& buffer, const std::string& fileName, const std::string& options = "",
-        bool cachePrecompilation = false);
-
-    vc4c::Configuration config;
     bool cachePrecompilation;
-    std::map<std::string, vc4c::TemporaryFile> cachedPrecompilations;
 };
 
 #endif /* TEST_EMULATOR_H */

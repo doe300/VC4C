@@ -4,6 +4,8 @@ target_sources(TestVC4C
     RegressionTest.h
     test_cases.h
     test.cpp
+    TestAnalyses.cpp
+    TestAnalyses.h
     TestArithmetic.cpp
     TestArithmetic.h
     TestCommonFunctions.cpp

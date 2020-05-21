@@ -9,6 +9,7 @@
 
 #include "helper.h"
 
+#include <algorithm>
 #include <cmath>
 
 using namespace vc4c::tools;
@@ -34,7 +35,7 @@ __kernel void test(__global OUT* out, __global IN0* in0, __global IN1* in1, __gl
 }
 )";
 
-TestMathFunctions::TestMathFunctions(const vc4c::Configuration& config) : TestEmulator(false, config)
+TestMathFunctions::TestMathFunctions(const vc4c::Configuration& config) : TestCompilationHelper(config)
 {
     TEST_ADD(TestMathFunctions::testAcos);
     TEST_ADD(TestMathFunctions::testAcosh);
@@ -358,13 +359,13 @@ void TestMathFunctions::testFma()
 
 void TestMathFunctions::testFmax()
 {
-    testBinaryFunction<0>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=fmax", std::max<float>,
+    testBinaryFunction<0>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=fmax", fmax,
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testFmin()
 {
-    testBinaryFunction<0>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=fmin", std::min<float>,
+    testBinaryFunction<0>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=fmin", fmin,
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

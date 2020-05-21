@@ -194,7 +194,7 @@ __kernel void test(__global Type* out, __global Type* in, __global const ulong* 
   out[gid] = in[gid];
 })";
 
-TestMemoryAccess::TestMemoryAccess(const Configuration& config) : TestEmulator(false, config)
+TestMemoryAccess::TestMemoryAccess(const Configuration& config) : TestCompilationHelper(config)
 {
     TEST_ADD(TestMemoryAccess::testPrivateStorage);
     TEST_ADD(TestMemoryAccess::testLocalStorage);
@@ -310,7 +310,7 @@ void TestMemoryAccess::testPrivateStorage()
     const std::vector<uint32_t> expected{
         14, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 14, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28};
     std::stringstream buffer;
-    compileFile(buffer, "./testing/local_private_storage.cl");
+    compileFile(buffer, "./testing/local_private_storage.cl", "", true);
 
     EmulationData data;
     data.kernelName = "test_private_storage";
@@ -346,7 +346,7 @@ void TestMemoryAccess::testPrivateStorage()
 void TestMemoryAccess::testLocalStorage()
 {
     std::stringstream buffer;
-    compileFile(buffer, "./testing/local_private_storage.cl");
+    compileFile(buffer, "./testing/local_private_storage.cl", "", true);
 
     EmulationData data;
     data.kernelName = "test_local_storage";
@@ -379,7 +379,7 @@ void TestMemoryAccess::testLocalStorage()
 void TestMemoryAccess::testVectorAssembly()
 {
     std::stringstream buffer;
-    compileFile(buffer, "./testing/local_private_storage.cl");
+    compileFile(buffer, "./testing/local_private_storage.cl", "", true);
 
     EmulationData data;
     data.kernelName = "test_constant_storage";
@@ -403,7 +403,7 @@ void TestMemoryAccess::testVectorAssembly()
 void TestMemoryAccess::testConstantStorage()
 {
     std::stringstream buffer;
-    compileFile(buffer, "./testing/local_private_storage.cl");
+    compileFile(buffer, "./testing/local_private_storage.cl", "", true);
 
     EmulationData data;
     data.kernelName = "test_constant_storage2";
@@ -427,7 +427,7 @@ void TestMemoryAccess::testConstantStorage()
 void TestMemoryAccess::testRegisterStorage()
 {
     std::stringstream buffer;
-    compileFile(buffer, "./testing/local_private_storage.cl");
+    compileFile(buffer, "./testing/local_private_storage.cl", "", true);
 
     EmulationData data;
     data.kernelName = "test_register_storage";
@@ -451,7 +451,7 @@ void TestMemoryAccess::testRegisterStorage()
 void TestMemoryAccess::testVPMWrites()
 {
     std::stringstream buffer;
-    compileFile(buffer, "./testing/test_vpm_write.cl");
+    compileFile(buffer, "./testing/test_vpm_write.cl", "", false);
 
     EmulationData data;
     data.kernelName = "test_vpm_write";
@@ -493,7 +493,7 @@ void TestMemoryAccess::testVPMWrites()
 void TestMemoryAccess::testVPMReads()
 {
     std::stringstream buffer;
-    compileFile(buffer, "./testing/test_vpm_read.cl");
+    compileFile(buffer, "./testing/test_vpm_read.cl", "", false);
 
     EmulationData data;
     data.kernelName = "test_vpm_read";

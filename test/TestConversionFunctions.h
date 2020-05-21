@@ -9,9 +9,9 @@
 
 #include "cpptest.h"
 
-#include "TestEmulator.h"
+#include "TestCompilationHelper.h"
 
-class TestConversionFuntions : public TestEmulator
+class TestConversionFuntions : public Test::Suite, private TestCompilationHelper
 {
 public:
     explicit TestConversionFuntions(const vc4c::Configuration& config = {});

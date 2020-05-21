@@ -7,17 +7,12 @@
 #include "TestEmulator.h"
 
 #include "../src/Profiler.h"
-#include "Compiler.h"
-#include "Locals.h"
-#include "asm/Instruction.h"
-#include "asm/KernelInfo.h"
 #include "helper.h"
 
 #include "test_cases.h"
 
 #include <cstring>
-#include <fstream>
-#include <sstream>
+#include <numeric>
 
 static std::function<unsigned(unsigned)> get_local_id;
 static std::function<unsigned(unsigned)> get_local_size;
@@ -44,7 +39,8 @@ void barrier(unsigned) {}
 using namespace vc4c;
 using namespace vc4c::tools;
 
-TestEmulator::TestEmulator(const vc4c::Configuration& config) : config(config), cachePrecompilation(false)
+TestEmulator::TestEmulator(const vc4c::Configuration& config) :
+    TestCompilationHelper(config), cachePrecompilation(false)
 {
     TEST_ADD(TestEmulator::testHelloWorld);
     TEST_ADD(TestEmulator::testHelloWorldVector);
@@ -74,32 +70,12 @@ TestEmulator::TestEmulator(const vc4c::Configuration& config) : config(config), 
 }
 
 TestEmulator::TestEmulator(bool cachePrecompilation, const vc4c::Configuration& config) :
-    config(config), cachePrecompilation(cachePrecompilation)
+    TestCompilationHelper(config), cachePrecompilation(cachePrecompilation)
 {
     // Constructor just, so the tests are not added to children
 }
 
 TestEmulator::~TestEmulator() = default;
-
-void TestEmulator::compileFile(
-    std::stringstream& buffer, const std::string& fileName, const std::string& options, bool cachePrecompilation)
-{
-    config.outputMode = OutputMode::BINARY;
-    config.writeKernelInfo = true;
-    std::ifstream input(fileName);
-    std::unique_ptr<std::istream> precompiled;
-    std::string precompiledFile;
-    auto tmpIt = cachedPrecompilations.find(fileName);
-    if(tmpIt == cachedPrecompilations.end())
-    {
-        tmpIt = cachedPrecompilations.emplace(std::make_pair(fileName, TemporaryFile{})).first;
-        Precompiler::precompile(input, precompiled, config, options, fileName, tmpIt->second.fileName);
-    }
-    tmpIt->second.openInputStream(precompiled);
-    Compiler::compile(*precompiled, buffer, config, "", tmpIt->second.fileName);
-    if(!cachePrecompilation)
-        cachedPrecompilations.clear();
-}
 
 void TestEmulator::testHelloWorld()
 {
