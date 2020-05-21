@@ -287,7 +287,7 @@ static void selectInstructions(analysis::DependencyGraph& graph, BasicBlock& blo
                 it.get<const intermediate::Nop>()->type != intermediate::DelayType::THREAD_END))
             // remove all non side-effect NOPs
             openNodes.emplace(it.release());
-        it.erase();
+        it.safeErase();
     }
 
     // 2. fill again with reordered instructions

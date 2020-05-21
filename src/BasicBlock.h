@@ -122,7 +122,7 @@ namespace vc4c
          *
          * NOTE: the consumer may be called several times for a single block
          */
-        void forSuccessiveBlocks(const std::function<void(BasicBlock&)>& consumer) const;
+        void forSuccessiveBlocks(const std::function<void(BasicBlock&, InstructionWalker)>& consumer);
         /*
          * Runs the consumer function for every block directly preceding this
          *

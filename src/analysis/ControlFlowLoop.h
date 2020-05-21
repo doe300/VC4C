@@ -136,6 +136,7 @@ namespace vc4c
             bool isWorkGroupLoop() const;
 
             bool operator==(const ControlFlowLoop& other) const noexcept;
+            bool operator!=(const ControlFlowLoop& other) const noexcept;
 
             std::string to_string() const;
 

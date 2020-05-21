@@ -824,6 +824,15 @@ bool ControlFlowLoop::operator==(const ControlFlowLoop& other) const noexcept
     return std::equal_to<FastSet<const CFGNode*>>{}(*this, other);
 }
 
+bool ControlFlowLoop::operator!=(const ControlFlowLoop& other) const noexcept
+{
+    if(size() != other.size())
+        return true;
+    if(backEdge != other.backEdge)
+        return true;
+    return !(*this == other);
+}
+
 std::string ControlFlowLoop::to_string() const
 {
     std::stringstream ss;

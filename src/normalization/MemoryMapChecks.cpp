@@ -865,8 +865,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
             for(const auto& recursiveAccess : recursiveAccesses)
             {
                 const Local* sourceLocal = nullptr;
-                auto innerSource = VariantNamespace::get_if<Value>(&recursiveAccess.source);
-                if(innerSource)
+                if(auto innerSource = VariantNamespace::get_if<Value>(&recursiveAccess.source))
                 {
                     if(innerSource->checkLocal() &&
                         (innerSource->local()->residesInMemory() || innerSource->local()->is<Parameter>()))
@@ -885,7 +884,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                         continue;
                 }
                 else
-                    sourceLocal = VariantNamespace::get<const Local*>(conditionalWrite.source);
+                    sourceLocal = VariantNamespace::get<const Local*>(recursiveAccess.source);
 
                 // if the recursive conditional address write source is a local, we handle it as input of our
                 // outer conditional address write

@@ -305,6 +305,17 @@ InstructionWalker& InstructionWalker::erase()
     return *this;
 }
 
+InstructionWalker& InstructionWalker::safeErase()
+{
+    if(!isEndOfBlock() && get() && get()->hasDecoration(intermediate::InstructionDecorations::MANDATORY_DELAY))
+    {
+        reset((new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER))
+                  ->addDecorations(intermediate::InstructionDecorations::MANDATORY_DELAY));
+        return nextInBlock();
+    }
+    return erase();
+}
+
 InstructionWalker& InstructionWalker::emplace(intermediate::IntermediateInstruction* instr)
 {
     if(isStartOfBlock())

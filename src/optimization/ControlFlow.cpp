@@ -1238,7 +1238,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                             break;
                         }
 
-                        auto bb = std::find(predecessors.begin(), predecessors.end(), blockNode);
+                        auto bb = std::find(predecessors.begin(), predecessors.end(), &blockNode);
                         if(bb != predecessors.end())
                         {
                             targetCFGNode = *bb;
@@ -1833,21 +1833,28 @@ NODISCARD static bool moveGroupIdInitializers(Method& method, BasicBlock& defaul
 // Reset all branches to the last-block (e.g. for return statements) to the reset block instead
 static void resetReturnBranches(Method& method, BasicBlock& lastBlock, BasicBlock& resetBlock)
 {
+    // Since (at least if the CFG for the method is already created), by resetting the branch to this block we modify
+    // the incoming edges we iterate over, we need to split the finding the function to modify and replacing it.
+    FastAccessList<InstructionWalker> instructionsToBeReset;
     lastBlock.forPredecessors([&](InstructionWalker walker) {
         if(auto branch = walker.get<intermediate::Branch>())
         {
             if(branch->getTarget() == lastBlock.getLabel()->getLabel())
-            {
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Resetting branch to last block to jump to first work-group repetition block instead: "
-                        << walker->to_string() << logging::endl);
-                // need to reset the instruction to correctly update the CFG
-                walker.reset((new intermediate::Branch(resetBlock.getLabel()->getLabel(), branch->branchCondition))
-                                 ->copyExtrasFrom(branch));
-            }
+                instructionsToBeReset.emplace_back(walker);
         }
         // fall-throughs are already handled by inserting the block
     });
+
+    for(auto& walker : instructionsToBeReset)
+    {
+        auto branch = walker.get<intermediate::Branch>();
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Resetting branch to last block to jump to first work-group repetition block instead: "
+                << walker->to_string() << logging::endl);
+        // need to reset the instruction to correctly update the CFG
+        walker.reset((new intermediate::Branch(resetBlock.getLabel()->getLabel(), branch->branchCondition))
+                         ->copyExtrasFrom(branch));
+    }
 }
 
 // After the main kernel code executed, insert a block which

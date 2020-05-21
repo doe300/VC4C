@@ -117,32 +117,33 @@ intermediate::BranchLabel* BasicBlock::getLabel()
     return dynamic_cast<intermediate::BranchLabel*>(instructions.front().get());
 }
 
-void BasicBlock::forSuccessiveBlocks(const std::function<void(BasicBlock&)>& consumer) const
+void BasicBlock::forSuccessiveBlocks(const std::function<void(BasicBlock&, InstructionWalker)>& consumer)
 {
     if(method.cfg)
     {
         // if we have a valid CFG, use it. This saves us from iterating all instructions
         method.cfg->assertNode(const_cast<BasicBlock*>(this))
-            .forAllOutgoingEdges([&consumer](analysis::CFGNode& node, analysis::CFGEdge& edge) -> bool {
-                consumer(*node.key);
+            .forAllOutgoingEdges([this, &consumer](analysis::CFGNode& node, analysis::CFGEdge& edge) -> bool {
+                consumer(*node.key, edge.data.getPredecessor(this));
                 return true;
             });
     }
     else
     {
-        for(const auto& inst : *this)
+        auto it = walk();
+        while(!it.isEndOfBlock())
         {
-            if(auto branch = dynamic_cast<const intermediate::Branch*>(inst.get()))
+            if(auto branch = it.get<intermediate::Branch>())
             {
                 if(auto next = method.findBasicBlock(branch->getTarget()))
-                    consumer(*next);
+                    consumer(*next, it);
             }
-            // TODO shouldn't this be outside of the loop?!
-            if(fallsThroughToNextBlock())
-            {
-                if(auto next = method.getNextBlockAfter(this))
-                    consumer(*next);
-            }
+            it.nextInBlock();
+        }
+        if(fallsThroughToNextBlock(false))
+        {
+            if(auto next = method.getNextBlockAfter(this))
+                consumer(*next, walkEnd());
         }
     }
 }

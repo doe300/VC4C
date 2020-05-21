@@ -194,6 +194,15 @@ namespace vc4c
          * Erases this position (and the instruction stored), automatically jumping to the next position
          */
         InstructionWalker& erase();
+        /**
+         * Safe version of #erase() which checks if the Instruction (if any) to be erased is marked with
+         * InstructionDecorations#MANDATORY_DELAY in which case the instruction is not erased completely, but replaced
+         * with a NOP also marked with #MANDATORY_DELAY.
+         *
+         * @return This instruction walker pointing to the next instruction (as in #erase() if no NOP is inserted, to
+         * the instruction after the NOP otherwise).
+         */
+        InstructionWalker& safeErase();
         /*
          * Places the given instruction before this position and jumping to the newly inserted position
          *
