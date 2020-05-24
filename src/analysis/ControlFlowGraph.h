@@ -101,6 +101,9 @@ namespace vc4c
 
             /*
              * Finds all loops in the CFG
+             *
+             * @param recursively if set to false, only the inner most loops will be returned, otherwise all loops will
+             * be returned
              */
             FastAccessList<ControlFlowLoop> findLoops(bool recursively, bool skipWorkGroupLoops = true,
                 const analysis::DominatorTree* dominatorTree = nullptr);
@@ -137,24 +140,6 @@ namespace vc4c
 
         private:
             explicit ControlFlowGraph(std::size_t numBlocks) : Graph(numBlocks) {}
-            /*
-             * This is a modified version of the Tarjan's Algorithm to find strongly connected components taken from
-             * https://www.geeksforgeeks.org/tarjan-algorithm-find-strongly-connected-components/
-             *
-             * A recursive function that finds and prints strongly connected components using DFS traversal
-             * node --> The node to be visited next
-             * discoveryTimes --> Stores discovery times of visited nodes
-             * lowestReachable --> earliest visited node (the node with minimum discovery time) that can be reached from
-             * subtree rooted with current node stack --> To store all the connected ancestors (could be part of SCC)
-             */
-            ControlFlowLoop findLoopsHelper(const CFGNode* node, FastMap<const CFGNode*, int>& discoveryTimes,
-                FastMap<const CFGNode*, int>& lowestReachable, FastModificationList<const CFGNode*>& stack, int& time);
-
-            /*
-             * This is similar to findLoopsHelper, but this finds also nested loops excluding one-block-loop.
-             */
-            FastAccessList<ControlFlowLoop> findLoopsHelperRecursively(const CFGNode* node,
-                FastMap<const CFGNode*, int>& discoveryTimes, FastModificationList<const CFGNode*>& stack, int& time);
 
             friend class Method;
         };

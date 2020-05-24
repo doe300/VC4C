@@ -67,8 +67,6 @@ TestAnalyses::TestAnalyses(const Configuration& config) : TestCompilationHelper(
     TEST_ADD(TestAnalyses::testValueRange);
 }
 
-// TODO how to test these?? How to get access to code/analyses
-
 void TestAnalyses::testAvailableExpressions() {}
 void TestAnalyses::testControlFlowGraph()
 {
@@ -97,7 +95,6 @@ void TestAnalyses::testControlFlowGraph()
         TEST_ASSERT_EQUALS(BasicBlock::LAST_BLOCK, cfg.getEndOfControlFlow().key->getLabel()->getLabel()->name);
         // 10 nodes
         TEST_ASSERT_EQUALS(10, numNodes);
-        cfg.updateBackEdges();
         FastSet<const CFGEdge*> backEdges;
         FastSet<const CFGEdge*> implicitEdges;
         FastSet<const CFGEdge*> workGroupEdges;
@@ -135,7 +132,6 @@ void TestAnalyses::testControlFlowGraph()
         TEST_ASSERT_EQUALS(BasicBlock::LAST_BLOCK, cfg.getEndOfControlFlow().key->getLabel()->getLabel()->name);
         // 10 nodes (some added for the work-group loop, some merged)
         TEST_ASSERT_EQUALS(10, numNodes);
-        cfg.updateBackEdges();
         backEdges.clear();
         implicitEdges.clear();
         workGroupEdges.clear();
@@ -177,7 +173,6 @@ void TestAnalyses::testControlFlowGraph()
         TEST_ASSERT_EQUALS(BasicBlock::LAST_BLOCK, cfg.getEndOfControlFlow().key->getLabel()->getLabel()->name);
         // 10 nodes
         TEST_ASSERT_EQUALS(40, numNodes);
-        cfg.updateBackEdges();
         FastSet<const CFGEdge*> backEdges;
         FastSet<const CFGEdge*> implicitEdges;
         FastSet<const CFGEdge*> workGroupEdges;
@@ -215,7 +210,6 @@ void TestAnalyses::testControlFlowGraph()
         TEST_ASSERT_EQUALS(BasicBlock::LAST_BLOCK, cfg.getEndOfControlFlow().key->getLabel()->getLabel()->name);
         // 40 nodes (some added for the work-group loop, some merged)
         TEST_ASSERT_EQUALS(40, numNodes);
-        cfg.updateBackEdges();
         backEdges.clear();
         implicitEdges.clear();
         workGroupEdges.clear();
@@ -259,6 +253,10 @@ void TestAnalyses::testControlFlowLoops()
         auto loops = kernel->getCFG().findLoops(true, false);
         // 2 loops (2 for-loops)
         TEST_ASSERT_EQUALS(2u, loops.size());
+        // the outer loop contains the inner, so we only have 1 innermost loop
+        auto innerLoops = kernel->getCFG().findLoops(false);
+        TEST_ASSERT_EQUALS(1u, innerLoops.size());
+        TEST_ASSERT_EQUALS(1u, innerLoops.begin()->size());
 
         bool firstLoopIsOuter;
         if(loops.front().size() > loops.back().size())
@@ -314,6 +312,11 @@ void TestAnalyses::testControlFlowLoops()
         loops = kernel->getCFG().findLoops(true, false);
         // 5 loops (2 for-loops, 3 for the work-group loop)
         TEST_ASSERT_EQUALS(5, loops.size());
+        // the outer loops contains the inner, so we only have 1 innermost loop
+        innerLoops = kernel->getCFG().findLoops(false);
+        TEST_ASSERT_EQUALS(1u, innerLoops.size());
+        TEST_ASSERT_EQUALS(1u, innerLoops.begin()->size());
+
         // sort by descending size, so we can easier handle includes
         std::sort(loops.begin(), loops.end(),
             [](const ControlFlowLoop& l1, const ControlFlowLoop& l2) -> bool { return l1.size() > l2.size(); });
@@ -400,6 +403,9 @@ void TestAnalyses::testControlFlowLoops()
         auto loops = kernel->getCFG().findLoops(true, false);
         // 2 loops (2 for-loops)
         TEST_ASSERT_EQUALS(2u, loops.size());
+        // the 2 loops do not contain each other
+        auto innerLoops = kernel->getCFG().findLoops(false);
+        TEST_ASSERT_EQUALS(2u, innerLoops.size());
 
         // loops do not include each other
         TEST_ASSERT(!loops.front().includes(loops.back()));
@@ -436,6 +442,10 @@ void TestAnalyses::testControlFlowLoops()
         loops = kernel->getCFG().findLoops(true, false);
         // 5 loops (2 for-loops, 3 for the work-group loop)
         TEST_ASSERT_EQUALS(5, loops.size());
+        // the 2 non work-group loops do not contain each other
+        innerLoops = kernel->getCFG().findLoops(false);
+        TEST_ASSERT_EQUALS(2u, innerLoops.size());
+
         // sort by descending size, so we can easier handle includes
         std::sort(loops.begin(), loops.end(),
             [](const ControlFlowLoop& l1, const ControlFlowLoop& l2) -> bool { return l1.size() > l2.size(); });

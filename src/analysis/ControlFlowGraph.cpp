@@ -128,79 +128,60 @@ struct CFGNodeSorter : public std::less<CFGNode*>
     }
 };
 
+/**
+ * For every header-tail pair (natural loop), walk for every node in the set of nodes dominated by the header
+ * depth-first, until:
+ * a) a node already known to be in the loop is reached -> node is part of the loop (also, all nodes on its way are
+ * known part of the loop)
+ * b) a node not part of the dominator set is reached -> this path not part of loop
+ * c) a node known to not be part of the loop is reached -> this path not part of loop
+ */
+static bool walkThroughDominatorSet(const CFGNode* currentNode, const FastSet<const CFGNode*>& dominatorSet,
+    ControlFlowLoop& loop, FastSet<const CFGNode*>& notInLoop, FastSet<const CFGNode*>& currentStack)
+{
+    if(loop.find(currentNode) != loop.end())
+        // node is already known to be in the loop
+        return true;
+    if(notInLoop.find(currentNode) != notInLoop.end())
+        return false;
+    if(dominatorSet.find(currentNode) == dominatorSet.end())
+        // node is not part of the dominator set -> not part of the loop
+        return false;
+    if(currentStack.find(currentNode) != currentStack.end())
+        // this node is already checked (e.g. this is part of an inner loop)
+        return false;
+
+    currentStack.emplace(currentNode);
+    bool anySuccessorInLoop = false;
+    currentNode->forAllOutgoingEdges([&](const CFGNode& successor, const CFGEdge&) -> bool {
+        if(&successor == currentNode)
+            // skip, since we are already in process of checking this node
+            return true;
+        if(walkThroughDominatorSet(&successor, dominatorSet, loop, notInLoop, currentStack))
+        {
+            // there is a path to the header within the dominator set -> this node is part of the loop
+            anySuccessorInLoop = true;
+            loop.emplace(currentNode);
+            // no need to continue checking successors for this node
+            return false;
+        }
+        return true;
+    });
+
+    if(!anySuccessorInLoop)
+        // there is no way from this node to the header within the dominator set, so all successive paths going
+        // through this node will also not find the header
+        notInLoop.emplace(currentNode);
+
+    currentStack.erase(currentNode);
+    return anySuccessorInLoop;
+}
+
 FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(
     bool recursively, bool skipWorkGroupLoops, const analysis::DominatorTree* dominatorTree)
 {
     PROFILE_START(findLoops);
-    // use a linked list, since we a) remove entries in the middle and b) need stable pointers for the dominator chains
-    FastModificationList<ControlFlowLoop> loops;
-
-    FastMap<const CFGNode*, int> discoveryTimes;
-    FastMap<const CFGNode*, int> lowestReachable;
-    FastModificationList<const CFGNode*> stack;
-    // a time of 0 means not initialized yet
-    int time = 1;
-
-    // Call the recursive helper function to find strongly
-    // connected components in DFS tree with node 'i'
-
-    // we need the nodes sorted by the order of the basic blocks
-    SortedSet<const CFGNode*, CFGNodeSorter> orderedNodes;
-    for(auto& pair : nodes)
-        orderedNodes.emplace(&pair.second);
-
-    for(const CFGNode* node : orderedNodes)
-    {
-        if(discoveryTimes[node] == 0)
-        {
-            if(recursively)
-            {
-                auto subLoops = findLoopsHelperRecursively(node, discoveryTimes, stack, time);
-                if(!subLoops.empty())
-                    loops.insert(loops.end(), subLoops.begin(), subLoops.end());
-            }
-            else
-            {
-                auto loop = findLoopsHelper(node, discoveryTimes, lowestReachable, stack, time);
-                if(loop.size() > 1)
-                    loops.emplace_back(std::move(loop));
-            }
-        }
-        if(node->isAdjacent(node))
-        {
-            // extra case, loop with single block
-            ControlFlowLoop loop;
-            loop.emplace_back(node);
-            loops.emplace_back(std::move(loop));
-        }
-    }
-
-    // NOTE: since the below loop has O(n^2) complexity, we first filter all work-group loops
-    if(skipWorkGroupLoops)
-    {
-        loops.erase(std::remove_if(loops.begin(), loops.end(),
-                        [](const ControlFlowLoop& loop) -> bool { return loop.isWorkGroupLoop(); }),
-            loops.end());
-    }
-
-    // NOTE: need to merge loops, since for recursive loops or loops with branches inside we get multiple results for
-    // same loop with different starting blocks or paths.
-    // FIXME for test_barrier.cl (or any big if-else/switch inside loops), this still hangs/takes very long
-
-    // Merge identical loops with different "starting blocks", i.e. the loops have the identical blocks, but are rotated
-    // in the ControlFlowLoop structure.
-    for(auto it = loops.begin(); it != loops.end(); ++it)
-    {
-        auto it2 = it;
-        ++it2;
-        while(it != loops.end() && it2 != loops.end())
-        {
-            if(*it == *it2)
-                it2 = loops.erase(it2);
-            else
-                ++it2;
-        }
-    }
+    FastAccessList<ControlFlowLoop> loops;
 
     auto dominators = dominatorTree;
     std::unique_ptr<analysis::DominatorTree> tmpTree;
@@ -210,70 +191,109 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(
         dominators = tmpTree.get();
     }
 
-    // Merge loops for different branches, e.g. for if-else, switch-case or inner loops taken/not taken
-    FastMap<const ControlFlowLoop*, FastAccessList<const analysis::DominatorTreeNode*>> dominatorChains;
-    for(auto& loop : loops)
-    {
-        auto& chain = dominatorChains[&loop];
-        chain.reserve(loop.size());
-        for(auto entry : loop)
-        {
-            auto node = dominators->findNode(entry);
-            chain.emplace_back(node ? node->getSinglePredecessor() : nullptr);
-        }
+    /*
+     * Determine loops according to:
+     *
+     * "A loop is a set of CFG nodes S such that:
+     *  - there exists a header node h in that dominates all nodes in S
+     *  - from any node in S, there exists a path of directed edges to h."
+     *
+     * "The natural loop of a back edge (m -> n), where n dominates m, is the set of nodes x such that n dominates x and
+     * there is a path from x to m not containing n"
+     *
+     * Source https://www.cs.princeton.edu/courses/archive/spring03/cs320/notes/loops.pdf#page=20
+     * and
+     * https://www.cs.colostate.edu/~mstrout/CS553Fall09/Slides/lecture12-control.ppt.pdf#page=6
+     */
 
-        // Remove adjacent duplicate dominators, as they e.g. happen for if-without-else, if-else, switch-case and
-        // loops. This allows us to simply check for equality of the dominator chains to cover all the cases listed
-        // above (instead of only for the if-else case).
-        chain.erase(std::unique(chain.begin(), chain.end()), chain.end());
+    // For every CFG node, collect the set of all CFG nodes dominated by that node by walking up the dominator tree and
+    // adding every node to the dominated-by set for everyone of its dominators.
+    FastMap<const DominatorTreeNode*, FastSet<const CFGNode*>> dominatorSets;
+    dominatorSets.reserve(dominators->getNodes().size());
+    for(auto& node : dominators->getNodes())
+    {
+        auto currentNode = &node.second;
+        while(auto dominatorNode = currentNode->getSinglePredecessor())
+        {
+            dominatorSets[dominatorNode].insert(node.first);
+            currentNode = dominatorNode;
+        }
+        // instantiate the entry in the dominator set for single-node inner loops, otherwise they will be skipped
+        // completely below
+        dominatorSets[&node.second];
     }
 
-    for(auto it = loops.begin(); it != loops.end(); ++it)
+    for(const auto& entry : dominatorSets)
     {
-        if(it->empty())
-            continue;
-        auto& firstDominators = dominatorChains.at(&(*it));
-        auto it2 = it;
-        ++it2;
-        while(it != loops.end() && it2 != loops.end())
-        {
-            auto& secondDominators = dominatorChains.at(&(*it2));
-
-            if(!firstDominators.empty() && !secondDominators.empty() && firstDominators == secondDominators)
+        // Since a node can be header for multiple loops, we first determine the possible tails. The tail of a natural
+        // loop is the node (in the set of nodes dominated by the header) which is directly connected via the back edge
+        // to the header (the node executing the repeat).
+        FastMap<const CFGNode*, ControlFlowLoop> tailsToLoops;
+        entry.first->key->forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge& edge) -> bool {
+            if(skipWorkGroupLoops && edge.data.isWorkGroupLoop)
+                // skip this possible back edge
+                return true;
+            if(entry.second.find(&predecessor) != entry.second.end())
             {
-                // since we remove adjacent duplicate dominators in the loop above, this allies for all inner structured
-                // control flow (if-without-else, if-else, switch-case, inner loops).
-                CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
-                    logging::debug() << "Merging loops: " << logging::endl;
-                    logging::debug() << "\t" << it->to_string() << logging::endl;
-                    logging::debug() << "\t" << it2->to_string() << logging::endl;
-                });
-
-                // move all entries from the second loop not present in the first to the first loop
-                auto firstIt = it->begin();
-                auto secondIt = it2->begin();
-                while(secondIt != it2->end())
-                {
-                    if(*firstIt != *secondIt)
-                    {
-                        auto findIt = std::find(firstIt, it->end(), *secondIt);
-                        if(findIt != it->end())
-                            // just skip any blocks in the first which are not in the second
-                            firstIt = findIt;
-                        else
-                            // add block from second to first
-                            // NOTE: We do not need to update the dominator chain, since this would only insert the same
-                            // dominator as the previous block, which we then anyway would remove again.
-                            firstIt = it->insert(firstIt, *secondIt);
-                    }
-                    ++firstIt;
-                    ++secondIt;
-                }
-                CPPLOG_LAZY(logging::Level::DEBUG, log << "\tinto: " << it->to_string() << logging::endl);
-                it2 = loops.erase(it2);
+                auto it = tailsToLoops.emplace(&predecessor, &edge).first;
+                // add tail to the loop, required for the recursive algorithm below to find members of the loop
+                it->second.emplace(&predecessor);
             }
+            return true;
+        });
+
+        for(auto& loop : tailsToLoops)
+        {
+            // For performance reasons, we keep track of all nodes which are known to not have a path back to the header
+            // without leaving the dominator set
+            FastSet<const CFGNode*> notInLoop;
+            for(const auto& node : entry.second)
+            {
+                // keep track of our current stack to avoid stack overflow due to infinite recursion
+                FastSet<const CFGNode*> stack;
+                walkThroughDominatorSet(node, entry.second, loop.second, notInLoop, stack);
+            }
+            // only here add the header to the loop, to prevent nodes which reach it through another (outer) loop from
+            // being added to this (inner) loop
+            loop.second.emplace(entry.first->key);
+            // add loop to the result
+            loops.emplace_back(std::move(loop.second));
+        }
+
+        // here handle single-block loops specially, since we do not need to walk through the whole dominator set if we
+        // know there is only 1 block in the loop
+        entry.first->key->forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge& edge) -> bool {
+            if(skipWorkGroupLoops && edge.data.isWorkGroupLoop)
+                // skip this possible back edge
+                return true;
+            if(&predecessor == entry.first->key)
+            {
+                ControlFlowLoop loop(&edge);
+                loop.emplace(&predecessor);
+                loops.emplace_back(std::move(loop));
+            }
+            return true;
+        });
+    }
+
+    if(!recursively)
+    {
+        // remove all outer loops
+        for(auto it = loops.begin(); it != loops.end();)
+        {
+            bool includesLoop = false;
+            for(auto& loop : loops)
+            {
+                if(&loop != &*it && it->includes(loop))
+                {
+                    includesLoop = true;
+                    break;
+                }
+            }
+            if(includesLoop)
+                it = loops.erase(it);
             else
-                ++it2;
+                ++it;
         }
     }
 
@@ -284,11 +304,8 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(
     });
     LCOV_EXCL_STOP
 
-    FastAccessList<ControlFlowLoop> result;
-    result.reserve(loops.size());
-    std::copy(std::make_move_iterator(loops.begin()), std::make_move_iterator(loops.end()), std::back_inserter(result));
     PROFILE_END(findLoops);
-    return result;
+    return loops;
 }
 
 LCOV_EXCL_START
@@ -345,12 +362,15 @@ static void updateBackEdges(ControlFlowGraph& graph, CFGNode* startOfControlFlow
     PROFILE_START(updateBackEdges);
     // 1. mark with counter value after traversal of sub-tree
     FastMap<const CFGNode*, std::size_t> counters;
+    counters.reserve(graph.getNodes().size());
     std::size_t counter = 0;
     FastSet<const CFGNode*> visitedNodes;
+    visitedNodes.reserve(graph.getNodes().size());
     markDepthFirst(*startOfControlFlow, visitedNodes, counters, counter);
 
     // 2. check all edges whether we have an edge from lower number to higher number
     visitedNodes.clear();
+    visitedNodes.reserve(graph.getNodes().size());
     std::queue<CFGNode*> pendingNodes;
     pendingNodes.push(startOfControlFlow);
     while(!pendingNodes.empty())
@@ -358,11 +378,17 @@ static void updateBackEdges(ControlFlowGraph& graph, CFGNode* startOfControlFlow
         auto currentNode = pendingNodes.front();
         pendingNodes.pop();
 
-        visitedNodes.insert(currentNode);
+        if(!visitedNodes.insert(currentNode).second)
+            // it may happen that we add a node multiple times to the pending nodes, so for the second and all following
+            // calls, just skip it
+            continue;
 
         currentNode->forAllOutgoingEdges([&](CFGNode& next, CFGEdge& edge) -> bool {
-            if(visitedNodes.find(&next) != visitedNodes.end())
-                edge.data.backEdgeSource = counters[currentNode] < counters[&next] ? currentNode->key : nullptr;
+            if(&next == currentNode)
+                // single-node loop
+                edge.data.backEdgeSource = currentNode->key;
+            else if(visitedNodes.find(&next) != visitedNodes.end())
+                edge.data.backEdgeSource = counters.at(currentNode) < counters.at(&next) ? currentNode->key : nullptr;
             else
             {
                 edge.data.backEdgeSource = nullptr;
@@ -571,20 +597,23 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
 
     for(BasicBlock& bb : method)
     {
-        bb.forPredecessors([&bb, &graph](InstructionWalker it) -> void {
+        bb.forSuccessiveBlocks([&bb, &graph](BasicBlock& successor, InstructionWalker it) {
             // this transition is implicit if the previous instruction is not a branch at all or a conditional branch to
             // somewhere else (then the transition happens if the condition is not met)
             bool isImplicit = true;
             bool isWorkGroupLoop = false;
-            if(auto branch = it.get<intermediate::Branch>())
+            if(!it.isEndOfBlock())
             {
-                isImplicit = branch->getTarget() != bb.getLabel()->getLabel();
-                isWorkGroupLoop = branch->getTarget() == bb.getLabel()->getLabel() &&
-                    branch->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_LOOP);
+                if(auto branch = it.get<intermediate::Branch>())
+                {
+                    isImplicit = branch->getTarget() != successor.getLabel()->getLabel();
+                    isWorkGroupLoop = branch->getTarget() == successor.getLabel()->getLabel() &&
+                        branch->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_LOOP);
+                }
             }
-            // connection from it.getBasicBlock() to bb
-            auto& node = graph->getOrCreateNode(it.getBasicBlock());
-            auto& edge = node.getOrCreateEdge(&graph->getOrCreateNode(&bb), CFGRelation{}).addInput(node);
+            // connection from bb to successor
+            auto& node = graph->getOrCreateNode(&bb);
+            auto& edge = node.getOrCreateEdge(&graph->getOrCreateNode(&successor), CFGRelation{}).addInput(node);
             edge.data.predecessors.emplace(node.key, isImplicit ? Optional<InstructionWalker>{} : it);
             edge.data.isWorkGroupLoop = isWorkGroupLoop;
         });
@@ -642,111 +671,4 @@ void ControlFlowGraph::traverseDepthFirst(const std::function<ControlFlowVisitRe
 {
     auto& start = const_cast<ControlFlowGraph&>(*this).getStartOfControlFlow();
     traverseDepthFirstHelper(start, consumer);
-}
-
-ControlFlowLoop ControlFlowGraph::findLoopsHelper(const CFGNode* node, FastMap<const CFGNode*, int>& discoveryTimes,
-    FastMap<const CFGNode*, int>& lowestReachable, FastModificationList<const CFGNode*>& stack, int& time)
-{
-    // Initialize discovery time and low value
-    discoveryTimes[node] = lowestReachable[node] = ++time;
-    stack.push_back(node);
-
-    // Go through all vertices adjacent to this
-    node->forAllOutgoingEdges([this, node, &discoveryTimes, &lowestReachable, &stack, &time](
-                                  const CFGNode& next, const CFGEdge& edge) -> bool {
-        const CFGNode* v = &next;
-        // If v is not visited yet, then recur for it
-        if(discoveryTimes[v] == 0)
-        {
-            findLoopsHelper(v, discoveryTimes, lowestReachable, stack, time);
-
-            // Check if the subtree rooted with 'v' has a
-            // connection to one of the ancestors of 'u'
-            // Case 1 (per above discussion on Disc and Low value)
-            lowestReachable[node] = std::min(lowestReachable[node], lowestReachable[v]);
-        }
-
-        // Update low value of 'u' only of 'v' is still in stack
-        // (i.e. it's a back edge, not cross edge).
-        // Case 2 (per above discussion on Disc and Low value)
-        else if(std::find(stack.begin(), stack.end(), v) != stack.end())
-            lowestReachable[node] = std::min(lowestReachable[node], discoveryTimes[v]);
-        return true;
-    });
-
-    ControlFlowLoop loop;
-    loop.reserve(stack.size());
-
-    // head node found, pop the stack and return an SCC
-    if(lowestReachable[node] == discoveryTimes[node])
-    {
-        while(stack.back() != node)
-        {
-            loop.push_back(stack.back());
-            stack.pop_back();
-        }
-        loop.push_back(stack.back());
-        stack.pop_back();
-    }
-
-    // for cleanup and easier reading, rotate loop so header is front (if we could determine one)
-    if(auto header = loop.getHeader())
-    {
-        auto it = std::find(loop.rbegin(), loop.rend(), header);
-        std::rotate(loop.rbegin(), it, loop.rend());
-    }
-
-    return loop;
-}
-
-FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoopsHelperRecursively(const CFGNode* node,
-    FastMap<const CFGNode*, int>& discoveryTimes, FastModificationList<const CFGNode*>& stack, int& time)
-{
-    // Initialize discovery time
-    discoveryTimes[node] = ++time;
-    stack.push_back(node);
-
-    FastAccessList<ControlFlowLoop> loops;
-
-    // Go through all vertices adjacent to this
-    node->forAllOutgoingEdges(
-        [this, node, &discoveryTimes, &stack, &time, &loops](const CFGNode& next, const CFGEdge& edge) -> bool {
-            const CFGNode* v = &next;
-
-            // Create a loop including 'v' only of 'v' is still in stack
-            if(std::find(stack.begin(), stack.end(), v) != stack.end() && node != v)
-            {
-                ControlFlowLoop loop;
-                FastModificationList<const CFGNode*> tempStack = stack;
-
-                while(tempStack.back() != v)
-                {
-                    loop.push_back(tempStack.back());
-                    tempStack.pop_back();
-                }
-                loop.push_back(tempStack.back());
-                tempStack.pop_back();
-
-                // for cleanup and easier reading, rotate loop so header is in the back (if we could determine one)
-                if(auto header = loop.getHeader())
-                {
-                    auto it = std::find(loop.rbegin(), loop.rend(), header);
-                    std::rotate(loop.rbegin(), it, loop.rend());
-                }
-
-                loops.emplace_back(std::move(loop));
-            }
-            else if(node != v)
-            {
-                auto subLoops = findLoopsHelperRecursively(v, discoveryTimes, stack, time);
-                if(subLoops.size() >= 1)
-                    loops.insert(loops.end(), subLoops.begin(), subLoops.end());
-            }
-
-            return true;
-        });
-
-    stack.pop_back();
-
-    return loops;
 }
