@@ -22,7 +22,17 @@ namespace vc4c
         {
         };
 
-        using DominatorTreeNode = Node<const CFGNode*, DominationRelation, Directionality::DIRECTED>;
+        struct DominatorTreeNodeBase
+        {
+            bool dominates(const DominatorTreeNodeBase& other) const;
+            bool isDominatedBy(const DominatorTreeNodeBase& other) const;
+
+            FastSet<const DominatorTreeNodeBase*> getDominators() const;
+            FastSet<const DominatorTreeNodeBase*> getDominatedNodes() const;
+        };
+
+        using DominatorTreeNode =
+            Node<const CFGNode*, DominationRelation, Directionality::DIRECTED, DominatorTreeNodeBase>;
 
         /**
          * The tree of immediate strict dominators within the given control flow graph.
@@ -40,7 +50,7 @@ namespace vc4c
         {
             explicit DominatorTree(std::size_t numNodes) : Graph(numNodes) {}
 
-            static std::unique_ptr<DominatorTree> createDominatorTree(const ControlFlowGraph& cfg);
+            static std::unique_ptr<DominatorTree> createDominatorTree(ControlFlowGraph& cfg);
         };
 
     } // namespace analysis

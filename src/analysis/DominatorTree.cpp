@@ -13,6 +13,46 @@
 using namespace vc4c;
 using namespace vc4c::analysis;
 
+bool DominatorTreeNodeBase::dominates(const DominatorTreeNodeBase& other) const
+{
+    return other.isDominatedBy(*this);
+}
+
+bool DominatorTreeNodeBase::isDominatedBy(const DominatorTreeNodeBase& other) const
+{
+    auto self = reinterpret_cast<const DominatorTreeNode*>(this);
+    auto dominator = self;
+    while((dominator = dominator->getSinglePredecessor()))
+    {
+        if(dominator == &other)
+            return true;
+    }
+    return false;
+}
+
+FastSet<const DominatorTreeNodeBase*> DominatorTreeNodeBase::getDominators() const
+{
+    FastSet<const DominatorTreeNodeBase*> dominators;
+    auto self = reinterpret_cast<const DominatorTreeNode*>(this);
+    auto dominator = self;
+    while((dominator = dominator->getSinglePredecessor()))
+        dominators.emplace(dominator);
+    return dominators;
+}
+
+FastSet<const DominatorTreeNodeBase*> DominatorTreeNodeBase::getDominatedNodes() const
+{
+    FastSet<const DominatorTreeNodeBase*> dominatedNodes;
+    auto self = reinterpret_cast<const DominatorTreeNode*>(this);
+    self->forAllOutgoingEdges([&](const DominatorTreeNode& successor, const auto& edge) -> bool {
+        dominatedNodes.emplace(&successor);
+        auto tmp = successor.getDominatedNodes();
+        dominatedNodes.insert(tmp.begin(), tmp.end());
+        return true;
+    });
+    return dominatedNodes;
+}
+
 static FastSet<const CFGNode*> getDominatorCandidates(const CFGNode& node)
 {
     // check all incoming edges that are not back edges
@@ -29,7 +69,7 @@ static FastSet<const CFGNode*> getDominatorCandidates(const CFGNode& node)
     return possibleDominators;
 }
 
-std::unique_ptr<DominatorTree> DominatorTree::createDominatorTree(const ControlFlowGraph& cfg)
+std::unique_ptr<DominatorTree> DominatorTree::createDominatorTree(ControlFlowGraph& cfg)
 {
     PROFILE_START(createDominatorTree);
     std::unique_ptr<DominatorTree> tree(new DominatorTree(cfg.getNodes().size()));

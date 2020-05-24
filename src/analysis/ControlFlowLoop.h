@@ -10,6 +10,7 @@
 #include "../Graph.h"
 #include "../InstructionWalker.h"
 #include "../performance.h"
+#include "../tools/SmallSet.h"
 #include "Optional.h"
 
 #include <memory>
@@ -68,7 +69,7 @@ namespace vc4c
              * NOTE: The single return value variant returns NULL if there are multiple predecessors!
              */
             const CFGNode* findPredecessor() const;
-            FastAccessList<const CFGNode*> findPredecessors() const;
+            tools::SmallSortedPointerSet<const CFGNode*> findPredecessors() const;
 
             /*
              * Returns the basic-block in the CFG following the last node in the loop, the node into which this loop
@@ -77,7 +78,7 @@ namespace vc4c
              * NOTE: The single return value variant returns NULL if there are multiple successors!
              */
             const CFGNode* findSuccessor() const;
-            FastAccessList<const CFGNode*> findSuccessors() const;
+            tools::SmallSortedPointerSet<const CFGNode*> findSuccessors() const;
 
             /*
              * Returns the InstructionWalker for the given instruction, if it is within the loop.
@@ -159,11 +160,11 @@ namespace vc4c
             unsigned int getLongestPathToRoot() const;
             bool hasCFGNodeInChildren(const CFGNode* node) const;
 
-            std::string dumpLabel() const;
+            std::string to_string() const;
         };
 
         using LoopInclusionTreeNode =
-            Node<ControlFlowLoop*, LoopInclusion, Directionality::DIRECTED, LoopInclusionTreeNodeBase>;
+            Node<const ControlFlowLoop*, LoopInclusion, Directionality::DIRECTED, LoopInclusionTreeNodeBase>;
         using LoopInclusionTreeEdge = LoopInclusionTreeNode::EdgeType;
 
         LoopInclusionTreeNode* castToTreeNode(LoopInclusionTreeNodeBase* base);
@@ -172,7 +173,7 @@ namespace vc4c
         /*
          * The trees represents inclusion relation of control-flow loops. This may have multiple trees.
          */
-        using LoopInclusionTree = Graph<ControlFlowLoop*, LoopInclusionTreeNode>;
+        using LoopInclusionTree = Graph<const ControlFlowLoop*, LoopInclusionTreeNode>;
 
         /**
          * Create the tree of loop inclusions from the given list of detected control flow loops.
@@ -200,7 +201,7 @@ namespace vc4c
          * |D|   |B+-->+C|
          * +-+   +-+   +-+
          */
-        std::unique_ptr<LoopInclusionTree> createLoopInclusingTree(FastAccessList<ControlFlowLoop>& loops);
+        std::unique_ptr<LoopInclusionTree> createLoopInclusingTree(const FastAccessList<ControlFlowLoop>& loops);
     } // namespace analysis
 } // namespace vc4c
 

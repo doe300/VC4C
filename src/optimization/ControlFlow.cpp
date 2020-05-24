@@ -1226,7 +1226,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             const CFGNode* targetCFGNode = nullptr;
             // Find the predecessor block of targetLoop.
             {
-                FastAccessList<const CFGNode*> predecessors = targetLoop->findPredecessors();
+                auto predecessors = targetLoop->findPredecessors();
                 if(predecessors.size() > 0)
                 {
                     for(auto& block : method)

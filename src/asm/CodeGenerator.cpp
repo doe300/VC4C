@@ -52,7 +52,10 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
             // an instruction which has no equivalent in machine code -> drop
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Dropping instruction not mapped to assembler: " << it->to_string() << logging::endl);
-            it.erase();
+            if(it->hasDecoration(InstructionDecorations::MANDATORY_DELAY))
+                // if the instruction was inserted at a mandatory delay, we need to insert a NOP which takes some space
+                index += 8;
+            it.safeErase();
         }
         else
         {

@@ -12,6 +12,7 @@
 #include "PatternMatching.h"
 #include "logger.h"
 
+#include <limits>
 #include <sstream>
 
 using namespace vc4c;
@@ -29,7 +30,7 @@ const CFGNode* ControlFlowLoop::findPredecessor() const
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Found predecessor for CFG loop: " << neighbor.key->to_string() << logging::endl);
 
-                if(predecessor != nullptr)
+                if(predecessor != nullptr && predecessor != &neighbor)
                 {
                     // multiple predecessors, abort
                     predecessor = nullptr;
@@ -43,15 +44,15 @@ const CFGNode* ControlFlowLoop::findPredecessor() const
     return predecessor;
 }
 
-FastAccessList<const CFGNode*> ControlFlowLoop::findPredecessors() const
+tools::SmallSortedPointerSet<const CFGNode*> ControlFlowLoop::findPredecessors() const
 {
-    FastAccessList<const CFGNode*> predecessors;
+    tools::SmallSortedPointerSet<const CFGNode*> predecessors;
     for(const CFGNode* node : *this)
     {
         node->forAllIncomingEdges([this, &predecessors](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
             if(find(&neighbor) == end())
             {
-                predecessors.push_back(&neighbor);
+                predecessors.emplace(&neighbor);
             }
             return true;
         });
@@ -71,7 +72,7 @@ const CFGNode* ControlFlowLoop::findSuccessor() const
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Found successor for CFG loop: " << neighbor.key->to_string() << logging::endl);
 
-                if(successor != nullptr)
+                if(successor != nullptr && successor != &neighbor)
                 {
                     // multiple successors, abort
                     successor = nullptr;
@@ -85,14 +86,14 @@ const CFGNode* ControlFlowLoop::findSuccessor() const
     return successor;
 }
 
-FastAccessList<const CFGNode*> ControlFlowLoop::findSuccessors() const
+tools::SmallSortedPointerSet<const CFGNode*> ControlFlowLoop::findSuccessors() const
 {
-    FastAccessList<const CFGNode*> successors;
+    tools::SmallSortedPointerSet<const CFGNode*> successors;
     for(const CFGNode* node : *this)
     {
         node->forAllOutgoingEdges([this, &successors](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
             if(find(&neighbor) == end())
-                successors.emplace_back(&neighbor);
+                successors.emplace(&neighbor);
             return true;
         });
     }
@@ -353,7 +354,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
                 // cannot determine repetition branch with multiple successors for now
                 // This should never really happen, unless there is a goto somewhere...
                 break;
-            successors.front()->forAllIncomingEdges([&](const CFGNode& pred, const CFGEdge& edge) {
+            (*successors.begin())->forAllIncomingEdges([&](const CFGNode& pred, const CFGEdge& edge) {
                 auto predIt = find(&pred);
                 if(predIt != end())
                 {
@@ -877,19 +878,17 @@ const LoopInclusionTreeNode* analysis::castToTreeNode(const LoopInclusionTreeNod
 
 LoopInclusionTreeNodeBase* LoopInclusionTreeNodeBase::findRoot(Optional<int> depth)
 {
-    if(depth && depth.value() == 0)
+    auto realDepth = depth ? *depth : std::numeric_limits<int>::max();
+    auto root = castToTreeNode(this);
+    while(realDepth > 0)
     {
-        return this;
+        auto tmp = root->getSinglePredecessor();
+        if(!tmp)
+            break;
+        root = tmp;
+        --realDepth;
     }
 
-    auto* self = castToTreeNode(this);
-    LoopInclusionTreeNodeBase* root = this;
-    self->forAllIncomingEdges([&](LoopInclusionTreeNodeBase& parent, LoopInclusionTreeEdge&) -> bool {
-        // The root node must be only one
-        std::function<int(const int&)> dec = [](const int& d) -> int { return d - 1; };
-        root = parent.findRoot(depth & dec);
-        return true;
-    });
     return root;
 }
 
@@ -934,15 +933,23 @@ bool LoopInclusionTreeNodeBase::hasCFGNodeInChildren(const CFGNode* node) const
     return found;
 }
 
-std::string LoopInclusionTreeNodeBase::dumpLabel() const
+std::string LoopInclusionTreeNodeBase::to_string() const
 {
     auto* self = castToTreeNode(this);
+    std::string name;
     if(auto header = self->key->getHeader())
-        return header->key->getLabel()->to_string();
-    return "(unknown header)";
+        name = header->key->to_string();
+    else
+        name = "(unknown header)";
+    name.append(" -> ");
+    if(auto tail = self->key->getTail())
+        name.append(tail->key->to_string());
+    else
+        name.append("(unknown tail)");
+    return name;
 }
 
-std::unique_ptr<LoopInclusionTree> analysis::createLoopInclusingTree(FastAccessList<ControlFlowLoop>& loops)
+std::unique_ptr<LoopInclusionTree> analysis::createLoopInclusingTree(const FastAccessList<ControlFlowLoop>& loops)
 {
     std::unique_ptr<LoopInclusionTree> inclusionTree(new LoopInclusionTree());
     for(auto& loop1 : loops)
@@ -1018,7 +1025,7 @@ std::unique_ptr<LoopInclusionTree> analysis::createLoopInclusingTree(FastAccessL
                 result += "(unknown tail)";
             return result;
         };
-        DebugGraph<ControlFlowLoop*, LoopInclusion, Directionality::DIRECTED>::dumpGraph<LoopInclusionTree>(
+        DebugGraph<const ControlFlowLoop*, LoopInclusion, Directionality::DIRECTED>::dumpGraph<LoopInclusionTree>(
             *inclusionTree, "/tmp/vc4c-loop-inclusion.dot", nameFunc);
     });
     LCOV_EXCL_STOP

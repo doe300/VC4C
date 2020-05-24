@@ -6,6 +6,7 @@
 #include "TestAnalyses.h"
 
 #include "analysis/ControlFlowGraph.h"
+#include "analysis/DominatorTree.h"
 
 using namespace vc4c;
 using namespace vc4c::analysis;
@@ -24,6 +25,7 @@ __kernel void test(__global int16* in, __global int16* out, uint count) {
             break;
         }
         for(uint y = 0; y < count; ++y) {
+            // single node loop
             out[x * 64 + y] = val;
         }
     }
@@ -42,6 +44,7 @@ __kernel void test(__global int16* in, __global int16* out) {
     if(lid == 0) {
         int16 result = 0;
         for(uint i = 0; i < get_local_size(0); ++i) {
+            // single node loop
             result += buffer[i];
         }
         out[0] = result;
@@ -53,8 +56,10 @@ TestAnalyses::TestAnalyses(const Configuration& config) : TestCompilationHelper(
 {
     TEST_ADD(TestAnalyses::testAvailableExpressions);
     TEST_ADD(TestAnalyses::testControlFlowGraph);
+    TEST_ADD(TestAnalyses::testControlFlowLoops);
     TEST_ADD(TestAnalyses::testDataDependency);
     TEST_ADD(TestAnalyses::testDependency);
+    TEST_ADD(TestAnalyses::testDominatorTree);
     TEST_ADD(TestAnalyses::testInterference);
     TEST_ADD(TestAnalyses::testLifetime);
     TEST_ADD(TestAnalyses::testLiveness);
@@ -289,6 +294,11 @@ void TestAnalyses::testControlFlowLoops()
         TEST_ASSERT(loops.back() != loops.front());
         TEST_ASSERT(loops.front() != loops.back());
 
+        // the small/inner loop has only 1 node
+        auto& innerLoop = firstLoopIsOuter ? loops.back() : loops.front();
+        TEST_ASSERT_EQUALS(1u, innerLoop.size());
+        TEST_ASSERT_EQUALS(innerLoop.getHeader(), innerLoop.getTail());
+
         auto inclusionTree = createLoopInclusingTree(loops);
         TEST_ASSERT_EQUALS(2u, inclusionTree->getNodes().size());
         TEST_ASSERT_EQUALS(
@@ -317,10 +327,20 @@ void TestAnalyses::testControlFlowLoops()
         }
         // all loops have a single predecessor and successor, as well as a head and tail
         FastAccessList<const ControlFlowLoop*> workGroupLoops;
-        for(const auto& loop : loops)
+        for(std::size_t i = 0; i < loops.size(); ++i)
         {
-            TEST_ASSERT(!!loop.findPredecessor());
-            TEST_ASSERT(!!loop.findSuccessor());
+            auto& loop = loops[i];
+            auto numPredecessors = 1;
+            // the inner work-group loops have multiple predecessors (the start of CFG and the tails of the outer
+            // work-group loops)
+            if(i == 1) // second (y) work-group loop, has first (z) work-group loop as predecessor
+                numPredecessors = 2;
+            if(i == 2) // third (x) work-group loop, as other two (z, y) work-group loops as predecessors
+                numPredecessors = 3;
+
+            TEST_ASSERT_EQUALS(numPredecessors, loop.findPredecessors().size());
+            TEST_ASSERT_EQUALS(numPredecessors == 1, !!loop.findPredecessor());
+            TEST_ASSERT_EQUALS(1u, loop.findSuccessors().size());
             TEST_ASSERT(!!loop.getHeader());
             TEST_ASSERT(!!loop.getTail());
             if(loop.isWorkGroupLoop())
@@ -362,6 +382,9 @@ void TestAnalyses::testControlFlowLoops()
             auto& node = inclusionTree->assertNode(&loops[i]);
             TEST_ASSERT_EQUALS(i, node.getLongestPathToRoot());
             TEST_ASSERT_EQUALS(&base, node.findRoot(12));
+
+            if(i > 2)
+                TEST_ASSERT_EQUALS(&inclusionTree->assertNode(&loops[i - 2]), node.findRoot(2));
         }
     }
 
@@ -433,9 +456,20 @@ void TestAnalyses::testControlFlowLoops()
         }
         // all loops have a single predecessor and successor, as well as a head and tail
         FastAccessList<const ControlFlowLoop*> workGroupLoops;
-        for(const auto& loop : loops)
+        for(std::size_t i = 0; i < loops.size(); ++i)
         {
-            TEST_ASSERT(!!loop.findPredecessor());
+            auto& loop = loops[i];
+            auto numPredecessors = 1;
+            // the inner work-group loops have multiple predecessors (the start of CFG and the tails of the outer
+            // work-group loops)
+            if(i == 1) // second (y) work-group loop, has first (z) work-group loop as predecessor
+                numPredecessors = 2;
+            if(i == 2) // third (x) work-group loop, as other two (z, y) work-group loops as predecessors
+                numPredecessors = 3;
+
+            TEST_ASSERT_EQUALS(numPredecessors, loop.findPredecessors().size());
+            TEST_ASSERT_EQUALS(numPredecessors == 1, !!loop.findPredecessor());
+            TEST_ASSERT_EQUALS(1u, loop.findSuccessors().size());
             TEST_ASSERT(!!loop.findSuccessor());
             TEST_ASSERT(!!loop.getHeader());
             TEST_ASSERT(!!loop.getTail());
@@ -484,6 +518,98 @@ void TestAnalyses::testControlFlowLoops()
 }
 void TestAnalyses::testDataDependency() {}
 void TestAnalyses::testDependency() {}
+void TestAnalyses::testDominatorTree()
+{
+    Configuration configCopy(config);
+    configCopy.additionalEnabledOptimizations.emplace("loop-work-groups");
+    configCopy.additionalEnabledOptimizations.emplace("reorder-blocks");
+    configCopy.additionalEnabledOptimizations.emplace("simplify-branches");
+    configCopy.additionalEnabledOptimizations.emplace("merge-blocks");
+
+    // first kernel
+    {
+        Module module(configCopy);
+        std::stringstream ss(KERNEL_NESTED_LOOPS);
+        precompileAndParse(module, ss, "");
+        normalize(module);
+
+        TEST_ASSERT_EQUALS(1, module.getKernels().size());
+        auto kernel = module.getKernels()[0];
+        auto& cfg = kernel->getCFG();
+        auto numNodes = cfg.getNodes().size();
+
+        auto tree = DominatorTree::createDominatorTree(cfg);
+        TEST_ASSERT(!!tree);
+        TEST_ASSERT_EQUALS(numNodes, tree->getNodes().size());
+
+        // // the start of the control flow dominates all nodes (except itself)
+        auto& start = tree->assertNode(&cfg.getStartOfControlFlow());
+        TEST_ASSERT_EQUALS(0, start.getDominators().size());
+        TEST_ASSERT_EQUALS(numNodes - 1, start.getDominatedNodes().size());
+        // the end of the control flow dominates no nodes
+        auto& end = tree->assertNode(&cfg.getEndOfControlFlow());
+        TEST_ASSERT_EQUALS(0, end.getDominatedNodes().size());
+
+        for(auto& node : tree->getNodes())
+        {
+            if(&node.second != &start)
+            {
+                TEST_ASSERT(start.dominates(node.second));
+                TEST_ASSERT(!start.isDominatedBy(node.second));
+            }
+        }
+
+        // Run the optimization steps and do some more checks
+        optimize(module);
+
+        numNodes = cfg.getNodes().size();
+        tree = DominatorTree::createDominatorTree(cfg);
+        TEST_ASSERT(!!tree);
+        TEST_ASSERT_EQUALS(numNodes, tree->getNodes().size());
+    }
+
+    // second kernel
+    {
+        Module module(configCopy);
+        std::stringstream ss(KERNEL_LOOP_BARRIER);
+        precompileAndParse(module, ss, "");
+        normalize(module);
+
+        TEST_ASSERT_EQUALS(1, module.getKernels().size());
+        auto kernel = module.getKernels()[0];
+        auto& cfg = kernel->getCFG();
+        auto numNodes = cfg.getNodes().size();
+
+        auto tree = DominatorTree::createDominatorTree(cfg);
+        TEST_ASSERT(!!tree);
+        TEST_ASSERT_EQUALS(numNodes, tree->getNodes().size());
+
+        // // the start of the control flow dominates all nodes (except itself)
+        auto& start = tree->assertNode(&cfg.getStartOfControlFlow());
+        TEST_ASSERT_EQUALS(0, start.getDominators().size());
+        TEST_ASSERT_EQUALS(numNodes - 1, start.getDominatedNodes().size());
+        // the end of the control flow dominates no nodes
+        auto& end = tree->assertNode(&cfg.getEndOfControlFlow());
+        TEST_ASSERT_EQUALS(0, end.getDominatedNodes().size());
+
+        for(auto& node : tree->getNodes())
+        {
+            if(&node.second != &start)
+            {
+                TEST_ASSERT(start.dominates(node.second));
+                TEST_ASSERT(!start.isDominatedBy(node.second));
+            }
+        }
+
+        // Run the optimization steps and do some more checks
+        optimize(module);
+
+        numNodes = cfg.getNodes().size();
+        tree = DominatorTree::createDominatorTree(cfg);
+        TEST_ASSERT(!!tree);
+        TEST_ASSERT_EQUALS(numNodes, tree->getNodes().size());
+    }
+}
 void TestAnalyses::testInterference() {}
 void TestAnalyses::testLifetime() {}
 void TestAnalyses::testLiveness() {}
