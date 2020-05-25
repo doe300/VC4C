@@ -240,372 +240,387 @@ static void runNormalizationStep(
 class ValueExpr
 {
 public:
-  // signed : value
-  using ExpandedExprs = std::vector<std::pair<bool, std::shared_ptr<ValueExpr>>>;
+    // signed : value
+    using ExpandedExprs = std::vector<std::pair<bool, std::shared_ptr<ValueExpr>>>;
 
-  virtual ~ValueExpr() = default;
+    virtual ~ValueExpr() = default;
 
-  virtual bool operator==(const ValueExpr& other) const = 0;
-  inline bool operator!=(const ValueExpr& other) const
-  {
-      return !(*this == other);
-  }
+    virtual bool operator==(const ValueExpr& other) const = 0;
+    inline bool operator!=(const ValueExpr& other) const
+    {
+        return !(*this == other);
+    }
 
-  virtual std::shared_ptr<ValueExpr> replaceLocal(Value& value, std::shared_ptr<ValueExpr> expr) = 0;
+    virtual std::shared_ptr<ValueExpr> replaceLocal(Value& value, std::shared_ptr<ValueExpr> expr) = 0;
 
-  // expand value expr as liner combination
-  // e.g. (a + b) * c = a * c + b * c
-  virtual void expand(ExpandedExprs& exprs) = 0;
+    // expand value expr as liner combination
+    // e.g. (a + b) * c = a * c + b * c
+    virtual void expand(ExpandedExprs& exprs) = 0;
 
-  virtual std::string to_string() const = 0;
+    virtual std::string to_string() const = 0;
 };
 
 class ValueBinaryOp : public ValueExpr
 {
 public:
-  enum class BinaryOp
-  {
-    Add, Sub, Mul, Div, Other,
-  };
-
-  ValueBinaryOp(std::shared_ptr<ValueExpr> left, BinaryOp op, std::shared_ptr<ValueExpr> right) :
-    left(left), op(op), right(right) {}
-
-  bool operator==(const ValueExpr& other) const override
-  {
-    if(auto otherOp = dynamic_cast<const ValueBinaryOp*>(&other))
+    enum class BinaryOp
     {
-      return op == otherOp->op && *right == *otherOp->right && *left == *otherOp->left;
-    }
-    return false;
-  }
+        Add,
+        Sub,
+        Mul,
+        Div,
+        Other,
+    };
 
-  std::shared_ptr<ValueExpr> replaceLocal(Value& value, std::shared_ptr<ValueExpr> expr) override
-  {
-    return std::make_shared<ValueBinaryOp>(
-        left->replaceLocal(value, expr),
-        op,
-        right->replaceLocal(value, expr));
-  }
-
-  void expand(ExpandedExprs& exprs) override
-  {
-    switch (op)
+    ValueBinaryOp(std::shared_ptr<ValueExpr> left, BinaryOp op, std::shared_ptr<ValueExpr> right) :
+        left(left), op(op), right(right)
     {
-      case BinaryOp::Add:
-        {
-          left->expand(exprs);
-          right->expand(exprs);
-          break;
-        }
-      case BinaryOp::Sub:
-        {
-          left->expand(exprs);
-
-          ExpandedExprs temp;
-          right->expand(temp);
-          for (auto &e : temp)
-          {
-            e.first = !e.first;
-          }
-          exprs.insert(exprs.end(), temp.begin(), temp.end());
-          break;
-        }
-      case BinaryOp::Mul:
-        {
-          exprs.push_back(std::make_pair(true, std::make_shared<ValueBinaryOp>(left, op, right)));
-          break;
-        }
-      case BinaryOp::Div:
-       {
-          exprs.push_back(std::make_pair(true, std::make_shared<ValueBinaryOp>(left, op, right)));
-          break;
-       }
-      case BinaryOp::Other: break;
-    }
-  }
-
-  std::string to_string() const override
-  {
-    std::string opStr;
-    switch (op)
-    {
-      case BinaryOp::Add: opStr = "+"; break;
-      case BinaryOp::Sub: opStr = "-"; break;
-      case BinaryOp::Mul: opStr = "*"; break;
-      case BinaryOp::Div: opStr = "/"; break;
-      case BinaryOp::Other: opStr = "other"; break;
     }
 
-    return "(" + left->to_string() + " " + opStr + " " + right->to_string() + ")";
-  }
+    bool operator==(const ValueExpr& other) const override
+    {
+        if(auto otherOp = dynamic_cast<const ValueBinaryOp*>(&other))
+        {
+            return op == otherOp->op && *right == *otherOp->right && *left == *otherOp->left;
+        }
+        return false;
+    }
 
-  // std::shared_ptr<ValueExpr> as_shared() const
-  // {
-  //   return std::make_shared<ValueBinaryOp>(left, op, right);
-  // }
+    std::shared_ptr<ValueExpr> replaceLocal(Value& value, std::shared_ptr<ValueExpr> expr) override
+    {
+        return std::make_shared<ValueBinaryOp>(left->replaceLocal(value, expr), op, right->replaceLocal(value, expr));
+    }
 
-  std::shared_ptr<ValueExpr> left;
-  BinaryOp op;
-  std::shared_ptr<ValueExpr> right;
+    void expand(ExpandedExprs& exprs) override
+    {
+        switch(op)
+        {
+        case BinaryOp::Add:
+        {
+            left->expand(exprs);
+            right->expand(exprs);
+            break;
+        }
+        case BinaryOp::Sub:
+        {
+            left->expand(exprs);
+
+            ExpandedExprs temp;
+            right->expand(temp);
+            for(auto& e : temp)
+            {
+                e.first = !e.first;
+            }
+            exprs.insert(exprs.end(), temp.begin(), temp.end());
+            break;
+        }
+        case BinaryOp::Mul:
+        {
+            exprs.push_back(std::make_pair(true, std::make_shared<ValueBinaryOp>(left, op, right)));
+            break;
+        }
+        case BinaryOp::Div:
+        {
+            exprs.push_back(std::make_pair(true, std::make_shared<ValueBinaryOp>(left, op, right)));
+            break;
+        }
+        case BinaryOp::Other:
+            break;
+        }
+    }
+
+    std::string to_string() const override
+    {
+        std::string opStr;
+        switch(op)
+        {
+        case BinaryOp::Add:
+            opStr = "+";
+            break;
+        case BinaryOp::Sub:
+            opStr = "-";
+            break;
+        case BinaryOp::Mul:
+            opStr = "*";
+            break;
+        case BinaryOp::Div:
+            opStr = "/";
+            break;
+        case BinaryOp::Other:
+            opStr = "other";
+            break;
+        }
+
+        return "(" + left->to_string() + " " + opStr + " " + right->to_string() + ")";
+    }
+
+    // std::shared_ptr<ValueExpr> as_shared() const
+    // {
+    //   return std::make_shared<ValueBinaryOp>(left, op, right);
+    // }
+
+    std::shared_ptr<ValueExpr> left;
+    BinaryOp op;
+    std::shared_ptr<ValueExpr> right;
 };
 
 class ValueTerm : public ValueExpr
 {
 public:
-  // TODO: remove the sign parameter
-  ValueTerm(Value& value, bool sign) : value(value) {}
+    // TODO: remove the sign parameter
+    ValueTerm(Value& value, bool sign) : value(value) {}
 
-  std::shared_ptr<ValueExpr> replaceLocal(Value& from, std::shared_ptr<ValueExpr> expr) override
-  {
-    if (auto fromLocal = from.checkLocal())
+    std::shared_ptr<ValueExpr> replaceLocal(Value& from, std::shared_ptr<ValueExpr> expr) override
     {
-      if (auto valueLocal = value.checkLocal())
-      {
-        if (*fromLocal == *valueLocal)
+        if(auto fromLocal = from.checkLocal())
         {
-          return expr;
+            if(auto valueLocal = value.checkLocal())
+            {
+                if(*fromLocal == *valueLocal)
+                {
+                    return expr;
+                }
+            }
         }
-      }
+        return std::make_shared<ValueTerm>(value, true);
     }
-    return std::make_shared<ValueTerm>(value, true);
-  }
 
-  void expand(ExpandedExprs& exprs) override
-  {
-    exprs.push_back(std::make_pair(true, std::make_shared<ValueTerm>(value, true)));
-  }
+    void expand(ExpandedExprs& exprs) override
+    {
+        exprs.push_back(std::make_pair(true, std::make_shared<ValueTerm>(value, true)));
+    }
 
-  bool operator==(const ValueExpr& other) const override
-  {
-    if(auto otherTerm = dynamic_cast<const ValueTerm*>(&other))
-      return value == otherTerm->value;
-    return false;
-  }
+    bool operator==(const ValueExpr& other) const override
+    {
+        if(auto otherTerm = dynamic_cast<const ValueTerm*>(&other))
+            return value == otherTerm->value;
+        return false;
+    }
 
-  std::string to_string() const override
-  {
-    return value.to_string();
-  }
+    std::string to_string() const override
+    {
+        return value.to_string();
+    }
 
-  Value value;
+    Value value;
 };
 
 std::shared_ptr<ValueExpr> makeValueBinaryOpFromLocal(Value& left, ValueBinaryOp::BinaryOp binOp, Value& right)
 {
-  return std::make_shared<ValueBinaryOp>(
-      std::make_shared<ValueTerm>(left, true),
-      binOp,
-      std::make_shared<ValueTerm>(right, true));
+    return std::make_shared<ValueBinaryOp>(
+        std::make_shared<ValueTerm>(left, true), binOp, std::make_shared<ValueTerm>(right, true));
 }
 
 // try to convert shl to mul and return it as ValueExpr
 std::shared_ptr<ValueExpr> shlToMul(Value& value, const intermediate::Operation* op)
 {
-  auto left = op->getFirstArg();
-  auto right = *op->getSecondArg();
-  int shiftValue = 0;
-  if (auto lit = right.checkLiteral())
-  {
-    shiftValue = lit->signedInt();
-  }
-  else if (auto imm = right.checkImmediate())
-  {
-    shiftValue = imm->getIntegerValue().value_or(0);
-  }
+    auto left = op->getFirstArg();
+    auto right = *op->getSecondArg();
+    int shiftValue = 0;
+    if(auto lit = right.checkLiteral())
+    {
+        shiftValue = lit->signedInt();
+    }
+    else if(auto imm = right.checkImmediate())
+    {
+        shiftValue = imm->getIntegerValue().value_or(0);
+    }
 
-  if (shiftValue > 0)
-  {
-    auto right = Value(Literal(1 << shiftValue), TYPE_INT32);
-    return makeValueBinaryOpFromLocal(left, ValueBinaryOp::BinaryOp::Mul, right);
-  }
-  else
-  {
-    return std::make_shared<ValueTerm>(value, true);
-  }
+    if(shiftValue > 0)
+    {
+        auto right = Value(Literal(1 << shiftValue), TYPE_INT32);
+        return makeValueBinaryOpFromLocal(left, ValueBinaryOp::BinaryOp::Mul, right);
+    }
+    else
+    {
+        return std::make_shared<ValueTerm>(value, true);
+    }
 }
 
 std::shared_ptr<ValueExpr> iiToExpr(Value& value, const LocalUser* inst)
 {
-  using BO = ValueBinaryOp::BinaryOp;
-  BO binOp = BO::Other;
+    using BO = ValueBinaryOp::BinaryOp;
+    BO binOp = BO::Other;
 
-  // add, sub, shr, shl, asr
-  if (auto op = dynamic_cast<const intermediate::Operation*>(inst))
-  {
-    if (op->op == OP_ADD)
+    // add, sub, shr, shl, asr
+    if(auto op = dynamic_cast<const intermediate::Operation*>(inst))
     {
-      binOp = BO::Add;
+        if(op->op == OP_ADD)
+        {
+            binOp = BO::Add;
+        }
+        else if(op->op == OP_SUB)
+        {
+            binOp = BO::Sub;
+        }
+        else if(op->op == OP_SHL)
+        {
+            // convert shl to mul
+            return shlToMul(value, op);
+            // TODO: shr, asr
+        }
+        else
+        {
+            // If op is neither add nor sub, return value as-is.
+            return std::make_shared<ValueTerm>(value, true);
+        }
+
+        auto left = op->getFirstArg();
+        auto right = *op->getSecondArg();
+        return makeValueBinaryOpFromLocal(left, binOp, right);
     }
-    else if (op->op == OP_SUB)
+    // mul, div
+    else if(auto op = dynamic_cast<const intermediate::IntrinsicOperation*>(inst))
     {
-      binOp = BO::Sub;
-    }
-    else if (op->op == OP_SHL)
-    {
-      // convert shl to mul
-      return shlToMul(value, op);
-      // TODO: shr, asr
-    }
-    else
-    {
-      // If op is neither add nor sub, return value as-is.
-      return std::make_shared<ValueTerm>(value, true);
+        if(op->opCode == "mul")
+        {
+            binOp = BO::Mul;
+        }
+        else if(op->opCode == "div")
+        {
+            binOp = BO::Div;
+        }
+        else
+        {
+            // If op is neither add nor sub, return value as-is.
+            return std::make_shared<ValueTerm>(value, true);
+        }
+
+        auto left = op->getFirstArg();
+        auto right = *op->getSecondArg();
+        return makeValueBinaryOpFromLocal(left, binOp, right);
     }
 
-    auto left = op->getFirstArg();
-    auto right = *op->getSecondArg();
-    return makeValueBinaryOpFromLocal(left, binOp, right);
-  }
-  // mul, div
-  else if (auto op = dynamic_cast<const intermediate::IntrinsicOperation*>(inst))
-  {
-    if (op->opCode == "mul")
-    {
-      binOp = BO::Mul;
-    }
-    else if (op->opCode == "div")
-    {
-      binOp = BO::Div;
-    }
-    else
-    {
-      // If op is neither add nor sub, return value as-is.
-      return std::make_shared<ValueTerm>(value, true);
-    }
-
-    auto left = op->getFirstArg();
-    auto right = *op->getSecondArg();
-    return makeValueBinaryOpFromLocal(left, binOp, right);
-  }
-
-  return std::make_shared<ValueTerm>(value, true);
+    return std::make_shared<ValueTerm>(value, true);
 }
 
 std::shared_ptr<ValueExpr> calcValueExpr(std::shared_ptr<ValueExpr> expr)
 {
-  using BO = ValueBinaryOp::BinaryOp;
+    using BO = ValueBinaryOp::BinaryOp;
 
-  ValueExpr::ExpandedExprs expanded;
-  expr->expand(expanded);
+    ValueExpr::ExpandedExprs expanded;
+    expr->expand(expanded);
 
-  for (auto &p : expanded) logging::debug() << (p.first ? "+" : "-") << p.second->to_string() << " ";
-  logging::debug() << logging::endl;
+    for(auto& p : expanded)
+        logging::debug() << (p.first ? "+" : "-") << p.second->to_string() << " ";
+    logging::debug() << logging::endl;
 
-  for (auto p = expanded.begin(); p != expanded.end(); )
-  {
-    auto comp = std::find_if(expanded.begin(), expanded.end(),
-        [&p](const std::pair<bool, std::shared_ptr<ValueExpr>>& other) {
-          return p->first != other.first && *p->second == *other.second;
-        });
-    if (comp != expanded.end())
+    for(auto p = expanded.begin(); p != expanded.end();)
     {
-      expanded.erase(comp);
-      p = expanded.erase(p);
+        auto comp = std::find_if(
+            expanded.begin(), expanded.end(), [&p](const std::pair<bool, std::shared_ptr<ValueExpr>>& other) {
+                return p->first != other.first && *p->second == *other.second;
+            });
+        if(comp != expanded.end())
+        {
+            expanded.erase(comp);
+            p = expanded.erase(p);
+        }
+        else
+        {
+            p++;
+        }
     }
-    else
+
+    for(auto& p : expanded)
+        logging::debug() << (p.first ? "+" : "-") << p.second->to_string() << " ";
+    logging::debug() << logging::endl;
+
+    auto result = expanded[0].second;
+    for(size_t i = 1; i < expanded.size(); i++)
     {
-      p++;
+        auto p = expanded[i];
+        result = std::make_shared<ValueBinaryOp>(result, p.first ? BO::Add : BO::Sub, p.second);
     }
-  }
 
-  for (auto &p : expanded) logging::debug() << (p.first ? "+" : "-") << p.second->to_string() << " ";
-  logging::debug() << logging::endl;
-
-  auto result = expanded[0].second;
-  for (size_t i = 1; i < expanded.size(); i++)
-  {
-    auto p = expanded[i];
-    result = std::make_shared<ValueBinaryOp>(result, p.first ? BO::Add : BO::Sub, p.second);
-  }
-
-  return result;
+    return result;
 }
 
 void combineDMALoads(const Module& module, Method& method, const Configuration& config)
 {
-  // vload16(unsigned int, unsigned char*)
-  const std::string VLOAD16_METHOD_NAME = "_Z7vload16jPU3AS1Kh";
+    // vload16(unsigned int, unsigned char*)
+    const std::string VLOAD16_METHOD_NAME = "_Z7vload16jPU3AS1Kh";
 
-  std::vector<Value> addrValues;
+    std::vector<Value> addrValues;
 
-  auto it = method.walkAllInstructions();
-  while(!it.isEndOfMethod())
-  {
-    // Find all method calls
-    if(auto call = it.get<intermediate::MethodCall>())
+    auto it = method.walkAllInstructions();
+    while(!it.isEndOfMethod())
     {
-      if (call->methodName == VLOAD16_METHOD_NAME)
-      {
-        auto addr = *call->getArgument(0);
-        logging::debug() << "method call = " << call->to_string() << ", " << call->methodName << ", " << addr.to_string() << logging::endl;
-        addrValues.push_back(addr);
-      }
+        // Find all method calls
+        if(auto call = it.get<intermediate::MethodCall>())
+        {
+            if(call->methodName == VLOAD16_METHOD_NAME)
+            {
+                auto addr = *call->getArgument(0);
+                logging::debug() << "method call = " << call->to_string() << ", " << call->methodName << ", "
+                                 << addr.to_string() << logging::endl;
+                addrValues.push_back(addr);
+            }
+        }
+
+        it.nextInMethod();
     }
 
-    it.nextInMethod();
-  }
+    std::vector<std::pair<Value, std::shared_ptr<ValueExpr>>> addrExprs;
 
-  std::vector<std::pair<Value, std::shared_ptr<ValueExpr>>> addrExprs;
-
-  for (auto &addrValue : addrValues)
-  {
-    if(auto loc = addrValue.checkLocal())
+    for(auto& addrValue : addrValues)
     {
-      if (auto writer = loc->getSingleWriter())
-      {
-        addrExprs.push_back(std::make_pair(addrValue, iiToExpr(addrValue, writer)));
-      }
+        if(auto loc = addrValue.checkLocal())
+        {
+            if(auto writer = loc->getSingleWriter())
+            {
+                addrExprs.push_back(std::make_pair(addrValue, iiToExpr(addrValue, writer)));
+            }
+        }
+        else
+        {
+            addrExprs.push_back(std::make_pair(addrValue, std::make_shared<ValueTerm>(addrValue, true)));
+        }
     }
-    else
+
+    for(auto& p : addrExprs)
     {
-      addrExprs.push_back(std::make_pair(addrValue, std::make_shared<ValueTerm>(addrValue, true)));
+        logging::debug() << p.first.to_string() << " -> " << p.second->to_string() << logging::endl;
     }
-  }
 
-  for (auto &p : addrExprs)
-  {
-    logging::debug() << p.first.to_string() << " -> " << p.second->to_string() << logging::endl;
-  }
-
-  for (auto &current : addrExprs)
-  {
-    for (auto &other : addrExprs)
+    for(auto& current : addrExprs)
     {
-      auto replaced = current.second->replaceLocal(other.first, other.second);
-      current.second = replaced;
+        for(auto& other : addrExprs)
+        {
+            auto replaced = current.second->replaceLocal(other.first, other.second);
+            current.second = replaced;
+        }
     }
-  }
 
-  for (auto &pair : addrExprs)
-  {
-    logging::debug() << pair.first.to_string() << " = " << pair.second->to_string() << logging::endl;
-  }
-
-  std::shared_ptr<ValueExpr> diff = nullptr;
-  bool eqDiff = true;
-  for (size_t i = 1; i < addrExprs.size(); i++)
-  {
-    auto x = addrExprs[i - 1].second;
-    auto y = addrExprs[i].second;
-    auto diffExpr = std::make_shared<ValueBinaryOp>(y, ValueBinaryOp::BinaryOp::Sub, x);
-
-    auto currentDiff = calcValueExpr(diffExpr);
-
-    logging::debug() << i << ": " << currentDiff->to_string() << logging::endl;
-
-    if (diff == nullptr)
+    for(auto& pair : addrExprs)
     {
-      diff = currentDiff;
+        logging::debug() << pair.first.to_string() << " = " << pair.second->to_string() << logging::endl;
     }
-    if (*currentDiff != *diff)
-    {
-      eqDiff = false;
-      break;
-    }
-  }
 
-  logging::debug() << "all loads are " << (eqDiff ? "" : "not ") << "equal difference" << logging::endl;
+    std::shared_ptr<ValueExpr> diff = nullptr;
+    bool eqDiff = true;
+    for(size_t i = 1; i < addrExprs.size(); i++)
+    {
+        auto x = addrExprs[i - 1].second;
+        auto y = addrExprs[i].second;
+        auto diffExpr = std::make_shared<ValueBinaryOp>(y, ValueBinaryOp::BinaryOp::Sub, x);
+
+        auto currentDiff = calcValueExpr(diffExpr);
+
+        logging::debug() << i << ": " << currentDiff->to_string() << logging::endl;
+
+        if(diff == nullptr)
+        {
+            diff = currentDiff;
+        }
+        if(*currentDiff != *diff)
+        {
+            eqDiff = false;
+            break;
+        }
+    }
+
+    logging::debug() << "all loads are " << (eqDiff ? "" : "not ") << "equal difference" << logging::endl;
 }
 
 void Normalizer::normalize(Module& module) const
@@ -628,26 +643,28 @@ void Normalizer::normalize(Module& module) const
     }
 
     {
-      auto kernels = module.getKernels();
-      for(Method* kernelFunc : kernels)
-      {
-        combineDMALoads(module, *kernelFunc, config);
-      }
+        auto kernels = module.getKernels();
+        for(Method* kernelFunc : kernels)
+        {
+            combineDMALoads(module, *kernelFunc, config);
+        }
     }
 
     {
-      logging::info() << "=====================================" << __FILE__ << " : " << __LINE__ << logging::endl;
-      for (auto &method : module) {
-        auto it = method->walkAllInstructions();
-        while (!it.isEndOfMethod()) {
-          auto ii = it.get();
-          logging::info() << ii->to_string() << logging::endl;
-          it = it.nextInMethod();
+        logging::info() << "=====================================" << __FILE__ << " : " << __LINE__ << logging::endl;
+        for(auto& method : module)
+        {
+            auto it = method->walkAllInstructions();
+            while(!it.isEndOfMethod())
+            {
+                auto ii = it.get();
+                logging::info() << ii->to_string() << logging::endl;
+                it = it.nextInMethod();
+            }
         }
-      }
 
-      std::string a;
-      std::cin >> a;
+        std::string a;
+        std::cin >> a;
     }
 
     auto kernels = module.getKernels();
