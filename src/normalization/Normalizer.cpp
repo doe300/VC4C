@@ -257,6 +257,8 @@ public:
     // e.g. (a + b) * c = a * c + b * c
     virtual void expand(ExpandedExprs& exprs) = 0;
 
+    virtual Optional<int> getInteger() const = 0;
+
     virtual std::string to_string() const = 0;
 };
 
@@ -277,21 +279,122 @@ public:
     {
     }
 
+    bool operator==(const ValueExpr& other) const override;
+
+    std::shared_ptr<ValueExpr> replaceLocal(Value& value, std::shared_ptr<ValueExpr> expr) override;
+
+    void expand(ExpandedExprs& exprs) override;
+
+    Optional<int> getInteger() const override;
+
+    std::string to_string() const override;
+
+    std::shared_ptr<ValueExpr> left;
+    BinaryOp op;
+    std::shared_ptr<ValueExpr> right;
+};
+
+class ValueTerm : public ValueExpr
+{
+public:
+    // TODO: remove the sign parameter
+    ValueTerm(Value& value, bool sign) : value(value) {}
+
     bool operator==(const ValueExpr& other) const override
     {
-        if(auto otherOp = dynamic_cast<const ValueBinaryOp*>(&other))
-        {
-            return op == otherOp->op && *right == *otherOp->right && *left == *otherOp->left;
-        }
+        if(auto otherTerm = dynamic_cast<const ValueTerm*>(&other))
+            return value == otherTerm->value;
         return false;
     }
 
-    std::shared_ptr<ValueExpr> replaceLocal(Value& value, std::shared_ptr<ValueExpr> expr) override
+    std::shared_ptr<ValueExpr> replaceLocal(Value& from, std::shared_ptr<ValueExpr> expr) override
     {
-        return std::make_shared<ValueBinaryOp>(left->replaceLocal(value, expr), op, right->replaceLocal(value, expr));
+        if(auto fromLocal = from.checkLocal())
+        {
+            if(auto valueLocal = value.checkLocal())
+            {
+                if(*fromLocal == *valueLocal)
+                {
+                    return expr;
+                }
+            }
+        }
+        return std::make_shared<ValueTerm>(value, true);
     }
 
     void expand(ExpandedExprs& exprs) override
+    {
+        exprs.push_back(std::make_pair(true, std::make_shared<ValueTerm>(value, true)));
+    }
+
+    Optional<int> getInteger() const override
+    {
+        if(auto lit = value.checkLiteral())
+        {
+            return Optional<int>(lit->signedInt());
+        }
+        else if(auto imm = value.checkImmediate())
+        {
+            return imm->getIntegerValue();
+        }
+        return Optional<int>();
+    }
+
+    std::string to_string() const override
+    {
+        return value.to_string();
+    }
+
+    Value value;
+};
+
+bool ValueBinaryOp::operator==(const ValueExpr& other) const
+{
+    if(auto otherOp = dynamic_cast<const ValueBinaryOp*>(&other))
+    {
+        return op == otherOp->op && *right == *otherOp->right && *left == *otherOp->left;
+    }
+    return false;
+}
+
+std::shared_ptr<ValueExpr> ValueBinaryOp::replaceLocal(Value& value, std::shared_ptr<ValueExpr> expr)
+{
+    return std::make_shared<ValueBinaryOp>(left->replaceLocal(value, expr), op, right->replaceLocal(value, expr));
+}
+
+void ValueBinaryOp::expand(ExpandedExprs& exprs)
+{
+    auto leftNum = left->getInteger();
+    auto rightNum = right->getInteger();
+    if(leftNum && rightNum)
+    {
+        int l = leftNum.value_or(0);
+        int r = rightNum.value_or(0);
+        int num = 0;
+        switch(op)
+        {
+        case BinaryOp::Add:
+            num = l + r;
+            break;
+        case BinaryOp::Sub:
+            num = l - r;
+            break;
+        case BinaryOp::Mul:
+            num = l * r;
+            break;
+        case BinaryOp::Div:
+            num = l / r;
+            break;
+        case BinaryOp::Other:
+            break;
+        }
+
+        int sign = num >= 0;
+        auto value = Value(Literal(std::abs(num)), TYPE_INT32);
+        std::shared_ptr<ValueExpr> expr = std::make_shared<ValueTerm>(value, true);
+        exprs.push_back(std::make_pair(sign, expr));
+    }
+    else
     {
         switch(op)
         {
@@ -316,94 +419,71 @@ public:
         }
         case BinaryOp::Mul:
         {
-            exprs.push_back(std::make_pair(true, std::make_shared<ValueBinaryOp>(left, op, right)));
-            break;
-        }
-        case BinaryOp::Div:
-        {
-            exprs.push_back(std::make_pair(true, std::make_shared<ValueBinaryOp>(left, op, right)));
-            break;
-        }
-        case BinaryOp::Other:
-            break;
-        }
-    }
-
-    std::string to_string() const override
-    {
-        std::string opStr;
-        switch(op)
-        {
-        case BinaryOp::Add:
-            opStr = "+";
-            break;
-        case BinaryOp::Sub:
-            opStr = "-";
-            break;
-        case BinaryOp::Mul:
-            opStr = "*";
-            break;
-        case BinaryOp::Div:
-            opStr = "/";
-            break;
-        case BinaryOp::Other:
-            opStr = "other";
-            break;
-        }
-
-        return "(" + left->to_string() + " " + opStr + " " + right->to_string() + ")";
-    }
-
-    // std::shared_ptr<ValueExpr> as_shared() const
-    // {
-    //   return std::make_shared<ValueBinaryOp>(left, op, right);
-    // }
-
-    std::shared_ptr<ValueExpr> left;
-    BinaryOp op;
-    std::shared_ptr<ValueExpr> right;
-};
-
-class ValueTerm : public ValueExpr
-{
-public:
-    // TODO: remove the sign parameter
-    ValueTerm(Value& value, bool sign) : value(value) {}
-
-    std::shared_ptr<ValueExpr> replaceLocal(Value& from, std::shared_ptr<ValueExpr> expr) override
-    {
-        if(auto fromLocal = from.checkLocal())
-        {
-            if(auto valueLocal = value.checkLocal())
+            if(leftNum || rightNum)
             {
-                if(*fromLocal == *valueLocal)
+                int num = 0;
+                std::shared_ptr<ValueExpr> expr = nullptr;
+                if(leftNum)
                 {
-                    return expr;
+                    num = leftNum.value_or(0);
+                    expr = right;
+                }
+                else
+                {
+                    num = rightNum.value_or(0);
+                    expr = left;
+                }
+                for(int i = 0; i < num; i++)
+                {
+                    exprs.push_back(std::make_pair(true, expr));
                 }
             }
+            else
+            {
+                exprs.push_back(std::make_pair(true, std::make_shared<ValueBinaryOp>(left, op, right)));
+            }
+            break;
         }
-        return std::make_shared<ValueTerm>(value, true);
+        case BinaryOp::Div:
+        {
+            exprs.push_back(std::make_pair(true, std::make_shared<ValueBinaryOp>(left, op, right)));
+            break;
+        }
+        case BinaryOp::Other:
+            break;
+        }
     }
+}
 
-    void expand(ExpandedExprs& exprs) override
+Optional<int> ValueBinaryOp::getInteger() const
+{
+    return Optional<int>();
+}
+
+std::string ValueBinaryOp::to_string() const
+{
+    std::string opStr;
+    switch(op)
     {
-        exprs.push_back(std::make_pair(true, std::make_shared<ValueTerm>(value, true)));
+    case BinaryOp::Add:
+        opStr = "+";
+        break;
+    case BinaryOp::Sub:
+        opStr = "-";
+        break;
+    case BinaryOp::Mul:
+        opStr = "*";
+        break;
+    case BinaryOp::Div:
+        opStr = "/";
+        break;
+    case BinaryOp::Other:
+        opStr = "other";
+        break;
     }
 
-    bool operator==(const ValueExpr& other) const override
-    {
-        if(auto otherTerm = dynamic_cast<const ValueTerm*>(&other))
-            return value == otherTerm->value;
-        return false;
-    }
-
-    std::string to_string() const override
-    {
-        return value.to_string();
-    }
-
-    Value value;
-};
+    return "(" + left->to_string() + " " + opStr + " " + right->to_string() + ")";
+}
 
 std::shared_ptr<ValueExpr> makeValueBinaryOpFromLocal(Value& left, ValueBinaryOp::BinaryOp binOp, Value& right)
 {
@@ -606,6 +686,8 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
         auto diffExpr = std::make_shared<ValueBinaryOp>(y, ValueBinaryOp::BinaryOp::Sub, x);
 
         auto currentDiff = calcValueExpr(diffExpr);
+        // Apply calcValueExpr again for integer literals.
+        currentDiff = calcValueExpr(currentDiff);
 
         logging::debug() << i << ": " << currentDiff->to_string() << logging::endl;
 
