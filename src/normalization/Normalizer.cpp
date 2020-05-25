@@ -602,10 +602,6 @@ std::shared_ptr<ValueExpr> calcValueExpr(std::shared_ptr<ValueExpr> expr)
         }
     }
 
-    for(auto& p : expanded)
-        logging::debug() << (p.first ? "+" : "-") << p.second->to_string() << " ";
-    logging::debug() << logging::endl;
-
     auto result = expanded[0].second;
     for(size_t i = 1; i < expanded.size(); i++)
     {
@@ -621,88 +617,85 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
     // vload16(unsigned int, unsigned char*)
     const std::string VLOAD16_METHOD_NAME = "_Z7vload16jPU3AS1Kh";
 
-    std::vector<Value> addrValues;
-
-    auto it = method.walkAllInstructions();
-    while(!it.isEndOfMethod())
+    for(auto& bb : method)
     {
-        // Find all method calls
-        if(auto call = it.get<intermediate::MethodCall>())
+        std::vector<Value> addrValues;
+        for(auto& it : bb)
         {
-            if(call->methodName == VLOAD16_METHOD_NAME)
+            // Find all method calls
+            if(auto call = dynamic_cast<intermediate::MethodCall*>(it.get()))
             {
-                auto addr = *call->getArgument(0);
-                logging::debug() << "method call = " << call->to_string() << ", " << call->methodName << ", "
-                                 << addr.to_string() << logging::endl;
-                addrValues.push_back(addr);
+                if(call->methodName == VLOAD16_METHOD_NAME)
+                {
+                    auto addr = *call->getArgument(0);
+                    logging::debug() << "method call = " << call->to_string() << ", " << call->methodName << ", "
+                                     << addr.to_string() << logging::endl;
+                    addrValues.push_back(addr);
+                }
             }
         }
 
-        it.nextInMethod();
-    }
+        if(addrValues.size() == 0)
+            continue;
 
-    std::vector<std::pair<Value, std::shared_ptr<ValueExpr>>> addrExprs;
+        std::vector<std::pair<Value, std::shared_ptr<ValueExpr>>> addrExprs;
 
-    for(auto& addrValue : addrValues)
-    {
-        if(auto loc = addrValue.checkLocal())
+        for(auto& addrValue : addrValues)
         {
-            if(auto writer = loc->getSingleWriter())
+            if(auto loc = addrValue.checkLocal())
             {
-                addrExprs.push_back(std::make_pair(addrValue, iiToExpr(addrValue, writer)));
+                if(auto writer = loc->getSingleWriter())
+                {
+                    addrExprs.push_back(std::make_pair(addrValue, iiToExpr(addrValue, writer)));
+                }
+            }
+            else
+            {
+                addrExprs.push_back(std::make_pair(addrValue, std::make_shared<ValueTerm>(addrValue, true)));
             }
         }
-        else
+
+        for(auto& current : addrExprs)
         {
-            addrExprs.push_back(std::make_pair(addrValue, std::make_shared<ValueTerm>(addrValue, true)));
+            for(auto& other : addrExprs)
+            {
+                auto replaced = current.second->replaceLocal(other.first, other.second);
+                current.second = replaced;
+            }
         }
-    }
 
-    for(auto& p : addrExprs)
-    {
-        logging::debug() << p.first.to_string() << " -> " << p.second->to_string() << logging::endl;
-    }
-
-    for(auto& current : addrExprs)
-    {
-        for(auto& other : addrExprs)
+        for(auto& pair : addrExprs)
         {
-            auto replaced = current.second->replaceLocal(other.first, other.second);
-            current.second = replaced;
+            logging::debug() << pair.first.to_string() << " = " << pair.second->to_string() << logging::endl;
         }
-    }
 
-    for(auto& pair : addrExprs)
-    {
-        logging::debug() << pair.first.to_string() << " = " << pair.second->to_string() << logging::endl;
-    }
-
-    std::shared_ptr<ValueExpr> diff = nullptr;
-    bool eqDiff = true;
-    for(size_t i = 1; i < addrExprs.size(); i++)
-    {
-        auto x = addrExprs[i - 1].second;
-        auto y = addrExprs[i].second;
-        auto diffExpr = std::make_shared<ValueBinaryOp>(y, ValueBinaryOp::BinaryOp::Sub, x);
-
-        auto currentDiff = calcValueExpr(diffExpr);
-        // Apply calcValueExpr again for integer literals.
-        currentDiff = calcValueExpr(currentDiff);
-
-        logging::debug() << i << ": " << currentDiff->to_string() << logging::endl;
-
-        if(diff == nullptr)
+        std::shared_ptr<ValueExpr> diff = nullptr;
+        bool eqDiff = true;
+        for(size_t i = 1; i < addrExprs.size(); i++)
         {
-            diff = currentDiff;
-        }
-        if(*currentDiff != *diff)
-        {
-            eqDiff = false;
-            break;
-        }
-    }
+            auto x = addrExprs[i - 1].second;
+            auto y = addrExprs[i].second;
+            auto diffExpr = std::make_shared<ValueBinaryOp>(y, ValueBinaryOp::BinaryOp::Sub, x);
 
-    logging::debug() << "all loads are " << (eqDiff ? "" : "not ") << "equal difference" << logging::endl;
+            auto currentDiff = calcValueExpr(diffExpr);
+            // Apply calcValueExpr again for integer literals.
+            currentDiff = calcValueExpr(currentDiff);
+
+            logging::debug() << i << ": " << currentDiff->to_string() << logging::endl;
+
+            if(diff == nullptr)
+            {
+                diff = currentDiff;
+            }
+            if(*currentDiff != *diff)
+            {
+                eqDiff = false;
+                break;
+            }
+        }
+
+        logging::debug() << "all loads are " << (eqDiff ? "" : "not ") << "equal difference" << logging::endl;
+    }
 }
 
 void Normalizer::normalize(Module& module) const
