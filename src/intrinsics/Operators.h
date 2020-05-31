@@ -9,6 +9,10 @@
 
 #include "../InstructionWalker.h"
 
+#include <cfenv>
+#include <cmath>
+#include <limits>
+
 namespace vc4c
 {
     namespace intrinsics
@@ -66,6 +70,58 @@ namespace vc4c
         Literal frem(DataType type, const Literal& numerator, const Literal& denominator);
 
     } // namespace intrinsics
+
+    constexpr float flushDenorms(float result)
+    {
+        if(std::abs(result) < std::numeric_limits<float>::min())
+            return std::signbit(result) ? -0.0f : 0.0f;
+        return result;
+    }
+
+    /**
+     * Helper type for float calculations to flush denormal values to zero and set the truncate-to-zero rounding mode
+     * used by the VideoCore IV GPU.
+     */
+    template <typename R, typename T, typename F = R(T, T)>
+    struct FlushDenormsAndRoundToZero
+    {
+    };
+
+    template <typename F>
+    struct FlushDenormsAndRoundToZero<float, float, F>
+    {
+        explicit FlushDenormsAndRoundToZero(F f = {}) : func(f) {}
+
+        float operator()(float arg0, float arg1) const
+        {
+            auto origMode = fegetround();
+            // emulate the VideoCore IV rounding mode, truncate to zero
+            fesetround(FE_TOWARDZERO);
+            auto tmp = func(flushDenorms(arg0), flushDenorms(arg1));
+            fesetround(origMode);
+            return flushDenorms(tmp);
+        }
+
+        F func;
+    };
+
+    template <typename F>
+    struct FlushDenormsAndRoundToZero<float, int32_t, F>
+    {
+        explicit FlushDenormsAndRoundToZero(F f = {}) : func(f) {}
+
+        float operator()(int32_t arg0, int32_t arg1) const
+        {
+            auto origMode = fegetround();
+            // emulate the VideoCore IV rounding mode, truncate to zero
+            fesetround(FE_TOWARDZERO);
+            auto tmp = func(arg0, arg1);
+            fesetround(origMode);
+            return flushDenorms(tmp);
+        }
+
+        F func;
+    };
 } // namespace vc4c
 
 #endif /* OPERATORS_H */

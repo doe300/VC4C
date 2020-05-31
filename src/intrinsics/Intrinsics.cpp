@@ -421,7 +421,6 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryI
     {"vc4cl_vector_rotate", Intrinsic{intrinsifyVectorRotation()}},
     // the 32-bit saturation MUST BE applied to the over-/underflowing operation
     {"vc4cl_saturated_add", Intrinsic{intrinsifyBinaryALUInstruction(OP_ADD.name, false, PACK_32_32)}},
-    {"vc4cl_saturated_sub", Intrinsic{intrinsifyBinaryALUInstruction(OP_SUB.name, false, PACK_32_32)}},
     {"vc4cl_add_flags",
         Intrinsic{intrinsifyBinaryALUInstruction(OP_ADD.name, false, PACK_NOP, UNPACK_NOP, true),
             /* can't set flags for pre-calculation, so don't */}},

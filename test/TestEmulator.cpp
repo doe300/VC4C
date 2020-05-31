@@ -632,7 +632,7 @@ void TestEmulator::testPi()
     auto resultIt = resultBuffer.begin();
     while(expectedIt != hostPartial.end())
     {
-        TEST_ASSERT_ULP(static_cast<float>(*expectedIt), (bit_cast<uint32_t, float>(*resultIt)), 4)
+        TEST_ASSERT_ULP(static_cast<float>(*expectedIt), (bit_cast<uint32_t, float>(*resultIt)), 8)
 
         ++resultIt;
         ++expectedIt;

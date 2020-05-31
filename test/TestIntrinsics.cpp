@@ -976,7 +976,8 @@ void TestIntrinsicFunctions::testIntToFloat()
     std::string options = "-DFUNC=(float) -DIN=int -DOUT=float";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<int, float, 1>(
+    // actually no ULP, but this allows Round-to-nearest-even (CPU) vs. Trunc-to-Zero (GPU)
+    testUnaryFunction<int, float, 1, int, CompareULP<1>>(
         code, options, [](int i) -> float { return static_cast<float>(i); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
@@ -1003,7 +1004,8 @@ void TestIntrinsicFunctions::testUnsignedIntToFloat()
     std::string options = "-DFUNC=(float) -DIN=uint -DOUT=float";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<unsigned, float, 1>(
+    // actually no ULP, but this allows Round-to-nearest-even (CPU) vs. Trunc-to-Zero (GPU)
+    testUnaryFunction<unsigned, float, 1, unsigned, CompareULP<1>>(
         code, options, [](unsigned i) -> float { return static_cast<float>(i); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
@@ -1116,7 +1118,8 @@ void TestIntrinsicFunctions::testItof()
     std::string options = "-DFUNC=vc4cl_itof -DIN=int -DOUT=float -DDEFINE_PROTOTYPE";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    testUnaryFunction<int, float, 1>(
+    // actually no ULP, but this allows Round-to-nearest-even (CPU) vs. Trunc-to-Zero (GPU)
+    testUnaryFunction<int, float, 1, int, CompareULP<2>>(
         code, options, [](int i) -> float { return static_cast<float>(i); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 

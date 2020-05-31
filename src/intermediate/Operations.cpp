@@ -183,6 +183,11 @@ qpu_asm::DecoratedInstruction Operation::convertToAsm(const FastMap<const Local*
         throw CompilationError(
             CompilationStep::CODE_GENERATION, "Can only apply r4 unpack mode when reading r4", to_string());
 
+    // make sure the 32-bit saturation pack mode is only used for iadd/isub operations
+    if(pack == PACK_32_32 && op.opAdd != OP_ADD.opAdd && op.opAdd != OP_SUB.opAdd)
+        throw CompilationError(CompilationStep::CODE_GENERATION,
+            "32-bit saturation is only applicable for integer addition/subtraction", to_string());
+
     InputMultiplex inMux0 = getInputMux(input0.first, getFirstArg().checkRegister(), input0.second);
     if(!input0.second)
     {
@@ -665,6 +670,11 @@ qpu_asm::DecoratedInstruction VectorRotation::convertToAsm(const FastMap<const L
     if(!isFullRotationAllowed() && inMux != InputMultiplex::REGA)
         throw CompilationError(
             CompilationStep::CODE_GENERATION, "Per-quad rotate must take register-file A as input", to_string());
+
+    // make sure the 32-bit saturation pack mode is only used for iadd/isub operations
+    if(packMode == PACK_32_32)
+        throw CompilationError(CompilationStep::CODE_GENERATION,
+            "32-bit saturation is only applicable for integer addition/subtraction", to_string());
 
     if(input.first.isAccumulator() && inMux != InputMultiplex::REGA)
         input.first.num = REG_NOP.num; // Cosmetics, so vc4asm does not print "maybe reading reg xx"

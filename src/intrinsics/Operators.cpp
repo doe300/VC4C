@@ -632,12 +632,11 @@ static constexpr unsigned MSB = 31;
 
 Literal intrinsics::asr(Literal left, Literal right)
 {
-    if(right.signedInt() < 0)
-        throw CompilationError(CompilationStep::GENERAL, "ASR with negative numbers is not implemented");
     // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
     auto offset = right.unsignedInt() & 0x1F;
     if((-1 >> 31u) == -1)
-        // if signed right shift is arithmetic shift, then use that instead of the manual shifting
+        // if signed right shift is arithmetic shift on the underlying architecture, then use that instead of the manual
+        // shifting
         return Literal(left.signedInt() >> offset);
 
     std::bitset<sizeof(int32_t) * 8> tmp(static_cast<uint64_t>(left.signedInt()));

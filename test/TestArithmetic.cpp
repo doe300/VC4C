@@ -7,6 +7,8 @@
 #include "TestArithmetic.h"
 #include "emulation_helper.h"
 
+#include "intrinsics/Operators.h"
+
 #include <climits>
 
 // TODO for floating point checks, add Inf/NaN values
@@ -622,7 +624,8 @@ void TestArithmetic::testUnsignedCharAddition()
 }
 void TestArithmetic::testFloatAddition()
 {
-    testBinaryOperation<float>(config, "-DTYPE=float16 -DOP=+", std::plus<float>{},
+    testBinaryOperation<float>(config, "-DTYPE=float16 -DOP=+",
+        vc4c::FlushDenormsAndRoundToZero<float, float, std::plus<float>>{},
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testSignedLongAddition()
@@ -668,7 +671,8 @@ void TestArithmetic::testUnsignedCharSubtraction()
 }
 void TestArithmetic::testFloatSubtraction()
 {
-    testBinaryOperation<float>(config, "-DTYPE=float16 -DOP=-", std::minus<float>{},
+    testBinaryOperation<float>(config, "-DTYPE=float16 -DOP=-",
+        vc4c::FlushDenormsAndRoundToZero<float, float, std::minus<float>>{},
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestArithmetic::testSignedLongSubtraction()
@@ -762,7 +766,8 @@ void TestArithmetic::testUnsignedCharDivision()
 
 void TestArithmetic::testFloatingPointDivision()
 {
-    testBinaryOperation<float, CompareULP<3>>(config, "-DTYPE=float16 -DOP=/", std::divides<float>{},
+    testBinaryOperation<float, CompareULP<3>>(config, "-DTYPE=float16 -DOP=/",
+        vc4c::FlushDenormsAndRoundToZero<float, float, std::divides<float>>{},
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

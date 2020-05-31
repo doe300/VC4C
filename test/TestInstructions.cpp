@@ -6,6 +6,8 @@
 
 #include "TestInstructions.h"
 
+#include "opcode_test.h"
+
 #include "Bitfield.h"
 #include "GlobalValues.h"
 #include "HalfType.h"
@@ -19,6 +21,7 @@
 #include "normalization/LiteralValues.h"
 
 #include <functional>
+#include <map>
 
 using namespace vc4c;
 
@@ -49,6 +52,7 @@ TestInstructions::TestInstructions()
     TEST_ADD(TestInstructions::testLoadInstruction);
     TEST_ADD(TestInstructions::testValueRanges);
     TEST_ADD(TestInstructions::testInstructionEquality);
+    TEST_ADD(TestInstructions::testOpCodeEmulation);
 }
 
 // out-of-line virtual destructor
@@ -802,7 +806,7 @@ void TestInstructions::testOpCodeFlags()
 
     TEST_ASSERT(checkFlagClear(OP_ITOF(INT_ONE, INT_ONE).second, FlagsMask::ZERO))
     TEST_ASSERT(checkFlagClear(OP_ITOF(INT_ONE, INT_ONE).second, FlagsMask::NEGATIVE))
-    TEST_ASSERT(checkFlagClear(OP_ITOF(INT_ONE, INT_ONE).second, FlagsMask::CARRY))
+    TEST_ASSERT(checkFlagSet(OP_ITOF(INT_ONE, INT_ONE).second, FlagsMask::CARRY))
     TEST_ASSERT(checkFlagSet(OP_ITOF(INT_ZERO, INT_ZERO).second, FlagsMask::ZERO))
     TEST_ASSERT(checkFlagSet(OP_ITOF(INT_MINUS_ONE, INT_MINUS_ONE).second, FlagsMask::NEGATIVE))
 
@@ -863,7 +867,7 @@ void TestInstructions::testOpCodeFlags()
     TEST_ASSERT(checkFlagClear(OP_SUB(INT_ONE, INT_ONE).second, FlagsMask::SIGNED_OVERFLOW))
     TEST_ASSERT(checkFlagSet(OP_SUB(INT_ONE, INT_ONE).second, FlagsMask::ZERO))
     TEST_ASSERT(checkFlagSet(OP_SUB(INT_MINUS_ONE, INT_ONE).second, FlagsMask::NEGATIVE))
-    TEST_ASSERT(checkFlagSet(OP_SUB(INT_MINUS_ONE, INT_ONE).second, FlagsMask::CARRY))
+    TEST_ASSERT(checkFlagClear(OP_SUB(INT_MINUS_ONE, INT_ONE).second, FlagsMask::CARRY))
     TEST_ASSERT(checkFlagSet(OP_SUB(INT_MAX, INT_MINUS_ONE).second, FlagsMask::SIGNED_OVERFLOW))
 
     TEST_ASSERT(checkFlagClear(OP_XOR(INT_ONE, INT_MINUS_ONE).second, FlagsMask::ZERO))
@@ -2003,5 +2007,97 @@ void TestInstructions::testInstructionEquality()
         intermediate::MutexLock inst(intermediate::MutexAccess::LOCK);
         op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
+    }
+}
+
+void TestInstructions::testOpCodeEmulation()
+{
+    std::map<OpCode, std::vector<TestEntry>> tests = {
+        {OP_FADD, TEST_OP_FADD},
+        {OP_FSUB, TEST_OP_FSUB},
+        {OP_FMIN, TEST_OP_FMIN},
+        {OP_FMAX, TEST_OP_FMAX},
+        {OP_FMINABS, TEST_OP_FMINABS},
+        {OP_FMAXABS, TEST_OP_FMAXABS},
+        {OP_FTOI, TEST_OP_FTOI},
+        {OP_ITOF, TEST_OP_ITOF},
+        {OP_ADD, TEST_OP_ADD},
+        {OP_SUB, TEST_OP_SUB},
+        {OP_SHR, TEST_OP_SHR},
+        // TODO ASR for 0x80000000 as first operand gives a strange result 338369608 iff offset & 31 == 0
+        // {OP_ASR, TEST_OP_ASR},
+        {OP_ROR, TEST_OP_ROR},
+        {OP_SHL, TEST_OP_SHL},
+        {OP_MIN, TEST_OP_MIN},
+        {OP_MAX, TEST_OP_MAX},
+        // TODO AND for 0x80000000 as first operand gives very strange results
+        // {OP_AND, TEST_OP_AND},
+        {OP_OR, TEST_OP_OR},
+        {OP_XOR, TEST_OP_XOR},
+        {OP_NOT, TEST_OP_NOT},
+        {OP_CLZ, TEST_OP_CLZ},
+        {OP_V8ADDS, TEST_OP_V8ADDS},
+        {OP_V8SUBS, TEST_OP_V8SUBS},
+        {OP_FMUL, TEST_OP_FMUL},
+        {OP_MUL24, TEST_OP_MUL24},
+        {OP_V8MULD, TEST_OP_V8MULD},
+        {OP_V8MIN, TEST_OP_V8MIN},
+        {OP_V8MAX, TEST_OP_V8MAX},
+    };
+
+    const auto toResultError = [&](const OpCode& code, const TestEntry& entry, int32_t result) -> std::string {
+        if(code.numOperands == 1)
+            return code.name + (" " + std::to_string(entry.firstOp)) + " = " + std::to_string(result);
+        return std::to_string(entry.firstOp) + " " + code.name + " " + std::to_string(entry.secondOp) + " = " +
+            std::to_string(result);
+    };
+    const auto toFlags = [](const ElementFlags& flags) -> std::string {
+        return std::string(
+                   flags.negative == FlagStatus::SET ? "n" : flags.negative == FlagStatus::UNDEFINED ? "n?" : "") +
+            (flags.carry == FlagStatus::SET ? "c" : flags.carry == FlagStatus::UNDEFINED ? "c?" : "") +
+            (flags.zero == FlagStatus::SET ? "z" : flags.zero == FlagStatus::UNDEFINED ? "z?" : "");
+    };
+    const auto toFlagError = [&](const OpCode& code, const TestEntry& entry, std::string flags) -> std::string {
+        if(code.numOperands == 1)
+            return code.name + (" " + std::to_string(entry.firstOp)) + " -> " + flags;
+        return std::to_string(entry.firstOp) + " " + code.name + " " + std::to_string(entry.secondOp) + " -> " + flags;
+    };
+
+    for(const auto& test : tests)
+    {
+        for(const auto& op : test.second)
+        {
+            auto result = test.first(Literal(op.firstOp), Literal(op.secondOp), TYPE_INT32);
+
+            if(op.result != result.first.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result),
+                    toResultError(test.first, op, result.first.value().getLiteralValue().value().signedInt()));
+            }
+
+            auto flags = toFlags(result.second[0]);
+
+            if(test.first.runsOnAddALU() && flags != op.flags)
+            {
+                // TODO for now can't check flags on MUL ALU, since the code generated by py-videocore is wrong and sets
+                // the flags from the ADD ALU
+                TEST_ASSERT_EQUALS(op.flags, toFlagError(test.first, op, flags));
+            }
+
+            if(test.first == OP_ADD || test.first == OP_SUB)
+            {
+                // only OP_ADD and OP_SUB can apply 32-bit saturation pack mode at all
+                auto res = PACK_32_32(result.first.value(), result.second);
+                if(op.resultSaturated != res.value().getLiteralValue().value().signedInt())
+                {
+                    TEST_ASSERT_EQUALS(std::to_string(op.resultSaturated),
+                        toResultError(test.first, op, res.value().getLiteralValue().value().signedInt()));
+                }
+            }
+            else
+            {
+                TEST_ASSERT_EQUALS(op.result, op.resultSaturated);
+            }
+        }
     }
 }

@@ -52,14 +52,23 @@ public:
     void testShortAll();
     void testCharAll();
     void testBitselectInt();
+    void testBitselectUnsignedInt();
     void testBitselectShort();
+    void testBitselectUnsignedShort();
     void testBitselectChar();
+    void testBitselectUnsignedChar();
     void testSelectInt();
+    void testSelectUnsignedInt();
     void testSelectShort();
+    void testSelectUnsignedShort();
     void testSelectChar();
+    void testSelectUnsignedChar();
     void testSelectIntScalar();
+    void testSelectUnsignedIntScalar();
     void testSelectShortScalar();
+    void testSelectUnsignedShortScalar();
     void testSelectCharScalar();
+    void testSelectUnsignedCharScalar();
 
 private:
     vc4c::Configuration config;

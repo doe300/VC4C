@@ -491,10 +491,15 @@ namespace vc4c
     /*
      * Saturate (signed) 32-bit number (given overflow/carry flags)
      *
-     * Saturates any result exceeding int32 maximum value (2147483647) to 0x7FFFFFFF and any result exceeding int32
-     * minimum value (-2147483648) to 0x80000000.
+     * For iadd, saturates any result exceeding int32 maximum value (2147483647) to 0x7FFFFFFF and any result exceeding
+     * int32 minimum value (-2147483648) to 0x80000000.
+     *
+     * Fir isub, also saturates on INT_MAX and INT_MIN, but sign of saturated value (result) depends on the sign of the
+     * second operand. E.g. INT_MIN - INT_MAX -> INT_MAX while INT_MAX - INT_MIN -> INT_MIN.
+     *
      * NOTE: This saturation MUST be applied to the operation which executes the over-/underflowing operation.
      * NOTE: The saturation is based on int32 minimum/maximum values and independent of the carry-flag!
+     * NOTE: The saturation is only valid for iadd/isub operations.
      * NOTE: The pm bit is part of the pack value and set as high bit
      */
     constexpr Pack PACK_32_32{8};
@@ -743,10 +748,11 @@ namespace vc4c
         NEGATIVE_MSB_SET = 0x20,
         // Carry flag is never set
         CARRY_NEVER = 0x100,
-        // Carry flag is set if the operation would set the 33th bit (e.g. -1 + -1 / 0xFFFFFFFF + 0xFFFFFFFF =
-        // 0x1FFFFFFFE)
+        // Carry flag is set if the operation would set the 32nd bit (e.g. -1 + -1 / 0xFFFFFFFF + 0xFFFFFFFF =
+        // 0x1FFFFFFFE). NOTE: If other higher bits would be set, the carry flag will not be set, only for 32nd!
         CARRY_WORD_OVERFLOW = 0x200,
-        // Carry flag is set if the operation would set the -1th bit (e.g. 1 >> 1)
+        // Carry flag is set if the operation would set the -1th bit (e.g. 1 >> 1). NOTE: If other lower bits would be
+        // set, the carry flag will not be set, only for -1st (e.g. 1 >> 4 does not set carry)!
         CARRY_WORD_UNDERFLOW = 0x400,
         // Carry flag is set if the first (signed integer/float) operand is greater than the second operand
         CARRY_FIRST_GREATER_SECOND = 0x800,
@@ -968,7 +974,8 @@ namespace vc4c
      * - NaN + -Inf = -Inf
      * - Inf + -Inf = -Inf
      * - -Inf + -Inf = -Inf
-     * -> TODO simply does "normal" float add?! So different NaN codes result in different result NaN vs. Inf?
+     *
+     * NOTE: All additions with NaN result in an +/- Inf
      */
     static constexpr OpCode OP_FADD{"fadd", 1, 0, 2, true, true,
         add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_POSITIVE)};
@@ -982,6 +989,8 @@ namespace vc4c
      * - NaN - -Inf = Inf
      * - Inf - -Inf = Inf
      * - -Inf - -Inf = Inf
+     *
+     * NOTE: All subtractions with NaN result in an +/- Inf
      */
     static constexpr OpCode OP_FSUB{"fsub", 2, 0, 2, true, true,
         add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_POSITIVE)};
@@ -1070,7 +1079,7 @@ namespace vc4c
      * Converts Signed integer to floating-point
      */
     static constexpr OpCode OP_ITOF{"itof", 8, 0, 1, false, true,
-        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};
+        add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_POSITIVE)};
     /*
      * Integer addition
      */

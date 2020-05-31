@@ -165,11 +165,17 @@ namespace vc4c
 					{toParameter(std::vector<unsigned>{0x01020304}), toParameter(std::vector<unsigned>(1))}, {}, maxExecutionCycles),
 					addVector({}, 1, std::vector<unsigned>{0x01020304})
 				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/integer_add_sat.cl", "test_add_sat_int3",
+					{toParameter(std::vector<int>{std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), bit_cast<uint32_t, int32_t>(0x97c4aa2f), bit_cast<uint32_t, int32_t>(0xa91a356a)}),
+							toParameter(std::vector<int>{-1, 1, std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), bit_cast<uint32_t, int32_t>(0xa91a356a), bit_cast<uint32_t, int32_t>(0xa91a356a)}), toParameter(std::vector<int>(6))
+					}, toConfig(2), maxExecutionCycles),
+					addVector({}, 2, std::vector<int>{std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), std::numeric_limits<int>::min(), std::numeric_limits<int>::min()})
+				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/sub_sat.cl", "test_sub_sat_int",
-					{toParameter(std::vector<int>{std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), std::numeric_limits<int>::min(), std::numeric_limits<int>::max()}),
-							toParameter(std::vector<int>{1, -1, std::numeric_limits<int>::max(), std::numeric_limits<int>::min()}), toParameter(std::vector<int>(4))
-					}, toConfig(4, 1, 1, 1, 1, 1), maxExecutionCycles),
-					addVector({}, 2, std::vector<int>{std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), std::numeric_limits<int>::min(), std::numeric_limits<int>::max()})
+					{toParameter(std::vector<int>{std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), bit_cast<uint32_t, int32_t>(0x8c7f0aac)}),
+							toParameter(std::vector<int>{1, -1, std::numeric_limits<int>::max(), std::numeric_limits<int>::min(), bit_cast<uint32_t, int32_t>(0x1902f8c8)}), toParameter(std::vector<int>(5))
+					}, toConfig(5, 1, 1, 1, 1, 1), maxExecutionCycles),
+					addVector({}, 2, std::vector<int>{std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), std::numeric_limits<int>::min()})
 				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/uchar_compare.cl", "test_select",
 					{toParameter(std::vector<unsigned>{0x01020304}), toParameter(std::vector<unsigned>{0x04020301}), toParameter(std::vector<unsigned>(1))}, {}, maxExecutionCycles),
@@ -238,6 +244,10 @@ namespace vc4c
 					}, toConfig(4, 1, 1, 2), maxExecutionCycles),
 				    // dest[gid] = sum(src0[gid], src1[gid], ..., src63[gid])
 	                addVector({}, 64, std::vector<unsigned>{0 * 64, 1 * 64, 2 * 64, 3 * 64, 4 * 64, 5 * 64, 6 * 64, 7 * 64})
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/sub_buffers_read_write.cl", "readTest",
+					{toParameter(std::vector<unsigned>{0x01020304, 0x05060708}), toScalarParameter(0x10)}, toConfig(4, 1, 1, 2), maxExecutionCycles),
+					addVector({}, 0, std::vector<unsigned>{0x11121314, 0x15161718})
 				)
 		};
 

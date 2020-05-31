@@ -14,6 +14,7 @@
 #include "CompilationError.h"
 
 #include <cmath>
+#include <functional>
 #include <map>
 
 using namespace vc4c;
@@ -504,12 +505,12 @@ Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const Ele
         case FlagStatus::SET:
             /*
              * Rationale:
-             * add and sub can only add up t 1 bit:
+             * add and sub can only add up to 1 bit:
              * - for signed positive overflow, the MSB is set (negative)
              * - for signed negative overflow, the MSB depends on the second MSB values?
              * TODO not correct for signed negative overflow?
              */
-            return flags.negative == FlagStatus::CLEAR ? Literal(0x80000000u) : Literal(0x7FFFFFFFu);
+            return flags.carry == FlagStatus::SET ? Literal(0x80000000u) : Literal(0x7FFFFFFFu);
         case FlagStatus::UNDEFINED:
         default:
             throw CompilationError(CompilationStep::GENERAL, "Cannot saturate on unknown overflow flags",
@@ -855,7 +856,7 @@ static std::pair<Optional<Literal>, ElementFlags> setFlags(Literal lit, bool is3
     return tmp;
 }
 
-static bool checkMinMaxCarry(const Literal& arg0, const Literal& arg1, bool useAbs = false)
+static bool checkMinMaxCarry(const Literal& arg0, const Literal& arg1)
 {
     // VideoCore IV sets carry flag for fmin/fmax/fminabs/fmaxabs(a, b) if a > b
     // VideoCore IV considers NaN > Inf for min/fmax/fminabs/fmaxabs
@@ -864,10 +865,17 @@ static bool checkMinMaxCarry(const Literal& arg0, const Literal& arg1, bool useA
         // works, since the bit-representation is ordered same as integers
         return arg0.signedInt() > arg1.signedInt();
     if(std::isnan(arg0.real()))
-        return true;
+        // -NaN < all < NaN
+        return !std::signbit(arg0.real());
     if(std::isnan(arg1.real()))
-        return false;
-    return useAbs ? (std::abs(arg0.real()) > std::abs(arg1.real())) : (arg0.real() > arg1.real());
+        // -NaN < all < NaN
+        return std::signbit(arg1.real());
+    return arg0.real() > arg1.real();
+}
+
+static constexpr float infinity(bool sign)
+{
+    return sign ? -std::numeric_limits<float>::infinity() : std::numeric_limits<float>::infinity();
 }
 
 static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Literal secondLit)
@@ -875,63 +883,126 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
     switch(code.opAdd)
     {
     case OP_FADD.opAdd:
-        return setFlags(Literal(firstLit.real() + secondLit.real()), (firstLit.real() + secondLit.real()) > 0.0f);
+    {
+        // -0 seems to be treated generally as +0
+        auto firstArg = firstLit.real() == -0.0f ? 0.0f : firstLit.real();
+        auto secondArg = secondLit.real() == -0.0f ? 0.0f : secondLit.real();
+        if(std::isnan(secondArg))
+            // for addition with NaN, the sign of the NaN is taken
+            // this also applies if both operands are NaNs
+            return setFlags(Literal(infinity(std::signbit(secondArg))), !std::signbit(secondArg));
+        if(std::isnan(firstArg))
+            // for addition with NaN, the sign of the NaN is taken
+            return setFlags(Literal(infinity(std::signbit(firstArg))), !std::signbit(firstArg));
+        auto tmp = FlushDenormsAndRoundToZero<float, float, std::plus<float>>{}(firstArg, secondArg);
+        return setFlags(Literal(tmp), tmp > 0.0f);
+    }
     case OP_FSUB.opAdd:
-        return setFlags(Literal(firstLit.real() - secondLit.real()), (firstLit.real() - secondLit.real()) > 0.0f);
+    {
+        // -0 seems to be treated generally as +0
+        auto firstArg = firstLit.real() == -0.0f ? 0.0f : firstLit.real();
+        auto secondArg = secondLit.real() == -0.0f ? 0.0f : secondLit.real();
+        if(std::isnan(secondArg))
+            // for subtraction with NaN, the sign of the NaN is inverted
+            // x - NaN -> -Inf, x - -NaN -> +Inf
+            // this also applies if both operands are NaNs
+            return setFlags(Literal(infinity(!std::signbit(secondArg))), std::signbit(secondArg));
+        if(std::isnan(firstArg))
+            // for subtraction with NaN, the sign of the NaN is taken
+            return setFlags(Literal(infinity(std::signbit(firstArg))), !std::signbit(firstArg));
+        auto tmp = FlushDenormsAndRoundToZero<float, float, std::minus<float>>{}(firstArg, secondArg);
+        return setFlags(Literal(tmp), tmp > 0.0f);
+    }
     case OP_FMIN.opAdd:
+    {
         if(std::isnan(firstLit.real()))
+        {
+            if(std::signbit(firstLit.real()))
+                // -NaN is less then everything else
+                return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit));
             return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit));
+        }
         if(std::isnan(secondLit.real()))
+        {
+            if(std::signbit(secondLit.real()))
+                // -NaN is less then everything else
+                return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit));
             return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit));
+        }
         static_assert(std::min(std::numeric_limits<float>::infinity(), 0.0f) == 0.0f, "");
         static_assert(std::min(-std::numeric_limits<float>::infinity(), 0.0f) != 0.0f, "");
         return setFlags(
             Literal(std::min(firstLit.real(), secondLit.real())), firstLit.real() > secondLit.real(), false);
+    }
     case OP_FMAX.opAdd:
+    {
         if(std::isnan(firstLit.real()))
+        {
+            if(std::signbit(firstLit.real()))
+                // -NaN is less then everything else
+                return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit));
             return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit));
+        }
         if(std::isnan(secondLit.real()))
+        {
+            if(std::signbit(secondLit.real()))
+                // -NaN is less then everything else
+                return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit));
             return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit));
+        }
+        if((firstLit.real() == 0.0f || firstLit.real() == -0.0f) &&
+            (secondLit.real() == -0.0f || secondLit.real() == 0.0f))
+            // test have shown that both zeroes are treated equal, with the second operand being returned
+            return setFlags(secondLit, false);
         static_assert(std::max(std::numeric_limits<float>::infinity(), 0.0f) != 0.0f, "");
         static_assert(std::max(-std::numeric_limits<float>::infinity(), 0.0f) == 0.0f, "");
         return setFlags(
             Literal(std::max(firstLit.real(), secondLit.real())), firstLit.real() > secondLit.real(), false);
+    }
     case OP_FMINABS.opAdd:
+    {
+        auto carryFlag = checkMinMaxCarry(Literal(std::abs(firstLit.real())), Literal(std::abs(secondLit.real())));
         if(std::isnan(firstLit.real()))
-            return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit, true));
+            return setFlags(Literal(std::abs(secondLit.real())), carryFlag);
         if(std::isnan(secondLit.real()))
-            return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit, true));
-        return setFlags(Literal(std::min(std::fabs(firstLit.real()), std::fabs(secondLit.real()))),
-            std::fabs(firstLit.real()) > std::fabs(secondLit.real()), false);
+            return setFlags(Literal(std::abs(firstLit.real())), carryFlag);
+        return setFlags(Literal(std::min(std::abs(firstLit.real()), std::abs(secondLit.real()))), carryFlag, false);
+    }
     case OP_FMAXABS.opAdd:
+    {
+        auto carryFlag = checkMinMaxCarry(Literal(std::abs(firstLit.real())), Literal(std::abs(secondLit.real())));
         if(std::isnan(firstLit.real()))
-            return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit, true));
+            return setFlags(Literal(std::abs(firstLit.real())), carryFlag);
         if(std::isnan(secondLit.real()))
-            return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit, true));
+            return setFlags(Literal(std::abs(secondLit.real())), carryFlag);
         if(std::isinf(firstLit.real()))
-            return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit, true));
+            return setFlags(Literal(std::abs(firstLit.real())), carryFlag);
         if(std::isinf(secondLit.real()))
-            return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit, true));
-        return setFlags(Literal(std::max(std::fabs(firstLit.real()), std::fabs(secondLit.real()))),
-            std::fabs(firstLit.real()) > std::fabs(secondLit.real()), false);
+            return setFlags(Literal(std::abs(secondLit.real())), carryFlag);
+        return setFlags(Literal(std::max(std::fabs(firstLit.real()), std::fabs(secondLit.real()))), carryFlag, false);
+    }
     case OP_FTOI.opAdd:
-        // XXX seem to convert unsigned values > 2^31 to unsigned integer and anything out of bounds [INT_MIN,
-        // UINT_MAX] to 0. Could make use of this to speed up fptoui?
+        // Converts unsigned values > 2^31 to unsigned integer and anything out of bounds [INT_MIN, UINT_MAX] to 0.
         if(std::isnan(firstLit.real()) || std::isinf(firstLit.real()) ||
             std::abs(firstLit.real()) > static_cast<float>(std::numeric_limits<int64_t>::max()) ||
             std::abs(static_cast<int64_t>(firstLit.real())) > std::numeric_limits<int32_t>::max())
-            return setFlags(Literal(0u));
+            return setFlags(Literal(0u), false);
         return setFlags(Literal(static_cast<int32_t>(firstLit.real())), false);
     case OP_ITOF.opAdd:
-        return setFlags(Literal(static_cast<float>(firstLit.signedInt())), false);
+    {
+        auto tmp = FlushDenormsAndRoundToZero<float, int32_t, std::function<float(int32_t, int32_t)>>{
+            [](int32_t val, int32_t) -> float {
+                return static_cast<float>(val);
+            }}(firstLit.signedInt(), 0 /* don't care */);
+        return setFlags(Literal(tmp), firstLit.signedInt() > 0);
+    }
     case OP_ADD.opAdd:
     {
         auto extendedVal =
             static_cast<uint64_t>(firstLit.unsignedInt()) + static_cast<uint64_t>(secondLit.unsignedInt());
         auto signedVal = static_cast<int64_t>(firstLit.signedInt()) + static_cast<int64_t>(secondLit.signedInt());
         // use unsigned addition to have defined overflow wrap behavior, the actual calculation is identical
-        return setFlags(Literal(firstLit.unsignedInt() + secondLit.unsignedInt()),
-            extendedVal > static_cast<uint64_t>(0xFFFFFFFFul),
+        return setFlags(Literal(firstLit.unsignedInt() + secondLit.unsignedInt()), extendedVal > uint64_t{0xFFFFFFFF},
             signedVal > static_cast<int64_t>(std::numeric_limits<int32_t>::max()) ||
                 signedVal < static_cast<int64_t>(std::numeric_limits<int32_t>::min()));
     }
@@ -940,24 +1011,29 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
         auto extendedVal = static_cast<int64_t>(firstLit.signedInt()) - static_cast<int64_t>(secondLit.signedInt());
         // use unsigned subtraction to have defined overflow wrap behavior, the actual calculation is identical
         return setFlags(Literal(firstLit.unsignedInt() - secondLit.unsignedInt()),
-            extendedVal<0, extendedVal> static_cast<int64_t>(std::numeric_limits<int32_t>::max()) ||
+            (firstLit.signedInt() >= 0 && secondLit.signedInt() < 0 && extendedVal != 0) ||
+                (firstLit.signedInt() >= 0 && secondLit.signedInt() > 0 && extendedVal < 0) ||
+                (firstLit.signedInt() < 0 && secondLit.signedInt() < 0 && extendedVal < 0),
+            extendedVal > static_cast<int64_t>(std::numeric_limits<int32_t>::max()) ||
                 extendedVal < static_cast<int64_t>(std::numeric_limits<int32_t>::min()));
     }
     case OP_SHR.opAdd:
     {
         // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
         auto offset = secondLit.unsignedInt() & 0x1F;
-        // carry is set if bits set are shifted out of the register: val & (2^shift-offset-1) != 0
-        auto shiftLoss = firstLit.unsignedInt() & ((1u << offset) - 1u);
-        return setFlags(Literal(firstLit.unsignedInt() >> offset), shiftLoss != 0);
+        // carry is set iff the -1st bit is set. If only other bits (-2nd, -3rd, etc.) are shifted out of the value, the
+        // carry flag is not set
+        auto shiftLoss = offset != 0 && ((firstLit.unsignedInt() >> (offset - 1)) & 1);
+        return setFlags(Literal(firstLit.unsignedInt() >> offset), shiftLoss);
     }
     case OP_ASR.opAdd:
     {
         // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
         auto offset = secondLit.unsignedInt() & 0x1F;
-        // carry is set if bits set are shifted out of the register: val & (2^shift-offset-1) != 0
-        auto shiftLoss = firstLit.unsignedInt() & ((1u << offset) - 1u);
-        return setFlags(intrinsics::asr(firstLit, secondLit), shiftLoss != 0, false);
+        // carry is set iff the -1st bit is set. If only other bits (-2nd, -3rd, etc.) are shifted out of the value, the
+        // carry flag is not set.
+        auto shiftLoss = offset != 0 && ((firstLit.unsignedInt() >> (offset - 1)) & 1);
+        return setFlags(intrinsics::asr(firstLit, secondLit), shiftLoss, false);
     }
     case OP_ROR.opAdd:
         return setFlags(Literal(rotate_right(firstLit.unsignedInt(), secondLit.signedInt())), false);
@@ -965,8 +1041,11 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
     {
         // Tests have shown that on VC4 all shifts (asr, shr, shl) only take the last 5 bits of the offset (modulo 32)
         auto offset = secondLit.unsignedInt() & 0x1F;
-        auto extendedVal = static_cast<uint64_t>(firstLit.unsignedInt()) << offset;
-        return setFlags(Literal(firstLit.unsignedInt() << offset), extendedVal > static_cast<uint64_t>(0xFFFFFFFFul));
+        // carry is set iff the 32st bit is set. If only other bits (33rd, 35th, etc.) are shifted out of the value, the
+        // carry flag is not set.
+        auto extendedResult = static_cast<uint64_t>(firstLit.unsignedInt()) << offset;
+        auto shiftLoss = ((extendedResult >> 32) & 1) == 1;
+        return setFlags(Literal(firstLit.unsignedInt() << offset), shiftLoss);
     }
     case OP_MIN.opAdd:
         return setFlags(Literal(std::min(firstLit.signedInt(), secondLit.signedInt())),
@@ -989,7 +1068,18 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
     switch(code.opMul)
     {
     case OP_FMUL.opMul:
-        return setFlags(Literal(firstLit.real() * secondLit.real()));
+    {
+        // -0 seems to be treated generally as +0
+        auto firstArg = flushDenorms(firstLit.real() == -0.0f ? 0.0f : firstLit.real());
+        auto secondArg = flushDenorms(secondLit.real() == -0.0f ? 0.0f : secondLit.real());
+        auto eitherSign = std::signbit(firstArg) != std::signbit(secondArg);
+        if(firstArg == 0.0f || secondArg == 0.0f)
+            // multiplication with zero beats any NaN/Inf considerations
+            return setFlags(Literal(0.0f));
+        if(std::isnan(firstArg) || std::isnan(secondArg))
+            return setFlags(Literal(infinity(eitherSign)), !eitherSign);
+        return setFlags(Literal(firstArg * secondArg));
+    }
     case OP_MUL24.opMul:
     {
         auto extendedVal = static_cast<uint64_t>(firstLit.unsignedInt() & 0xFFFFFFu) *
@@ -1029,7 +1119,7 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
         std::transform(bytesA.begin(), bytesA.end(), bytesB.begin(), bytesOut.begin(), func);
         uint32_t result = ((bytesOut[3] & 0xFF) << 24) | ((bytesOut[2] & 0xFF) << 16) | ((bytesOut[1] & 0xFF) << 8) |
             (bytesOut[0] & 0xFF);
-        return setFlags(Literal(result));
+        return setFlags(Literal(result), false);
     }
 
     return std::make_pair(Optional<Literal>{}, ElementFlags{});

@@ -41,8 +41,10 @@ public:
     void testLoadInstruction();
 
     void testValueRanges();
-    
+
     void testInstructionEquality();
+
+    void testOpCodeEmulation();
 };
 
 #endif /* TEST_INSTRUCTIONS_H */
