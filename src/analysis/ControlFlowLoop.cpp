@@ -260,12 +260,9 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
      */
     FastAccessList<InductionVariable> variables;
 
-    // The "last" node inside the loop, the node which either branches back into the loop or outside of it depending on
-    // the loop condition
-    // XXX isn't this always the header?? Also for do-while loops??
+    // The loop tail, the block taking the repetition branch
     const CFGNode* tail = nullptr;
-    // The last branch inside the tail. NOTE: This branch is guaranteed to be one of the repetition/cancellation branch,
-    // but it is not guaranteed which one it is!
+    // The repetition branch
     InstructionWalker tailBranch{};
 
     for(auto local : findInductionCandidates(*this, dependencyGraph))
@@ -347,30 +344,8 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
             break;
 
         auto successors = findSuccessors();
-        if(!tail)
-        {
-            // calculate the tail only when required the first time
-            if(successors.size() != 1)
-                // cannot determine repetition branch with multiple successors for now
-                // This should never really happen, unless there is a goto somewhere...
-                break;
-            (*successors.begin())->forAllIncomingEdges([&](const CFGNode& pred, const CFGEdge& edge) {
-                auto predIt = find(&pred);
-                if(predIt != end())
-                {
-                    if(tail)
-                    {
-                        // multiple candidates, abort
-                        tail = nullptr;
-                        tailBranch = InstructionWalker{};
-                        return false;
-                    }
-                    tail = &pred;
-                    tailBranch = edge.data.getPredecessor(tail->key);
-                }
-                return true;
-            });
-        }
+        if(!tail && (tail = getTail()))
+            tailBranch = backEdge->data.getPredecessor(tail->key);
         if(!tail || tailBranch.isEndOfBlock())
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -397,16 +372,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
                 }
                 repeatConditionLocal = pair.first->local();
             }
-            // if the tailBranch is the branch to repeat the loop, the repeatCondition is the condition of the
-            // tailBranch. If it is the branch to cancel the loop, invert the condition it.
-            auto successorIt = std::find_if(successors.begin(), successors.end(),
-                [&](const CFGNode* node) -> bool { return node->key->getLabel()->getLabel() == branch->getTarget(); });
-            if(successorIt == successors.end())
-                // repetition branch
-                repeatCondition = branch->branchCondition.toConditionCode();
-            else
-                // cancellation branch
-                repeatCondition = branch->branchCondition.invert().toConditionCode();
+            repeatCondition = branch->branchCondition.toConditionCode();
         }
 
         if(!repeatConditionLocal)
@@ -834,6 +800,7 @@ bool ControlFlowLoop::operator!=(const ControlFlowLoop& other) const noexcept
     return !(*this == other);
 }
 
+LCOV_EXCL_START
 std::string ControlFlowLoop::to_string() const
 {
     std::stringstream ss;
@@ -853,6 +820,7 @@ std::string ControlFlowLoop::to_string() const
     ss << '}';
     return ss.str();
 }
+LCOV_EXCL_STOP
 
 LoopInclusionTreeNodeBase::~LoopInclusionTreeNodeBase() noexcept = default;
 
@@ -933,6 +901,7 @@ bool LoopInclusionTreeNodeBase::hasCFGNodeInChildren(const CFGNode* node) const
     return found;
 }
 
+LCOV_EXCL_START
 std::string LoopInclusionTreeNodeBase::to_string() const
 {
     auto* self = castToTreeNode(this);
@@ -948,6 +917,7 @@ std::string LoopInclusionTreeNodeBase::to_string() const
         name.append("(unknown tail)");
     return name;
 }
+LCOV_EXCL_STOP
 
 std::unique_ptr<LoopInclusionTree> analysis::createLoopInclusingTree(const FastAccessList<ControlFlowLoop>& loops)
 {

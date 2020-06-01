@@ -43,11 +43,12 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(
     PROFILE_START(LivenessToInterference);
     for(auto& block : method)
     {
-        auto& blockAnalysis = livenessAnalysis.getLocalAnalysis(block);
-        auto& livenessChanges = livenessAnalysis.getChanges(block);
         if(block.empty())
             // empty block means no changes in live locals -> no changes in interference
             continue;
+
+        auto& blockAnalysis = livenessAnalysis.getLocalAnalysis(block);
+        auto& livenessChanges = livenessAnalysis.getChanges(block);
         // to update only the interference for local lifetime changes, we re-create the changes given from the
         // LivenessChangesAnalysis on the list of tracked live locals.
         auto& liveLocals = blockAnalysis.getEndResult();

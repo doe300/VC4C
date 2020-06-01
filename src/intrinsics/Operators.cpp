@@ -9,6 +9,7 @@
 #include "../Module.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/operators.h"
+#include "../normalization/LongOperations.h"
 #include "../periphery/SFU.h"
 #include "Comparisons.h"
 #include "log.h"
@@ -87,6 +88,66 @@ InstructionWalker intrinsics::intrinsifyUnsignedIntegerMultiplication(
     it.reset(new Operation(OP_ADD, op.getOutput().value(), resLo, resHi));
     it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
 
+    return it;
+}
+
+InstructionWalker intrinsics::intrinsifyLongMultiplication(
+    Method& method, InstructionWalker it, const intermediate::IntrinsicOperation& op)
+{
+    Value firstLower = UNDEFINED_VALUE;
+    Value firstUpper = UNDEFINED_VALUE;
+    Value secondLower = UNDEFINED_VALUE;
+    Value secondUpper = UNDEFINED_VALUE;
+    std::tie(firstLower, firstUpper) = normalization::getLowerAndUpperWords(op.getFirstArg());
+    std::tie(secondLower, secondUpper) = normalization::getLowerAndUpperWords(op.assertArgument(1));
+
+    /*
+     * Similar to the algorithm we use to split a 32-bit multiplications (above or below) into 24-bit/16-bit
+     * multiplications, we split the 64-bit multiplication into 32-bit multiplications:
+     *
+     *                             |     aUp     |     aLo     |
+     *  *                          |     bUp     |     bLo     |
+     * ---------------------------------------------------------
+     * |xxxxxx.xxxxxx.xxxxxx.xxxxxx|             |             |
+     *
+     *                             |         aLo * bLo         |
+     *   +                         |  aLo * bUp  |
+     *   +                         |  aUp * bLo  |
+     */
+
+    auto partType = TYPE_INT32.toVectorType(op.getOutput()->type.getVectorWidth());
+    auto result = method.addNewLocal(op.getOutput()->type, "%mul.result");
+    auto resultData = Local::getLocalData<MultiRegisterData>(result.checkLocal());
+    if(!resultData)
+        throw CompilationError(
+            CompilationStep::NORMALIZER, "Cannot lower a 64-bit multiplication to a non 64-bit output", op.to_string());
+
+    auto resLowLow = method.addNewLocal(partType, "%mul.resLowLow");
+    it.emplace(new intermediate::MethodCall(
+        Value(resLowLow), "mul_full", {firstLower, secondLower, Value(Literal(VC4CL_UNSIGNED), TYPE_INT8)}));
+    it = intrinsifyIntegerToLongMultiplication(
+        method, it, it.get<intermediate::MethodCall>(), resultData->lower->createReference());
+    it.nextInBlock();
+
+    auto resLowHigh = method.addNewLocal(partType, "%mul.resLowHigh");
+    it.emplace(
+        new intermediate::IntrinsicOperation("mul_full", Value(resLowHigh), Value(firstLower), Value(secondUpper)));
+    it = intrinsifyUnsignedIntegerMultiplication(method, it, *it.get<intermediate::IntrinsicOperation>());
+    it.nextInBlock();
+
+    auto resHighLow = method.addNewLocal(partType, "%mul.resHighLow");
+    it.emplace(
+        new intermediate::IntrinsicOperation("mul_full", Value(resHighLow), Value(firstUpper), Value(secondLower)));
+    it = intrinsifyUnsignedIntegerMultiplication(method, it, *it.get<intermediate::IntrinsicOperation>());
+    it.nextInBlock();
+
+    // Add the parts back together
+    auto highPart = assign(it, partType) = resLowLow + resLowHigh;
+    assign(it, resultData->upper->createReference()) = highPart + resHighLow;
+
+    // Let the #lowerLongOperation normalization step handle the actual move to the result, e.g. to be able to also
+    // handle flags
+    it.reset((new MoveOperation(*op.getOutput(), result))->copyExtrasFrom(&op));
     return it;
 }
 

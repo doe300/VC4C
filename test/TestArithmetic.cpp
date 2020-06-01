@@ -114,6 +114,8 @@ TestArithmetic::TestArithmetic(const vc4c::Configuration& config) : config(confi
     TEST_ADD(TestArithmetic::testUnsignedShortMultiplication);
     TEST_ADD(TestArithmetic::testUnsignedCharMultiplication);
     TEST_ADD(TestArithmetic::testFloatingPointMultiplication);
+    TEST_ADD(TestArithmetic::testSignedLongMultiplication);
+    TEST_ADD(TestArithmetic::testUnsignedLongMultiplication);
 
     TEST_ADD(TestArithmetic::testSignedIntDivision);
     TEST_ADD(TestArithmetic::testSignedShortDivision);
@@ -725,6 +727,18 @@ void TestArithmetic::testUnsignedCharMultiplication()
 void TestArithmetic::testFloatingPointMultiplication()
 {
     testBinaryOperation<float>(config, "-DTYPE=float16 -DOP=*", std::multiplies<float>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testSignedLongMultiplication()
+{
+    testBinaryOperation<int64_t>(config, "-DTYPE=long16 -DOP=*", std::multiplies<int64_t>{},
+        std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void TestArithmetic::testUnsignedLongMultiplication()
+{
+    testBinaryOperation<uint64_t>(config, "-DTYPE=ulong16 -DOP=*", std::multiplies<uint64_t>{},
         std::bind(&TestArithmetic::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

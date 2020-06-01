@@ -283,6 +283,44 @@ static InstructionWalker intrinsifyIntegerMultiplicationHighPart(
     return intrinsifyIntegerToLongMultiplication(method, it, it.get<MethodCall>());
 }
 
+static InstructionWalker intrinsifySaturatedSubtraction(
+    Method& method, InstructionWalker it, const MethodCall* callSite)
+{
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Intrinsifying 32-bit integer saturated subtaction: " << callSite->to_string() << logging::endl);
+    auto out = callSite->getOutput().value();
+
+    auto normalValue = assign(it, out.type) =
+        as_signed{callSite->assertArgument(0)} - as_signed{callSite->assertArgument(1)};
+
+    /*
+     * 1.op 2.op | res+ res- | examples
+     *  +    +  ->  ok   ok  | INT_MAX - 0 = INT_MAX, 0 - INT_MAX = -INT_MAX
+     *  +    -  ->  ok  sat+ | INT_MAX - INT_MIN = sat+, 0 - INT_MIN = sat+, INT_MAX - -1 = sat+
+     *  -    +  -> sat-  ok  | -1 - INT_MAX = INT_MIN, INT_MIN - INT_MAX = sat-, INT_MIN - 1 = sat-
+     *  -    -  ->  ok   ok  | INT_MIN - INT_MIN = 0, INT_MIN - -1 = INT_MIN+1, -1 - INT_MIN = INT_MAX
+     *
+     * => Overflow iff: sign(1.op) != sign(2.op) && sign(2.op) == sign(res)
+     */
+
+    auto firstSign = assign(it, out.type) = as_signed{callSite->assertArgument(0)} >> 31_val;
+    auto secondSign = assign(it, out.type) = as_signed{callSite->assertArgument(1)} >> 31_val;
+    auto resultSign = assign(it, out.type) = as_signed{normalValue} >> 31_val;
+
+    auto differentSigns = assign(it, out.type) = firstSign ^ secondSign;
+    auto resultHasSecondSign = assignNop(it) = as_unsigned{secondSign} == as_unsigned{resultSign};
+    auto saturationValue = assign(it, out.type) = resultSign ^ 0x80000000_val;
+    assign(it, saturationValue) = (0_val, resultHasSecondSign.invert());
+    saturationValue = assign(it, out.type) = (saturationValue & differentSigns, SetFlag::SET_FLAGS);
+
+    assign(it, out) = normalValue;
+    assign(it, out) = (saturationValue, COND_ZERO_CLEAR);
+    it.erase();
+    // so next instruction is not skipped
+    it.previousInBlock();
+    return it;
+}
+
 static ConditionCode toCondition(int c)
 {
     // for mapping, see _flags.h in VC4CLStdLib
@@ -421,6 +459,9 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryI
     {"vc4cl_vector_rotate", Intrinsic{intrinsifyVectorRotation()}},
     // the 32-bit saturation MUST BE applied to the over-/underflowing operation
     {"vc4cl_saturated_add", Intrinsic{intrinsifyBinaryALUInstruction(OP_ADD.name, false, PACK_32_32)}},
+    // NOTE: Since 32-bit saturation pack mode works in an unexpected manner for integer subtraction, we cannot simply
+    // issue a single subtraction operation
+    {"vc4cl_saturated_sub", Intrinsic{intrinsifySaturatedSubtraction}},
     {"vc4cl_add_flags",
         Intrinsic{intrinsifyBinaryALUInstruction(OP_ADD.name, false, PACK_NOP, UNPACK_NOP, true),
             /* can't set flags for pre-calculation, so don't */}},
@@ -667,7 +708,15 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
     if(op->opCode == "mul")
     {
         // a * b = b * a
-        if(arg0.getLiteralValue() && arg1.getLiteralValue())
+        if(Local::getLocalData<MultiRegisterData>(arg0.checkLocal()) ||
+            Local::getLocalData<MultiRegisterData>(arg1.checkLocal()))
+        {
+            // 64-bit multiplication
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Calculating result for 64-bit integer multiplication: " << op->to_string() << logging::endl);
+            it = intrinsifyLongMultiplication(method, it, *op);
+        }
+        else if(arg0.getLiteralValue() && arg1.getLiteralValue())
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Calculating result for multiplication with constants: " << op->to_string() << logging::endl);

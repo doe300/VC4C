@@ -22,6 +22,8 @@ namespace vc4c
         bool canOptimizeMultiplicationWithBinaryMethod(const intermediate::IntrinsicOperation& op);
         NODISCARD InstructionWalker intrinsifyUnsignedIntegerMultiplication(
             Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op);
+        NODISCARD InstructionWalker intrinsifyLongMultiplication(
+            Method& method, InstructionWalker it, const intermediate::IntrinsicOperation& op);
         /**
          * Returns 64-bit result of full 32-bit multiplication, storing the upper part in the output of the given method
          * call and the (optional) lower part into the given additional value.

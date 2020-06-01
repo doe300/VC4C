@@ -65,7 +65,8 @@ public:
     void testUnsignedShortMultiplication();
     void testUnsignedCharMultiplication();
     void testFloatingPointMultiplication();
-    // TODO (u)long
+    void testSignedLongMultiplication();
+    void testUnsignedLongMultiplication();
 
     void testSignedIntDivision();
     void testSignedShortDivision();

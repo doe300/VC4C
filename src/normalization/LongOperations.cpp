@@ -19,7 +19,33 @@ using namespace vc4c::operators;
 // see VC4CLStdLib (_intrinsics.h)
 static constexpr unsigned char VC4CL_UNSIGNED{1};
 
-static void lowerFlags(Method& method, InstructionWalker it, const MultiRegisterData& output, FlagBehavior flagBehavior)
+std::pair<Value, Value> normalization::getLowerAndUpperWords(const Value& longValue)
+{
+    Value low = longValue;
+    Value up = INT_ZERO;
+    if(auto data = Local::getLocalData<MultiRegisterData>(longValue.checkLocal()))
+    {
+        low = data->lower->createReference();
+        up = data->upper->createReference();
+    }
+    else if(auto lit = longValue.getLiteralValue())
+    {
+        low = Value(*lit, longValue.type);
+        up = lit->type == LiteralType::LONG_LEADING_ONES ? INT_MINUS_ONE : INT_ZERO;
+    }
+    // TODO for the upper part for e.g. literals/vectors, how to know whether it should zero-extended or sign-extend
+    // the lower part? or store 64-bit literal?? Would increase Literal size by 1/3 for rare uses!
+
+    if(low.type.getScalarBitCount() > 32)
+        low.type = TYPE_INT32.toVectorType(longValue.type.getVectorWidth());
+    if(up.type.getScalarBitCount() > 32)
+        up.type = TYPE_INT32.toVectorType(longValue.type.getVectorWidth());
+
+    return std::make_pair(low, up);
+}
+
+static void lowerFlags(Method& method, InstructionWalker it, const MultiRegisterData& output, FlagBehavior flagBehavior,
+    bool isFloatOperation)
 {
     auto flagType = TYPE_INT32.toVectorType(output.lower->type.getVectorWidth());
     auto flagIt = it.copy().nextInBlock();
@@ -42,7 +68,8 @@ static void lowerFlags(Method& method, InstructionWalker it, const MultiRegister
         assignNop(flagIt) = (tmp2 | output.upper->createReference(), SetFlag::SET_FLAGS);
     }
     else
-        throw CompilationError(CompilationStep::NORMALIZER, "Unhandled flag behavior for 64-bit operation");
+        throw CompilationError(
+            CompilationStep::NORMALIZER, "Unhandled flag behavior for 64-bit operation", it->to_string());
 }
 
 static void lowerLongOperation(
@@ -53,43 +80,13 @@ static void lowerLongOperation(
     if(!out && op.getOutput() != NOP_REGISTER)
         throw CompilationError(CompilationStep::NORMALIZER,
             "Can only calculate with 64-bit values into long locals or NOP register", op.to_string());
-    Value in0Low = op.getFirstArg();
-    Value in0Up = INT_ZERO;
-    if(auto data = Local::getLocalData<MultiRegisterData>(in0Low.checkLocal()))
-    {
-        in0Low = data->lower->createReference();
-        in0Up = data->upper->createReference();
-    }
+    Value in0Low = UNDEFINED_VALUE;
+    Value in0Up = UNDEFINED_VALUE;
+    std::tie(in0Low, in0Up) = getLowerAndUpperWords(op.getFirstArg());
     auto in1Low = op.getSecondArg();
-    Optional<Value> in1Up{};
-    if(auto data = Local::getLocalData<MultiRegisterData>(in1Low & &Value::checkLocal))
-    {
-        in1Low = data->lower->createReference();
-        in1Up = data->upper->createReference();
-    }
-    else if(in1Low & &Value::getLiteralValue)
-    {
-        if(in1Low->getLiteralValue()->type == LiteralType::LONG_LEADING_ONES)
-            in1Up = INT_MINUS_ONE;
-        else
-            in1Up = INT_ZERO;
-    }
-    else
-    {
-        // TODO for the upper part for e.g. literals/vectors, how to know whether it should zero-extended or sign-extend
-        // the lower part? or store 64-bit literal?? Would increase Literal size by 1/3 for rare uses!
-        in1Up = INT_ZERO;
-    }
-
-    if(in0Low.type.getScalarBitCount() > 32)
-        // For literal/vector operands, just truncate the type (e.g. i64 32 to i32 32)
-        // This saves us from needing to convert the writer(s) of the literal/vector
-        in0Low.type = TYPE_INT32.toVectorType(in0Low.type.getVectorWidth());
-
-    if(in1Low && in1Low->type.getScalarBitCount() > 32)
-        // For literal/vector operands, just truncate the type (e.g. i64 32 to i32 32)
-        // This saves us from needing to convert the writer(s) of the literal/vector
-        in1Low->type = TYPE_INT32.toVectorType(in1Low->type.getVectorWidth());
+    Optional<Value> in1Up = INT_ZERO;
+    if(auto arg = op.getSecondArg())
+        std::tie(in1Low, in1Up) = getLowerAndUpperWords(op.assertArgument(1));
 
     if(!outLocal && !out)
     {
@@ -318,7 +315,7 @@ static void lowerLongOperation(
     if(op.doesSetFlag())
     {
         op.setSetFlags(SetFlag::DONT_SET);
-        lowerFlags(method, it, *out, op.op.flagBehavior);
+        lowerFlags(method, it, *out, op.op.flagBehavior, op.op.returnsFloat);
     }
 }
 
@@ -394,7 +391,7 @@ void normalization::lowerLongOperation(
         if(move->doesSetFlag())
         {
             move->setSetFlags(SetFlag::DONT_SET);
-            lowerFlags(method, it, *out, OP_OR.flagBehavior);
+            lowerFlags(method, it, *out, OP_OR.flagBehavior, false);
         }
     }
     else if(auto call = it.get<intermediate::MethodCall>())
@@ -503,7 +500,7 @@ void normalization::lowerLongOperation(
         if(load->doesSetFlag())
         {
             load->setSetFlags(SetFlag::DONT_SET);
-            lowerFlags(method, it, *out, OP_OR.flagBehavior);
+            lowerFlags(method, it, *out, OP_OR.flagBehavior, false);
         }
     }
 }
