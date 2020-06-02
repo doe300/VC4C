@@ -3,7 +3,7 @@ on: push
 
 jobs:
   check-code-style:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     container: nomaddo/native
     steps:
     - name: checkout
@@ -33,22 +33,60 @@ jobs:
     - name: build VC4C
       run: make -j2
       working-directory: ./VC4C/build
-    - name: build packages
-      run: cpack -G DEB && cpack -G DEB --config ../VC4CLStdLib/CPackConfig.cmake
-      working-directory: ./VC4C/build
     - name: test
       run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-common --emulate-conversions --emulate-geometric --emulate-integer --emulate-memory --emulate-relational --emulate-vector --test-emulator --test-graph --test-patterns --test-frontend --test-expressions --test-optimization-steps --test-intrinsics --test-container
       working-directory: ./VC4C
+    - name: build packages
+      run: cpack -G DEB && cpack -G DEB --config ../VC4CLStdLib/CPackConfig.cmake
+      working-directory: ./VC4C/build
     - name: upload artifacts
       uses: actions/upload-artifact@v2
       with:
         name: native
         path: ./VC4C/build/*.deb
 
+  build-and-test-spirv:
+    runs-on: ubuntu-latest
+    container: nomaddo/cross-rpi:0.1
+    steps:
+    - name: fix permissions
+      run: sudo chmod -R +rwrwrw ./
+    - name: checkout VC4CL std-lib
+      uses: actions/checkout@v2
+      with:
+        repository: doe300/VC4CLStdLib
+        path: VC4CLStdLib
+    - name: configure VC4CL std-lib
+      run: cmake . -DCROSS_COMPILE=OFF && make install
+      working-directory: ./VC4CLStdLib
+    - name: checkout VC4C
+      uses: actions/checkout@v2
+      with:
+        path: VC4C
+    - name: configure VC4C
+      run: mkdir build && cd build &&  cmake ../ -DBUILD_NUMBER=$GITHUB_RUN_NUMBER -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=OFF -DSPIRV_FRONTEND=ON
+      working-directory: ./VC4C
+    - name: build VC4C
+      run: make -j2
+      working-directory: ./VC4C/build
+    - name: test
+      run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-common --emulate-conversions --emulate-geometric --emulate-relational --emulate-vector --test-emulator --test-frontend --test-container
+      working-directory: ./VC4C
+    - name: build packages
+      run: cpack -G DEB && cpack -G DEB --config ../VC4CLStdLib/CPackConfig.cmake
+      working-directory: ./VC4C/build
+    - name: upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: spirv
+        path: ./VC4C/build/*.deb
+
   cross:
     runs-on: ubuntu-latest
     container: nomaddo/cross-rpi:0.2
     steps:
+    - name: fix permissions
+      run: sudo chmod -R +rwrwrw ./
     - name: checkout VC4CL std-lib
       uses: actions/checkout@v2
       with:
