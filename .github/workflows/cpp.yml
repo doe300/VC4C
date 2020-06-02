@@ -1,0 +1,11 @@
+name: C/C++ CI
+on: push
+
+jobs:
+  check-code-style:
+    runs-on: ubuntu-18.04
+    steps:
+    - name: checkout
+      uses: actions/checkout@v2
+    - name: check clang-format
+      run: ./scripts/clang-format-diff.sh
