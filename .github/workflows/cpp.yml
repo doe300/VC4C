@@ -3,9 +3,31 @@ on: push
 
 jobs:
   check-code-style:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-16.04
     steps:
     - name: checkout
       uses: actions/checkout@v2
     - name: check clang-format
       run: ./scripts/clang-format-diff.sh
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: checkout VC4CL std-lib
+      uses: actions/checkout@v2
+      with:
+        repository: doe300/VC4CLStdLib
+        path: VC4CLStdLib
+    - name: checkout VC4C
+      uses: actions/checkout@v2
+      with:
+        path: VC4C
+    - name: configure
+      run: mkdir build && cd build &&  cmake ../ -DBUILD_NUMBER=$GITHUB_RUN_NUMBER -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=ON -DSPIRV_FRONTEND=OFF
+      working-directory: ./VC4C
+    - name: build
+      run: make -j
+      working-directory: ./VC4C/build
+    - name: test
+      run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-common --emulate-conversions --emulate-geometric --emulate-integer --emulate-memory --emulate-relational --emulate-vector --test-emulator --test-graph --test-patterns --test-frontend --test-expressions --test-optimization-steps --test-intrinsics --test-container
+      working-directory: ./VC4C
