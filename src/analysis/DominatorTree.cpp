@@ -55,13 +55,23 @@ FastSet<const DominatorTreeNodeBase*> DominatorTreeNodeBase::getDominatedNodes()
 
 static FastSet<const CFGNode*> getDominatorCandidates(const CFGNode& node)
 {
-    // check all incoming edges that are not back edges
+    // check all incoming edges that are not back edges or bidirectional (e.g. for small loops)
     FastSet<const CFGNode*> possibleDominators;
+    std::size_t numIncomingEdges = 0;
     node.forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge& edge) -> bool {
-        if(!edge.data.isBackEdge(predecessor.key) && !edge.data.isWorkGroupLoop)
+        ++numIncomingEdges;
+        if(!edge.data.isBackEdge(predecessor.key) && !edge.data.isWorkGroupLoop &&
+            edge.getDirection() != Direction::BOTH)
             possibleDominators.emplace(&predecessor);
         return true;
     });
+
+    // if there is only exactly 1 incoming edge, this is our dominator, even if we jump back to it at some point
+    if(numIncomingEdges == 1)
+        node.forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge& edge) -> bool {
+            possibleDominators.emplace(&predecessor);
+            return true;
+        });
 
     // don't use the node itself as dominator (e.g. for single-block loop)
     possibleDominators.erase(&node);

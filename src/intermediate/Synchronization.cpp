@@ -114,7 +114,6 @@ std::string MemoryBarrier::to_string() const
     return std::string("mem-fence ") + (::toString(scope) + ", ") + ::toString(semantics) +
         createAdditionalInfoString();
 }
-LCOV_EXCL_STOP
 
 qpu_asm::DecoratedInstruction MemoryBarrier::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
@@ -122,6 +121,7 @@ qpu_asm::DecoratedInstruction MemoryBarrier::convertToAsm(const FastMap<const Lo
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "There should be no more memory barriers at this point", to_string());
 }
+LCOV_EXCL_STOP
 
 bool MemoryBarrier::isNormalized() const
 {
@@ -161,7 +161,6 @@ std::string LifetimeBoundary::to_string() const
 {
     return std::string("life-time for ") + getStackAllocation().to_string() + (isLifetimeEnd ? " ends" : " starts");
 }
-LCOV_EXCL_STOP
 
 qpu_asm::DecoratedInstruction LifetimeBoundary::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
@@ -169,6 +168,7 @@ qpu_asm::DecoratedInstruction LifetimeBoundary::convertToAsm(const FastMap<const
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "There should be no more lifetime instructions at this point", to_string());
 }
+LCOV_EXCL_STOP
 
 bool LifetimeBoundary::isNormalized() const
 {

@@ -43,6 +43,7 @@ public:
     void testValueRanges();
 
     void testInstructionEquality();
+    void testSpecialInstructionMembers();
 
     void testOpCodeEmulation();
 };

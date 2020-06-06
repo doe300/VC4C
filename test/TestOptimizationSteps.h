@@ -31,6 +31,7 @@ public:
     void testCombineRotations();
     void testEliminateMoves();
     void testEliminateDeadCode();
+    void testLoopInvariantCodeMotion();
 
 private:
     void testMethodsEquals(vc4c::Method& m1, vc4c::Method& m2);

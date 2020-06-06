@@ -11,6 +11,7 @@
 #include "intermediate/Helper.h"
 #include "intermediate/operators.h"
 #include "optimization/Combiner.h"
+#include "optimization/ControlFlow.h"
 #include "optimization/Eliminator.h"
 #include "optimization/Flags.h"
 
@@ -33,6 +34,7 @@ TestOptimizationSteps::TestOptimizationSteps()
     TEST_ADD(TestOptimizationSteps::testCombineConstantLoads);
     TEST_ADD(TestOptimizationSteps::testEliminateBitOperations);
     TEST_ADD(TestOptimizationSteps::testCombineRotations);
+    TEST_ADD(TestOptimizationSteps::testLoopInvariantCodeMotion);
 }
 
 static bool checkEquals(
@@ -623,7 +625,112 @@ void TestOptimizationSteps::testFoldConstants()
 
 void TestOptimizationSteps::testSimplifyArithmetics()
 {
-    // TODO isn't this already covered (mostly) by TestInstructions#testOpCodeProperties() ??
+    using namespace vc4c::intermediate;
+    Configuration config{};
+    Module module{config};
+    Method inputMethod(module);
+    Method outputMethod(module);
+
+    auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+    auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%dummy").walkEnd();
+
+    // NOTE: Need to execute the optimization pass before adding the expected instructions, since the optimization pass
+    // checks for single writer, which we violate by reusing the local across methods!
+
+    auto inA = inputMethod.addNewLocal(TYPE_INT32, "%a");
+    auto out0 = inputMethod.addNewLocal(TYPE_INT32, "%out0");
+    auto out1 = inputMethod.addNewLocal(TYPE_INT32, "%out1");
+    auto out2 = inputMethod.addNewLocal(TYPE_INT32, "%out2");
+    auto out3 = inputMethod.addNewLocal(TYPE_INT32, "%out3");
+    auto out4 = inputMethod.addNewLocal(TYPE_INT32, "%out4");
+
+    // left absorbing (part 1)
+    {
+        inIt.emplace(new Operation(OP_AND, out0, INT_ZERO, inA));
+        inIt.nextInBlock();
+    }
+
+    // right absorbing (part 1)
+    {
+        inIt.emplace(new Operation(OP_AND, out1, inA, INT_ZERO));
+        inIt.nextInBlock();
+    }
+
+    // self inverse (part 1)
+    {
+        inIt.emplace(new Operation(OP_SUB, out2, inA, inA));
+        inIt.nextInBlock();
+    }
+
+    // write to self with right identity (is removed, so no part 2)
+    {
+        inIt.emplace(new Operation(OP_ADD, out3, out3, INT_ZERO));
+        inIt.nextInBlock();
+    }
+
+    // write to self with idempotent value (is removed, so no part 2)
+    {
+        inIt.emplace(new Operation(OP_AND, out3, out3, out3));
+        inIt.nextInBlock();
+    }
+
+    // write to self with left identity (is removed, so no part 2)
+    {
+        inIt.emplace(new Operation(OP_ADD, out3, INT_ZERO, out3));
+        inIt.nextInBlock();
+    }
+
+    // write to other with idempotent value (part 1)
+    {
+        inIt.emplace(new Operation(OP_AND, out3, inA, inA));
+        inIt.nextInBlock();
+    }
+
+    // xor with -1 (part 1)
+    {
+        inIt.emplace(new Operation(OP_XOR, out4, INT_MINUS_ONE, inA));
+        inIt.nextInBlock();
+    }
+
+    // run step for all instructions
+    auto it = inputMethod.walkAllInstructions();
+    while(!it.isEndOfBlock())
+    {
+        it = simplifyOperation(module, inputMethod, it, config);
+        it.nextInBlock();
+    }
+
+    // left absorbing (part 2)
+    {
+        outIt.emplace(new MoveOperation(out0, INT_ZERO));
+        outIt.nextInBlock();
+    }
+
+    // right absorbing (part 2)
+    {
+        outIt.emplace(new MoveOperation(out1, INT_ZERO));
+        outIt.nextInBlock();
+    }
+
+    // self inverse (part 2)
+    {
+        outIt.emplace(new MoveOperation(out2, INT_ZERO));
+        outIt.nextInBlock();
+    }
+
+    // write to other with idempotent value (part 2)
+    {
+        outIt.emplace(new MoveOperation(out3, inA));
+        outIt.nextInBlock();
+    }
+
+    // xor with -1 (part 2)
+    {
+        outIt.emplace(new Operation(OP_NOT, out4, inA));
+        outIt.nextInBlock();
+    }
+
+    testMethodsEquals(inputMethod, outputMethod);
 }
 
 static const std::vector<OpCode> opCodes = {OP_ADD, OP_AND, OP_ASR, OP_CLZ, OP_FADD, OP_FMAX, OP_FMAXABS, OP_FMIN,
@@ -993,13 +1100,13 @@ void TestOptimizationSteps::testSimplifyBranches()
         outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse.next");
 
         BranchCond cond = BRANCH_ALWAYS;
-        std::tie(inIt, cond) = intermediate::insertBranchCondition(inputMethod, inIt, UNIFORM_REGISTER);
+        std::tie(inIt, cond) = insertBranchCondition(inputMethod, inIt, UNIFORM_REGISTER);
         inIt.emplace(new Branch(ifIn.getLabel()->getLabel(), cond));
         inIt.nextInBlock();
         inIt.emplace(new Branch(inNextLabel, cond.invert()));
         inIt.nextInBlock();
 
-        std::tie(outIt, cond) = intermediate::insertBranchCondition(outputMethod, outIt, UNIFORM_REGISTER);
+        std::tie(outIt, cond) = insertBranchCondition(outputMethod, outIt, UNIFORM_REGISTER);
         outIt.emplace(new Branch(ifOut.getLabel()->getLabel(), cond));
         outIt.nextInBlock();
     }
@@ -1012,7 +1119,7 @@ void TestOptimizationSteps::testSimplifyBranches()
         auto outIt = thirdOut.walkEnd();
 
         BranchCond cond = BRANCH_ALWAYS;
-        std::tie(inIt, cond) = intermediate::insertBranchCondition(inputMethod, inIt, UNIFORM_REGISTER);
+        std::tie(inIt, cond) = insertBranchCondition(inputMethod, inIt, UNIFORM_REGISTER);
         inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), cond));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove1").walkEnd();
@@ -1023,7 +1130,7 @@ void TestOptimizationSteps::testSimplifyBranches()
         inIt.emplace(new Branch(thirdIn.getLabel()->getLabel()));
         inIt.nextInBlock();
 
-        std::tie(outIt, cond) = intermediate::insertBranchCondition(outputMethod, outIt, UNIFORM_REGISTER);
+        std::tie(outIt, cond) = insertBranchCondition(outputMethod, outIt, UNIFORM_REGISTER);
         outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), cond));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove1").walkEnd();
@@ -1100,13 +1207,13 @@ void TestOptimizationSteps::testSimplifyBranches()
             outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse2.next").getLabel()->getLabel();
 
         BranchCond cond = BRANCH_ALWAYS;
-        std::tie(inIt, cond) = intermediate::insertBranchCondition(inputMethod, inIt, UNIFORM_REGISTER);
+        std::tie(inIt, cond) = insertBranchCondition(inputMethod, inIt, UNIFORM_REGISTER);
         inIt.emplace(new Branch(inNextLabel, cond));
         inIt.nextInBlock();
         inIt.emplace(new Branch(ifElseIn.getLabel()->getLabel(), cond.invert()));
         inIt.nextInBlock();
 
-        std::tie(outIt, cond) = intermediate::insertBranchCondition(outputMethod, outIt, UNIFORM_REGISTER);
+        std::tie(outIt, cond) = insertBranchCondition(outputMethod, outIt, UNIFORM_REGISTER);
         outIt.emplace(new Branch(outNextLabel, cond));
         outIt.nextInBlock();
         outIt.emplace(new Branch(ifElseOut.getLabel()->getLabel(), cond.invert()));
@@ -1768,4 +1875,102 @@ void TestOptimizationSteps::testCombineRotations()
     }
 
     testMethodsEquals(inputMethod, outputMethod);
+}
+
+void TestOptimizationSteps::testLoopInvariantCodeMotion()
+{
+    using namespace vc4c::intermediate;
+    Configuration config{};
+    Module module{config};
+    Method method(module);
+
+    auto it = method.createAndInsertNewBlock(method.end(), "%dummy").walkEnd();
+
+    auto& outerLoop = insertLoop(method, it, BOOL_TRUE, "%outerLoop");
+    it = outerLoop.walk().nextInBlock();
+
+    FastAccessList<const IntermediateInstruction*> hoistedInstructions;
+    auto out0 = method.addNewLocal(TYPE_INT32, "%out0");
+    auto out1 = method.addNewLocal(TYPE_INT32, "%out1");
+    auto out2 = method.addNewLocal(TYPE_INT32, "%out2");
+    auto out3 = method.addNewLocal(TYPE_INT32, "%out3");
+
+    // loading of constants
+    {
+        it.emplace(new LoadImmediate(out0, Literal(12345)));
+        hoistedInstructions.emplace_back(it.get());
+        it.nextInBlock();
+    }
+
+    // constant operation
+    {
+        it.emplace(new Operation(OP_ADD, out1, out0, INT_ONE));
+        hoistedInstructions.emplace_back(it.get());
+        it.nextInBlock();
+    }
+
+    auto& innerLoop = insertLoop(method, it, BOOL_TRUE, "%innerLoop");
+    it = innerLoop.walk().nextInBlock();
+
+    // loading of constant in inner loop
+    {
+        it.emplace(new LoadImmediate(out2, Literal(42)));
+        hoistedInstructions.emplace_back(it.get());
+        it.nextInBlock();
+    }
+
+    // calculation depending on value of outer loop
+    {
+        it.emplace(new Operation(OP_ADD, out3, out0, out2));
+        hoistedInstructions.emplace_back(it.get());
+        it.nextInBlock();
+    }
+
+    // run pass
+    method.dumpInstructions();
+    removeConstantLoadInLoops(module, method, config);
+    method.dumpInstructions();
+
+    // NOTE: We need to check the same method, since we cannot compare methods, since the loop creates unique labels
+    // that we cannot reproduce identically.
+
+    it = method.walkAllInstructions();
+
+    // %dummy label
+    TEST_ASSERT(!!it.get<BranchLabel>());
+    TEST_ASSERT_EQUALS("%dummy", it.get<BranchLabel>()->getLabel()->name);
+    it.nextInMethod();
+
+    // outer loop header label
+    TEST_ASSERT(!!it.get<BranchLabel>());
+    TEST_ASSERT(it.get<BranchLabel>()->getLabel()->name.find("outerLoop") != std::string::npos);
+    TEST_ASSERT(it.get<BranchLabel>()->getLabel()->name.find("header") != std::string::npos);
+    it.nextInMethod();
+
+    // outer loop content label
+    it = outerLoop.walk();
+    TEST_ASSERT(!!it.get<BranchLabel>());
+    TEST_ASSERT(it.get<BranchLabel>()->getLabel()->name.find("outerLoop") != std::string::npos);
+    TEST_ASSERT(it.get<BranchLabel>()->getLabel()->name.find("header") == std::string::npos);
+    it.nextInMethod();
+
+    // here the instructions from the inner loop are hoisted into (next to the instructions of the outer loop)
+    // TODO shouldn't the constant instructions be hoisted completely outside of the outer loop??
+    for(auto inst : hoistedInstructions)
+    {
+        if(it.get() != inst)
+        {
+            TEST_ASSERT_EQUALS(inst->to_string(), it->to_string());
+        }
+        it.nextInBlock();
+    }
+
+    // the inner loop is now empty (only contains label and unconditional branch to header)
+    TEST_ASSERT_EQUALS(2u, innerLoop.size());
+    it = innerLoop.walk();
+    TEST_ASSERT(!!it.get<BranchLabel>());
+    TEST_ASSERT(it.get<BranchLabel>()->getLabel()->name.find("innerLoop") != std::string::npos);
+    TEST_ASSERT(it.get<BranchLabel>()->getLabel()->name.find("header") == std::string::npos);
+    it.nextInMethod();
+    TEST_ASSERT(!!it.get<Branch>());
 }

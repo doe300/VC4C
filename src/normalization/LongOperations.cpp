@@ -77,9 +77,6 @@ static void lowerLongOperation(
 {
     auto outLocal = op.checkOutputLocal();
     auto out = Local::getLocalData<MultiRegisterData>(outLocal);
-    if(!out && op.getOutput() != NOP_REGISTER)
-        throw CompilationError(CompilationStep::NORMALIZER,
-            "Can only calculate with 64-bit values into long locals or NOP register", op.to_string());
     Value in0Low = UNDEFINED_VALUE;
     Value in0Up = UNDEFINED_VALUE;
     std::tie(in0Low, in0Up) = getLowerAndUpperWords(op.getFirstArg());
@@ -88,11 +85,15 @@ static void lowerLongOperation(
     if(auto arg = op.getSecondArg())
         std::tie(in1Low, in1Up) = getLowerAndUpperWords(op.assertArgument(1));
 
-    if(!outLocal && !out)
+    auto originalOut = op.getOutput();
+    // whether we created a new output local and need to map it to the actual output after the lowering
+    bool isDummyOutput = false;
+    if(!out)
     {
-        // If the output is NOP, we still need an output value to be able to calculate the flags
+        // If the output is not a 64-bit local, we still need a 64-bit output value to be able to calculate the flags
         outLocal = method.addNewLocal(TYPE_INT64.toVectorType(op.getFirstArg().type.getVectorWidth())).checkLocal();
         out = Local::getLocalData<MultiRegisterData>(outLocal);
+        isDummyOutput = true;
     }
 
     if(op.op == OP_ADD)
@@ -312,6 +313,13 @@ static void lowerLongOperation(
         op.setCondition(COND_CARRY_CLEAR);
     }
 
+    if(isDummyOutput && originalOut && originalOut != NOP_REGISTER)
+    {
+        // the original output is not a multi-register value (checked above), so simply truncate the lower word into the
+        // actual output
+        assign(it, *originalOut) = out->lower->createReference();
+    }
+
     if(op.doesSetFlag())
     {
         op.setSetFlags(SetFlag::DONT_SET);
@@ -348,16 +356,18 @@ void normalization::lowerLongOperation(
         auto outLocal = move->checkOutputLocal();
         auto out = Local::getLocalData<MultiRegisterData>(outLocal);
         auto src = Local::getLocalData<MultiRegisterData>(move->getSource().checkLocal());
-        if(!out && move->getOutput() != NOP_REGISTER)
-            throw CompilationError(CompilationStep::NORMALIZER,
-                "Can only move/rotate 64-bit values into long locals or NOP register", move->to_string());
 
-        if(!outLocal && !out)
+        auto originalOut = move->getOutput();
+        // whether we created a new output local and need to map it to the actual output after the lowering
+        bool isDummyOutput = false;
+        if(!out)
         {
-            // If the output is NOP, we still need an output value to be able to calculate the flags
+            // If the output is not a 64-bit local, we still need a 64-bit output value to be able to calculate the
+            // flags
             outLocal =
                 method.addNewLocal(TYPE_INT64.toVectorType(move->getSource().type.getVectorWidth())).checkLocal();
             out = Local::getLocalData<MultiRegisterData>(outLocal);
+            isDummyOutput = true;
         }
 
         if(!move->hasSideEffects() && it.get<intermediate::VectorRotation>() && src)
@@ -386,6 +396,13 @@ void normalization::lowerLongOperation(
             it.nextInBlock();
             move->setOutput(out->upper->createReference());
             move->setSource(src->upper->createReference());
+        }
+
+        if(isDummyOutput && originalOut && originalOut != NOP_REGISTER)
+        {
+            // the original output is not a multi-register value (checked above), so simply truncate the lower word into
+            // the actual output
+            assign(it, *originalOut) = out->lower->createReference();
         }
 
         if(move->doesSetFlag())

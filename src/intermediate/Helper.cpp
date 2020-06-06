@@ -383,25 +383,25 @@ BasicBlock& intermediate::insertLoop(
     Method& method, InstructionWalker& it, const Value& conditionValue, const std::string& label)
 {
     auto loopLabel = method.addNewLocal(TYPE_LABEL, label);
-    auto preheaderLabel = method.addNewLocal(TYPE_LABEL, loopLabel.local()->name, "preheader");
+    auto headerLabel = method.addNewLocal(TYPE_LABEL, loopLabel.local()->name, "header");
     auto afterLoopLabel = method.addNewLocal(TYPE_LABEL, loopLabel.local()->name, "after");
 
-    auto preheaderIt = method.emplaceLabel(it, new BranchLabel(*preheaderLabel.local()));
-    preheaderIt.nextInBlock();
+    auto headerIt = method.emplaceLabel(it, new BranchLabel(*headerLabel.local()));
+    headerIt.nextInBlock();
 
-    // in the preheader, jump over loop only when condition becomes false, otherwise fall through loop content block
+    // in the header, jump over loop only when condition becomes false, otherwise fall through loop content block
     BranchCond cond = BRANCH_ALWAYS;
-    std::tie(preheaderIt, cond) = insertBranchCondition(method, preheaderIt, conditionValue);
-    preheaderIt.emplace(new Branch(loopLabel.local(), cond));
-    preheaderIt.nextInBlock();
-    preheaderIt.emplace(new Branch(afterLoopLabel.local(), cond.invert()));
-    preheaderIt.nextInBlock();
+    std::tie(headerIt, cond) = insertBranchCondition(method, headerIt, conditionValue);
+    headerIt.emplace(new Branch(loopLabel.local(), cond));
+    headerIt.nextInBlock();
+    headerIt.emplace(new Branch(afterLoopLabel.local(), cond.invert()));
+    headerIt.nextInBlock();
 
-    auto inLoopIt = method.emplaceLabel(preheaderIt, new BranchLabel(*loopLabel.local()));
+    auto inLoopIt = method.emplaceLabel(headerIt, new BranchLabel(*loopLabel.local()));
     inLoopIt.nextInBlock();
 
-    // in loop content block, unconditionally jump back to preheader
-    inLoopIt.emplace(new Branch(preheaderLabel.local()));
+    // in loop content block, unconditionally jump back to header
+    inLoopIt.emplace(new Branch(headerLabel.local()));
     inLoopIt.nextInBlock();
 
     it = method.emplaceLabel(inLoopIt, new BranchLabel(*afterLoopLabel.local()));

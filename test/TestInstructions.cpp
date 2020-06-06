@@ -52,6 +52,7 @@ TestInstructions::TestInstructions()
     TEST_ADD(TestInstructions::testLoadInstruction);
     TEST_ADD(TestInstructions::testValueRanges);
     TEST_ADD(TestInstructions::testInstructionEquality);
+    TEST_ADD(TestInstructions::testSpecialInstructionMembers);
     TEST_ADD(TestInstructions::testOpCodeEmulation);
 }
 
@@ -1913,11 +1914,13 @@ void TestInstructions::testInstructionEquality()
         TEST_ASSERT(inst != *op2)
     }
 
-    // {
-    //     intermediate::Return inst{Value(INT_MINUS_ONE)};
-    //     op2.reset(inst.copyFor(method, ""));
-    //     TEST_ASSERT_EQUALS(inst, *op2)
-    // }
+    {
+        intermediate::Return inst{Value(INT_MINUS_ONE)};
+        intermediate::Return inst2{Value(INT_MINUS_ONE)};
+        intermediate::Return inst3{Value(INT_ONE)};
+        TEST_ASSERT_EQUALS(inst, inst2)
+        TEST_ASSERT(inst != inst3)
+    }
 
     {
         intermediate::MoveOperation inst{Value(NOP_REGISTER), Value(INT_MINUS_ONE)};
@@ -1997,16 +2000,109 @@ void TestInstructions::testInstructionEquality()
         TEST_ASSERT(inst != *op2)
     }
 
-    // {
-    //     intermediate::LifetimeBoundary inst(method.addNewLocal(TYPE_FLOAT), false);
-    //     op2.reset(inst.copyFor(method, ""));
-    //     TEST_ASSERT_EQUALS(inst, *op2)
-    // }
+    {
+        auto type = method.createPointerType(TYPE_FLOAT, AddressSpace::PRIVATE);
+        auto obj = method.stackAllocations.emplace(StackAllocation("%dummy", type)).first;
+        intermediate::LifetimeBoundary inst(obj->createReference(), false);
+        op2.reset(inst.copyFor(method, "", mapping));
+        TEST_ASSERT_EQUALS(inst, *op2)
+        inst.isLifetimeEnd = true;
+        TEST_ASSERT(inst != *op2)
+    }
 
     {
         intermediate::MutexLock inst(intermediate::MutexAccess::LOCK);
         op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
+    }
+
+    {
+        auto src = method.addNewLocal(TYPE_VOID_POINTER);
+        auto dest = method.addNewLocal(TYPE_VOID_POINTER);
+        intermediate::MemoryInstruction inst(
+            intermediate::MemoryOperation::COPY, std::move(dest), std::move(src), Value(INT_ONE), true);
+        op2.reset(inst.copyFor(method, "", mapping));
+        TEST_ASSERT_EQUALS(inst, *op2);
+        intermediate::MemoryInstruction inst2(
+            intermediate::MemoryOperation::COPY, std::move(dest), std::move(src), Value(INT_ONE), false);
+        TEST_ASSERT(inst2 != *op2);
+    }
+
+    {
+        intermediate::CombinedOperation inst(new intermediate::Operation(OP_CLZ, UNIFORM_REGISTER, UNIFORM_REGISTER),
+            new intermediate::Operation(OP_ITOF, NOP_REGISTER, UNIFORM_REGISTER));
+        op2.reset(inst.copyFor(method, "", mapping));
+        TEST_ASSERT_EQUALS(inst, *op2)
+        dynamic_cast<intermediate::Operation&>(*inst.op1).op = OP_FTOI;
+        TEST_ASSERT(inst != *op2)
+    }
+}
+
+void TestInstructions::testSpecialInstructionMembers()
+{
+    Configuration config{};
+    Module module{config};
+    Method method(module);
+
+    // general
+    {
+        auto loc = method.addNewLocal(TYPE_INT32);
+        intermediate::Operation op(OP_ADD, NOP_REGISTER, UNIFORM_REGISTER, loc);
+
+        TEST_ASSERT_EQUALS(1u, op.findArgument(loc).value());
+        TEST_ASSERT(!op.findArgument(ROTATION_REGISTER));
+        TEST_ASSERT_EQUALS(UNIFORM_REGISTER, op.findOtherArgument(loc));
+        TEST_ASSERT(!op.findOtherArgument(ROTATION_REGISTER));
+    }
+
+    // load
+    {
+        intermediate::LoadImmediate load(NOP_REGISTER, Literal(12345));
+        TEST_ASSERT_EQUALS(Value(Literal(12345), TYPE_INT32), load.precalculate(1).first);
+        TEST_ASSERT_EQUALS(Literal(12345), load.getImmediate());
+
+        intermediate::LoadImmediate load1(NOP_REGISTER, 0xFFFF0000, intermediate::LoadType::PER_ELEMENT_SIGNED);
+        TEST_ASSERT_EQUALS(Value(Literal(-2), TYPE_INT32), load1.precalculate(1).first);
+        TEST_THROWS(load1.getImmediate(), CompilationError);
+
+        intermediate::LoadImmediate load2(NOP_REGISTER, 0xFFFF0000, intermediate::LoadType::PER_ELEMENT_UNSIGNED);
+        TEST_ASSERT_EQUALS(Value(Literal(2), TYPE_INT32), load2.precalculate(1).first);
+        TEST_THROWS(load2.getImmediate(), CompilationError);
+
+        auto values = intermediate::LoadImmediate::toLoadedValues(12345, intermediate::LoadType::REPLICATE_INT32);
+        TEST_ASSERT_EQUALS(Literal(12345), values.getAllSame());
+        auto mask = intermediate::LoadImmediate::fromLoadedValues(values, intermediate::LoadType::REPLICATE_INT32);
+        TEST_ASSERT_EQUALS(12345, mask);
+
+        values = intermediate::LoadImmediate::toLoadedValues(0xFFFF0000u, intermediate::LoadType::PER_ELEMENT_SIGNED);
+        TEST_ASSERT_EQUALS(Literal(-2), values.getAllSame());
+        mask = intermediate::LoadImmediate::fromLoadedValues(values, intermediate::LoadType::PER_ELEMENT_SIGNED);
+        TEST_ASSERT_EQUALS(0xFFFF0000u, mask);
+
+        values = intermediate::LoadImmediate::toLoadedValues(0xFFFF0000u, intermediate::LoadType::PER_ELEMENT_UNSIGNED);
+        TEST_ASSERT_EQUALS(Literal(2), values.getAllSame());
+        mask = intermediate::LoadImmediate::fromLoadedValues(values, intermediate::LoadType::PER_ELEMENT_UNSIGNED);
+        TEST_ASSERT_EQUALS(0xFFFF0000u, mask);
+    }
+
+    // combined
+    {
+        auto in = method.addNewLocal(TYPE_INT32);
+        auto out = method.addNewLocal(TYPE_INT32);
+        intermediate::CombinedOperation op(
+            new intermediate::Operation(OP_CLZ, out, in), new intermediate::Operation(OP_ITOF, out, in));
+
+        TEST_ASSERT_EQUALS(1u, op.getUsedLocals().count(in.checkLocal()));
+        TEST_ASSERT(op.readsLocal(in.checkLocal()));
+        TEST_ASSERT(!op.readsLocal(out.checkLocal()));
+        TEST_ASSERT(!op.writesLocal(in.checkLocal()));
+        TEST_ASSERT(op.writesLocal(out.checkLocal()));
+
+        TEST_ASSERT(op.isNormalized());
+
+        TEST_ASSERT_EQUALS(intermediate::SideEffectType::NONE, op.getSideEffects());
+        dynamic_cast<intermediate::Operation&>(*op.op1).setSignaling(SIGNAL_LOAD_ALPHA);
+        TEST_ASSERT_EQUALS(intermediate::SideEffectType::SIGNAL, op.getSideEffects());
     }
 }
 

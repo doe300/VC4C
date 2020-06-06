@@ -162,29 +162,31 @@ SIMDVector LoadImmediate::toLoadedValues(uint32_t mask, vc4c::intermediate::Load
 {
     std::bitset<32> bits(mask);
     SIMDVector values;
-    if(type == LoadType::PER_ELEMENT_UNSIGNED)
+    switch(type)
     {
+    case LoadType::PER_ELEMENT_UNSIGNED:
         for(std::size_t i = 0; i < 16; ++i)
-        {
             values[i] = Literal(static_cast<unsigned>(bits.test(i + 16)) * 2u + static_cast<unsigned>(bits.test(i)));
-        }
-    }
-    else if(type == LoadType::PER_ELEMENT_SIGNED)
-    {
+        break;
+    case LoadType::PER_ELEMENT_SIGNED:
         for(std::size_t i = 0; i < 16; ++i)
-        {
             values[i] = Literal(static_cast<int>(bits.test(i + 16)) * -2 + static_cast<int>(bits.test(i)));
-        }
-    }
-    else
+        break;
+    case LoadType::REPLICATE_INT32:
+        values = SIMDVector(Literal(mask));
+        break;
+    default:
         throw CompilationError(
             CompilationStep::GENERAL, "Unhandled type of masked load", std::to_string(static_cast<unsigned>(type)));
+    }
     return values;
 }
 
 uint32_t LoadImmediate::fromLoadedValues(const SIMDVector& values, LoadType type)
 {
-    if(type == LoadType::PER_ELEMENT_SIGNED)
+    switch(type)
+    {
+    case LoadType::PER_ELEMENT_SIGNED:
     {
         std::bitset<32> mask;
         for(std::size_t i = 0; i < values.size(); ++i)
@@ -198,7 +200,7 @@ uint32_t LoadImmediate::fromLoadedValues(const SIMDVector& values, LoadType type
         }
         return static_cast<uint32_t>(mask.to_ulong());
     }
-    if(type == LoadType::PER_ELEMENT_UNSIGNED)
+    case LoadType::PER_ELEMENT_UNSIGNED:
     {
         std::bitset<32> mask;
         for(std::size_t i = 0; i < values.size(); ++i)
@@ -211,6 +213,12 @@ uint32_t LoadImmediate::fromLoadedValues(const SIMDVector& values, LoadType type
             mask.set(i, elemVal & 1);
         }
         return static_cast<uint32_t>(mask.to_ulong());
+    }
+    case LoadType::REPLICATE_INT32:
+        if(auto lit = values.getAllSame())
+            return lit->unsignedInt();
+        throw CompilationError(CompilationStep::GENERAL, "Cannot extract single loaded scalar from non-uniform vector",
+            values.to_string(true));
     }
     throw CompilationError(CompilationStep::GENERAL, "Invalid load type", std::to_string(static_cast<unsigned>(type)));
 }

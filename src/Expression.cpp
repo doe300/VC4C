@@ -657,9 +657,8 @@ Optional<Value> Expression::getConvergenceLimit(Optional<Literal> initialValue) 
         return NO_VALUE;
     bool leftIsLocal = arg0.checkLocal();
     bool rightIsLocal = arg1 && arg1.checkLocal();
-    // TODO make use of
-    bool leftIsUnsigned = isUnsigned(arg0);
-    bool rightIsUnsigned = isUnsigned(arg1);
+    // TODO make use of work-item/work-group decorations
+    // TODO make use of value ranges from sub-expression??
     auto firstVal = arg0.checkValue() | getConvergenceLimit0(arg0);
     auto secondVal = arg1.checkValue() | getConvergenceLimit0(arg1);
     Optional<Literal> constantLiteral = ((firstVal ? firstVal->getConstantValue() : NO_VALUE) |

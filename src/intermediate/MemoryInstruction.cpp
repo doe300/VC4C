@@ -124,7 +124,6 @@ std::string MemoryInstruction::to_string() const
     throw CompilationError(
         CompilationStep::GENERAL, "Unknown memory operation type", std::to_string(static_cast<unsigned>(op)));
 }
-LCOV_EXCL_STOP
 
 qpu_asm::DecoratedInstruction MemoryInstruction::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const
@@ -136,6 +135,7 @@ bool MemoryInstruction::isNormalized() const
 {
     return false;
 }
+LCOV_EXCL_STOP
 
 SideEffectType MemoryInstruction::getSideEffects() const
 {

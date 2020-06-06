@@ -44,12 +44,6 @@ Compiler::Compiler(std::istream& stream, std::ostream& output) : input(stream), 
 static std::unique_ptr<Parser> getParser(std::istream& stream)
 {
     // determine which parser to use in which settings
-    /*
-     * Following options are possible:
-     * - LLVM IR parser
-     * - SPIR-V parser with binary input
-     * - SPIR-V parser with text input
-     */
     SourceType type = Precompiler::getSourceType(stream);
     switch(type)
     {

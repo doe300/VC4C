@@ -1044,7 +1044,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
     auto cfg = method.getCFG().clone();
 #ifdef DEBUG_MODE
-    cfg->dumpGraph("/tmp/before-removeConstantLoadInLoops.dot", true);
+    cfg->dumpGraph("/tmp/vc4c-loop-invariant-code-motion-before.dot", true);
 #endif
 
     // 1. Simplify the CFG to avoid combinatorial explosion. (e.g. testing/test_barrier.cl)
@@ -1140,7 +1140,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     }
 
 #ifdef DEBUG_MODE
-    cfg->dumpGraph("/tmp/before-removeConstantLoadInLoops-simplified.dot", true);
+    cfg->dumpGraph("/tmp/vc4c-loop-invariant-code-motion-before-simplified.dot", true);
 #endif
 
     // 2. Find loops
@@ -1231,14 +1231,16 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                 {
                     for(auto& block : method)
                     {
-                        auto& blockNode = cfg->assertNode(&block);
-                        if(targetLoop->find(&blockNode) != targetLoop->end())
+                        auto loopBB = std::find_if(targetLoop->begin(), targetLoop->end(),
+                            [&block](const CFGNode* node) { return node->key == &block; });
+                        if(loopBB != targetLoop->end())
                         {
                             // the predecessor block must exist before targetLoop.
                             break;
                         }
 
-                        auto bb = std::find(predecessors.begin(), predecessors.end(), &blockNode);
+                        auto bb = std::find_if(predecessors.begin(), predecessors.end(),
+                            [&block](const CFGNode* node) { return node->key == &block; });
                         if(bb != predecessors.end())
                         {
                             targetCFGNode = *bb;
@@ -1252,8 +1254,11 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
             if(targetBlock != nullptr)
             {
-                // insert before 'br' operation
-                auto targetInst = targetBlock->walkEnd().previousInBlock();
+                // insert before 'br' operation (if any)
+                auto targetInst = targetBlock->walkEnd();
+                auto checkInst = targetInst.copy().previousInBlock();
+                if(checkInst.get<Branch>())
+                    targetInst = checkInst;
                 for(auto it : insts->second)
                 {
                     auto inst = it.get();
@@ -1261,8 +1266,11 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                         continue;
                     processedInsts.insert(inst);
 
-                    CPPLOG_LAZY(logging::Level::DEBUG, log << "Moving constant load out of loop: " << it->to_string());
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Moving constant load out of loop: " << it->to_string() << logging::endl);
                     targetInst.emplace(it.release());
+                    // go to the next instruction to preserve the order of insertion, e.g. to manage dependencies
+                    targetInst.nextInBlock();
                     it.reset(nullptr);
                 }
             }
@@ -1280,7 +1288,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                         continue;
                     processedInsts.insert(inst);
 
-                    CPPLOG_LAZY(logging::Level::DEBUG, log << "Moving constant load out of loop: " << it->to_string());
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Moving constant load out of loop: " << it->to_string() << logging::endl);
                     insertedBlock->walkEnd().emplace(it.release());
                     it.reset(nullptr);
                 }
@@ -1300,7 +1309,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
 #ifdef DEBUG_MODE
     auto& cfg2 = method.getCFG();
-    cfg2.dumpGraph("/tmp/after-removeConstantLoadInLoops.dot", true);
+    cfg2.dumpGraph("/tmp/vc4c-loop-invariant-code-motion-after.dot", true);
 #endif
 
     if(hasChanged)

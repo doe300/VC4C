@@ -29,12 +29,14 @@ IntermediateInstruction* BranchLabel::copyFor(
     return new BranchLabel(*renameValue(method, assertArgument(0), localPrefix, localMapping).local());
 }
 
+LCOV_EXCL_START
 qpu_asm::DecoratedInstruction BranchLabel::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "There should be no more labels at this point", to_string());
 }
+LCOV_EXCL_STOP
 
 bool BranchLabel::mapsToASMInstruction() const
 {
@@ -168,12 +170,12 @@ qpu_asm::DecoratedInstruction PhiNode::convertToAsm(const FastMap<const Local*, 
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "There should be no more phi-nodes at this point", to_string());
 }
-LCOV_EXCL_STOP
 
 bool PhiNode::isNormalized() const
 {
     return false;
 }
+LCOV_EXCL_STOP
 
 IntermediateInstruction* PhiNode::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const

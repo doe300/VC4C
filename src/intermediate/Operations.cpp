@@ -454,6 +454,7 @@ IntermediateInstruction* IntrinsicOperation::copyFor(
         ->copyExtrasFrom(this);
 }
 
+LCOV_EXCL_START
 qpu_asm::DecoratedInstruction IntrinsicOperation::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const
 {
@@ -469,6 +470,7 @@ bool IntrinsicOperation::isNormalized() const
 {
     return false;
 }
+LCOV_EXCL_STOP
 
 const Value& IntrinsicOperation::getFirstArg() const
 {
@@ -971,5 +973,5 @@ bool CombinedOperation::innerEquals(const IntermediateInstruction& other) const
         if(op2 && (!otherComb->op2 || *op2 != *otherComb->op2))
             return false;
     }
-    return false;
+    return true;
 }

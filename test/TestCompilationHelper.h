@@ -49,12 +49,16 @@ protected:
         std::unique_ptr<vc4c::Parser> parser;
         switch(vc4c::Precompiler::getSourceType(*precompiled))
         {
+#ifdef USE_LLVM_LIBRARY
         case vc4c::SourceType::LLVM_IR_BIN:
             parser = std::make_unique<vc4c::llvm2qasm::BitcodeReader>(*precompiled, vc4c::SourceType::LLVM_IR_BIN);
             break;
+#endif
+#ifdef SPIRV_FRONTEND
         case vc4c::SourceType::SPIRV_BIN:
             parser = std::make_unique<vc4c::spirv::SPIRVParser>(*precompiled, false);
             break;
+#endif
         default:
             throw vc4c::CompilationError(vc4c::CompilationStep::GENERAL,
                 "Unhandled source type for partial compilation for input file", fileName);
@@ -71,12 +75,16 @@ protected:
         std::unique_ptr<vc4c::Parser> parser;
         switch(vc4c::Precompiler::getSourceType(*precompiled))
         {
+#ifdef USE_LLVM_LIBRARY
         case vc4c::SourceType::LLVM_IR_BIN:
             parser = std::make_unique<vc4c::llvm2qasm::BitcodeReader>(*precompiled, vc4c::SourceType::LLVM_IR_BIN);
             break;
+#endif
+#ifdef SPIRV_FRONTEND
         case vc4c::SourceType::SPIRV_BIN:
             parser = std::make_unique<vc4c::spirv::SPIRVParser>(*precompiled, false);
             break;
+#endif
         default:
             throw vc4c::CompilationError(
                 vc4c::CompilationStep::GENERAL, "Unhandled source type for partial compilation for input");

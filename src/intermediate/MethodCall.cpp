@@ -61,6 +61,7 @@ IntermediateInstruction* MethodCall::copyFor(
         return (new MethodCall(std::string(methodName), std::move(newArgs)))->copyExtrasFrom(this);
 }
 
+LCOV_EXCL_START
 qpu_asm::DecoratedInstruction MethodCall::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
@@ -71,6 +72,7 @@ bool MethodCall::isNormalized() const
 {
     return false;
 }
+LCOV_EXCL_STOP
 
 const DataType MethodCall::getReturnType() const
 {
@@ -137,7 +139,6 @@ qpu_asm::DecoratedInstruction Return::convertToAsm(const FastMap<const Local*, R
     throw CompilationError(
         CompilationStep::LABEL_REGISTER_MAPPING, "There should be no more returns at this point", to_string());
 }
-LCOV_EXCL_STOP
 
 bool Return::mapsToASMInstruction() const
 {
@@ -148,6 +149,7 @@ bool Return::isNormalized() const
 {
     return false;
 }
+LCOV_EXCL_STOP
 
 Optional<Value> Return::getReturnValue() const
 {

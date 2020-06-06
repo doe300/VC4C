@@ -13,7 +13,7 @@
 #include <iomanip>
 #include <sstream>
 
-static const std::string CONVERSION_OPERATION = R"(
+static const std::string CONVERSION_FUNCTION = R"(
 // trick to allow concatenating macro (content!!) to symbol
 #define CONCAT(A, B) CONCAT_(A, B)
 #define CONCAT_(A, B) A##B
@@ -28,7 +28,7 @@ __kernel void test(__global OUT* out, const __global IN* in) {
 }
 )";
 
-static const std::string REINTERPRET_ADDRESS_OPERATION = R"(
+static const std::string REINTERPRET_ADDRESS_FUNCTION = R"(
 // trick to allow concatenating macro (content!!) to symbol
 #define CONCAT(A, B) CONCAT_(A, B)
 #define CONCAT_(A, B) A##B
@@ -39,7 +39,7 @@ __kernel void test(__global OUT* out, const __global IN* in) {
 }
 )";
 
-static const std::string REINTERPRET_VALUE_OPERATION = R"(
+static const std::string REINTERPRET_VALUE_FUNCTION = R"(
 // trick to allow concatenating macro (content!!) to symbol
 #define CONCAT(A, B) CONCAT_(A, B)
 #define CONCAT_(A, B) A##B
@@ -51,6 +51,13 @@ __kernel void test(__global OUT* out, const __global IN* in1, const __global IN*
   IN b = in2[gid];
   OUT c = CONCAT(as_,OUT)(a + a) + CONCAT(as_,OUT)(b + b);
   out[gid] = c;
+}
+)";
+
+static const std::string CONVERSION_OPERATOR = R"(
+__kernel void test(__global OUT* out, const __global IN* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = (OUT)(in[gid]);
 }
 )";
 
@@ -114,11 +121,11 @@ void TestConversionFuntions::onMismatch(const std::string& expected, const std::
 }
 
 template <typename I, typename O>
-static void testConversionOperation(vc4c::Configuration& config, const std::string& options,
+static void testConversionFunction(vc4c::Configuration& config, const std::string& options,
     const std::function<O(I)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
 {
     std::stringstream code;
-    compileBuffer(config, code, CONVERSION_OPERATION, options);
+    compileBuffer(config, code, CONVERSION_FUNCTION, options);
 
     // values out of the range of O (the integer type) are implementation-defined
     // but for saturation tests, it is allowed
@@ -140,7 +147,7 @@ static void testAddressReinterpretation(vc4c::Configuration& config, const std::
     const std::function<void(const std::string&, const std::string&)>& onError)
 {
     std::stringstream code;
-    compileBuffer(config, code, REINTERPRET_ADDRESS_OPERATION, options);
+    compileBuffer(config, code, REINTERPRET_ADDRESS_FUNCTION, options);
 
     auto in = generateInput<I, Num>(true);
     auto out = runEmulation<I, O, Num, 1>(code, {in});
@@ -154,12 +161,26 @@ static void testValueReinterpretation(vc4c::Configuration& config, const std::st
     const std::function<void(const std::string&, const std::string&)>& onError)
 {
     std::stringstream code;
-    compileBuffer(config, code, REINTERPRET_VALUE_OPERATION, options);
+    compileBuffer(config, code, REINTERPRET_VALUE_FUNCTION, options);
 
     auto in1 = generateInput<I, Num>(true);
     auto in2 = generateInput<I, Num>(true);
     auto out = runEmulation<I, O, Num, 1>(code, {in1, in2});
     check(in1, in2, out, onError);
+}
+
+template <typename I, typename O>
+static void testConversionOperator(vc4c::Configuration& config, const std::string& options,
+    const std::function<O(I)>& op, const std::function<void(const std::string&, const std::string&)>& onError)
+{
+    std::stringstream code;
+    compileBuffer(config, code, CONVERSION_OPERATOR, options);
+
+    // values out of the range of O (the output type) are implementation-defined
+    std::array<I, 12> in = generateInput<I, 12, O>(true);
+
+    auto out = runEmulation<I, O, 1, 12>(code, {in});
+    checkUnaryResults<O, I, 12>(in, out, op, std::string("cast"), onError);
 }
 
 template <typename T, typename S>
@@ -188,315 +209,443 @@ static T saturate(float s)
 
 void TestConversionFuntions::testSignedTruncation()
 {
-    testConversionOperation<int, short>(config, "-DIN=int16 -DOUT=short16", convert<short, int>,
+    // vector conversion function
+    testConversionFunction<int, short>(config, "-DIN=int16 -DOUT=short16", convert<short, int>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<int, char>(config, "-DIN=int16 -DOUT=char16", convert<char, int>,
+    testConversionFunction<int, char>(config, "-DIN=int16 -DOUT=char16", convert<char, int>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<short, char>(config, "-DIN=short16 -DOUT=char16", convert<char, short>,
+    testConversionFunction<short, char>(config, "-DIN=short16 -DOUT=char16", convert<char, short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    testConversionOperation<int64_t, int>(config, "-DIN=long16 -DOUT=int16", convert<int, int64_t>,
+    testConversionFunction<int64_t, int>(config, "-DIN=long16 -DOUT=int16", convert<int, int64_t>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<int64_t, short>(config, "-DIN=long16 -DOUT=short16", convert<short, int64_t>,
+    testConversionFunction<int64_t, short>(config, "-DIN=long16 -DOUT=short16", convert<short, int64_t>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<int64_t, char>(config, "-DIN=long16 -DOUT=char16", convert<char, int64_t>,
+    testConversionFunction<int64_t, char>(config, "-DIN=long16 -DOUT=char16", convert<char, int64_t>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<int, short>(config, "-DIN=int -DOUT=short", convert<short, int>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<int, char>(config, "-DIN=int -DOUT=char", convert<char, int>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<short, char>(config, "-DIN=short -DOUT=char", convert<char, short>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    testConversionOperator<int64_t, int>(config, "-DIN=long -DOUT=int", convert<int, int64_t>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<int64_t, short>(config, "-DIN=long -DOUT=short", convert<short, int64_t>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<int64_t, char>(config, "-DIN=long -DOUT=char", convert<char, int64_t>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testUnsignedTruncation()
 {
-    testConversionOperation<unsigned int, unsigned short>(config, "-DIN=uint16 -DOUT=ushort16",
+    // vector conversion function
+    testConversionFunction<unsigned int, unsigned short>(config, "-DIN=uint16 -DOUT=ushort16",
         convert<unsigned short, unsigned int>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<unsigned int, unsigned char>(config, "-DIN=uint16 -DOUT=uchar16",
+    testConversionFunction<unsigned int, unsigned char>(config, "-DIN=uint16 -DOUT=uchar16",
         convert<unsigned char, unsigned int>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<unsigned short, unsigned char>(config, "-DIN=ushort16 -DOUT=uchar16",
+    testConversionFunction<unsigned short, unsigned char>(config, "-DIN=ushort16 -DOUT=uchar16",
         convert<unsigned char, unsigned short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    testConversionOperation<uint64_t, unsigned int>(config, "-DIN=ulong16 -DOUT=uint16",
-        convert<unsigned int, uint64_t>,
+    testConversionFunction<uint64_t, unsigned int>(config, "-DIN=ulong16 -DOUT=uint16", convert<unsigned int, uint64_t>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<uint64_t, unsigned short>(config, "-DIN=ulong16 -DOUT=ushort16",
+    testConversionFunction<uint64_t, unsigned short>(config, "-DIN=ulong16 -DOUT=ushort16",
         convert<unsigned short, uint64_t>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<uint64_t, unsigned char>(config, "-DIN=ulong16 -DOUT=uchar16",
+    testConversionFunction<uint64_t, unsigned char>(config, "-DIN=ulong16 -DOUT=uchar16",
         convert<unsigned char, uint64_t>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<unsigned int, unsigned short>(config, "-DIN=uint -DOUT=ushort",
+        convert<unsigned short, unsigned int>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<unsigned int, unsigned char>(config, "-DIN=uint -DOUT=uchar",
+        convert<unsigned char, unsigned int>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<unsigned short, unsigned char>(config, "-DIN=ushort -DOUT=uchar",
+        convert<unsigned char, unsigned short>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    testConversionOperator<uint64_t, unsigned int>(config, "-DIN=ulong -DOUT=uint", convert<unsigned int, uint64_t>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<uint64_t, unsigned short>(config, "-DIN=ulong -DOUT=ushort",
+        convert<unsigned short, uint64_t>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<uint64_t, unsigned char>(config, "-DIN=ulong -DOUT=uchar", convert<unsigned char, uint64_t>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSignExtension()
 {
-    testConversionOperation<short, int>(config, "-DIN=short16 -DOUT=int16", convert<int, short>,
+    // vector conversion function
+    testConversionFunction<short, int>(config, "-DIN=short16 -DOUT=int16", convert<int, short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<char, int>(config, "-DIN=char16 -DOUT=int16", convert<int, char>,
+    testConversionFunction<char, int>(config, "-DIN=char16 -DOUT=int16", convert<int, char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<char, short>(config, "-DIN=char16 -DOUT=short16", convert<short, char>,
+    testConversionFunction<char, short>(config, "-DIN=char16 -DOUT=short16", convert<short, char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    testConversionOperation<int, int64_t>(config, "-DIN=int16 -DOUT=long16", convert<int64_t, int>,
+    testConversionFunction<int, int64_t>(config, "-DIN=int16 -DOUT=long16", convert<int64_t, int>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<short, int64_t>(config, "-DIN=short16 -DOUT=long16", convert<int64_t, short>,
+    testConversionFunction<short, int64_t>(config, "-DIN=short16 -DOUT=long16", convert<int64_t, short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<char, int64_t>(config, "-DIN=char16 -DOUT=long16", convert<int64_t, char>,
+    testConversionFunction<char, int64_t>(config, "-DIN=char16 -DOUT=long16", convert<int64_t, char>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<short, int>(config, "-DIN=short -DOUT=int", convert<int, short>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<char, int>(config, "-DIN=char -DOUT=int", convert<int, char>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<char, short>(config, "-DIN=char -DOUT=short", convert<short, char>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    testConversionOperator<int, int64_t>(config, "-DIN=int -DOUT=long", convert<int64_t, int>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<short, int64_t>(config, "-DIN=short -DOUT=long", convert<int64_t, short>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<char, int64_t>(config, "-DIN=char -DOUT=long", convert<int64_t, char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testZeroExtension()
 {
-    testConversionOperation<unsigned short, unsigned int>(config, "-DIN=ushort16 -DOUT=uint16",
+    // vector conversion function
+    testConversionFunction<unsigned short, unsigned int>(config, "-DIN=ushort16 -DOUT=uint16",
         convert<unsigned int, unsigned short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<unsigned char, unsigned int>(config, "-DIN=uchar16 -DOUT=uint16",
+    testConversionFunction<unsigned char, unsigned int>(config, "-DIN=uchar16 -DOUT=uint16",
         convert<unsigned int, unsigned char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<unsigned char, unsigned short>(config, "-DIN=uchar16 -DOUT=ushort16",
+    testConversionFunction<unsigned char, unsigned short>(config, "-DIN=uchar16 -DOUT=ushort16",
         convert<unsigned short, unsigned char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    testConversionOperation<unsigned int, uint64_t>(config, "-DIN=uint16 -DOUT=ulong16",
-        convert<uint64_t, unsigned int>,
+    testConversionFunction<unsigned int, uint64_t>(config, "-DIN=uint16 -DOUT=ulong16", convert<uint64_t, unsigned int>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<unsigned short, uint64_t>(config, "-DIN=ushort16 -DOUT=ulong16",
+    testConversionFunction<unsigned short, uint64_t>(config, "-DIN=ushort16 -DOUT=ulong16",
         convert<uint64_t, unsigned short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
-    testConversionOperation<unsigned char, uint64_t>(config, "-DIN=uchar16 -DOUT=ulong16",
+    testConversionFunction<unsigned char, uint64_t>(config, "-DIN=uchar16 -DOUT=ulong16",
         convert<uint64_t, unsigned char>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<unsigned short, unsigned int>(config, "-DIN=ushort -DOUT=uint",
+        convert<unsigned int, unsigned short>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<unsigned char, unsigned int>(config, "-DIN=uchar -DOUT=uint",
+        convert<unsigned int, unsigned char>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<unsigned char, unsigned short>(config, "-DIN=uchar -DOUT=ushort",
+        convert<unsigned short, unsigned char>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    testConversionOperator<unsigned int, uint64_t>(config, "-DIN=uint -DOUT=ulong", convert<uint64_t, unsigned int>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<unsigned short, uint64_t>(config, "-DIN=ushort -DOUT=ulong",
+        convert<uint64_t, unsigned short>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+    testConversionOperator<unsigned char, uint64_t>(config, "-DIN=uchar -DOUT=ulong", convert<uint64_t, unsigned char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSignedIntToFloat()
 {
-    testConversionOperation<int, float>(config, "-DIN=int16 -DOUT=float16", convert<int, float>,
+    // vector conversion function
+    testConversionFunction<int, float>(config, "-DIN=int16 -DOUT=float16", convert<int, float>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<int, float>(config, "-DIN=int -DOUT=float", convert<int, float>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSignedShortToFloat()
 {
-    testConversionOperation<short, float>(config, "-DIN=short16 -DOUT=float16", convert<short, float>,
+    // vector conversion function
+    testConversionFunction<short, float>(config, "-DIN=short16 -DOUT=float16", convert<short, float>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<short, float>(config, "-DIN=short -DOUT=float", convert<short, float>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSignedCharToFloat()
 {
-    testConversionOperation<char, float>(config, "-DIN=char16 -DOUT=float16", convert<char, float>,
+    // vector conversion function
+    testConversionFunction<char, float>(config, "-DIN=char16 -DOUT=float16", convert<char, float>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<char, float>(config, "-DIN=char -DOUT=float", convert<char, float>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testUnsignedIntToFloat()
 {
-    testConversionOperation<unsigned int, float>(config, "-DIN=uint16 -DOUT=float16", convert<unsigned int, float>,
+    // vector conversion function
+    testConversionFunction<unsigned int, float>(config, "-DIN=uint16 -DOUT=float16", convert<unsigned int, float>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<unsigned int, float>(config, "-DIN=uint -DOUT=float", convert<unsigned int, float>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testUnsignedShortToFloat()
 {
-    testConversionOperation<unsigned short, float>(config, "-DIN=ushort16 -DOUT=float16",
-        convert<unsigned short, float>,
+    // vector conversion function
+    testConversionFunction<unsigned short, float>(config, "-DIN=ushort16 -DOUT=float16", convert<unsigned short, float>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<unsigned short, float>(config, "-DIN=ushort -DOUT=float", convert<unsigned short, float>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testUnsignedCharToFloat()
 {
-    testConversionOperation<unsigned char, float>(config, "-DIN=uchar16 -DOUT=float16", convert<unsigned char, float>,
+    // vector conversion function
+    testConversionFunction<unsigned char, float>(config, "-DIN=uchar16 -DOUT=float16", convert<unsigned char, float>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<unsigned char, float>(config, "-DIN=uchar -DOUT=float", convert<unsigned char, float>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testFloatToSignedInt()
 {
-    testConversionOperation<float, int>(config, "-DIN=float16 -DOUT=int16", convert<float, int>,
+    // vector conversion function
+    testConversionFunction<float, int>(config, "-DIN=float16 -DOUT=int16", convert<float, int>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<float, int>(config, "-DIN=float -DOUT=int", convert<float, int>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testFloatToSignedShort()
 {
-    testConversionOperation<float, short>(config, "-DIN=float16 -DOUT=short16", convert<float, short>,
+    // vector conversion function
+    testConversionFunction<float, short>(config, "-DIN=float16 -DOUT=short16", convert<float, short>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<float, short>(config, "-DIN=float -DOUT=short", convert<float, short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testFloatToSignedChar()
 {
-    testConversionOperation<float, char>(config, "-DIN=float16 -DOUT=char16", convert<float, char>,
+    // vector conversion function
+    testConversionFunction<float, char>(config, "-DIN=float16 -DOUT=char16", convert<float, char>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<float, char>(config, "-DIN=float -DOUT=char", convert<float, char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testFloatToUnsignedInt()
 {
-    testConversionOperation<float, unsigned int>(config, "-DIN=float16 -DOUT=uint16", convert<float, unsigned int>,
+    // vector conversion function
+    testConversionFunction<float, unsigned int>(config, "-DIN=float16 -DOUT=uint16", convert<float, unsigned int>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<float, unsigned int>(config, "-DIN=float -DOUT=uint", convert<float, unsigned int>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testFloatToUnsignedShort()
 {
-    testConversionOperation<float, unsigned short>(config, "-DIN=float16 -DOUT=ushort16",
-        convert<float, unsigned short>,
+    // vector conversion function
+    testConversionFunction<float, unsigned short>(config, "-DIN=float16 -DOUT=ushort16", convert<float, unsigned short>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<float, unsigned short>(config, "-DIN=float -DOUT=ushort", convert<float, unsigned short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testFloatToUnsignedChar()
 {
-    testConversionOperation<float, unsigned char>(config, "-DIN=float16 -DOUT=uchar16", convert<float, unsigned char>,
+    // vector conversion function
+    testConversionFunction<float, unsigned char>(config, "-DIN=float16 -DOUT=uchar16", convert<float, unsigned char>,
+        std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+
+    // scalar conversion operator
+    testConversionOperator<float, unsigned char>(config, "-DIN=float -DOUT=uchar", convert<float, unsigned char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateSignedIntToUnsignedInt()
 {
-    testConversionOperation<int, unsigned int>(config, "-DIN=int16 -DOUT=uint16 -DSATURATION=_sat",
+    testConversionFunction<int, unsigned int>(config, "-DIN=int16 -DOUT=uint16 -DSATURATION=_sat",
         saturate<int, unsigned int>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateUnsignedIntToSignedInt()
 {
-    testConversionOperation<unsigned int, int>(config, "-DIN=uint16 -DOUT=int16 -DSATURATION=_sat",
+    testConversionFunction<unsigned int, int>(config, "-DIN=uint16 -DOUT=int16 -DSATURATION=_sat",
         saturate<unsigned int, int>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateFloatToSignedInt()
 {
-    testConversionOperation<float, int>(config, "-DIN=float16 -DOUT=int16 -DSATURATION=_sat", saturate<int>,
+    testConversionFunction<float, int>(config, "-DIN=float16 -DOUT=int16 -DSATURATION=_sat", saturate<int>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateFloatToUnsignedInt()
 {
-    testConversionOperation<float, unsigned int>(config, "-DIN=float16 -DOUT=uint16 -DSATURATION=_sat",
+    testConversionFunction<float, unsigned int>(config, "-DIN=float16 -DOUT=uint16 -DSATURATION=_sat",
         saturate<unsigned int>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateSignedIntToSignedShort()
 {
-    testConversionOperation<int, short>(config, "-DIN=int16 -DOUT=short16 -DSATURATION=_sat", saturate<int, short>,
+    testConversionFunction<int, short>(config, "-DIN=int16 -DOUT=short16 -DSATURATION=_sat", saturate<int, short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateSignedIntToUnsignedShort()
 {
-    testConversionOperation<int, unsigned short>(config, "-DIN=int16 -DOUT=ushort16 -DSATURATION=_sat",
+    testConversionFunction<int, unsigned short>(config, "-DIN=int16 -DOUT=ushort16 -DSATURATION=_sat",
         saturate<int, unsigned short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateUnsignedIntToSignedShort()
 {
-    testConversionOperation<unsigned int, short>(config, "-DIN=uint16 -DOUT=short16 -DSATURATION=_sat",
+    testConversionFunction<unsigned int, short>(config, "-DIN=uint16 -DOUT=short16 -DSATURATION=_sat",
         saturate<unsigned int, short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateUnsignedIntToUnsignedShort()
 {
-    testConversionOperation<unsigned int, unsigned short>(config, "-DIN=uint16 -DOUT=ushort16 -DSATURATION=_sat",
+    testConversionFunction<unsigned int, unsigned short>(config, "-DIN=uint16 -DOUT=ushort16 -DSATURATION=_sat",
         saturate<unsigned int, unsigned short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestConversionFuntions::testSaturateFloatToSignedShort()
 {
-    testConversionOperation<float, short>(config, "-DIN=float16 -DOUT=short16 -DSATURATION=_sat", saturate<short>,
+    testConversionFunction<float, short>(config, "-DIN=float16 -DOUT=short16 -DSATURATION=_sat", saturate<short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateFloatToUnsignedShort()
 {
-    testConversionOperation<float, unsigned short>(config, "-DIN=float16 -DOUT=ushort16 -DSATURATION=_sat",
+    testConversionFunction<float, unsigned short>(config, "-DIN=float16 -DOUT=ushort16 -DSATURATION=_sat",
         saturate<unsigned short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateSignedIntToSignedChar()
 {
-    testConversionOperation<int, char>(config, "-DIN=int16 -DOUT=char16 -DSATURATION=_sat", saturate<int, char>,
+    testConversionFunction<int, char>(config, "-DIN=int16 -DOUT=char16 -DSATURATION=_sat", saturate<int, char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateSignedIntToUnsignedChar()
 {
-    testConversionOperation<int, unsigned char>(config, "-DIN=int16 -DOUT=uchar16 -DSATURATION=_sat",
+    testConversionFunction<int, unsigned char>(config, "-DIN=int16 -DOUT=uchar16 -DSATURATION=_sat",
         saturate<int, unsigned char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateUnsignedIntToSignedChar()
 {
-    testConversionOperation<unsigned int, char>(config, "-DIN=uint16 -DOUT=char16 -DSATURATION=_sat",
+    testConversionFunction<unsigned int, char>(config, "-DIN=uint16 -DOUT=char16 -DSATURATION=_sat",
         saturate<unsigned int, char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateUnsignedIntToUnsignedChar()
 {
-    testConversionOperation<unsigned int, unsigned char>(config, "-DIN=uint16 -DOUT=uchar16 -DSATURATION=_sat",
+    testConversionFunction<unsigned int, unsigned char>(config, "-DIN=uint16 -DOUT=uchar16 -DSATURATION=_sat",
         saturate<unsigned int, unsigned char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateSignedShortToUnsignedShort()
 {
-    testConversionOperation<short, unsigned short>(config, "-DIN=short16 -DOUT=ushort16 -DSATURATION=_sat",
+    testConversionFunction<short, unsigned short>(config, "-DIN=short16 -DOUT=ushort16 -DSATURATION=_sat",
         saturate<short, unsigned short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateUnsignedShortToSignedShort()
 {
-    testConversionOperation<short, char>(config, "-DIN=short16 -DOUT=char16 -DSATURATION=_sat", saturate<short, char>,
+    testConversionFunction<short, char>(config, "-DIN=short16 -DOUT=char16 -DSATURATION=_sat", saturate<short, char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateSignedShortToSignedChar()
 {
-    testConversionOperation<unsigned short, short>(config, "-DIN=ushort16 -DOUT=short16 -DSATURATION=_sat",
+    testConversionFunction<unsigned short, short>(config, "-DIN=ushort16 -DOUT=short16 -DSATURATION=_sat",
         saturate<unsigned short, short>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateSignedShortToUnsignedChar()
 {
-    testConversionOperation<short, unsigned char>(config, "-DIN=short16 -DOUT=uchar16 -DSATURATION=_sat",
+    testConversionFunction<short, unsigned char>(config, "-DIN=short16 -DOUT=uchar16 -DSATURATION=_sat",
         saturate<short, unsigned char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateUnsignedShortToSignedChar()
 {
-    testConversionOperation<unsigned short, char>(config, "-DIN=ushort16 -DOUT=char16 -DSATURATION=_sat",
+    testConversionFunction<unsigned short, char>(config, "-DIN=ushort16 -DOUT=char16 -DSATURATION=_sat",
         saturate<unsigned short, char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateUnsignedShortToUnsignedChar()
 {
-    testConversionOperation<unsigned short, unsigned char>(config, "-DIN=ushort16 -DOUT=uchar16 -DSATURATION=_sat",
+    testConversionFunction<unsigned short, unsigned char>(config, "-DIN=ushort16 -DOUT=uchar16 -DSATURATION=_sat",
         saturate<unsigned short, unsigned char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateFloatToSignedChar()
 {
-    testConversionOperation<float, char>(config, "-DIN=float16 -DOUT=char16 -DSATURATION=_sat", saturate<char>,
+    testConversionFunction<float, char>(config, "-DIN=float16 -DOUT=char16 -DSATURATION=_sat", saturate<char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateFloatToUnsignedChar()
 {
-    testConversionOperation<float, unsigned char>(config, "-DIN=float16 -DOUT=uchar16 -DSATURATION=_sat",
+    testConversionFunction<float, unsigned char>(config, "-DIN=float16 -DOUT=uchar16 -DSATURATION=_sat",
         saturate<unsigned char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateSignedCharToUnsignedChar()
 {
-    testConversionOperation<char, unsigned char>(config, "-DIN=char16 -DOUT=uchar16 -DSATURATION=_sat",
+    testConversionFunction<char, unsigned char>(config, "-DIN=char16 -DOUT=uchar16 -DSATURATION=_sat",
         saturate<char, unsigned char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestConversionFuntions::testSaturateUnsignedCharToSignedChar()
 {
-    testConversionOperation<unsigned char, char>(config, "-DIN=uchar16 -DOUT=char16 -DSATURATION=_sat",
+    testConversionFunction<unsigned char, char>(config, "-DIN=uchar16 -DOUT=char16 -DSATURATION=_sat",
         saturate<unsigned char, char>,
         std::bind(&TestConversionFuntions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
