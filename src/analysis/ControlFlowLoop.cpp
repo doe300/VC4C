@@ -708,11 +708,12 @@ FastSet<InstructionWalker> ControlFlowLoop::findLoopInvariants()
      * For algorithm, see
      * https://www.cs.princeton.edu/courses/archive/spring03/cs320/notes/loops.pdf, slide 23
      */
+    FastMap<const intermediate::IntermediateInstruction*, InstructionWalker> invariantInstructions;
 
-    // given a certain loop, any instruction which is marked as invariant, calculates a constant expression (without
+    // given a certain loop, any instruction which is known to be invariant, calculates a constant expression (without
     // depending on some flags) or is not part of the loop is considered invariant
     auto writerIsInvariant = [&](const LocalUser* writer) -> bool {
-        return writer->hasDecoration(intermediate::InstructionDecorations::LOOP_INVARIANT) ||
+        return invariantInstructions.find(writer) != invariantInstructions.end() ||
             (!writer->hasConditionalExecution() && writer->precalculate().first) || !findInLoop(writer);
     };
 
@@ -731,7 +732,6 @@ FastSet<InstructionWalker> ControlFlowLoop::findLoopInvariants()
         return false;
     };
 
-    FastSet<InstructionWalker> invariantInstructions;
     for(auto node : *this)
     {
         auto it = node->key->walk();
@@ -744,20 +744,21 @@ FastSet<InstructionWalker> ControlFlowLoop::findLoopInvariants()
                 if(!it->hasConditionalExecution())
                     invariantCondition = true;
                 else if(auto setflag = it.getBasicBlock()->findLastSettingOfFlags(it))
-                    invariantCondition =
-                        (*setflag)->hasDecoration(intermediate::InstructionDecorations::LOOP_INVARIANT);
+                    invariantCondition = invariantInstructions.find((*setflag).get()) != invariantInstructions.end();
 
                 if(invariantCondition)
-                {
-                    it->addDecorations(intermediate::InstructionDecorations::LOOP_INVARIANT);
-                    invariantInstructions.emplace(it);
-                }
+                    invariantInstructions.emplace(it.get(), it);
             }
             it.nextInBlock();
         }
     }
 
-    return invariantInstructions;
+    FastSet<InstructionWalker> result;
+    result.reserve(invariantInstructions.size());
+    for(const auto& entry : invariantInstructions)
+        result.emplace(entry.second);
+
+    return result;
 }
 
 bool ControlFlowLoop::isWorkGroupLoop() const

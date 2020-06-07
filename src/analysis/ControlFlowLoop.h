@@ -115,13 +115,9 @@ namespace vc4c
             const CFGNode* getTail() const;
 
             /**
-             * Iterates through all the instructions in the loop and marks instructions as "loop invariant" that do not
+             * Iterates through all the instructions in the loop and returns loop invariant instructions that do not
              * depend on any dynamically calculated value inside the loop, i.e. all instructions that calculate the same
              * value independent of the loop iteration.
-             *
-             * NOTE: The invariance marker does not distinguish between nested loops, so the instructions marked with
-             * invariant might be wrong for this particular loop! The returned list of instructions is instead
-             * guaranteed to be invariant for this loop!
              *
              * NOTE: Not all instructions marked as invariant can be moved, since some might have side-effects which
              * change the behavior of the program is moved!

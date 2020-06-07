@@ -81,13 +81,8 @@ namespace vc4c
             // remainder (for division) and no non-zero bits are shifted out of the value. I.e. for exact division (a /
             // b) * b == a and for shifts (a >> b) << b == a.
             EXACT_OPERATION = 1u << 23u,
-            // An instruction which is located within a loop but does not depend on any calculate (or flag) done from
-            // inside the loop. I.e. an instruction which calculates the same result for every loop iteration.
-            // NOTE: The invariance marker does not distinguish between nested loops, so an instruction invariant for a
-            // nested loop might not be invariant for its parent loop!
-            LOOP_INVARIANT = 1u << 24u,
             // The instruction is part of the work-group-loop and not of the actual kernel body
-            WORK_GROUP_LOOP = 1u << 25u
+            WORK_GROUP_LOOP = 1u << 24u
         };
 
         std::string toString(InstructionDecorations decoration);

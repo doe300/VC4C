@@ -63,8 +63,6 @@ std::string intermediate::toString(const InstructionDecorations decoration)
         res.append("nuw ");
     if(has_flag(decoration, InstructionDecorations::EXACT_OPERATION))
         res.append("exact ");
-    if(has_flag(decoration, InstructionDecorations::LOOP_INVARIANT))
-        res.append("invariant ");
     if(has_flag(decoration, InstructionDecorations::WORK_GROUP_LOOP))
         res.append("wg_loop ");
     return res.substr(0, res.empty() ? 0 : res.size() - 1);
@@ -98,8 +96,6 @@ InstructionDecorations intermediate::forwardDecorations(InstructionDecorations d
         res = add_flag(res, InstructionDecorations::VPM_READ_CONFIGURATION);
     if(has_flag(decorations, InstructionDecorations::VPM_WRITE_CONFIGURATION))
         res = add_flag(res, InstructionDecorations::VPM_WRITE_CONFIGURATION);
-    if(has_flag(decorations, InstructionDecorations::LOOP_INVARIANT))
-        res = add_flag(res, InstructionDecorations::LOOP_INVARIANT);
     return res;
 }
 
