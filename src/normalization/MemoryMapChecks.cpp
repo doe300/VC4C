@@ -309,6 +309,255 @@ static void addConditionalLocalMapping(const Local* loc, const ConditionalMemory
     conditionalLocalMappings[conditionalWrite.conditionalWrite->checkOutputLocal()].emplace(loc);
 }
 
+static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping, InstructionWalker it, const Local* local,
+    const intermediate::MemoryInstruction* memInstr,
+    FastMap<InstructionWalker, std::pair<const Local*, FastSet<const ConditionalMemoryAccess*>>>&
+        conditionalWrittenMemoryAccesses,
+    FastSet<ConditionalMemoryAccess>& conditionalAddressWrites)
+{
+    if(mapping.find(local) != mapping.end())
+    {
+        // local was already processed
+        mapping[local].accessInstructions.emplace(it, local);
+        return local;
+    }
+    if(local->is<StackAllocation>())
+    {
+        mapping[local].accessInstructions.emplace(it, local);
+        if(local->type.isSimpleType() || convertSmallArrayToRegister(local))
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Small stack value '" << local->to_string() << "' can be stored in a register" << logging::endl);
+            mapping[local].preferred = MemoryAccessType::QPU_REGISTER_READWRITE;
+            // we cannot pack an array into a VPM cache line, since always all 16 elements are read/written
+            // and we would overwrite the other elements
+            mapping[local].fallback =
+                local->type.isSimpleType() ? MemoryAccessType::VPM_PER_QPU : MemoryAccessType::RAM_READ_WRITE_VPM;
+        }
+        else if(!local->type.getElementType().getStructType())
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Stack value '" << local->to_string()
+                    << "' can be stored in VPM per QPU (with fall-back to RAM via VPM)" << logging::endl);
+            mapping[local].preferred = MemoryAccessType::VPM_PER_QPU;
+            mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
+        }
+        else
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Struct stack value '" << local->to_string() << "' can be stored in RAM per QPU (via VPM)"
+                    << logging::endl);
+            mapping[local].preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
+            mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
+        }
+    }
+    else if(local->is<Global>())
+    {
+        mapping[local].accessInstructions.emplace(it, local);
+        if(isMemoryOnlyRead(local))
+        {
+            // global buffer
+            if(getConstantElementValue(memInstr->getSource()))
+            {
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Constant element of constant buffer '" << local->to_string()
+                        << "' can be stored in a register " << logging::endl);
+                mapping[local].preferred = MemoryAccessType::QPU_REGISTER_READONLY;
+                mapping[local].fallback = MemoryAccessType::RAM_LOAD_TMU;
+            }
+            else if(convertSmallArrayToRegister(local))
+            {
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Small constant buffer '" << local->to_string() << "' can be stored in a register"
+                        << logging::endl);
+                mapping[local].preferred = MemoryAccessType::QPU_REGISTER_READONLY;
+                mapping[local].fallback = MemoryAccessType::RAM_LOAD_TMU;
+            }
+            else
+            {
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Constant buffer '" << local->to_string() << "' can be read from RAM via TMU"
+                        << logging::endl);
+                mapping[local].preferred = MemoryAccessType::RAM_LOAD_TMU;
+                // fall-back, e.g. for memory copy
+                mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
+            }
+        }
+        else if(!local->type.getElementType().getStructType())
+        {
+            // local buffer
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Local buffer '" << local->to_string()
+                    << "' can be stored in VPM (with fall-back to RAM via VPM)" << logging::endl);
+            mapping[local].preferred = MemoryAccessType::VPM_SHARED_ACCESS;
+            mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
+        }
+        else
+        {
+            // local buffer
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Local struct '" << local->to_string() << "' can be stored in RAM via VPM" << logging::endl);
+            mapping[local].preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
+            mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
+        }
+    }
+    else if(auto conditonalWrites = checkAllWritersArePhiNodesOrSelections(local, {it.get(), memInstr}))
+    {
+        // If the local is a PHI result from different memory addresses, we can still map it, if the
+        // source addresses have the same access type. Since the "original" access types of the sources
+        // might not yet be determined and the source of a phi-node might be another phi-node, we first
+        // collect all the information and in the end find the greatest common memory access type for
+        // all memory accesses using the same phi-node. The same is true for memory addresses written via
+        // select-statements (?:-operators).
+
+        auto& entry = conditionalWrittenMemoryAccesses
+                          .emplace(it, std::pair<const Local*, FastSet<const ConditionalMemoryAccess*>>{})
+                          .first->second;
+        entry.first = local;
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Conditionally accessed local '" << local->to_string()
+                << "' will not be mapped, these sources can be mapped instead: " << logging::endl);
+        for(auto writer : *conditonalWrites)
+        {
+            if(const Local* loc = writer->assertArgument(0).local())
+            {
+                loc = loc->getBase(true);
+                if(loc->residesInMemory() || loc->is<Parameter>())
+                {
+                    auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, loc});
+                    entry.second.emplace(&*tmp.first);
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "\tconditional write " << writer->to_string()
+                            << " of memory area: " << loc->to_string(true) << logging::endl);
+                    continue;
+                }
+                if(loc->getSingleWriter() &&
+                    (loc->getSingleWriter()->hasDecoration(InstructionDecorations::PHI_NODE) ||
+                        loc->getSingleWriter()->hasConditionalExecution()))
+                {
+                    auto writer = loc->getSingleWriter();
+                    auto sourceValue = dynamic_cast<const MoveOperation*>(writer) ? writer->assertArgument(0) :
+                                                                                    writer->getOutput().value();
+                    auto sourceWriter = check(sourceValue.getSingleWriter()) | check(writer);
+                    auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
+                    entry.second.emplace(&*tmp.first);
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "\tconditional write " << writer->to_string()
+                            << " of address write: " << sourceWriter->to_string() << logging::endl);
+                    continue;
+                }
+            }
+            if(writer->hasDecoration(InstructionDecorations::PHI_NODE) || writer->hasConditionalExecution())
+            {
+                auto sourceValue = dynamic_cast<const MoveOperation*>(writer) ? writer->assertArgument(0) :
+                                                                                writer->getOutput().value();
+                auto sourceWriter = check(sourceValue.getSingleWriter()) | check(writer);
+                auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
+                entry.second.emplace(&*tmp.first);
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "\tconditional write " << writer->to_string()
+                        << " of address write: " << sourceWriter->to_string() << logging::endl);
+                continue;
+            }
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Unhandled case of conditional address write used as source for memory access", writer->to_string());
+        }
+
+        // delete the original (wrong) mapping, since it is not a proper memory area
+        mapping.erase(local);
+    }
+    else
+    {
+        // We come here for all uncommon types of memory access, e.g. accessing pointers loaded from memory (e.g. stack)
+        // or accessing pointers which have been converted from/to integer values (and therefore have no ReferenceData
+        // chain to the original memory area).
+
+        // To still be able to map them, try to get to some memory area by following the local's value source and try
+        // again to find underlying memory area
+        auto sourceLocal = local;
+        while(auto writer = analysis::getSingleWriter(sourceLocal->createReference()))
+        {
+            if(auto move = dynamic_cast<const MoveOperation*>(writer))
+            {
+                if(auto loc = move->getSource().checkLocal())
+                    sourceLocal = loc;
+                else
+                    break;
+            }
+            else if(auto op = dynamic_cast<const Operation*>(writer))
+            {
+                // check for base-address + offset addition using integers
+                if(op->op == OP_ADD)
+                {
+                    auto firstArg = getSourceValue(op->getFirstArg());
+                    auto secondArg = getSourceValue(op->assertArgument(1));
+
+                    // XXX The "one argument is pointer the other not" check is not completely true, but the most
+                    // fitting one. In theory, they both could be pointers or the actual base pointer could be reachable
+                    // by the non-pointer argument.
+                    if(firstArg.checkLocal() &&
+                        (secondArg.getConstantValue() ||
+                            (firstArg.type.getPointerType() && !secondArg.type.getPointerType())))
+                        sourceLocal = firstArg.local();
+                    else if(secondArg.checkLocal() &&
+                        (firstArg.getConstantValue() ||
+                            (!firstArg.type.getPointerType() && secondArg.type.getPointerType())))
+                        sourceLocal = secondArg.local();
+                    else
+                        break;
+                }
+                else
+                    break;
+            }
+            else
+                break;
+        }
+
+        sourceLocal = sourceLocal->getBase(true);
+        if(local != sourceLocal)
+        {
+            // try again to map the local to an (existing) memory area
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Failed to determine underlying memory area for '" << local->to_string()
+                    << "', trying again for its single source: " << sourceLocal->to_string() << logging::endl);
+            auto memoryLocal = determineSingleMemoryAreaMapping(
+                mapping, it, sourceLocal, memInstr, conditionalWrittenMemoryAccesses, conditionalAddressWrites);
+            // if we returned here, then we managed to (conditionally) map the local to a memory area. So edit the
+            // current local to reference the inner most local
+            if(local->type.getPointerType() && !local->get<LocalData>() && memoryLocal &&
+                memoryLocal->type.getPointerType())
+            {
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Single source '" << sourceLocal->to_string()
+                        << "' is mapped to memory, applying base to local '" << local->to_string()
+                        << "': " << memoryLocal->to_string(true) << logging::endl);
+                // add the access instruction to the actually accessed memory instruction
+                auto innerMappingIt = mapping.find(memoryLocal);
+                if(innerMappingIt != mapping.end())
+                    innerMappingIt->second.accessInstructions.emplace(it, local);
+                const_cast<Local*>(local)->set(ReferenceData(*memoryLocal, ANY_ELEMENT));
+            }
+            return memoryLocal;
+        }
+
+        // FIXME this is called e.g. for pointers dereferenced which are loaded from memory (from
+        // pointers-to-pointers), e.g. for ./testing/bullet/jointSolver.cl
+        // FIXME this is also called for pointers converted from/to integers, e.g. for
+        // TestMemoryAccess#CASTPOINTER
+        CPPLOG_LAZY_BLOCK(logging::Level::ERROR, {
+            logging::error() << "Failed to find memory area for local: " << local->to_string(true) << logging::endl;
+            for(const auto& writer : local->getUsers(LocalUse::Type::WRITER))
+                logging::error() << "\tWriter: " << writer->to_string() << logging::endl;
+            for(const auto& reader : local->getUsers(LocalUse::Type::READER))
+                logging::error() << "\tReader: " << reader->to_string() << logging::endl;
+        });
+
+        throw CompilationError(
+            CompilationStep::NORMALIZER, "Invalid local type for memory area", local->to_string(true));
+    }
+    return local;
+}
+
 MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
 {
     // TODO lower local/private struct-elements into VPM?! At least for single structs
@@ -642,180 +891,8 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                 }
             }
             for(const auto local : memInstr->getMemoryAreas())
-            {
-                if(mapping.find(local) != mapping.end())
-                {
-                    // local was already processed
-                    mapping[local].accessInstructions.emplace(it, local);
-                    continue;
-                }
-                mapping[local].accessInstructions.emplace(it, local);
-                if(local->is<StackAllocation>())
-                {
-                    if(local->type.isSimpleType() || convertSmallArrayToRegister(local))
-                    {
-                        CPPLOG_LAZY(logging::Level::DEBUG,
-                            log << "Small stack value '" << local->to_string() << "' can be stored in a register"
-                                << logging::endl);
-                        mapping[local].preferred = MemoryAccessType::QPU_REGISTER_READWRITE;
-                        // we cannot pack an array into a VPM cache line, since always all 16 elements are read/written
-                        // and we would overwrite the other elements
-                        mapping[local].fallback = local->type.isSimpleType() ? MemoryAccessType::VPM_PER_QPU :
-                                                                               MemoryAccessType::RAM_READ_WRITE_VPM;
-                    }
-                    else if(!local->type.getElementType().getStructType())
-                    {
-                        CPPLOG_LAZY(logging::Level::DEBUG,
-                            log << "Stack value '" << local->to_string()
-                                << "' can be stored in VPM per QPU (with fall-back to RAM via VPM)" << logging::endl);
-                        mapping[local].preferred = MemoryAccessType::VPM_PER_QPU;
-                        mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
-                    }
-                    else
-                    {
-                        CPPLOG_LAZY(logging::Level::DEBUG,
-                            log << "Struct stack value '" << local->to_string()
-                                << "' can be stored in RAM per QPU (via VPM)" << logging::endl);
-                        mapping[local].preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
-                        mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
-                    }
-                }
-                else if(local->is<Global>())
-                {
-                    if(isMemoryOnlyRead(local))
-                    {
-                        // global buffer
-                        if(getConstantElementValue(memInstr->getSource()))
-                        {
-                            CPPLOG_LAZY(logging::Level::DEBUG,
-                                log << "Constant element of constant buffer '" << local->to_string()
-                                    << "' can be stored in a register " << logging::endl);
-                            mapping[local].preferred = MemoryAccessType::QPU_REGISTER_READONLY;
-                            mapping[local].fallback = MemoryAccessType::RAM_LOAD_TMU;
-                        }
-                        else if(convertSmallArrayToRegister(local))
-                        {
-                            CPPLOG_LAZY(logging::Level::DEBUG,
-                                log << "Small constant buffer '" << local->to_string()
-                                    << "' can be stored in a register" << logging::endl);
-                            mapping[local].preferred = MemoryAccessType::QPU_REGISTER_READONLY;
-                            mapping[local].fallback = MemoryAccessType::RAM_LOAD_TMU;
-                        }
-                        else
-                        {
-                            CPPLOG_LAZY(logging::Level::DEBUG,
-                                log << "Constant buffer '" << local->to_string() << "' can be read from RAM via TMU"
-                                    << logging::endl);
-                            mapping[local].preferred = MemoryAccessType::RAM_LOAD_TMU;
-                            // fall-back, e.g. for memory copy
-                            mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
-                        }
-                    }
-                    else if(!local->type.getElementType().getStructType())
-                    {
-                        // local buffer
-                        CPPLOG_LAZY(logging::Level::DEBUG,
-                            log << "Local buffer '" << local->to_string()
-                                << "' can be stored in VPM (with fall-back to RAM via VPM)" << logging::endl);
-                        mapping[local].preferred = MemoryAccessType::VPM_SHARED_ACCESS;
-                        mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
-                    }
-                    else
-                    {
-                        // local buffer
-                        CPPLOG_LAZY(logging::Level::DEBUG,
-                            log << "Local struct '" << local->to_string() << "' can be stored in RAM via VPM"
-                                << logging::endl);
-                        mapping[local].preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
-                        mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
-                    }
-                }
-                else if(auto conditonalWrites = checkAllWritersArePhiNodesOrSelections(local, {it.get(), memInstr}))
-                {
-                    // if the local is a PHI result from different memory addresses, we can still map it, if the
-                    // source addresses have the same access type. Since the "original" access types of the sources
-                    // might not yet be determined and the source of a phi-node might be another phi-node, we first
-                    // collect all the information and in the end find the greatest common memory access type for
-                    // all memory accesses using the same phi-node. The same is true for memory addresses written via
-                    // select-statements (?:-operators).
-
-                    auto& entry = conditionalWrittenMemoryAccesses
-                                      .emplace(it, std::pair<const Local*, FastSet<const ConditionalMemoryAccess*>>{})
-                                      .first->second;
-                    entry.first = local;
-                    CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Conditionally accessed local '" << local->to_string()
-                            << "' will not be mapped, these sources can be mapped instead: " << logging::endl);
-                    for(auto writer : *conditonalWrites)
-                    {
-                        if(const Local* loc = writer->assertArgument(0).local())
-                        {
-                            loc = loc->getBase(true);
-                            if(loc->residesInMemory() || loc->is<Parameter>())
-                            {
-                                auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, loc});
-                                entry.second.emplace(&*tmp.first);
-                                CPPLOG_LAZY(logging::Level::DEBUG,
-                                    log << "\tconditional write " << writer->to_string()
-                                        << " of memory area: " << loc->to_string(true) << logging::endl);
-                                continue;
-                            }
-                            if(loc->getSingleWriter() &&
-                                (loc->getSingleWriter()->hasDecoration(InstructionDecorations::PHI_NODE) ||
-                                    loc->getSingleWriter()->hasConditionalExecution()))
-                            {
-                                auto writer = loc->getSingleWriter();
-                                auto sourceValue = dynamic_cast<const MoveOperation*>(writer) ?
-                                    writer->assertArgument(0) :
-                                    writer->getOutput().value();
-                                auto sourceWriter = check(sourceValue.getSingleWriter()) | check(writer);
-                                auto tmp =
-                                    conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
-                                entry.second.emplace(&*tmp.first);
-                                CPPLOG_LAZY(logging::Level::DEBUG,
-                                    log << "\tconditional write " << writer->to_string()
-                                        << " of address write: " << sourceWriter->to_string() << logging::endl);
-                                continue;
-                            }
-                        }
-                        if(writer->hasDecoration(InstructionDecorations::PHI_NODE) || writer->hasConditionalExecution())
-                        {
-                            auto sourceValue = dynamic_cast<const MoveOperation*>(writer) ? writer->assertArgument(0) :
-                                                                                            writer->getOutput().value();
-                            auto sourceWriter = check(sourceValue.getSingleWriter()) | check(writer);
-                            auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
-                            entry.second.emplace(&*tmp.first);
-                            CPPLOG_LAZY(logging::Level::DEBUG,
-                                log << "\tconditional write " << writer->to_string()
-                                    << " of address write: " << sourceWriter->to_string() << logging::endl);
-                            continue;
-                        }
-                        throw CompilationError(CompilationStep::NORMALIZER,
-                            "Unhandled case of conditional address write used as source for memory access",
-                            writer->to_string());
-                    }
-
-                    // delete the original (wrong) mapping, since it is not a proper memory area
-                    mapping.erase(local);
-                }
-                else
-                {
-                    // parameters MUST be handled before and there is no other type of memory objects
-                    // FIXME this is called e.g. for pointers dereferenced which are loaded from memory (from
-                    // pointers-to-pointers), e.g. for ./testing/bullet/jointSolver.cl
-                    CPPLOG_LAZY_BLOCK(logging::Level::ERROR, {
-                        logging::error() << "Failed to find memory area for local: " << local->to_string(true)
-                                         << logging::endl;
-                        for(const auto& writer : local->getUsers(LocalUse::Type::WRITER))
-                            logging::error() << "\tWriter: " << writer->to_string() << logging::endl;
-                        for(const auto& reader : local->getUsers(LocalUse::Type::READER))
-                            logging::error() << "\tReader: " << reader->to_string() << logging::endl;
-                    });
-
-                    throw CompilationError(
-                        CompilationStep::NORMALIZER, "Invalid local type for memory area", local->to_string(true));
-                }
-            }
+                determineSingleMemoryAreaMapping(
+                    mapping, it, local, memInstr, conditionalWrittenMemoryAccesses, conditionalAddressWrites);
             if(it.has())
                 allWalkers.emplace(it);
         }
@@ -951,9 +1028,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
         }
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Conditionally written memory address '" << conditionalAccessedMemory.second.first->to_string()
-                << "' will access all source memory locations as "
-                << static_cast<unsigned>(*preferredTypes.begin())
-                // TODO correct type!
+                << "' will access all source memory locations as " << analysis::toString(*preferredTypes.begin())
                 << logging::endl);
     }
 

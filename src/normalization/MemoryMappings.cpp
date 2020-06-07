@@ -94,6 +94,9 @@ InstructionWalker normalization::mapMemoryAccess(Method& method, InstructionWalk
     const tools::SmallSortedPointerSet<const MemoryInfo*>& destInfos)
 {
     auto& typeInfos = mem->op == MemoryOperation::READ || mem->op == MemoryOperation::COPY ? srcInfos : destInfos;
+    if(typeInfos.empty())
+        throw CompilationError(CompilationStep::NORMALIZER, "Can't map memory access without valid memory access type",
+            mem ? mem->to_string() : it->to_string());
     auto type = (*typeInfos.begin())->type;
     for(const auto& info : typeInfos)
     {

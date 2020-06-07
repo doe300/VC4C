@@ -135,7 +135,7 @@ static FastMap<Value, intermediate::InstructionDecorations> findDirectLevelAddit
     return result;
 }
 
-static const intermediate::IntermediateInstruction* getSingleWriter(
+const intermediate::IntermediateInstruction* analysis::getSingleWriter(
     const Value& val, const intermediate::IntermediateInstruction* defaultInst)
 {
     const intermediate::IntermediateInstruction* writer = nullptr;
@@ -161,7 +161,7 @@ static const intermediate::IntermediateInstruction* getSingleWriter(
         }
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Unhandled case, value does not have exactly 1 writer for '" << val.to_string()
-                << "': " << defaultInst->to_string() << logging::endl);
+                << "': " << (defaultInst ? defaultInst->to_string() : "(null)") << logging::endl);
         return {};
     }
     return writer;
@@ -261,7 +261,7 @@ static bool findMemoryObjectAndBaseAddressAdd(
         {
             // this is an add of a constant, the actual base-address add might be the source of the
             // other argument
-            if(auto writer = getSingleWriter(arg1, nullptr))
+            if(auto writer = getSingleWriter(arg1))
             {
                 range.constantOffset = constant;
                 trackInst = writer;
@@ -272,7 +272,7 @@ static bool findMemoryObjectAndBaseAddressAdd(
         {
             // this is an add of a constant, the actual base-address add might be the source of the
             // other argument
-            if(auto writer = getSingleWriter(arg0, nullptr))
+            if(auto writer = getSingleWriter(arg0))
             {
                 range.constantOffset = constant;
                 trackInst = writer;

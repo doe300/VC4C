@@ -194,6 +194,21 @@ __kernel void test(__global Type* out, __global Type* in, __global const ulong* 
   out[gid] = in[gid];
 })";
 
+static const std::string CASTPOINTER = R"(
+__kernel void test(__global TYPE* out, const __global TYPE* in) {
+  size_t gid = get_global_id(0);
+
+  ulong inTmp = (ulong) in;
+  long outTmp = (long) out;
+  inTmp += gid * sizeof(TYPE);
+  outTmp += gid * sizeof(TYPE);
+
+  __global TYPE* inAddr = (__global TYPE*) inTmp;
+  __global TYPE* outAddr = (__global TYPE*) outTmp;
+  *outAddr = *inAddr;
+}
+)";
+
 TestMemoryAccess::TestMemoryAccess(const Configuration& config) : TestCompilationHelper(config)
 {
     TEST_ADD(TestMemoryAccess::testPrivateStorage);
@@ -242,6 +257,8 @@ TestMemoryAccess::TestMemoryAccess(const Configuration& config) : TestCompilatio
     TEST_ADD(TestMemoryAccess::testCopyPhiParameter);
     TEST_ADD(TestMemoryAccess::testReadSelectParameterOrLocal);
     TEST_ADD(TestMemoryAccess::testReadSelectRegister);
+
+    TEST_ADD(TestMemoryAccess::testAccessConvertedPointer);
 }
 
 TestMemoryAccess::~TestMemoryAccess() = default;
@@ -1409,4 +1426,17 @@ void TestMemoryAccess::emulateKernel(std::istream& code, const std::string& kern
     result.reset(new EmulationResult(emulate(data)));
     TEST_ASSERT(result->executionSuccessful)
     TEST_ASSERT_EQUALS(args.size(), result->results.size())
+}
+
+void TestMemoryAccess::testAccessConvertedPointer()
+{
+    std::stringstream code;
+    compileBuffer(config, code, CASTPOINTER, "-DTYPE=int16");
+
+    auto in = generateInput<int, 16 * 12>(true);
+
+    auto out = runEmulation<int, int, 16, 12>(code, {in});
+    checkUnaryResults<int, int>(
+        in, out, [](int i) -> int { return i; }, "integer-arithmetic",
+        std::bind(&TestMemoryAccess::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }

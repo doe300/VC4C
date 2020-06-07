@@ -91,6 +91,8 @@ public:
     void testReadSelectRegister();
     // TODO void testReadWriteSelectRegister();
 
+    void testAccessConvertedPointer();
+
 private:
     void onMismatch(const std::string& expected, const std::string& result);
 

@@ -136,6 +136,17 @@ namespace vc4c
         std::pair<bool, analysis::ValueRange> checkWorkGroupUniformParts(
             FastAccessList<MemoryAccessRange>& accessRanges, bool allowConstantOffsets = true);
 
+        /**
+         * Returns the single writer of a value (usually an address local).
+         *
+         * In contrast to Value#getSingleWriter(), this function skips all MemoryInstructions which write into the
+         * memory stored at the given address and therefore only heeds the actual writes of the address value.
+         *
+         * @return the single writer or the defaultInst, if not exactly 1 matching writer was found
+         */
+        const intermediate::IntermediateInstruction* getSingleWriter(
+            const Value& val, const intermediate::IntermediateInstruction* defaultInst = nullptr);
+
     } // namespace analysis
 
 } // namespace vc4c
