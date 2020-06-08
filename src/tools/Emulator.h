@@ -256,6 +256,8 @@ namespace vc4c
 
             const qpu_asm::Instruction* getCurrentInstruction(
                 std::vector<qpu_asm::Instruction>::const_iterator firstInstruction) const;
+            uint32_t getCurrentInstructionIndex(
+                std::vector<qpu_asm::Instruction>::const_iterator firstInstruction) const;
 
         private:
             Mutex& mutex;

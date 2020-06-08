@@ -892,7 +892,7 @@ namespace vc4c
          * For scalar types, a simple INT_ZERO is returned, for compound types, a container containing the correct
          * amount of zero-elements is created
          */
-        static Value createZeroInitializer(DataType type);
+        static Optional<Value> createZeroInitializer(DataType type);
 
         /*
          * Returns the stored data of the given type, if it matches the stored type.

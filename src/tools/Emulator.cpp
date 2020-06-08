@@ -1291,6 +1291,11 @@ const qpu_asm::Instruction* QPU::getCurrentInstruction(
     return &(*(firstInstruction + pc));
 }
 
+uint32_t QPU::getCurrentInstructionIndex(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction) const
+{
+    return pc;
+}
+
 static std::pair<SIMDVector, bool> toInputValue(Registers& registers, InputMultiplex mux, Address addressA,
     Address addressB, bool regBIsImmediate, bool anyElementExecuted)
 {
@@ -1769,8 +1774,10 @@ static void emulateStep(std::vector<qpu_asm::Instruction>::const_iterator firstI
         catch(const std::exception&)
         {
             logging::error() << "Emulation threw exception execution in following instruction on QPU "
-                             << static_cast<unsigned>(qpus[i].ID) << ": "
-                             << qpus[i].getCurrentInstruction(firstInstruction)->toHexString(true) << logging::endl;
+                             << static_cast<unsigned>(qpus[i].ID) << " ("
+                             << qpus[i].getCurrentInstructionIndex(firstInstruction)
+                             << "): " << qpus[i].getCurrentInstruction(firstInstruction)->toHexString(true)
+                             << logging::endl;
             // re-throw error
             throw;
         }

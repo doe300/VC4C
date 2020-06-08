@@ -628,16 +628,6 @@ std::shared_ptr<Expression> Expression::combineWith(
     return shared_from_this();
 }
 
-static bool isUnsigned(const SubExpression& sub)
-{
-    if(auto expr = sub.checkExpression())
-        return intermediate::isGroupBuiltin(expr->deco, true) ||
-            has_flag(expr->deco, intermediate::InstructionDecorations::UNSIGNED_RESULT);
-    if(auto val = sub.checkValue())
-        return val->isUnsignedInteger();
-    return false;
-}
-
 static Optional<Value> getConvergenceLimit0(const SubExpression& sub)
 {
     if(auto val = sub.checkValue())
@@ -868,8 +858,8 @@ bool Expression::insertInstructions(
         leftVal = exprIt->second.first->getOutput();
     }
 
-    auto rightVal = arg0.checkValue();
-    if(auto rightExpr = arg0.checkExpression())
+    auto rightVal = arg1.checkValue();
+    if(auto rightExpr = arg1.checkExpression())
     {
         auto exprIt = existingExpressions.find(rightExpr);
         if(exprIt == existingExpressions.end())

@@ -1087,6 +1087,23 @@ InstructionWalker optimizations::combineArithmeticOperations(
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Combining shifts " << singleWriter->to_string() << " and " << it->to_string() << logging::endl);
         precalc = OP_ADD(literalArg, otherLiteralArg).first;
+        // If the new offset would exceed the 31, then the result is not true anymore (since the ALU only takes the last
+        // 5 bits of the offset). E.g. (a >> 30) >> 30 = a >> 60 != a >> (60 & 0x1F)
+        if(precalc & &Value::getLiteralValue && (precalc & &Value::getLiteralValue)->unsignedInt() >= 32)
+        {
+            if(op->op == OP_ASR)
+                // a >>> 31 and a >>> 123 have the same effect, everything except the high bit is shifted away, so
+                // replace with valid shift resulting in the same value
+                precalc = Value(Literal(31), TYPE_INT8);
+            else if(op->op == OP_SHL || op->op == OP_SHR)
+            {
+                // a >> 34 and a << 35 is always zero, so replace with instruction always setting zero
+                op->op = OP_AND;
+                precalc = INT_ZERO;
+            }
+            // For rotation, the result is the same for e.g. a >>< 123 and a >>< (123 & 0x1F), so no need to change
+            // anything here
+        }
     }
     auto lastIt = it.getBasicBlock()->findWalkerForInstruction(singleWriter, it);
     if(lastIt)

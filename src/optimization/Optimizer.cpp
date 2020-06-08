@@ -202,26 +202,20 @@ static void runOptimizationPasses(const Module& module, Method& method, const Co
         index += 100;
     }
 
+    auto numIterations = config.additionalOptions.maxOptimizationIterations - iterationsLeft;
+    numIterations = numIterations > 0 ? numIterations - 1 : 0;
     LCOV_EXCL_START
     logging::logLazy(logging::Level::INFO, [&]() {
         logging::info() << logging::endl;
         if(numInstructions != method.countInstructions())
-        {
-            logging::info() << "Optimizations done in "
-                            << (config.additionalOptions.maxOptimizationIterations - iterationsLeft - 1)
+            logging::info() << "Optimizations done in " << numIterations
                             << " iterations, changed number of instructions from " << numInstructions << " to "
                             << method.countInstructions() << logging::endl;
-        }
         else
-        {
-            logging::info() << "Optimizations done in "
-                            << (config.additionalOptions.maxOptimizationIterations - iterationsLeft - 1)
-                            << " iterations" << logging::endl;
-        }
+            logging::info() << "Optimizations done in " << numIterations << " iterations" << logging::endl;
     });
     LCOV_EXCL_STOP
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + index, "OptimizationIterations",
-        config.additionalOptions.maxOptimizationIterations - iterationsLeft - 1);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + index, "OptimizationIterations", numIterations);
     CPPLOG_LAZY(logging::Level::DEBUG, log << "-----" << logging::endl);
     method.dumpInstructions();
 }
@@ -276,6 +270,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "Replaces operands with their moved-from value", OptimizationType::REPEAT),
     OptimizationPass("RemoveFlags", "remove-unused-flags", removeUselessFlags,
         "rewrites and removes all flags with constant conditions", OptimizationType::REPEAT),
+    OptimizationPass("CombineConstantLoads", "combine-loads", combineLoadingConstants,
+        "combines loadings of the same constant value within a small range of a basic block", OptimizationType::REPEAT),
     OptimizationPass("EliminateDeadCode", "eliminate-dead-code", eliminateDeadCode,
         "eliminates dead code (move to same, redundant arithmetic operations, ...)", OptimizationType::REPEAT),
     /*
@@ -290,8 +286,6 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "splits read-after-writes (except if the local is used only very locally), so the reordering and "
         "register-allocation have an easier job",
         OptimizationType::FINAL),
-    OptimizationPass("CombineConstantLoads", "combine-loads", combineLoadingConstants,
-        "combines loadings of the same constant value within a small range of a basic block", OptimizationType::FINAL),
     OptimizationPass("RemoveConstantLoadInLoops", "extract-loads-from-loops", removeConstantLoadInLoops,
         "move constant loads in (nested) loops outside the loops", OptimizationType::FINAL),
     OptimizationPass("CacheAcrossWorkGroup", "work-group-cache", cacheWorkGroupDMAAccess,

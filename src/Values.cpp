@@ -711,7 +711,7 @@ Optional<Value> Value::getConstantValue(bool transitive) const
     return isUndefined() ? *this : NO_VALUE;
 }
 
-Value Value::createZeroInitializer(DataType type)
+Optional<Value> Value::createZeroInitializer(DataType type)
 {
     if(type.isScalarType() || type.getPointerType())
         return Value(Literal(0u), type);
@@ -738,7 +738,7 @@ Value Value::createZeroInitializer(DataType type)
     //     }
     //     return Value(std::move(val), type);
     // }
-    throw CompilationError(CompilationStep::GENERAL, "Unhandled type for zero-initializer", type.to_string());
+    return NO_VALUE;
 }
 
 std::size_t std::hash<vc4c::Value>::operator()(vc4c::Value const& val) const noexcept

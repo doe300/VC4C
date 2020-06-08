@@ -620,7 +620,8 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
     }
 
     // update back edges
-    updateBackEdges(*graph, &graph->getStartOfControlFlow());
+    if(!graph->getNodes().empty())
+        updateBackEdges(*graph, &graph->getStartOfControlFlow());
 
 #ifdef DEBUG_MODE
     logging::logLazy(logging::Level::DEBUG, [&]() { graph->dumpGraph("/tmp/vc4c-cfg.dot", false); });
@@ -669,6 +670,8 @@ static bool traverseDepthFirstHelper(
 
 void ControlFlowGraph::traverseDepthFirst(const std::function<ControlFlowVisitResult(const CFGNode&)>& consumer) const
 {
+    if(getNodes().empty())
+        return;
     auto& start = const_cast<ControlFlowGraph&>(*this).getStartOfControlFlow();
     traverseDepthFirstHelper(start, consumer);
 }

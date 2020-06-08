@@ -53,8 +53,11 @@ Optional<Value> normalization::getConstantContainerValue(const Value& source)
         // scalar value
         return Value(*literal, global->initialValue.type);
     if(global->initialValue.isZeroInitializer())
-        // all entries are the same
-        return Value::createZeroInitializer(global->initialValue.type);
+    {
+        // all entries are zero (or undefined)
+        if(auto zeroInitializer = Value::createZeroInitializer(global->initialValue.type))
+            return zeroInitializer;
+    }
     if(global->initialValue.isUndefined())
         // all entries are undefined
         return Value(global->initialValue.type);
