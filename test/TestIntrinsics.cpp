@@ -976,9 +976,7 @@ void TestIntrinsicFunctions::testIntToFloat()
     std::string options = "-DFUNC=(float) -DIN=int -DOUT=float";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    // actually no ULP, but this allows Round-to-nearest-even (CPU) vs. Trunc-to-Zero (GPU)
-    testUnaryFunction<int, float, 1, int, CompareULP<1>>(
-        code, options, [](int i) -> float { return static_cast<float>(i); },
+    testUnaryFunction<int, float, 1>(code, options, vc4c::RoundToZeroConversion<int, float>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestIntrinsicFunctions::testShortToFloat()
@@ -1004,9 +1002,7 @@ void TestIntrinsicFunctions::testUnsignedIntToFloat()
     std::string options = "-DFUNC=(float) -DIN=uint -DOUT=float";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    // actually no ULP, but this allows Round-to-nearest-even (CPU) vs. Trunc-to-Zero (GPU)
-    testUnaryFunction<unsigned, float, 1, unsigned, CompareULP<1>>(
-        code, options, [](unsigned i) -> float { return static_cast<float>(i); },
+    testUnaryFunction<unsigned, float, 1>(code, options, vc4c::RoundToZeroConversion<unsigned, float>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 void TestIntrinsicFunctions::testUnsignedShortToFloat()
@@ -1118,17 +1114,14 @@ void TestIntrinsicFunctions::testItof()
     std::string options = "-DFUNC=vc4cl_itof -DIN=int -DOUT=float -DDEFINE_PROTOTYPE";
     std::stringstream code;
     compileBuffer(config, code, UNARY_FUNCTION, options);
-    // actually no ULP, but this allows Round-to-nearest-even (CPU) vs. Trunc-to-Zero (GPU)
-    testUnaryFunction<int, float, 1, int, CompareULP<2>>(
-        code, options, [](int i) -> float { return static_cast<float>(i); },
+    testUnaryFunction<int, float, 1>(code, options, vc4c::RoundToZeroConversion<int, float>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     code.str("");
     auto in = generateInput<int, 1>(true)[0];
     options.append(" -DSOURCES=").append(std::to_string(in));
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
-    testUnaryFunctionWithConstant<int, float>(
-        code, options, in, [](int i) -> float { return static_cast<float>(i); },
+    testUnaryFunctionWithConstant<int, float>(code, options, in, vc4c::RoundToZeroConversion<int, float>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

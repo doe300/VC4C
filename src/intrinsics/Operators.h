@@ -124,6 +124,23 @@ namespace vc4c
 
         F func;
     };
+
+    /**
+     * Helper type to apply type conversion using the truncate-to-zero rounding mode used by the VideoCore IV GPU.
+     */
+    template <typename In, typename Out>
+    struct RoundToZeroConversion
+    {
+        Out operator()(In val) const
+        {
+            auto origMode = fegetround();
+            // emulate the VideoCore IV rounding mode, truncate to zero
+            fesetround(FE_TOWARDZERO);
+            auto tmp = static_cast<Out>(val);
+            fesetround(origMode);
+            return tmp;
+        }
+    };
 } // namespace vc4c
 
 #endif /* OPERATORS_H */

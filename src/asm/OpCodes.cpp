@@ -990,10 +990,7 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
         return setFlags(Literal(static_cast<int32_t>(firstLit.real())), false);
     case OP_ITOF.opAdd:
     {
-        auto tmp = FlushDenormsAndRoundToZero<float, int32_t, std::function<float(int32_t, int32_t)>>{
-            [](int32_t val, int32_t) -> float {
-                return static_cast<float>(val);
-            }}(firstLit.signedInt(), 0 /* don't care */);
+        auto tmp = RoundToZeroConversion<int32_t, float>{}(firstLit.signedInt());
         return setFlags(Literal(tmp), firstLit.signedInt() > 0);
     }
     case OP_ADD.opAdd:

@@ -197,29 +197,42 @@ void TestGeometricFunctions::testCross4()
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
+template <std::size_t VectorWidth>
+struct DotError
+{
+    // for allowed error, see latest OpenCL C specification: max * max * (2 * |vector| - 1) * FLT_EPSILON
+    float operator()(float a, float b) const
+    {
+        return std::max(a, b) * std::max(a, b) * (2.0f * static_cast<float>(VectorWidth) - 1.0f) *
+            std::numeric_limits<float>::epsilon();
+    }
+};
+
 void TestGeometricFunctions::testDotScalar()
 {
-    // for ULP, see latest OpenCL specification: 2 * |vector| - 1
-    testBinaryReducedFunction<1, CompareULP<0>>(config, "-DOUT=float -DIN0=float -DIN1=float -DFUNC=dot", checkDot<1>,
+    testBinaryReducedFunction<1, CompareAbsoluteError<DotError<1>>>(config,
+        "-DOUT=float -DIN0=float -DIN1=float -DFUNC=dot", checkDot<1>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testDot2()
 {
-    testBinaryReducedFunction<2, CompareULP<2>>(config, "-DOUT=float -DIN0=float2 -DIN1=float2 -DFUNC=dot", checkDot<2>,
+    testBinaryReducedFunction<2, CompareAbsoluteError<DotError<2>>>(config,
+        "-DOUT=float -DIN0=float2 -DIN1=float2 -DFUNC=dot", checkDot<2>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testDot3()
 {
-    testBinaryReducedFunction<3, CompareULP<4>>(config,
+    testBinaryReducedFunction<3, CompareAbsoluteError<DotError<3>>>(config,
         "-DOUT=float -DIN0=float3 -DIN1=float3 -DFUNC=dot -DTRIPLE=1 -DTYPE=float", checkDot<3>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestGeometricFunctions::testDot4()
 {
-    testBinaryReducedFunction<4, CompareULP<6>>(config, "-DOUT=float -DIN0=float4 -DIN1=float4 -DFUNC=dot", checkDot<4>,
+    testBinaryReducedFunction<4, CompareAbsoluteError<DotError<4>>>(config,
+        "-DOUT=float -DIN0=float4 -DIN1=float4 -DFUNC=dot", checkDot<4>,
         std::bind(&TestGeometricFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

@@ -425,7 +425,7 @@ std::array<Result, VectorWidth * LocalSize * NumGroups> runEmulation(std::string
     if(!result.executionSuccessful)
         throw vc4c::CompilationError(vc4c::CompilationStep::GENERAL, "Kernel execution failed");
 
-    std::array<Result, VectorWidth * LocalSize * NumGroups> output {0};
+    std::array<Result, VectorWidth * LocalSize * NumGroups> output{0};
     copyConvert<VectorWidth * LocalSize * NumGroups>(result.results[0].second.value(), output);
     return output;
 }
@@ -448,15 +448,38 @@ struct CompareULP
             return true;
         if(std::isnan(a) && std::isnan(b))
             return true;
-        auto delta = a * ULP * std::numeric_limits<float>::epsilon();
+        auto delta = a * static_cast<float>(ULP) * std::numeric_limits<float>::epsilon();
         return Test::Comparisons::inMaxDistance(a, b, delta);
     }
 
     std::string difference(float a, float b) const
     {
-        auto realDelta = static_cast<std::size_t>(std::ceil(static_cast<double>(std::max(a, b) - std::min(a, b)) /
-            (static_cast<double>(b) * static_cast<double>(std::numeric_limits<float>::epsilon()))));
+        auto realDelta =
+            static_cast<std::size_t>(std::abs(std::ceil(static_cast<double>(std::max(a, b) - std::min(a, b)) /
+                (static_cast<double>(b) * static_cast<double>(std::numeric_limits<float>::epsilon())))));
         return " (error of " + std::to_string(realDelta) + ", allowed are " + std::to_string(ULP) + " ULP)";
+    }
+};
+
+// ErrorProvider needs to have the function call operator with following signature: float(float,float)
+template <typename ErrorProvider>
+struct CompareAbsoluteError
+{
+    bool operator()(float a, float b) const
+    {
+        if(std::isinf(a) && std::isinf(b) && std::signbit(a) == std::signbit(b))
+            return true;
+        if(std::isnan(a) && std::isnan(b))
+            return true;
+        auto delta = ErrorProvider{}(a, b);
+        return Test::Comparisons::inMaxDistance(a, b, delta);
+    }
+
+    std::string difference(float a, float b) const
+    {
+        auto error = std::max(a, b) - std::min(a, b);
+        auto delta = ErrorProvider{}(a, b);
+        return " (error of +/-" + std::to_string(error) + ", allowed is +/-" + std::to_string(delta) + ")";
     }
 };
 
