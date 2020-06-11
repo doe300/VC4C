@@ -1,5 +1,6 @@
 # Default build folder
 build/
+coverage/
 
 # Eclipse
 .cproject
@@ -17,4 +18,3 @@ nbproject/
 # Other
 testResult.log
 /valgrind.supp
-lib/

@@ -42,13 +42,13 @@ test_context					PASSED
 test_context_error				PASSED
 test_copy						PASSED
 test_copy_if					PASSED (emulation fails with out-of-bounds access)
-test_copy_type_mismatch			PASSED
+test_copy_type_mismatch			FAILED ("Invalid Value") TODO: need to check for copy source and destination types are equal/same size??
 test_count						result mismatch ("count_if_odd", "count_if_with_reduce")
 test_counting_iterator			PASSED
 test_device						PASSED (skips some OpenCL 2.0+ tests)
 test_discard_iterator			PASSED
 test_discrete_distribution		result mismatch
-test_dynamic_bitset				compilation error (long popcount), result mismatch
+test_dynamic_bitset				compilation error (register association), result mismatch
 test_equal						PASSED
 test_equal_range				PASSED
 test_event						PASSED
@@ -60,25 +60,25 @@ test_find_end					PASSED
 test_flat_map					PASSED
 test_flat_set					PASSED
 test_for_each					PASSED
-test_function					compilation error (cast of long to pointer, "invalid local type for memory area")
+test_function					PASSED
 test_function_input_iterator	PASSED
 test_functional_as				PASSED
 test_functional_bind			result mismatch ("transform_pow_two")
 test_functional_convert			PASSED
 test_functional_get				PASSED
-test_functional_hash			compilation error (ulong multiplication)
+test_functional_hash			PASSED, SEGFAULT
 test_functional_identity		PASSED
-test_functional_popcount		compilation error (ulong popcount)
+test_functional_popcount		result mismatch
 test_functional_unpack			PASSED
 test_gather						PASSED
 test_generate					PASSED
 test_image1d					SKIPPED
-test_image2d					SKIPPED
+test_image2d					FAILED ("Invalid Operation")
 test_image3d					SKIPPED
-test_image_sampler				SKIPPED
+test_image_sampler				FAILED (nullptr access)
 test_includes					PASSED
-test_inner_product				PASSED
-test_inplace_merge				compilation error (register association) (reads 1-after-bounds of allocated buffer)
+test_inner_product				FAILED (result mismatch)
+test_inplace_merge				compilation error (register association)
 test_inplace_reduce				result mismatch ("reduce_iota", uses kernel sum_int)
 test_insertion_sort				result mismatch ("sort_long_vector", "sort_ulong_vector")
 test_invoke						result mismatch (ULP, "invoke_builtin": result: inf expected: 256.f for function pow(2, 8))
@@ -113,13 +113,13 @@ test_platform					PASSED/SKIPPED
 test_prev_permutation			PASSED
 test_program					PASSED
 test_program_cache				PASSED/SKIPPED
-test_radix_sort					result mismatches, compilation errors (long constant), reads 1-after-bounds of allocated buffer
+test_radix_sort					result mismatches, reads 1-after-bounds of allocated buffer
 test_radix_sort_by_key			result mismatches, reads 1-after-bounds of allocated buffer
 test_random_fill				PASSED
 test_random_shuffle				PASSED
 test_reduce						result mismatches, reads 1-after-bounds of allocated buffer
-test_reduce_by_key				PASSED
-test_remove						PASSED (reads 1-after-bounds of allocated buffer)
+test_reduce_by_key				result mismatches
+test_remove						PASSED, SEGFAULT (reads 1-after-bounds of allocated buffer)
 test_replace					PASSED
 test_result_of					PASSED
 test_reverse					PASSED
@@ -134,11 +134,11 @@ test_set_difference				PASSED
 test_set_intersection			PASSED
 test_set_symmetric_difference   PASSED
 test_set_union					PASSED (SEGFAULTS on emulator)
-test_sort						result mismatch; compilation error (long to pointer conversion)
-test_sort_by_key				PASSED
+test_sort						result mismatch (long vectors); compilation error (register allocation)
+test_sort_by_key				compilation error
 test_sort_by_transform			PASSED (writes out-of-bounds of allocated buffer)
 test_stable_partition			PASSED (reads 1-after-bounds of allocated buffer)
-test_stable_sort				PASSED
+test_stable_sort				result mismatch ("sort_int_vector")
 test_stable_sort_by_key			PASSED
 test_stack						PASSED
 test_strided_iterator			PASSED
@@ -147,7 +147,7 @@ test_struct						PASSED
 test_svm_ptr					PASSED
 test_system						PASSED
 test_tabulate					PASSED
-test_threefry_engine			compilation error (long rotation)
+test_threefry_engine			PASSED
 test_transform					result mismatch (ULP pow and 0 != x)
 test_transform_if				PASSED
 test_transform_iterator			PASSED
@@ -155,10 +155,10 @@ test_transform_reduce			result mismatch ("mean_and_std_dev")
 test_tuple						PASSED
 test_type_traits				PASSED
 test_types						PASSED
-test_uniform_int_distribution	PASSED
-test_uniform_real_distribution	PASSED
+test_uniform_int_distribution	result mismatch
+test_uniform_real_distribution	result mismatch
 test_unique						result mismatch
-test_unique_copy				PASSED
+test_unique_copy				compilation error (register association)
 test_unsupported_extension		PASSED
 test_user_defined_types			PASSED
 test_user_event					PASSED

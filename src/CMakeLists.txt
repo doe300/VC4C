@@ -152,6 +152,18 @@ set_target_properties(
 include(../cmake/clang-format.cmake)
 
 ##
+# Git commit in main executable
+##
+add_custom_target(GetGitCommit
+	# If the git command fails, write dummy content (e.g. when not on a git repository)
+	COMMAND git log -1 "--format=#define GIT_COMMIT \"%h\"" > ./git_commit.h || echo "#define GIT_COMMIT \"unknown\"" > ./git_commit.h
+	WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+	VERBATIM
+)
+target_include_directories(${VC4C_PROGRAM_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+add_dependencies(${VC4C_PROGRAM_NAME} GetGitCommit)
+
+##
 # Installation targets
 ##
 # Adds the public headers to the target, so they are exported

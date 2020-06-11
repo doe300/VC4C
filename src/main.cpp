@@ -10,6 +10,7 @@
 #include "Profiler.h"
 #include "concepts.h"
 #include "config.h"
+#include "git_commit.h"
 #include "log.h"
 #include "tools.h"
 
@@ -106,7 +107,7 @@ static std::string toVersionString(unsigned version)
 
 static void printInfo()
 {
-    std::cout << "Running VC4C in version: " << VC4C_VERSION << std::endl;
+    std::cout << "Running VC4C in version: " << VC4C_VERSION << " (" << GIT_COMMIT << ')' << std::endl;
     std::cout << "Build configuration:" << std::endl;
     static const std::vector<std::string> infoString = {
 #ifdef DEBUG_MODE

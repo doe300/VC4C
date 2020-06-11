@@ -1,17 +1,8 @@
-Threads??
-- QPU can execute program 2 threads (via 2 hardware-threads) (page 21)
-- programs must be marked "threadable", how?
-- switch only cooperative via signal
-- registers are local for each thread, accumulators/flags are not! (page 20)
-- "half the physical register file" http://anholt.livejournal.com/50713.html
--> a threaded kernel can only use 16 registers!
-- TMU is shared between both threads (page 40)
--> seems like only shaders can run multi-threaded!
-
 Edge case behavior (OpenCL 1.2, page 325ff)
 
 Unpack/Pack:
 - use for type conversions (only works, if both unpack/pack are used, otherwise, e.g. negative numbers have no leading ones!)
+- forces local to map to register-file A!
 - use to support half??
 
 Logging:
@@ -33,10 +24,6 @@ Support additional data types:
   - Internally calculate with float
   - Map all std-functions to float
   - on load/store (half-parameter are allowed even without this extension?), use un-/pack modes
-- long:
-  - first step: long pointer, split up load/store into/from two registers, disallow any arithmetics on type
-  -> could be enough to fix "struct converted to long by LLVM" problem (see https://stackoverflow.com/questions/22776391/why-does-clang-coerce-struct-parameters-to-ints) 
- 
  
 New optimization steps:
 - split long-living locals, which are written just once ??
@@ -50,7 +37,10 @@ New optimization steps:
   - compare clpeak global_bandwidth current with (2 * nrows + 10) nops between vpm_store_addr and vpm_store_wait (more exact: 2 for scalar values, 3.5 for 16-element vectors)
   - compare clpeak global_bandwidth current with (5) nops between vpm_load_setup and first vpm_read
   - writing vpm does not add any additional stall
-  - compare clpeak global_bandwidth current with all of the added nops 
+  - compare clpeak global_bandwidth current with all of the added nops
+- rewrite short if-else (without side-effects)
+  - calculate both branches in any case into temporaries
+  - in the end determine which value to use
 
 VPM:
 - add handling of local/global offset/size to optimization combining VPM access. how? (e.g. ./testing/test_work_item.cl)
@@ -76,20 +66,6 @@ VPM:
   what to do if the VPM is full? Need to check enough free space for range before allocating it!
   need to distinguish per-QPU usage (e.g. spilled locals) and common usage (I/O cache) and need to e.g. reserve 12-times the space for per-QPU usage and map QPU-index to correct offset
   pros: better utilization of VPM
-  
-Make basic blocks explicit
-- split instructions/locals of method into list of basic blocks
-  -> every basic block has a list of instruction + locals
-  -> locals used in several basic blocks are maintained in method
-- pros:
-  register allocation: local can only conflict with locals from same basic block and locals from the method (e.g. excludes most of the unrelated temporaries)
-  no need to re-create basic blocks for optimizations (although this currently is done very fast) 
-- cons:
-  parser would take longer, need to create basic blocks when adding instructions
-- unsolved:
-  how to determine in which basic block(s) a local is used (since the instructions are not yet created, when a local is added, in parser) 
-  -> keep local in method for now
-  -> could keep all locals in method and associate basic-block with used locals
   
 Image support:
 - use TMU for loading images:
@@ -165,13 +141,68 @@ calculation:
 - or: run arithmetic calculations with correct type
   - need to make sure, results are correct, e.g. sub (short) 0xFBCD, 0x0010 yields different results when signed/unsigned?!
   - need to make sure, flags are set correctly (esp. negative, since it probably checks for 31th bit, not the MSB of the real type, which the ALU doesn't know!)
+
+Check for vc4/v3d drivers:
+   
+- DRM driver (https://github.com/raspberrypi/linux/blob/rpi-4.19.y/include/uapi/drm/vc4_drm.h)
+  - also ioctls for reserving/mmapping buffers, reading some parameters
+  - performance counters (https://github.com/raspberrypi/linux/blob/rpi-4.19.y/drivers/gpu/drm/vc4/vc4_perfmon.c)
+    -> only meaningful with DRM executions (shaders), which cannot be used to access VPM DMA
+
+- vc-mem (https://github.com/raspberrypi/linux/blob/rpi-4.19.y/drivers/char/broadcom/vc_mem.c)
+  - mmap as user?
+  - mmap reserves memory?
+  - mmap memory read/writeable from QPUs and host?
+- vc4 (https://github.com/raspberrypi/linux/blob/rpi-4.19.y/drivers/gpu/drm/vc4/vc4_drv.c)
+  - ioctls return values
+  - control via libDRM user-space library
+  - https://www.kernel.org/doc/html/latest/gpu/drm-uapi.html
+  - test access, device is /dev/fb0, /dev/dri/cardX /dev/dri/renderD?!
+- vcsm (https://github.com/raspberrypi/linux/blob/rpi-4.19.y/drivers/char/broadcom/vc_sm/vmcs_sm.c, https://github.com/raspberrypi/linux/blob/rpi-4.19.y/include/linux/broadcom/vmcs_sm_ioctl.h)
+  - communicates via VCHI kernel internal service (that also all the camera/audio/etc. drivers use)
+    VCHI runs in extra kernel thread, allows to wait/not wait for result, VCSM is always synchronous
+  - difference to vc-mem? or vcio?
+  - seems interoperable with mailbox (handles)
+  - automatically cleans up memory resources when closing handle to device file
+  - unlocking buffer what happens exactly? Lose data or buffer just moved as-is?
+  - statistics/debug info can be queried with /opt/.../vcsmem
+    -> is dumped to kernel log -> dmesg
+  - also some information via debugfs at /sys/kernel/debug/vc-smem
+  - compare to mailbox
+    - features (e.g. caching, debug info, etc.)
+    - performance
+  user-space library as wrapper around ioctls (https://github.com/raspberrypi/userland/blob/master/host_applications/linux/libs/sm/user-vcsm.h)
+  -> see also examples (brcmjpeg_test, vcsm_square)
   
-Signedness:
-- for arithmetic 32-bit calculations, the signedness is handled correctly (+, - execute the same for un/signed, * too? / and % have separate op-codes (both LLVM-IR and SPIR-V))
-- problematic:
-  comparison operators? needs to sign/zero-extend all values before integer comparisons!
-- where need to be fixed:
-  - results of stdlib-functions
-  - kernel-parameter (scalar, vector), scalar are correctly for non 32-bit types
-  - loading from VPM (currently always zero-extended)
-- how to know signedness (other than from signext/zeroext decoration)?
+  -> overhaul memory management using VCSM?
+  - only set cache/access where needed, e.g. no need to map local buffer into host user space
+  - only lock while actually required (see vcsm_malloc_cache documentation), e.g. while accessing? -> lock while clEnqueueMapBuffer'd
+    -> need to re-query GPU-side address too for next lock!
+    -> need to track status (locked + address vs. unlocked)
+
+printf support:
+- kernel add uniform metadata flag that printf is used
+- if printf flag set, reserve buffer on host (see CL_DEVICE_PRINTF_BUFFER_SIZE and minimum)
+- kernel copy format string and args to buffer
+  - store #bytes + value for every argument?
+- kernel keeps track of current offset from printf buffer (e.g. stored as first word of printf buffer)
+- after execution, if printf flag set, call printf on host, pass host-pointer to copied arguments
+  - use #bytes to increment pointer
+  - how to call printf with dynamic arguments?? -> need to fake/create own implementation?!
+
+Memory reduction:
+- Test candidates: clpeak/float (~31MB), integer tests (~155MB), hashcat(VC4CL#81, hashcat -m 1000 -a 3 hash.txt -w 4 -O with hash.txt is 414A99E86FB3E6812AA8A1C782B9F87C ~990MB)
+- Interference graph (esp. for integer test) > 50MB
+- Graph coloring (esp. for hashcat) > 60MB
+  -> Flatten graph adjacency sets/maps?
+     - Sorted vector adjacency list results in ~10% RAM saving, duplicates execution time for clpeak int
+- Liveness analysis (esp. for hashcat) > 250MB
+- Instructions
+  -> Make operands to SmallVector?
+     - Only needs more than 2 operands (or maybe 3 for operation + move) for function call anyway...
+     - Have inline array of 2 Values
+     - Have virtual function to retrieve index 2 - N, only implement where needed
+     - Check first where all the arguments are needed at all (e.g. getArguments())
+     - Write custom iterator type?
+- Also test performance/speed and check for regression
+- rerun sanitizers, all tests!
