@@ -181,11 +181,14 @@ namespace vc4c
 					{toParameter(std::vector<unsigned>{0x01020304}), toParameter(std::vector<unsigned>{0x04020301}), toParameter(std::vector<unsigned>(1))}, {}, maxExecutionCycles),
 					addVector({}, 2, std::vector<unsigned>{0x04020301})
 				),
-				// FIXME SEGFAULTs
-				// std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_async_copy.cl", "test_async_copy",
-				//     {toParameter(toRange<unsigned>(0, 12*16)), toParameter(std::vector<unsigned>(12*16)), toParameter(std::vector<unsigned>(12*16))}, toConfig(12), maxExecutionCycles),
-				//     addVector(/*the __local arg might be lowered to VPM addVector({}, 1, toRange<unsigned>(0, 12*16))*/ {}, 2, toRange<unsigned>(0, 12*16))
-				// ),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_async_copy.cl", "test_async_copy",
+				    {toParameter(toRange<unsigned>(0, 12*16)), toParameter(std::vector<unsigned>(12*16)), toParameter(std::vector<unsigned>(12*16))}, toConfig(12), maxExecutionCycles),
+				    addVector(/*the __local arg might be lowered to VPM addVector({}, 1, toRange<unsigned>(0, 12*16))*/ {}, 2, toRange<unsigned>(0, 12*16))
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_async_copy.cl", "test_async_copy_general",
+				    {toParameter(toRange<unsigned>(0, 7*16)), toParameter(std::vector<unsigned>(7*16)), toParameter(std::vector<unsigned>(7*16))}, toConfig(7), maxExecutionCycles),
+				    addVector(/*the __local arg might be lowered to VPM addVector({}, 1, toRange<unsigned>(0, 12*16))*/ {}, 2, toRange<unsigned>(0, 7*16))
+				),
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_shuffle.cl", "test_shuffle",
 				    {toParameter(std::vector<unsigned>{0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c, 0x13121110, 0x17161514, 0x1b1a1918, 0x1f1e1d1c}), toParameter(std::vector<unsigned>(10*16/sizeof(int32_t)))}, toConfig(1), maxExecutionCycles),
 				    addVector({}, 1, std::vector<unsigned>{0x08040607, 0x010d0c01, 0x0f0e0900, 0x06080304, 0x120b0701, 0x09080f15, 0x01021300, 0x08070d11, 0x10021b1a, 0x17061904, 0x131c0908, 0x0f0e0d1a, 0x10020111, 0x10020111, 0x10020111, 0x10020111,

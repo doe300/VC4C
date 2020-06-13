@@ -188,7 +188,7 @@ static Optional<std::pair<Value, InstructionDecorations>> combineAdditions(
     Method& method, InstructionWalker referenceIt, FastMap<Value, InstructionDecorations>& addedValues)
 {
     if(addedValues.empty())
-        return {};
+        return std::make_pair(INT_ZERO, InstructionDecorations::UNSIGNED_RESULT);
     Optional<std::pair<Value, InstructionDecorations>> prevResult;
     auto valIt = addedValues.begin();
     while(valIt != addedValues.end())
@@ -214,8 +214,12 @@ InstructionWalker normalization::insertAddressToWorkItemSpecificOffset(
             "Calculating work-item specific offset with constant part is not yet implemented", range.to_string());
     auto dynamicParts = combineAdditions(method, it, range.dynamicAddressParts);
     if(!dynamicParts)
+    {
+        for(const auto& part : range.dynamicAddressParts)
+            logging::error() << part.first.to_string() << " - " << toString(part.second) << logging::endl;
         throw CompilationError(CompilationStep::NORMALIZER,
             "Failed to calculate dynamic parts of work-item specific offset", range.to_string());
+    }
     out = dynamicParts->first;
     if(range.typeSizeShift)
         out = assign(it, dynamicParts->first.type) =
