@@ -297,8 +297,7 @@ public:
 class ValueTerm : public ValueExpr
 {
 public:
-    // TODO: remove the sign parameter
-    ValueTerm(Value& value, bool sign) : value(value) {}
+    ValueTerm(Value& value) : value(value) {}
 
     bool operator==(const ValueExpr& other) const override
     {
@@ -319,12 +318,12 @@ public:
                 }
             }
         }
-        return std::make_shared<ValueTerm>(value, true);
+        return std::make_shared<ValueTerm>(value);
     }
 
     void expand(ExpandedExprs& exprs) override
     {
-        exprs.push_back(std::make_pair(true, std::make_shared<ValueTerm>(value, true)));
+        exprs.push_back(std::make_pair(true, std::make_shared<ValueTerm>(value)));
     }
 
     Optional<int> getInteger() const override
@@ -391,7 +390,7 @@ void ValueBinaryOp::expand(ExpandedExprs& exprs)
 
         int sign = num >= 0;
         auto value = Value(Literal(std::abs(num)), TYPE_INT32);
-        std::shared_ptr<ValueExpr> expr = std::make_shared<ValueTerm>(value, true);
+        std::shared_ptr<ValueExpr> expr = std::make_shared<ValueTerm>(value);
         exprs.push_back(std::make_pair(sign, expr));
     }
     else
@@ -488,7 +487,7 @@ std::string ValueBinaryOp::to_string() const
 std::shared_ptr<ValueExpr> makeValueBinaryOpFromLocal(Value& left, ValueBinaryOp::BinaryOp binOp, Value& right)
 {
     return std::make_shared<ValueBinaryOp>(
-        std::make_shared<ValueTerm>(left, true), binOp, std::make_shared<ValueTerm>(right, true));
+        std::make_shared<ValueTerm>(left), binOp, std::make_shared<ValueTerm>(right));
 }
 
 // try to convert shl to mul and return it as ValueExpr
@@ -513,7 +512,7 @@ std::shared_ptr<ValueExpr> shlToMul(Value& value, const intermediate::Operation*
     }
     else
     {
-        return std::make_shared<ValueTerm>(value, true);
+        return std::make_shared<ValueTerm>(value);
     }
 }
 
@@ -542,7 +541,7 @@ std::shared_ptr<ValueExpr> iiToExpr(Value& value, const LocalUser* inst)
         else
         {
             // If op is neither add nor sub, return value as-is.
-            return std::make_shared<ValueTerm>(value, true);
+            return std::make_shared<ValueTerm>(value);
         }
 
         auto left = op->getFirstArg();
@@ -563,7 +562,7 @@ std::shared_ptr<ValueExpr> iiToExpr(Value& value, const LocalUser* inst)
         else
         {
             // If op is neither add nor sub, return value as-is.
-            return std::make_shared<ValueTerm>(value, true);
+            return std::make_shared<ValueTerm>(value);
         }
 
         auto left = op->getFirstArg();
@@ -571,7 +570,7 @@ std::shared_ptr<ValueExpr> iiToExpr(Value& value, const LocalUser* inst)
         return makeValueBinaryOpFromLocal(left, binOp, right);
     }
 
-    return std::make_shared<ValueTerm>(value, true);
+    return std::make_shared<ValueTerm>(value);
 }
 
 std::shared_ptr<ValueExpr> calcValueExpr(std::shared_ptr<ValueExpr> expr)
@@ -619,6 +618,7 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
 
     for(auto& bb : method)
     {
+        std::vector<intermediate::MethodCall*> loadInstrs;
         std::vector<Value> addrValues;
         for(auto& it : bb)
         {
@@ -631,6 +631,7 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
                     logging::debug() << "method call = " << call->to_string() << ", " << call->methodName << ", "
                                      << addr.to_string() << logging::endl;
                     addrValues.push_back(addr);
+                    loadInstrs.push_back(call);
                 }
             }
         }
@@ -651,7 +652,7 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
             }
             else
             {
-                addrExprs.push_back(std::make_pair(addrValue, std::make_shared<ValueTerm>(addrValue, true)));
+                addrExprs.push_back(std::make_pair(addrValue, std::make_shared<ValueTerm>(addrValue)));
             }
         }
 
@@ -695,6 +696,35 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
         }
 
         logging::debug() << "all loads are " << (eqDiff ? "" : "not ") << "equal difference" << logging::endl;
+
+        if (eqDiff)
+        {
+            auto it = bb.walk();
+            bool firstCall = true;
+            while (!it.isEndOfBlock())
+            {
+                auto call = it.get<intermediate::MethodCall>();
+                if (call && std::find(loadInstrs.begin(), loadInstrs.end(), call) != loadInstrs.end())
+                {
+                    if (firstCall)
+                    {
+                        firstCall = false;
+
+                        // TODO: limit loadInstrs.size()
+                        // it.reset(DMA load);
+                    }
+                    else
+                    {
+                        // it.reset(VPM load);
+                        it.erase();
+                    }
+                }
+                else
+                {
+                    it.nextInBlock();
+                }
+            }
+        }
     }
 }
 
@@ -715,6 +745,23 @@ void Normalizer::normalize(Module& module) const
         eliminatePhiNodes(module, *method, config);
         PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 2, "Eliminate Phi-nodes (after)",
             method->countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 1);
+    }
+
+    {
+        logging::info() << "=====================================" << __FILE__ << " : " << __LINE__ << logging::endl;
+        for(auto& method : module)
+        {
+            auto it = method->walkAllInstructions();
+            while(!it.isEndOfMethod())
+            {
+                auto ii = it.get();
+                logging::info() << ii->to_string() << logging::endl;
+                it = it.nextInMethod();
+            }
+        }
+
+        std::string a;
+        std::cin >> a;
     }
 
     {
