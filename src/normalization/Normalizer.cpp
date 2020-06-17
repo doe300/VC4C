@@ -218,7 +218,7 @@ void Normalizer::normalize(Module& module) const
         });
         PROFILE_COUNTER(
             vc4c::profiler::COUNTER_NORMALIZATION + 1, "Eliminate Phi-nodes (before)", method->countInstructions());
-        optimizations::eliminatePhiNodes(module, *method, config);
+        eliminatePhiNodes(module, *method, config);
         PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 2, "Eliminate Phi-nodes (after)",
             method->countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 1);
     }

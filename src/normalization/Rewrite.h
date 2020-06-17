@@ -49,6 +49,8 @@ namespace vc4c
          *   nop
          */
         void extendBranches(const Module& module, Method& method, const Configuration& config);
+
+        void eliminatePhiNodes(const Module& module, Method& method, const Configuration& config);
     } // namespace normalization
 } // namespace vc4c
 

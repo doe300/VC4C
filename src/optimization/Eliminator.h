@@ -22,7 +22,6 @@ namespace vc4c
          * just now.
          */
         bool eliminateDeadCode(const Module& module, Method& method, const Configuration& config);
-        void eliminatePhiNodes(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Simplifies instructions which have no semantical meaning (e.g. addition with 0, xor with 0, and with all bits

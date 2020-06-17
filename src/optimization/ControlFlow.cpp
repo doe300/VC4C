@@ -11,6 +11,7 @@
 #include "../analysis/ControlFlowGraph.h"
 #include "../analysis/ControlFlowLoop.h"
 #include "../analysis/DataDependencyGraph.h"
+#include "../analysis/DominatorTree.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
 #include "../intermediate/VectorHelper.h"
@@ -1039,118 +1040,13 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     const int moveDepth = config.additionalOptions.moveConstantsDepth;
     bool hasChanged = false;
 
-    if(method.getCFG().getNodes().empty())
+    auto& cfg = method.getCFG();
+    if(cfg.getNodes().empty())
         return false;
-
-    auto cfg = method.getCFG().clone();
-#ifdef DEBUG_MODE
-    cfg->dumpGraph("/tmp/vc4c-loop-invariant-code-motion-before.dot", true);
-#endif
-
-    // 1. Simplify the CFG to avoid combinatorial explosion. (e.g. testing/test_barrier.cl)
-    // Remove unnecessary CFG nodes
-    // - a. nodes which have more than two incoming or outgoing edges
-    // - b. nodes which have constant loading instruction(s)
-    // - c. predecessor nodes of the node which has back edge
-
-    // FIXME: fix the simplifying count (to finding the fixed point?)
-    for(int i = 0; i < 2; i++)
-    {
-        std::vector<CFGNode*> unnecessaryNodes;
-
-        for(auto& pair : cfg->getNodes())
-        {
-            // a.
-            bool hasConstantInstruction = false;
-            auto block = pair.first;
-            for(auto it = block->walk(); it != block->walkEnd(); it = it.nextInBlock())
-            {
-                if(it.has() && it->isConstantInstruction())
-                {
-                    hasConstantInstruction = true;
-                    break;
-                }
-            }
-            if(hasConstantInstruction)
-            {
-                continue;
-            }
-
-            int incomingEdgesCount = 0;
-            pair.second.forAllIncomingEdges([&incomingEdgesCount](const CFGNode& next, const CFGEdge& edge) -> bool {
-                incomingEdgesCount++;
-                return true;
-            });
-            int outgoingEdgesCount = 0;
-            pair.second.forAllOutgoingEdges([&outgoingEdgesCount](const CFGNode& next, const CFGEdge& edge) -> bool {
-                outgoingEdgesCount++;
-                return true;
-            });
-
-            // b.
-            if(incomingEdgesCount >= 2 || outgoingEdgesCount >= 2)
-            {
-                continue;
-            }
-
-            // c.
-            bool hasBackEdge = false;
-            pair.second.forAllOutgoingEdges([&hasBackEdge](const CFGNode& next, const CFGEdge& edge) -> bool {
-                next.forAllIncomingEdges([&hasBackEdge](const CFGNode& nnext, const CFGEdge& nedge) -> bool {
-                    if(nedge.data.backEdgeSource)
-                    {
-                        hasBackEdge = true;
-                        return false;
-                    }
-                    return true;
-                });
-                if(hasBackEdge)
-                {
-                    return false;
-                }
-                return true;
-            });
-            if(hasBackEdge)
-            {
-                continue;
-            }
-
-            unnecessaryNodes.push_back(&pair.second);
-        }
-
-        for(auto& node : unnecessaryNodes)
-        {
-            CFGNode *prev = nullptr, *next = nullptr;
-            // An unnecessary node must have just one previous node and one next node.
-            node->forAllIncomingEdges([&prev](CFGNode& node, CFGEdge&) -> bool {
-                prev = &node;
-                return false;
-            });
-            node->forAllOutgoingEdges([&next](CFGNode& node, CFGEdge&) -> bool {
-                next = &node;
-                return false;
-            });
-
-            cfg->eraseNode(node->key);
-            if(prev && next && !prev->isAdjacent(next))
-            {
-                prev->addEdge(next, {});
-            }
-        }
-    }
-
-#ifdef DEBUG_MODE
-    cfg->dumpGraph("/tmp/vc4c-loop-invariant-code-motion-before-simplified.dot", true);
-#endif
 
     // 2. Find loops
-    auto loops = cfg->findLoops(true);
-
-    if(loops.size() > 100)
-    {
-        logging::warn() << "Skip this optimization due to many nodes in loops." << logging::endl;
-        return false;
-    }
+    auto dominatorTree = analysis::DominatorTree::createDominatorTree(cfg);
+    auto loops = cfg.findLoops(true, true, dominatorTree.get());
 
     // 3. Generate inclusion relation of loops as trees
     auto inclusionTree = createLoopInclusingTree(loops);
@@ -1225,40 +1121,32 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
             const CFGNode* targetCFGNode = nullptr;
             // Find the predecessor block of targetLoop.
+            if(auto node = dominatorTree->findNode(targetLoop->getHeader()))
             {
-                auto predecessors = targetLoop->findPredecessors();
-                if(predecessors.size() > 0)
-                {
-                    for(auto& block : method)
+                node->forAllIncomingEdges([&](const DominatorTreeNode& node, const auto& edge) -> bool {
+                    if(targetCFGNode)
                     {
-                        auto loopBB = std::find_if(targetLoop->begin(), targetLoop->end(),
-                            [&block](const CFGNode* node) { return node->key == &block; });
-                        if(loopBB != targetLoop->end())
-                        {
-                            // the predecessor block must exist before targetLoop.
-                            break;
-                        }
-
-                        auto bb = std::find_if(predecessors.begin(), predecessors.end(),
-                            [&block](const CFGNode* node) { return node->key == &block; });
-                        if(bb != predecessors.end())
-                        {
-                            targetCFGNode = *bb;
-                            break;
-                        }
+                        // multiple direct dominators, can't actually happen
+                        targetCFGNode = nullptr;
+                        return false;
                     }
-                }
+                    targetCFGNode = node.key;
+                    return true;
+                });
             }
 
             auto targetBlock = targetCFGNode != nullptr ? targetCFGNode->key : insertedBlock;
 
             if(targetBlock != nullptr)
             {
-                // insert before 'br' operation (if any)
-                auto targetInst = targetBlock->walkEnd();
-                auto checkInst = targetInst.copy().previousInBlock();
-                if(checkInst.get<Branch>())
+                // insert before first 'br' operation (if any)
+                auto targetInst = targetBlock->walk();
+                auto checkInst = targetInst.copy().nextInBlock();
+                do
+                {
                     targetInst = checkInst;
+                    checkInst.nextInBlock();
+                } while(!checkInst.isEndOfBlock() && !checkInst.get<Branch>());
                 for(auto it : insts->second)
                 {
                     auto inst = it.get();
@@ -1767,6 +1655,10 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
                             break;
                         }
                     }
+
+                    // 3.1) remove phi-node decoration, since they are no longer phi-nodes
+                    // This would then just confuse the live range analysis
+                    lastIt->decoration = remove_flag(lastIt->decoration, InstructionDecorations::PHI_NODE);
 
                     lastIt.nextInBlock();
                 }
