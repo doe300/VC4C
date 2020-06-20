@@ -675,7 +675,7 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 }
 
 InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress, DataType type,
-    const VPMArea* area, bool useMutex, const Value& inAreaOffset, const Value& numEntries)
+    const VPMArea* area, bool useMutex, const Value& inAreaOffset, const Value& numEntries, Optional<uint16_t> memoryPitch)
 {
     if(area != nullptr)
         // FIXME this needs to have the numEntries added and the correct type!!!
@@ -744,7 +744,8 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
     if(numEntries != INT_ONE)
         // NOTE: This for read the pitch (start-to-start) and for write the stride (end-to-start) is set, we need to set
         // this to the data size, but not required for write setup!
-        strideSetup.strideSetup = VPRStrideSetup(static_cast<uint16_t>(type.getInMemoryWidth()));
+        // strideSetup.strideSetup = VPRStrideSetup(static_cast<uint16_t>(type.getInMemoryWidth()));
+        strideSetup.strideSetup = VPRStrideSetup(static_cast<uint16_t>(memoryPitch.value_or(type.getInMemoryWidth())));
     it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(strideSetup.value)));
     it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
     it.nextInBlock();

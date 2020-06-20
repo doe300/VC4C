@@ -16,6 +16,7 @@
 #include "../optimization/ControlFlow.h"
 #include "../optimization/Eliminator.h"
 #include "../optimization/Reordering.h"
+#include "../periphery/VPM.h"
 #include "../spirv/SPIRVBuiltins.h"
 #include "Inliner.h"
 #include "LiteralValues.h"
@@ -32,6 +33,7 @@
 
 using namespace vc4c;
 using namespace vc4c::normalization;
+using namespace vc4c::periphery;
 
 static bool checkWorkGroupUniform(const Value& arg)
 {
@@ -389,6 +391,7 @@ void ValueBinaryOp::expand(ExpandedExprs& exprs)
         }
 
         int sign = num >= 0;
+        // TODO: Care other types
         auto value = Value(Literal(std::abs(num)), TYPE_INT32);
         std::shared_ptr<ValueExpr> expr = std::make_shared<ValueTerm>(value);
         exprs.push_back(std::make_pair(sign, expr));
@@ -627,7 +630,7 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
             {
                 if(call->methodName == VLOAD16_METHOD_NAME)
                 {
-                    auto addr = *call->getArgument(0);
+                    auto addr = call->assertArgument(0);
                     logging::debug() << "method call = " << call->to_string() << ", " << call->methodName << ", "
                                      << addr.to_string() << logging::endl;
                     addrValues.push_back(addr);
@@ -697,31 +700,52 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
 
         logging::debug() << "all loads are " << (eqDiff ? "" : "not ") << "equal difference" << logging::endl;
 
-        if (eqDiff)
+        if(eqDiff)
         {
-            auto it = bb.walk();
-            bool firstCall = true;
-            while (!it.isEndOfBlock())
-            {
-                auto call = it.get<intermediate::MethodCall>();
-                if (call && std::find(loadInstrs.begin(), loadInstrs.end(), call) != loadInstrs.end())
-                {
-                    if (firstCall)
-                    {
-                        firstCall = false;
+            logging::debug() << "diff: " << diff->to_string() << logging::endl;
 
-                        // TODO: limit loadInstrs.size()
-                        // it.reset(DMA load);
-                    }
-                    else
-                    {
-                        // it.reset(VPM load);
-                        it.erase();
-                    }
-                }
-                else
+            if (auto term = std::dynamic_pointer_cast<ValueTerm>(diff))
+            {
+                if (auto mpValue = term->value.getConstantValue())
                 {
-                    it.nextInBlock();
+                    if (auto mpLiteral = mpValue->getLiteralValue())
+                    {
+                        if (mpLiteral->unsignedInt() < 1u << 12)
+                        {
+                            uint16_t memoryPitch = static_cast<uint16_t>(mpLiteral->unsignedInt());
+
+                            auto it = bb.walk();
+                            bool firstCall = true;
+                            while(!it.isEndOfBlock())
+                            {
+                                auto call = it.get<intermediate::MethodCall>();
+                                if(call && std::find(loadInstrs.begin(), loadInstrs.end(), call) != loadInstrs.end())
+                                {
+                                    it.erase();
+
+                                    if(firstCall)
+                                    {
+                                        firstCall = false;
+
+                                        // TODO: limit loadInstrs.size()
+
+                                        uint64_t rows = loadInstrs.size();
+                                        VPMArea area(VPMUsage::SCRATCH, 0, static_cast<uint8_t>(rows));
+                                        auto entries = Value(Literal(static_cast<uint32_t>(rows)), TYPE_INT32);
+                                        it = method.vpm->insertReadRAM(method, it, call->assertArgument(1), TYPE_INT32, &area,
+                                                true, INT_ZERO, entries, Optional<uint16_t>(memoryPitch));
+                                    }
+
+                                    auto output = *call->getOutput();
+                                    it = method.vpm->insertReadVPM(method, it, output);
+                                }
+                                else
+                                {
+                                    it.nextInBlock();
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

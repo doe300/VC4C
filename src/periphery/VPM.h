@@ -866,7 +866,7 @@ namespace vc4c
              */
             NODISCARD InstructionWalker insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
                 DataType type, const VPMArea* area = nullptr, bool useMutex = true,
-                const Value& inAreaOffset = INT_ZERO, const Value& numEntries = INT_ONE);
+                const Value& inAreaOffset = INT_ZERO, const Value& numEntries = INT_ONE, Optional<uint16_t> memoryPitch = {});
             /*
              * Inserts a write from VPM into RAM via DMA
              */
