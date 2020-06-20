@@ -6,6 +6,7 @@
 
 #include "RegisterAnalysis.h"
 
+#include <climits>
 #include <sstream>
 
 using namespace vc4c;
@@ -20,7 +21,7 @@ UsedElementsAnalysis::UsedElementsAnalysis() :
 template <typename T>
 static constexpr T rotate_left(T value, unsigned char count)
 {
-    return static_cast<T>((value << count) | (value >> (sizeof(T) * 8 - count)));
+    return static_cast<T>((value << count) | (value >> (sizeof(T) * CHAR_BIT - count)));
 }
 
 UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
@@ -123,7 +124,7 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
                             newValues[loc] |= 0;
                         else
                             // we don't know anything about the usage, assume all elements
-                            newValues[loc] |= 0xFFFF;
+                            newValues[loc].set();
                     }
                 });
         }

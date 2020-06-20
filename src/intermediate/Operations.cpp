@@ -581,8 +581,10 @@ bool MoveOperation::isNormalized() const
 
 PrecalculatedValue MoveOperation::precalculate(const std::size_t numIterations) const
 {
-    auto val = getPrecalculatedValueForArg(0, numIterations);
-    return PrecalculatedValue{val, val ? VectorFlags::fromValue(*val) : VectorFlags{}};
+    if(auto source = getPrecalculatedValueForArg(0, numIterations))
+        // this gives better result (in regards to flags set) then just returning the possible constant source
+        return OP_OR(*source, *source);
+    return PrecalculatedValue{NO_VALUE, VectorFlags{}};
 }
 
 void MoveOperation::setSource(Value&& value)

@@ -332,11 +332,11 @@ const IntermediateInstruction* intermediate::getSourceInstruction(const Intermed
 {
     while(auto move = dynamic_cast<const MoveOperation*>(inst))
     {
-        if(move->isSimpleMove() && !move->hasConditionalExecution())
-        {
-            if(auto writer = move->getSource().getSingleWriter())
-                inst = writer;
-        }
+        const IntermediateInstruction* writer = nullptr;
+        if(move->isSimpleMove() && !move->hasConditionalExecution() && (writer = move->getSource().getSingleWriter()))
+            inst = writer;
+        else
+            break;
     }
     return inst;
 }
@@ -348,6 +348,8 @@ static const Local* getSourceLocal(const Local* local)
         auto move = dynamic_cast<const MoveOperation*>(writer);
         if(move && move->isSimpleMove() && !move->hasConditionalExecution() && move->readsLocal())
             local = move->getSource().local();
+        else
+            break;
     }
     return local;
 }

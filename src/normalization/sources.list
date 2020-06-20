@@ -1,20 +1,12 @@
 target_sources(${VC4C_LIBRARY_NAME}
   PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/AddressCalculation.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/AddressCalculation.h
     ${CMAKE_CURRENT_LIST_DIR}/Inliner.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/Inliner.h
     ${CMAKE_CURRENT_LIST_DIR}/LiteralValues.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/LiteralValues.h
     ${CMAKE_CURRENT_LIST_DIR}/LongOperations.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/LongOperations.h
     ${CMAKE_CURRENT_LIST_DIR}/MemoryAccess.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/MemoryAccess.h
     ${CMAKE_CURRENT_LIST_DIR}/MemoryMapChecks.cpp
     ${CMAKE_CURRENT_LIST_DIR}/MemoryMappings.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/MemoryMappings.h
     ${CMAKE_CURRENT_LIST_DIR}/Normalizer.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/Normalizer.h
     ${CMAKE_CURRENT_LIST_DIR}/Rewrite.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/Rewrite.h
 )

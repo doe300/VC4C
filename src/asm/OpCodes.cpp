@@ -791,6 +791,11 @@ ElementFlags ElementFlags::fromLiteral(Literal lit) noexcept
     return flags;
 }
 
+std::string VectorFlags::to_string() const
+{
+    return "{" + vc4c::to_string<ElementFlags>(*this) + "}";
+}
+
 VectorFlags VectorFlags::fromValue(const Value& val)
 {
     if(val.getLiteralValue())

@@ -17,7 +17,7 @@ namespace vc4c
 {
     namespace analysis
     {
-        using UsedElements = FastMap<const Local*, std::bitset<16>>;
+        using UsedElements = FastMap<const Local*, std::bitset<NATIVE_VECTOR_SIZE>>;
 
         /*
          * Tracks locals which are read conditionally to determine the used elements

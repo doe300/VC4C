@@ -1668,8 +1668,6 @@ bool QPU::executeSignal(Signaling signal)
 
 void QPU::setFlags(const SIMDVector& output, ConditionCode cond, const VectorFlags& newFlags)
 {
-    std::vector<std::string> parts;
-    logging::logLazy(logging::Level::DEBUG, [&]() { parts.reserve(flags.size()); });
     for(uint8_t i = 0; i < flags.size(); ++i)
     {
         if(flags[i].matchesCondition(cond))
@@ -1678,12 +1676,9 @@ void QPU::setFlags(const SIMDVector& output, ConditionCode cond, const VectorFla
             flags[i] = newFlags[i];
             // do not set overflow flag, it is only valid for the one instruction
             flags[i].overflow = FlagStatus::UNDEFINED;
-
-            logging::logLazy(logging::Level::DEBUG, [&]() { parts.emplace_back(flags[i].to_string()); });
         }
     }
-    CPPLOG_LAZY(
-        logging::Level::DEBUG, log << "Setting flags: {" + to_string<std::string>(parts) << "}" << logging::endl);
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Setting flags: " << flags.to_string() << logging::endl);
 
     // TODO not completely correct, see http://maazl.de/project/vc4asm/doc/instructions.html
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 200, "flags set", 1);

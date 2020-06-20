@@ -1,42 +1,21 @@
 target_sources(${VC4C_LIBRARY_NAME}
   PRIVATE
     BasicBlock.cpp
-    BasicBlock.h
-    Bitfield.h
     CompilationError.cpp
     Compiler.cpp
     Disassembler.cpp
     Expression.cpp
-    Expression.h
     GlobalValues.cpp
-    GlobalValues.h
-    Graph.h
     HalfType.cpp
-    HalfType.h
-    helper.h
     InstructionWalker.cpp
-    InstructionWalker.h
-    KernelMetaData.h
     Locals.cpp
-    Locals.h
     Method.cpp
-    Method.h
     Module.cpp
-    Module.h
-    Parser.h
-    performance.h
     ProcessUtil.cpp
-    ProcessUtil.h
     Profiler.cpp
-    Profiler.h
     signals.cpp
     SIMDVector.cpp
-    SIMDVector.h
     ThreadPool.cpp
-    ThreadPool.h
     Types.cpp
-    Types.h
-    Units.h
     Values.cpp
-    Values.h
 )

@@ -709,6 +709,8 @@ namespace vc4c
             fill(allElements);
         }
 
+        std::string to_string() const;
+
         /*
          * Extracts the zero and negative flags from the given Value.
          *

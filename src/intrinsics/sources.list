@@ -1,11 +1,7 @@
 target_sources(${VC4C_LIBRARY_NAME}
   PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/Comparisons.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/Comparisons.h
     ${CMAKE_CURRENT_LIST_DIR}/Images.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/Images.h
     ${CMAKE_CURRENT_LIST_DIR}/Intrinsics.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/Intrinsics.h
     ${CMAKE_CURRENT_LIST_DIR}/Operators.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/Operators.h
 )
