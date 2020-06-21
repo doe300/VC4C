@@ -1926,6 +1926,12 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
         it.nextInBlock();
     }
 
+    // non-constant operation which is not moved
+    {
+        it.emplace(new Operation(OP_SUB, NOP_REGISTER, out3, UNIFORM_REGISTER));
+        it.nextInBlock();
+    }
+
     // run pass
     method.dumpInstructions();
     removeConstantLoadInLoops(module, method, config);
@@ -1941,6 +1947,16 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
     TEST_ASSERT_EQUALS("%dummy", it.get<BranchLabel>()->getLabel()->name);
     it.nextInMethod();
 
+    // here the instructions from both loops are hoisted into
+    for(auto inst : hoistedInstructions)
+    {
+        if(it.get() != inst)
+        {
+            TEST_ASSERT_EQUALS(inst->to_string(), it->to_string());
+        }
+        it.nextInMethod();
+    }
+
     // outer loop header label
     TEST_ASSERT(!!it.get<BranchLabel>());
     TEST_ASSERT(it.get<BranchLabel>()->getLabel()->name.find("outerLoop") != std::string::npos);
@@ -1948,29 +1964,21 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
     it.nextInMethod();
 
     // outer loop content label
+    // the outer loop content is now empty
     it = outerLoop.walk();
+    TEST_ASSERT_EQUALS(1u, outerLoop.size());
     TEST_ASSERT(!!it.get<BranchLabel>());
     TEST_ASSERT(it.get<BranchLabel>()->getLabel()->name.find("outerLoop") != std::string::npos);
     TEST_ASSERT(it.get<BranchLabel>()->getLabel()->name.find("header") == std::string::npos);
-    it.nextInMethod();
 
-    // here the instructions from the inner loop are hoisted into (next to the instructions of the outer loop)
-    // TODO shouldn't the constant instructions be hoisted completely outside of the outer loop??
-    for(auto inst : hoistedInstructions)
-    {
-        if(it.get() != inst)
-        {
-            TEST_ASSERT_EQUALS(inst->to_string(), it->to_string());
-        }
-        it.nextInBlock();
-    }
-
-    // the inner loop is now empty (only contains label and unconditional branch to header)
-    TEST_ASSERT_EQUALS(2u, innerLoop.size());
+    // the inner loop has now only label, single non-moved instruction and unconditional branch to header
+    TEST_ASSERT_EQUALS(3u, innerLoop.size());
     it = innerLoop.walk();
     TEST_ASSERT(!!it.get<BranchLabel>());
     TEST_ASSERT(it.get<BranchLabel>()->getLabel()->name.find("innerLoop") != std::string::npos);
     TEST_ASSERT(it.get<BranchLabel>()->getLabel()->name.find("header") == std::string::npos);
+    it.nextInMethod();
+    TEST_ASSERT(it->getOutput().value() == NOP_REGISTER);
     it.nextInMethod();
     TEST_ASSERT(!!it.get<Branch>());
 }

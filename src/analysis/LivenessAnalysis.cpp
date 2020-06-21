@@ -83,6 +83,36 @@ static LivenessChanges analyzeLivenessChangesInner(
                     changes.removedLocals.emplace(loc);
                     liveLocals.erase(loc);
                 }
+                else if(inst.hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
+                {
+                    // TODO is this true in general?
+                    // 1. Is there a case where the conditional write (and therefore non-termination) of the phi-node
+                    // is required?
+                    // 2. Is there a case where a phi-node is actually conditional, e.g. at the end of the same block,
+                    // the phi-node is written by different instructions depending on some condition?
+                    /*
+                     * Phi-nodes for conditional branches are by default (unless optimized away) marked with the
+                     * condition of taking the associated branch. Since there is no write for the opposite condition
+                     * inside the same basic block, the above code will not terminate the local live range here.
+                     *
+                     * The block of this phi-node write is only the direct predecessor of the block consuming the
+                     * phi-node (at runtime), iff the branch is taken. Thus, either the phi-node condition (which is the
+                     * branch condition) is true, the phi-node is overwritten and the associated branch is taken or the
+                     * phi-node condition is false, the phi-node is not overwritten and the branch is not taken.
+                     *
+                     * Given that the phi-nodes are generated from an LLVM SSA-form IR, a single phi-node local is only
+                     * used for a single phi-node (and therefore only across a single block and its predecessors). Also,
+                     * the phi-node local is written by phi-node writes inserted into the end of all of the block's
+                     * direct predecessors.
+                     *
+                     * So we assume, that if the block of the phi-node read is reached from this block not via the
+                     * phi-node write associated branch, but via some other way, that the phi-node local is always
+                     * overwritten along the execution path. This allows us to assume a phi-node write to
+                     * unconditionally end the local's live range for this execution path.
+                     */
+                    changes.removedLocals.emplace(loc);
+                    liveLocals.erase(loc);
+                }
                 else
                     conditionalWrites.emplace(loc);
             }

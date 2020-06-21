@@ -552,6 +552,25 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
     return replaced;
 }
 
+static bool canMoveInstruction(InstructionWalker source, InstructionWalker destination)
+{
+    // don't move reading/writing of r5 over other reading/writing of r5
+    auto checkReplication = [](InstructionWalker it) {
+        return it->readsRegister(REG_ACC5) || it->readsRegister(REG_REPLICATE_ALL) ||
+            it->readsRegister(REG_REPLICATE_QUAD) || it->writesRegister(REG_ACC5) ||
+            it->writesRegister(REG_REPLICATE_ALL) || it->writesRegister(REG_REPLICATE_QUAD);
+    };
+    bool checkForReplicationRegister = checkReplication(source);
+    auto it = source.copy().nextInBlock();
+    while(!it.isEndOfBlock() && it != destination)
+    {
+        if(checkForReplicationRegister && checkReplication(it))
+            return false;
+        it.nextInBlock();
+    }
+    return true;
+}
+
 bool optimizations::eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config)
 {
     /*
@@ -639,7 +658,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                     // FIXME this re-orders UNIFORM reads (e.g. in test_branches.cl) ||
                     // !((*sourceWriter)->signal.hasSideEffects() || (*sourceWriter)->doesSetFlag()))
                     ) &&
-                !it->getSignal().hasSideEffects() &&
+                !it->getSignal().hasSideEffects() && canMoveInstruction(*sourceWriter, it) &&
                 // TODO don't know why this does not work (maybe because of some other optimization applied to the
                 // result?), but rewriting moves to rotation registers screw up the
                 // TestVectorFunctions#testShuffle2Vector16 test

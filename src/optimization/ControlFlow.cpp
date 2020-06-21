@@ -1140,13 +1140,9 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             if(targetBlock != nullptr)
             {
                 // insert before first 'br' operation (if any)
-                auto targetInst = targetBlock->walk();
-                auto checkInst = targetInst.copy().nextInBlock();
-                do
-                {
-                    targetInst = checkInst;
-                    checkInst.nextInBlock();
-                } while(!checkInst.isEndOfBlock() && !checkInst.get<Branch>());
+                auto targetInst = targetBlock->walk().nextInBlock();
+                while(!targetInst.isEndOfBlock() && !targetInst.get<Branch>())
+                    targetInst.nextInBlock();
                 for(auto it : insts->second)
                 {
                     auto inst = it.get();
