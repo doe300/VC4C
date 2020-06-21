@@ -8,6 +8,7 @@
 
 #include "../InstructionWalker.h"
 #include "../Method.h"
+#include "../analysis/FlagsAnalysis.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "log.h"
 
@@ -45,22 +46,25 @@ static bool rewriteSettingOfFlags(
         setFlags.get<intermediate::ExtendedInstruction>()->setSetFlags(SetFlag::DONT_SET);
         return true;
     }
-    Optional<Value> precalc;
-    VectorFlags allFlags;
-    std::tie(precalc, allFlags) = setFlags->precalculate();
-    if(precalc && precalc->getLiteralValue() &&
-        std::all_of(allFlags.begin(), allFlags.end(), [&](ElementFlags flags) -> bool { return flags == allFlags[0]; }))
+    auto allFlags = analysis::StaticFlagsAnalysis::analyzeStaticFlags(setFlags.get(), setFlags);
+    if(allFlags && std::all_of(allFlags->begin(), allFlags->end(), [&](ElementFlags flags) -> bool {
+           return flags == (*allFlags)[0];
+       }))
     {
         // flags are compile-time static
         // TODO improve to also handle container constant flags
-        ElementFlags flags = allFlags[0];
+        ElementFlags flags = (*allFlags)[0];
         auto condIt = conditionalInstructions.begin();
         bool changedInstructions = false;
         while(condIt != conditionalInstructions.end())
         {
-            auto cond = (*condIt).get<intermediate::ExtendedInstruction>() ?
-                (*condIt).get<intermediate::ExtendedInstruction>()->getCondition() :
-                COND_ALWAYS;
+            auto extendedInst = condIt->get<intermediate::ExtendedInstruction>();
+            auto branch = condIt->get<intermediate::Branch>();
+            ConditionCode cond = COND_ALWAYS;
+            if(extendedInst)
+                cond = extendedInst->getCondition();
+            else if(branch)
+                cond = branch->branchCondition.toConditionCode();
             if(isFlagDefined(cond, flags))
             {
                 if(flags.matchesCondition(cond))
@@ -69,13 +73,28 @@ static bool rewriteSettingOfFlags(
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Making instruction with constant condition unconditional: " << (*condIt)->to_string()
                             << logging::endl);
-                    (*condIt).get<intermediate::ExtendedInstruction>()->setCondition(COND_ALWAYS);
+                    if(extendedInst)
+                        extendedInst->setCondition(COND_ALWAYS);
+                    else if(branch)
+                        branch->branchCondition = BRANCH_ALWAYS;
                     changedInstructions = true;
                     ++condIt;
                 }
-                else if(condIt->get<intermediate::Branch>())
+                else if(branch)
                     // XXX for now don't rewrite any flags where branches depend on them
                     ++condIt;
+                else if((*condIt)->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
+                {
+                    // We can't remove phi-node writes, since otherwise we remove the end of the liveness range (for
+                    // that block), making it possibly "infinite". But we can make this instruction not depend on
+                    // anything else to be able to remove its sources
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Simplifying conditional phi-node which will never be executed: "
+                            << (*condIt)->to_string() << logging::endl);
+                    condIt->reset((new intermediate::MoveOperation((*condIt)->getOutput().value(), INT_ZERO))
+                                      ->copyExtrasFrom((*condIt).get()));
+                    ++condIt;
+                }
                 else
                 {
                     // condition is statically not matched, remove instruction

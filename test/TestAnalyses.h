@@ -27,6 +27,7 @@ public:
     void testMemory();
     void testRegister();
     void testValueRange();
+    void testStaticFlags();
 };
 
 #endif /* VC4C_TEST_ANALYSES_H */

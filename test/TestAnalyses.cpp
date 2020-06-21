@@ -8,6 +8,8 @@
 #include "analysis/ControlFlowGraph.h"
 #include "analysis/DataDependencyGraph.h"
 #include "analysis/DominatorTree.h"
+#include "analysis/FlagsAnalysis.h"
+#include "intermediate/operators.h"
 
 using namespace vc4c;
 using namespace vc4c::analysis;
@@ -62,11 +64,13 @@ TestAnalyses::TestAnalyses(const Configuration& config) : TestCompilationHelper(
     TEST_ADD(TestAnalyses::testDataDependency);
     TEST_ADD(TestAnalyses::testDependency);
     TEST_ADD(TestAnalyses::testDominatorTree);
-    TEST_ADD(TestAnalyses::testInterference);
-    TEST_ADD(TestAnalyses::testLifetime);
-    TEST_ADD(TestAnalyses::testLiveness);
-    TEST_ADD(TestAnalyses::testRegister);
-    TEST_ADD(TestAnalyses::testValueRange);
+    // TODO
+    // TEST_ADD(TestAnalyses::testInterference);
+    // TEST_ADD(TestAnalyses::testLifetime);
+    // TEST_ADD(TestAnalyses::testLiveness);
+    // TEST_ADD(TestAnalyses::testRegister);
+    // TEST_ADD(TestAnalyses::testValueRange);
+    TEST_ADD(TestAnalyses::testStaticFlags);
 }
 
 void TestAnalyses::testAvailableExpressions() {}
@@ -848,12 +852,224 @@ void TestAnalyses::testDominatorTree()
     }
 }
 
-void TestAnalyses::testInterference() {}
+void TestAnalyses::testStaticFlags()
+{
+    using namespace vc4c::intermediate;
+    using namespace vc4c::operators;
+    using analysis::StaticFlagsAnalysis;
 
-void TestAnalyses::testLifetime() {}
+    Module module{config};
+    Method method(module);
+    InstructionWalker it = method.createAndInsertNewBlock(method.begin(), "%dummy").walkEnd();
 
-void TestAnalyses::testLiveness() {}
+    // can be detected - constant flags
+    {
+        // test with simple scalar constant
+        auto out = method.addNewLocal(TYPE_INT32);
+        it.emplace(new LoadImmediate(out, Literal(-12345)));
+        auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
+        TEST_ASSERT(!!flags);
+        for(auto elem : *flags)
+        {
+            TEST_ASSERT_EQUALS(
+                (ElementFlags{FlagStatus::CLEAR, FlagStatus::SET, FlagStatus::CLEAR, FlagStatus::CLEAR}), elem);
+        }
 
-void TestAnalyses::testRegister() {}
+        // test with differing constant vector
+        it.reset(new LoadImmediate(out, 0x32100123, intermediate::LoadType::PER_ELEMENT_SIGNED));
+        auto vector = LoadImmediate::toLoadedValues(0x32100123, intermediate::LoadType::PER_ELEMENT_SIGNED);
+        flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
+        TEST_ASSERT(!!flags);
+        for(uint8_t i = 0; i < vector.size(); ++i)
+        {
+            TEST_ASSERT_EQUALS(vector[i].signedInt() == 0 ? FlagStatus::SET : FlagStatus::CLEAR, (*flags)[i].zero);
+            TEST_ASSERT_EQUALS(vector[i].signedInt() < 0 ? FlagStatus::SET : FlagStatus::CLEAR, (*flags)[i].negative);
+            TEST_ASSERT_EQUALS(FlagStatus::CLEAR, (*flags)[i].carry);
+            TEST_ASSERT_EQUALS(FlagStatus::CLEAR, (*flags)[i].overflow);
+        }
 
-void TestAnalyses::testValueRange() {}
+        it.nextInBlock();
+    }
+
+    // can be detected - basic boolean writing based on other flags
+    {
+        auto input = assign(it, TYPE_INT16) = UNIFORM_REGISTER;
+        auto cond = assignNop(it) = as_unsigned{input} == as_unsigned{13_val};
+        auto booleanValue = assign(it, TYPE_BOOL) = (BOOL_TRUE, cond);
+        assign(it, booleanValue) = (BOOL_FALSE, cond.invert());
+        it.emplace(new MoveOperation(NOP_REGISTER, booleanValue, COND_ALWAYS, SetFlag::SET_FLAGS));
+        auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it);
+        TEST_ASSERT(!!flags);
+        for(auto elem : *flags)
+        {
+            TEST_ASSERT_EQUALS(
+                (ElementFlags{FlagStatus::UNDEFINED, FlagStatus::CLEAR, FlagStatus::CLEAR, FlagStatus::CLEAR}), elem);
+        }
+        it.nextInBlock();
+    }
+
+    // can be detected - OR'ing boolean values
+    {
+        auto inputA = assign(it, TYPE_INT16) = UNIFORM_REGISTER;
+        auto cond = assignNop(it) = as_unsigned{inputA} == as_unsigned{13_val};
+        auto booleanA = assign(it, TYPE_BOOL) = (BOOL_TRUE, cond);
+        assign(it, booleanA) = (BOOL_FALSE, cond.invert());
+
+        auto inputB = assign(it, TYPE_INT16) = UNIFORM_REGISTER;
+        cond = assignNop(it) = as_unsigned{inputB} != as_unsigned{112_val};
+        auto booleanB = assign(it, TYPE_BOOL) = (BOOL_TRUE, cond);
+        assign(it, booleanB) = (BOOL_FALSE, cond.invert());
+
+        it.emplace(new Operation(OP_OR, NOP_REGISTER, booleanA, booleanB));
+        auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
+        TEST_ASSERT(!!flags);
+        for(auto elem : *flags)
+        {
+            TEST_ASSERT_EQUALS(
+                (ElementFlags{FlagStatus::UNDEFINED, FlagStatus::CLEAR, FlagStatus::CLEAR, FlagStatus::CLEAR}), elem);
+        }
+
+        it.nextInBlock();
+    }
+
+    // can be detected - AND'ing boolean values
+    {
+        auto inputA = assign(it, TYPE_INT16) = UNIFORM_REGISTER;
+        auto cond = assignNop(it) = as_unsigned{inputA} == as_unsigned{13_val};
+        auto booleanA = assign(it, TYPE_BOOL) = (BOOL_TRUE, cond);
+        assign(it, booleanA) = (BOOL_FALSE, cond.invert());
+
+        auto inputB = assign(it, TYPE_INT16) = UNIFORM_REGISTER;
+        cond = assignNop(it) = as_unsigned{inputB} != as_unsigned{112_val};
+        auto booleanB = assign(it, TYPE_BOOL) = (BOOL_TRUE, cond);
+        assign(it, booleanB) = (BOOL_FALSE, cond.invert());
+
+        it.emplace(new Operation(OP_AND, NOP_REGISTER, booleanA, booleanB));
+        auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
+        TEST_ASSERT(!!flags);
+        for(auto elem : *flags)
+        {
+            TEST_ASSERT_EQUALS(
+                (ElementFlags{FlagStatus::UNDEFINED, FlagStatus::CLEAR, FlagStatus::CLEAR, FlagStatus::CLEAR}), elem);
+        }
+
+        it.nextInBlock();
+    }
+
+    // can be detected - Or'ing boolean value with element number register (e.g. for branch flags)
+    {
+        auto input = assign(it, TYPE_INT16) = UNIFORM_REGISTER;
+        auto cond = assignNop(it) = as_unsigned{input} == as_unsigned{13_val};
+        auto booleanValue = assign(it, TYPE_BOOL) = (BOOL_TRUE, cond);
+        assign(it, booleanValue) = (BOOL_FALSE, cond.invert());
+        it.emplace(
+            new Operation(OP_OR, NOP_REGISTER, booleanValue, ELEMENT_NUMBER_REGISTER, COND_ALWAYS, SetFlag::SET_FLAGS));
+        auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it);
+        TEST_ASSERT(!!flags);
+        for(uint8_t i = 0; i < flags->size(); ++i)
+        {
+            TEST_ASSERT_EQUALS(i == 0 ? FlagStatus::UNDEFINED : FlagStatus::CLEAR, (*flags)[i].zero);
+            TEST_ASSERT_EQUALS(FlagStatus::CLEAR, (*flags)[i].negative);
+            TEST_ASSERT_EQUALS(FlagStatus::CLEAR, (*flags)[i].carry);
+            TEST_ASSERT_EQUALS(FlagStatus::CLEAR, (*flags)[i].overflow);
+        }
+
+        it.nextInBlock();
+    }
+
+    // can be detected - flags output of some min/max instructions
+    {
+        auto input = assign(it, TYPE_INT16) = UNIFORM_REGISTER;
+
+        it.emplace(new Operation(OP_MAX, NOP_REGISTER, input, 13_val));
+        auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
+        TEST_ASSERT(!!flags);
+        for(auto elem : *flags)
+        {
+            // can never be negative or zero
+            TEST_ASSERT_EQUALS(
+                (ElementFlags{FlagStatus::CLEAR, FlagStatus::CLEAR, FlagStatus::UNDEFINED, FlagStatus::CLEAR}), elem);
+        }
+
+        it.reset(new Operation(OP_MIN, NOP_REGISTER, input, Value(Literal(-13), TYPE_INT16)));
+        flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
+        TEST_ASSERT(!!flags);
+        for(auto elem : *flags)
+        {
+            // is always negative and never zero
+            TEST_ASSERT_EQUALS(
+                (ElementFlags{FlagStatus::CLEAR, FlagStatus::SET, FlagStatus::UNDEFINED, FlagStatus::CLEAR}), elem);
+        }
+
+        it.emplace(new Operation(OP_FMAX, NOP_REGISTER, input, Value(Literal(-13.4f), TYPE_FLOAT)));
+        flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
+        TEST_ASSERT(!!flags);
+        for(auto elem : *flags)
+        {
+            // may be negative and zero
+            TEST_ASSERT_EQUALS(
+                (ElementFlags{FlagStatus::UNDEFINED, FlagStatus::UNDEFINED, FlagStatus::UNDEFINED, FlagStatus::CLEAR}),
+                elem);
+        }
+
+        it.emplace(new Operation(OP_FMAXABS, NOP_REGISTER, input, Value(Literal(-13.4f), TYPE_FLOAT)));
+        flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
+        TEST_ASSERT(!!flags);
+        for(auto elem : *flags)
+        {
+            // can never be negative or zero
+            TEST_ASSERT_EQUALS(
+                (ElementFlags{FlagStatus::CLEAR, FlagStatus::CLEAR, FlagStatus::UNDEFINED, FlagStatus::CLEAR}), elem);
+        }
+
+        it.emplace(new Operation(OP_FMINABS, NOP_REGISTER, input, FLOAT_ZERO));
+        flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
+        TEST_ASSERT(!!flags);
+        for(auto elem : *flags)
+        {
+            // is always zero
+            TEST_ASSERT_EQUALS(
+                (ElementFlags{FlagStatus::SET, FlagStatus::CLEAR, FlagStatus::UNDEFINED, FlagStatus::CLEAR}), elem);
+        }
+
+        it.nextInBlock();
+    }
+
+    // can not be detected - flag set based on parameter
+    {
+        auto input = assign(it, TYPE_INT16) = UNIFORM_REGISTER;
+        it.emplace(new MoveOperation(NOP_REGISTER, input));
+        auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
+        TEST_ASSERT(!flags);
+
+        it.nextInBlock();
+    }
+
+    // can not be detected - flag based set on conditionally written local
+    {
+        // test with almost "setting boolean based on other flags", but with not zero/one values
+        auto input = assign(it, TYPE_INT16) = UNIFORM_REGISTER;
+        auto cond = assignNop(it) = as_unsigned{input} == as_unsigned{13_val};
+        auto booleanValue = assign(it, TYPE_BOOL) = (32_val, cond);
+        assign(it, booleanValue) = (4_val, cond.invert());
+        it.emplace(new MoveOperation(NOP_REGISTER, booleanValue, COND_ALWAYS, SetFlag::SET_FLAGS));
+        auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it);
+        TEST_ASSERT(!flags);
+
+        // test with multiple conditional writes
+        cond = assignNop(it) = as_signed{input} > as_signed{32_val};
+        assign(it, booleanValue) = (14_val, cond.invert());
+        flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it);
+        TEST_ASSERT(!flags);
+
+        it.nextInBlock();
+    }
+
+    // can not be detected - instruction does not set flags
+    {
+        auto input = assign(it, TYPE_INT16) = UNIFORM_REGISTER;
+        it.emplace(new MoveOperation(NOP_REGISTER, input));
+        auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it);
+        TEST_ASSERT(!flags);
+    }
+}

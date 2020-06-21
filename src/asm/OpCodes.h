@@ -693,7 +693,7 @@ namespace vc4c
         /*
          * Extracts the zero and negative flags from the given Value.
          *
-         * NOTE: The carry and overflow flags are set to UNDEFINED
+         * NOTE: The carry and overflow flags are set to CLEAR, since single values cannot have those set!
          */
         static ElementFlags fromValue(const Value& val) noexcept;
         static ElementFlags fromLiteral(Literal lit) noexcept;
@@ -714,7 +714,7 @@ namespace vc4c
         /*
          * Extracts the zero and negative flags from the given Value.
          *
-         * NOTE: The carry and overflow flags are set to UNDEFINED
+         * NOTE: The carry and overflow flags are set to CLEAR, since single values cannot have those set!
          */
         static VectorFlags fromValue(const Value& val);
     };

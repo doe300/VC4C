@@ -788,6 +788,8 @@ ElementFlags ElementFlags::fromLiteral(Literal lit) noexcept
     flags.negative = lit.signedInt() < 0 ? FlagStatus::SET : FlagStatus::CLEAR;
     // for signed, unsigned and float, zero is all bits zero
     flags.zero = lit.unsignedInt() == 0 ? FlagStatus::SET : FlagStatus::CLEAR;
+    // literals can never have carry/32-bit overflow set
+    flags.carry = flags.overflow = FlagStatus::CLEAR;
     return flags;
 }
 
@@ -798,8 +800,8 @@ std::string VectorFlags::to_string() const
 
 VectorFlags VectorFlags::fromValue(const Value& val)
 {
-    if(val.getLiteralValue())
-        return ElementFlags::fromValue(val);
+    if(auto lit = val.getLiteralValue())
+        return ElementFlags::fromLiteral(*lit);
     VectorFlags flags{};
     if(auto vec = val.checkVector())
     {
@@ -844,6 +846,9 @@ CONST static unsigned int rotate_right(unsigned int value, int shift) noexcept
 static std::pair<Optional<Literal>, ElementFlags> setFlags(Literal lit)
 {
     auto flags = ElementFlags::fromLiteral(lit);
+    // we don't know the flags for carry and 32-bit overflow here, since we don't actually have a plain literal, but an
+    // operation return value which might set those.
+    flags.carry = flags.overflow = FlagStatus::UNDEFINED;
     return std::make_pair(std::forward<Literal>(lit), flags);
 }
 
