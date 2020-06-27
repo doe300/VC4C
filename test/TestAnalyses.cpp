@@ -233,8 +233,9 @@ void TestAnalyses::testControlFlowGraph()
         });
         // 5 back edges (2 for the inner loops + 3 for the work-group loops)
         TEST_ASSERT_EQUALS(5u, backEdges.size());
-        // 5 implicit edges (into first loop, out of if-block, out of second loop, 2 * for work-group loop)
-        TEST_ASSERT_EQUALS(5u, implicitEdges.size());
+        // 18 implicit edges (into first loop, out of if-block, out of second loop, 2 * for work-group loop +  a lot for
+        // if-then-after blocks)
+        TEST_ASSERT_EQUALS(18u, implicitEdges.size());
         // 3 work-group edges (one per dimension)
         TEST_ASSERT_EQUALS(3u, workGroupEdges.size());
     }

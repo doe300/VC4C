@@ -67,7 +67,18 @@ static bool rewriteSettingOfFlags(
                 cond = branch->branchCondition.toConditionCode();
             if(isFlagDefined(cond, flags))
             {
-                if(flags.matchesCondition(cond))
+                if(branch && allFlags->matchesCondition(branch->branchCondition))
+                {
+                    // this branch becomes unconditional
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Making branch with constant condition unconditional: " << (*condIt)->to_string()
+                            << logging::endl);
+                    branch->branchCondition = BRANCH_ALWAYS;
+                    changedInstructions = true;
+                    ++condIt;
+                    // TODO now, we could also remove the phi-node writes
+                }
+                else if(flags.matchesCondition(cond))
                 {
                     // condition is statically matched, remove conditional
                     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -75,14 +86,9 @@ static bool rewriteSettingOfFlags(
                             << logging::endl);
                     if(extendedInst)
                         extendedInst->setCondition(COND_ALWAYS);
-                    else if(branch)
-                        branch->branchCondition = BRANCH_ALWAYS;
                     changedInstructions = true;
                     ++condIt;
                 }
-                else if(branch)
-                    // XXX for now don't rewrite any flags where branches depend on them
-                    ++condIt;
                 else if((*condIt)->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
                 {
                     // We can't remove phi-node writes, since otherwise we remove the end of the liveness range (for
@@ -91,7 +97,7 @@ static bool rewriteSettingOfFlags(
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Simplifying conditional phi-node which will never be executed: "
                             << (*condIt)->to_string() << logging::endl);
-                    condIt->reset((new intermediate::MoveOperation((*condIt)->getOutput().value(), INT_ZERO))
+                    condIt->reset((new intermediate::MoveOperation((*condIt)->getOutput().value(), UNDEFINED_VALUE))
                                       ->copyExtrasFrom((*condIt).get()));
                     ++condIt;
                 }
@@ -287,5 +293,103 @@ InstructionWalker optimizations::combineFlagWithOutput(
         // don't skip next instruction
         it.previousInBlock();
     }
+    return it;
+}
+
+static bool checkAllInputElementsAreSame(const Value& input)
+{
+    bool allElementsSame = input.isAllSame();
+    if(!allElementsSame && input.checkLocal())
+    {
+        auto writers = input.local()->getUsers(LocalUse::Type::WRITER);
+        allElementsSame = std::all_of(writers.begin(), writers.end(), [](const LocalUser* writer) -> bool {
+            // conditional writes would be per-element and therefore have to be excluded (XXX unless we can argue the
+            // flags the conditional write depends on to be all the same)
+            return !writer->hasConditionalExecution() && writer->precalculate().first & &Value::isAllSame;
+        });
+    }
+    return allElementsSame;
+}
+
+static bool checkConditionalsAcceptFlagRewrite(InstructionWalker it, ElementFlags conditionFlags)
+{
+    it.nextInBlock();
+    while(!it.isEndOfBlock() && it->doesSetFlag())
+    {
+        if(!it->hasConditionalExecution())
+            // normal conditionals are per-element, so we cannot rewrite their flag setters
+            return false;
+        if(auto br = it.get<intermediate::Branch>())
+        {
+            if(br->branchCondition == BRANCH_ALL_C_CLEAR || br->branchCondition == BRANCH_ANY_C_SET)
+            {
+                if(conditionFlags.carry != FlagStatus::SET)
+                    return false;
+            }
+            else if(br->branchCondition == BRANCH_ALL_N_CLEAR || br->branchCondition == BRANCH_ANY_N_SET)
+            {
+                if(conditionFlags.negative != FlagStatus::SET)
+                    return false;
+            }
+            else if(br->branchCondition == BRANCH_ALL_Z_CLEAR || br->branchCondition == BRANCH_ANY_Z_SET)
+            {
+                if(conditionFlags.zero != FlagStatus::SET)
+                    return false;
+            }
+            else
+                // any other branch condition will be changed by simplifying the flag setter
+                return false;
+        }
+        it.nextInBlock();
+    }
+    return true;
+}
+
+InstructionWalker optimizations::simplifyFlag(
+    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+{
+    if(!it.get() || it->hasConditionalExecution() || !it->doesSetFlag())
+        return it;
+
+    if(it.get<intermediate::MoveOperation>())
+        // is already the simplest case
+        return it;
+
+    if(!it->writesRegister(REG_NOP))
+        // we can only simplify if the output value is not actually used, since we change it
+        return it;
+
+    // check whether we have a supported operation
+    Optional<Value> input = UNDEFINED_VALUE;
+    // these are the allowed flags to depend on which will still be identical after the simplification
+    ElementFlags condFlags{};
+    if(auto op = it.get<intermediate::Operation>())
+    {
+        // this is currently our only supported case
+        if(op->op == OP_OR && op->readsRegister(REG_ELEMENT_NUMBER))
+        {
+            input = op->findOtherArgument(ELEMENT_NUMBER_REGISTER);
+            // for this case, the can simplify if all dependent checks on (not)zero or (not)negative
+            condFlags.zero = FlagStatus::SET;
+            condFlags.negative = FlagStatus::SET;
+        }
+    }
+    if(!input)
+        // unsupported case of flag setter
+        return it;
+
+    // check whether all our inputs are identical over the whole SIMD vector
+    if(!checkAllInputElementsAreSame(*input))
+        return it;
+
+    // check all depending conditional executions, whether they allow us to change the flags
+    if(!checkConditionalsAcceptFlagRewrite(it, condFlags))
+        return it;
+
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Simplifying flag setter '" << it->to_string()
+            << "', all conditional instructions will behave the same afterwards" << logging::endl);
+    it.reset((new intermediate::MoveOperation(it->getOutput().value(), *input, COND_ALWAYS, SetFlag::SET_FLAGS))
+                 ->copyExtrasFrom(it.get()));
     return it;
 }

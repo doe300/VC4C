@@ -92,6 +92,26 @@ namespace vc4c
          */
         InstructionWalker combineFlagWithOutput(
             const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+
+        /**
+         * Simplifies settings of flags to facilitate further optimizations.
+         *
+         * Example:
+         *   %a = uniform
+         *   - = or elem_num, %a (setf)
+         *   br %A (anyz)
+         *   br %B (allnz)
+         *
+         * can be simplified to:
+         *   %a = uniform
+         *   - = %a (setf)
+         *   br %A (anyz)
+         *   br %B (allnz)
+         *
+         * which then allows for further optimization.
+         */
+        InstructionWalker simplifyFlag(
+            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
     } /* namespace optimizations */
 } /* namespace vc4c */
 

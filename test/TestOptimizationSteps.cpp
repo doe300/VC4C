@@ -1111,6 +1111,29 @@ void TestOptimizationSteps::testSimplifyBranches()
         outIt.nextInBlock();
     }
 
+    // test removal of if-else branch, if first branch points to next label
+    {
+        auto& ifElseIn = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse2");
+        auto& ifElseOut = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse2");
+        auto inIt = ifElseIn.walkEnd();
+        auto outIt = ifElseOut.walkEnd();
+
+        auto inNextLabel =
+            inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse2.next").getLabel()->getLabel();
+        outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse2.next");
+
+        BranchCond cond = BRANCH_ALWAYS;
+        std::tie(inIt, cond) = insertBranchCondition(inputMethod, inIt, UNIFORM_REGISTER);
+        inIt.emplace(new Branch(inNextLabel, cond));
+        inIt.nextInBlock();
+        inIt.emplace(new Branch(ifElseIn.getLabel()->getLabel(), cond.invert()));
+        inIt.nextInBlock();
+
+        std::tie(outIt, cond) = insertBranchCondition(outputMethod, outIt, UNIFORM_REGISTER);
+        outIt.emplace(new Branch(ifElseOut.getLabel()->getLabel(), cond.invert()));
+        outIt.nextInBlock();
+    }
+
     // test not simplify of successive conditional branches to some label
     {
         auto& thirdIn = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third");
@@ -1191,32 +1214,6 @@ void TestOptimizationSteps::testSimplifyBranches()
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%some.notremove2").walkEnd();
         outIt.emplace(new Branch(someOut.getLabel()->getLabel()));
-        outIt.nextInBlock();
-    }
-
-    // test not removal of if-else branch, if first branch points to next label
-    {
-        auto& ifElseIn = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse2");
-        auto& ifElseOut = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse2");
-        auto inIt = ifElseIn.walkEnd();
-        auto outIt = ifElseOut.walkEnd();
-
-        auto inNextLabel =
-            inputMethod.createAndInsertNewBlock(inputMethod.end(), "%ifelse2.next").getLabel()->getLabel();
-        auto outNextLabel =
-            outputMethod.createAndInsertNewBlock(outputMethod.end(), "%ifelse2.next").getLabel()->getLabel();
-
-        BranchCond cond = BRANCH_ALWAYS;
-        std::tie(inIt, cond) = insertBranchCondition(inputMethod, inIt, UNIFORM_REGISTER);
-        inIt.emplace(new Branch(inNextLabel, cond));
-        inIt.nextInBlock();
-        inIt.emplace(new Branch(ifElseIn.getLabel()->getLabel(), cond.invert()));
-        inIt.nextInBlock();
-
-        std::tie(outIt, cond) = insertBranchCondition(outputMethod, outIt, UNIFORM_REGISTER);
-        outIt.emplace(new Branch(outNextLabel, cond));
-        outIt.nextInBlock();
-        outIt.emplace(new Branch(ifElseOut.getLabel()->getLabel(), cond.invert()));
         outIt.nextInBlock();
     }
 

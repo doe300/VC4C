@@ -45,6 +45,8 @@ InstructionWalker OptimizationStep::operator()(
 static const std::vector<OptimizationStep> SINGLE_STEPS = {
     // combine consecutive instructions writing the same local with a value and zero depending on some flags
     OptimizationStep("CombineSelectionWithZero", combineSelectionWithZero),
+    // Simplifies flag instructions to facilitate further optimizations
+    OptimizationStep("SimplifyFlag", simplifyFlag),
     // combine successive setting of the same flags
     OptimizationStep("CombineSettingSameFlags", combineSameFlags),
     // combine writing of value to set flags with writing of same value into output
@@ -232,7 +234,6 @@ void Optimizer::optimize(Module& module) const
 const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
     /*
      * The first optimizations run modify the control-flow of the method.
-     * After this block of optimizations is run, the CFG of the method is stable (does not change anymore)
      */
     OptimizationPass("AddWorkGroupLoops", "loop-work-groups", addWorkGroupLoop,
         "merges all work-group executions into a single kernel execution", OptimizationType::INITIAL),

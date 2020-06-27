@@ -45,12 +45,24 @@ bool optimizations::simplifyBranches(const Module& module, Method& method, const
     {
         if(Branch* thisBranch = it.get<Branch>())
         {
+            bool skippedOtherBranch = false;
             // eliminates branches to the next instruction to save up to 4 instructions (1 branch + 3 NOP)
             // eliminate branches to the next instruction, such branches are e.g. introduced by method-inlining
             auto nextIt = it.copy().nextInMethod();
-            // FIXME removing conditional branches to next instruction hangs QPU (e.g. because of successive PHI-writes
-            // not being skipped?)
-            //		while(!nextIt.isEndOfMethod())
+            if(!nextIt.isEndOfMethod())
+            {
+                auto otherBranch = nextIt.get<Branch>();
+                if(otherBranch && otherBranch->branchCondition.isInversionOf(thisBranch->branchCondition))
+                {
+                    // if the following branch has the inverted condition (either-or-branch), it can be skipped, to
+                    // allow removing of the original branch to the following blocks anyway
+                    nextIt.nextInMethod();
+                    // but we cannot allow the removal of duplicate branches to the same target, since the branch would
+                    // not have fallen-through for branch condition not met, since we have another branch right here
+                    // that handles that case
+                    skippedOtherBranch = true;
+                }
+            }
             if(!nextIt.isEndOfMethod())
             {
                 intermediate::BranchLabel* label = nextIt.get<intermediate::BranchLabel>();
@@ -65,18 +77,6 @@ bool optimizations::simplifyBranches(const Module& module, Method& method, const
                     // skip second part below
                     continue;
                 }
-                /*			else if(br != nullptr)
-                            {
-                                //if the following branch has the same condition with inverted flags (either-or-branch),
-                   it can be skipped if(!(br->conditional.isInversionOf(branch->conditional) && br->getCondition() ==
-                   branch->getCondition()))
-                                {
-                                    //otherwise, abort this optimization
-                                    break;
-                                }
-                            }
-                            nextIt.nextInMethod();
-                */
             }
             // skip all following labels
             while(!nextIt.isEndOfMethod() && nextIt.get<BranchLabel>())
@@ -85,7 +85,7 @@ bool optimizations::simplifyBranches(const Module& module, Method& method, const
                 return hasChanged;
             if(Branch* nextBranch = nextIt.get<Branch>())
             {
-                if(thisBranch->getTarget() != nextBranch->getTarget())
+                if(skippedOtherBranch || thisBranch->getTarget() != nextBranch->getTarget())
                     continue;
                 // for now, only remove unconditional branches
                 if(!thisBranch->isUnconditional() || !nextBranch->isUnconditional())
