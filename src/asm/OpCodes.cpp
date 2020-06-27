@@ -793,6 +793,52 @@ ElementFlags ElementFlags::fromLiteral(Literal lit) noexcept
     return flags;
 }
 
+bool VectorFlags::matchesCondition(BranchCond cond) const
+{
+    switch(cond)
+    {
+    case BRANCH_ALWAYS:
+        return true;
+    case BRANCH_ALL_C_CLEAR:
+        return std::all_of(begin(), end(),
+            [](const ElementFlags& element) -> bool { return element.matchesCondition(COND_CARRY_CLEAR); });
+    case BRANCH_ALL_C_SET:
+        return std::all_of(begin(), end(),
+            [](const ElementFlags& element) -> bool { return element.matchesCondition(COND_CARRY_SET); });
+    case BRANCH_ALL_N_CLEAR:
+        return std::all_of(begin(), end(),
+            [](const ElementFlags& element) -> bool { return element.matchesCondition(COND_NEGATIVE_CLEAR); });
+    case BRANCH_ALL_N_SET:
+        return std::all_of(begin(), end(),
+            [](const ElementFlags& element) -> bool { return element.matchesCondition(COND_NEGATIVE_SET); });
+    case BRANCH_ALL_Z_CLEAR:
+        return std::all_of(begin(), end(),
+            [](const ElementFlags& element) -> bool { return element.matchesCondition(COND_ZERO_CLEAR); });
+    case BRANCH_ALL_Z_SET:
+        return std::all_of(begin(), end(),
+            [](const ElementFlags& element) -> bool { return element.matchesCondition(COND_ZERO_SET); });
+    case BRANCH_ANY_C_CLEAR:
+        return std::any_of(begin(), end(),
+            [](const ElementFlags& element) -> bool { return element.matchesCondition(COND_CARRY_CLEAR); });
+    case BRANCH_ANY_C_SET:
+        return std::any_of(begin(), end(),
+            [](const ElementFlags& element) -> bool { return element.matchesCondition(COND_CARRY_SET); });
+    case BRANCH_ANY_N_CLEAR:
+        return std::any_of(begin(), end(),
+            [](const ElementFlags& element) -> bool { return element.matchesCondition(COND_NEGATIVE_CLEAR); });
+    case BRANCH_ANY_N_SET:
+        return std::any_of(begin(), end(),
+            [](const ElementFlags& element) -> bool { return element.matchesCondition(COND_NEGATIVE_SET); });
+    case BRANCH_ANY_Z_CLEAR:
+        return std::any_of(begin(), end(),
+            [](const ElementFlags& element) -> bool { return element.matchesCondition(COND_ZERO_CLEAR); });
+    case BRANCH_ANY_Z_SET:
+        return std::any_of(begin(), end(),
+            [](const ElementFlags& element) -> bool { return element.matchesCondition(COND_ZERO_SET); });
+    }
+    throw CompilationError(CompilationStep::GENERAL, "Unhandled branch condition", cond.to_string());
+}
+
 std::string VectorFlags::to_string() const
 {
     return "{" + vc4c::to_string<ElementFlags>(*this) + "}";
@@ -1704,6 +1750,9 @@ BranchCond BranchCond::invert() const
 
 bool BranchCond::isInversionOf(BranchCond other) const
 {
+    if(*this == BRANCH_ALWAYS || other == BRANCH_ALWAYS)
+        // there is no "branch never"
+        return false;
     return other == invert();
 }
 

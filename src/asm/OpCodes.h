@@ -709,6 +709,8 @@ namespace vc4c
             fill(allElements);
         }
 
+        bool matchesCondition(BranchCond cond) const;
+
         std::string to_string() const;
 
         /*

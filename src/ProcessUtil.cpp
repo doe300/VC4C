@@ -246,8 +246,7 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
         while(!(childFinished = childFinished || isChildFinished(pid, &exitStatus)))
         {
             in.read(buffer.data(), buffer.size());
-            numBytes = in.gcount();
-            write(pipes[STD_IN][WRITE], buffer.data(), static_cast<std::size_t>(in.gcount()));
+            numBytes = write(pipes[STD_IN][WRITE], buffer.data(), static_cast<std::size_t>(in.gcount()));
             if(numBytes != buffer.size())
                 break;
         }

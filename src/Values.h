@@ -894,6 +894,14 @@ namespace vc4c
          */
         static Optional<Value> createZeroInitializer(DataType type);
 
+        /**
+         * Returns whether all SIMD elements of this value contain the same value.
+         *
+         * This is e.g. true for SIMDVectors with identical elements, literal values, SmallImmediates and some
+         * registers.
+         */
+        bool isAllSame() const;
+
         /*
          * Returns the stored data of the given type, if it matches the stored type.
          * Throws error otherwise

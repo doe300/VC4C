@@ -8,6 +8,7 @@
 #include "emulation_helper.h"
 
 #include "helper.h"
+#include "intrinsics/Operators.h"
 
 #include <algorithm>
 #include <cmath>
@@ -185,9 +186,23 @@ static void testTernaryFunction(vc4c::Configuration& config, const std::string& 
         in0, in1, in2, out, op, options.substr(pos, options.find(' ', pos) - pos), onError);
 }
 
+struct FlushAndRoundUnary : private vc4c::FlushDenormsAndRoundToZero<float, float, std::function<float(float, float)>>
+{
+    using Base = vc4c::FlushDenormsAndRoundToZero<float, float, std::function<float(float, float)>>;
+    explicit FlushAndRoundUnary(float (*func)(float)) : Base{[=](float a, float b) -> float { return func(a); }} {}
+
+    float operator()(float arg) const
+    {
+        return Base::operator()(arg, arg);
+    }
+};
+
+using FlushAndRoundBinary = vc4c::FlushDenormsAndRoundToZero<float, float, std::function<float(float, float)>>;
+
 void TestMathFunctions::testAcos()
 {
-    testUnaryFunction<4, NormalDistribution<0, 1>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=acos", acosf,
+    testUnaryFunction<4, NormalDistribution<0, 1>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=acos",
+        FlushAndRoundUnary{acosf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -1, 1);
 }
 
@@ -199,29 +214,29 @@ void TestMathFunctions::testAcosh()
 
 void TestMathFunctions::testAcosPi()
 {
-    testUnaryFunction<5, NormalDistribution<0, 2>>(
-        config, "-DOUT=float16 -DIN=float16 -DFUNC=acospi",
-        [](float f) -> float { return std::acos(f) / static_cast<float>(M_PI); },
+    testUnaryFunction<5, NormalDistribution<0, 2>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=acospi",
+        FlushAndRoundUnary{[](float f) -> float { return std::acos(f) / static_cast<float>(M_PI); }},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -1, 1);
 }
 
 void TestMathFunctions::testAsin()
 {
-    testUnaryFunction<4, NormalDistribution<0, 1>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=asin", asinf,
+    testUnaryFunction<4, NormalDistribution<0, 1>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=asin",
+        FlushAndRoundUnary{asinf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -1, 1);
 }
 
 void TestMathFunctions::testAsinh()
 {
-    testUnaryFunction<4, NormalDistribution<0>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=asinh", asinhf,
+    testUnaryFunction<4, NormalDistribution<0>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=asinh",
+        FlushAndRoundUnary{asinhf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testAsinPi()
 {
-    testUnaryFunction<5, NormalDistribution<0, 2>>(
-        config, "-DOUT=float16 -DIN=float16 -DFUNC=asinpi",
-        [](float f) -> float { return std::asin(f) / static_cast<float>(M_PI); },
+    testUnaryFunction<5, NormalDistribution<0, 2>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=asinpi",
+        FlushAndRoundUnary{[](float f) -> float { return std::asin(f) / static_cast<float>(M_PI); }},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -1, 1);
 }
 
@@ -234,40 +249,40 @@ void TestMathFunctions::testAtan()
 void TestMathFunctions::testAtan2()
 {
     testBinaryFunction<6, NormalDistribution<0>>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=atan2",
-        atan2f, std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+        FlushAndRoundBinary{atan2f},
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testAtanh()
 {
-    testUnaryFunction<5, NormalDistribution<0, 1>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=atanh", atanhf,
+    testUnaryFunction<5, NormalDistribution<0, 1>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=atanh",
+        FlushAndRoundUnary{atanhf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -1, 1);
 }
 
 void TestMathFunctions::testAtanPi()
 {
-    testUnaryFunction<5, NormalDistribution<0>>(
-        config, "-DOUT=float16 -DIN=float16 -DFUNC=atanpi",
-        [](float f) -> float { return std::atan(f) / static_cast<float>(M_PI); },
+    testUnaryFunction<5, NormalDistribution<0>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=atanpi",
+        FlushAndRoundUnary{[](float f) -> float { return std::atan(f) / static_cast<float>(M_PI); }},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testAtan2Pi()
 {
-    testBinaryFunction<6, NormalDistribution<0>>(
-        config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=atan2pi",
-        [](float f1, float f2) -> float { return std::atan2(f1, f2) / static_cast<float>(M_PI); },
+    testBinaryFunction<6, NormalDistribution<0>>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=atan2pi",
+        FlushAndRoundBinary{[](float f1, float f2) -> float { return std::atan2(f1, f2) / static_cast<float>(M_PI); }},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testCbrt()
 {
-    testUnaryFunction<4>(config, "-DOUT=float16 -DIN=float16 -DFUNC=cbrt", cbrtf,
+    testUnaryFunction<4>(config, "-DOUT=float16 -DIN=float16 -DFUNC=cbrt", FlushAndRoundUnary{cbrtf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testCeil()
 {
-    testUnaryFunction<0>(config, "-DOUT=float16 -DIN=float16 -DFUNC=ceil", ceilf,
+    testUnaryFunction<0>(config, "-DOUT=float16 -DIN=float16 -DFUNC=ceil", FlushAndRoundUnary{ceilf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -279,57 +294,64 @@ void TestMathFunctions::testCopysign()
 
 void TestMathFunctions::testCos()
 {
-    testUnaryFunction<4, NormalDistribution<0, 1000>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=cos", cosf,
+    testUnaryFunction<4, NormalDistribution<0, 1000>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=cos",
+        FlushAndRoundUnary{cosf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testCosh()
 {
-    testUnaryFunction<4, NormalDistribution<0, 25>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=cosh", coshf,
+    testUnaryFunction<4, NormalDistribution<0, 25>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=cosh",
+        FlushAndRoundUnary{coshf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -85, 85);
 }
 
 void TestMathFunctions::testCosPi()
 {
-    testUnaryFunction<4, NormalDistribution<0, 1000>>(
-        config, "-DOUT=float16 -DIN=float16 -DFUNC=cospi",
-        [](float f) -> float { return std::cos(f) * static_cast<float>(M_PI); },
+    testUnaryFunction<4, NormalDistribution<0, 1000>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=cospi",
+        FlushAndRoundUnary{[](float f) -> float { return std::cos(f) * static_cast<float>(M_PI); }},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testErfc()
 {
-    testUnaryFunction<16, NormalDistribution<0, 4>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=erfc", erfcf,
+    testUnaryFunction<16, NormalDistribution<0, 4>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=erfc",
+        FlushAndRoundUnary{erfcf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testErf()
 {
-    testUnaryFunction<16, NormalDistribution<0, 4>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=erf", erff,
+    testUnaryFunction<16, NormalDistribution<0, 4>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=erf",
+        FlushAndRoundUnary{erff},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testExp()
 {
-    testUnaryFunction<4, NormalDistribution<0, 20>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=exp", expf,
+    testUnaryFunction<4, NormalDistribution<0, 20>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=exp",
+        FlushAndRoundUnary{expf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -80, 80);
 }
 
 void TestMathFunctions::testExp2()
 {
-    testUnaryFunction<4, NormalDistribution<0, 32>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=exp2", exp2f,
+    testUnaryFunction<4, NormalDistribution<0, 32>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=exp2",
+        FlushAndRoundUnary{exp2f},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -126, 126);
 }
 
 void TestMathFunctions::testExp10()
 {
-    testUnaryFunction<4, NormalDistribution<0, 10>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=exp10", exp10f,
+    testUnaryFunction<4, NormalDistribution<0, 10>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=exp10",
+        FlushAndRoundUnary{exp10f},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -36, 36);
 }
 
 void TestMathFunctions::testExpm1()
 {
-    testUnaryFunction<4, NormalDistribution<0, 20>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=expm1", expm1f,
+    testUnaryFunction<4, NormalDistribution<0, 20>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=expm1",
+        FlushAndRoundUnary{expm1f},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -80, 80);
 }
 
@@ -341,7 +363,7 @@ void TestMathFunctions::testFabs()
 
 void TestMathFunctions::testFdim()
 {
-    testBinaryFunction<0>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=fdim", fdimf,
+    testBinaryFunction<0>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=fdim", FlushAndRoundBinary{fdimf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -371,7 +393,8 @@ void TestMathFunctions::testFmin()
 
 void TestMathFunctions::testFmod()
 {
-    testBinaryFunction<0, NormalDistribution<0>>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=fmod", fmodf,
+    testBinaryFunction<0, NormalDistribution<0>>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=fmod",
+        FlushAndRoundBinary{fmodf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -382,7 +405,8 @@ void TestMathFunctions::testFrexp() {}
 void TestMathFunctions::testHypot()
 {
     testBinaryFunction<4, NormalDistribution<0>>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=hypot",
-        hypotf, std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
+        FlushAndRoundBinary{hypotf},
+        std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testIlogb()
@@ -402,38 +426,43 @@ void TestMathFunctions::testLdexp()
 void TestMathFunctions::testLgamma()
 {
     testUnaryFunction<1024 /* maximum error is undefined */, NormalDistribution<0, 15>>(config,
-        "-DOUT=float16 -DIN=float16 -DFUNC=lgamma", lgammaf,
+        "-DOUT=float16 -DIN=float16 -DFUNC=lgamma", FlushAndRoundUnary{lgammaf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -30, 30);
 }
 
 void TestMathFunctions::testLog()
 {
-    testUnaryFunction<4, NormalDistribution<0, 100>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=log", logf,
+    testUnaryFunction<4, NormalDistribution<0, 100>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=log",
+        FlushAndRoundUnary{logf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), 0);
 }
 
 void TestMathFunctions::testLog2()
 {
-    testUnaryFunction<4, NormalDistribution<0, 100>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=log2", log2f,
+    testUnaryFunction<4, NormalDistribution<0, 100>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=log2",
+        FlushAndRoundUnary{log2f},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), 0);
 }
 
 void TestMathFunctions::testLog10()
 {
-    testUnaryFunction<4, NormalDistribution<0, 100>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=log10", log10f,
+    testUnaryFunction<4, NormalDistribution<0, 100>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=log10",
+        FlushAndRoundUnary{log10f},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), 0);
 }
 
 void TestMathFunctions::testLog1p()
 {
-    testUnaryFunction<4, NormalDistribution<0, 100>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=log1p", log1pf,
+    testUnaryFunction<4, NormalDistribution<0, 100>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=log1p",
+        FlushAndRoundUnary{log1pf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2),
         -1 /* log(1+x)*/);
 }
 
 void TestMathFunctions::testLogb()
 {
-    testUnaryFunction<0, NormalDistribution<0>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=logb", logbf,
+    testUnaryFunction<0, NormalDistribution<0>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=logb",
+        FlushAndRoundUnary{logbf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -483,14 +512,15 @@ void TestMathFunctions::testNextafter()
 
 void TestMathFunctions::testPow()
 {
-    testBinaryFunction<16, NormalDistribution<0>>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=pow", powf,
+    testBinaryFunction<16, NormalDistribution<0>>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=pow",
+        FlushAndRoundBinary{powf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testPown()
 {
     testBinaryFunction<16, UniformDistribution<double>, int, UniformDistribution<long>>(config,
-        "-DOUT=float16 -DIN0=float16 -DIN1=int16 -DFUNC=pown", powf,
+        "-DOUT=float16 -DIN0=float16 -DIN1=int16 -DFUNC=pown", FlushAndRoundBinary{powf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -498,7 +528,8 @@ void TestMathFunctions::testPowr() {}
 
 void TestMathFunctions::testRemainder()
 {
-    testBinaryFunction<0>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=remainder", remainderf,
+    testBinaryFunction<0>(config, "-DOUT=float16 -DIN0=float16 -DIN1=float16 -DFUNC=remainder",
+        FlushAndRoundBinary{remainderf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -512,9 +543,8 @@ void TestMathFunctions::testRint()
 
 void TestMathFunctions::testRootn()
 {
-    testBinaryFunction<16, NormalDistribution<0>>(
-        config, "-DOUT=float16 -DIN0=float16 -DIN1=int16 -DFUNC=rootn",
-        [](float a, int b) -> float { return std::pow(a, 1.0f / b); },
+    testBinaryFunction<16, NormalDistribution<0>>(config, "-DOUT=float16 -DIN0=float16 -DIN1=int16 -DFUNC=rootn",
+        FlushAndRoundBinary{[](float a, int b) -> float { return std::pow(a, 1.0f / b); }},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -526,60 +556,64 @@ void TestMathFunctions::testRound()
 
 void TestMathFunctions::testRsqrt()
 {
-    testUnaryFunction<4, NormalDistribution<0>>(
-        config, "-DOUT=float16 -DIN=float16 -DFUNC=rsqrt", [](float a) -> float { return 1.0f / sqrtf(a); },
+    testUnaryFunction<4, NormalDistribution<0>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=rsqrt",
+        FlushAndRoundUnary{[](float a) -> float { return 1.0f / sqrtf(a); }},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), 0);
 }
 
 void TestMathFunctions::testSin()
 {
-    testUnaryFunction<4, NormalDistribution<0, 1000>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=sin", sinf,
+    testUnaryFunction<4, NormalDistribution<0, 1000>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=sin",
+        FlushAndRoundUnary{sinf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testSinh()
 {
-    testUnaryFunction<4, NormalDistribution<0, 25>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=sinh", sinhf,
+    testUnaryFunction<4, NormalDistribution<0, 25>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=sinh",
+        FlushAndRoundUnary{sinhf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -85, 85);
 }
 
 void TestMathFunctions::testSinPi()
 {
-    testUnaryFunction<4, NormalDistribution<0, 1000>>(
-        config, "-DOUT=float16 -DIN=float16 -DFUNC=sinpi",
-        [](float a) -> float { return std::sin(static_cast<float>(M_PI) * a); },
+    testUnaryFunction<4, NormalDistribution<0, 1000>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=sinpi",
+        FlushAndRoundUnary{[](float a) -> float { return std::sin(static_cast<float>(M_PI) * a); }},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testSqrt()
 {
-    testUnaryFunction<4, NormalDistribution<0>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=sqrt", sqrtf,
+    testUnaryFunction<4, NormalDistribution<0>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=sqrt",
+        FlushAndRoundUnary{sqrtf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), 0);
 }
 
 void TestMathFunctions::testTan()
 {
-    testUnaryFunction<5, NormalDistribution<0, 1000>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=tan", tanf,
+    testUnaryFunction<5, NormalDistribution<0, 1000>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=tan",
+        FlushAndRoundUnary{tanf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testTanh()
 {
-    testUnaryFunction<5, NormalDistribution<0, 1000>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=tanh", tanhf,
+    testUnaryFunction<5, NormalDistribution<0, 1000>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=tanh",
+        FlushAndRoundUnary{tanhf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testTanPi()
 {
-    testUnaryFunction<6, NormalDistribution<0, 1000>>(
-        config, "-DOUT=float16 -DIN=float16 -DFUNC=tanpi",
-        [](float f) -> float { return std::tan(f) * static_cast<float>(M_PI); },
+    testUnaryFunction<6, NormalDistribution<0, 1000>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=tanpi",
+        FlushAndRoundUnary{[](float f) -> float { return std::tan(f) * static_cast<float>(M_PI); }},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void TestMathFunctions::testTgamma()
 {
-    testUnaryFunction<16, NormalDistribution<0, 10>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=tgamma", tgammaf,
+    testUnaryFunction<16, NormalDistribution<0, 10>>(config, "-DOUT=float16 -DIN=float16 -DFUNC=tgamma",
+        FlushAndRoundUnary{tgammaf},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2), -30, 30);
 }
 

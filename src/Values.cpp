@@ -741,6 +741,20 @@ Optional<Value> Value::createZeroInitializer(DataType type)
     return NO_VALUE;
 }
 
+bool Value::isAllSame() const
+{
+    if(VariantNamespace::get_if<Literal>(&data))
+        return true;
+    if(auto reg = VariantNamespace::get_if<Register>(&data))
+        return *reg == REG_UNIFORM || *reg == REG_QPU_NUMBER;
+    if(auto imm = VariantNamespace::get_if<SmallImmediate>(&data))
+        // XXX what values do the vector rotations actually have?
+        return !imm->isVectorRotation();
+    if(auto vec = VariantNamespace::get_if<const SIMDVector*>(&data))
+        return *vec && static_cast<bool>((*vec)->getAllSame());
+    return false;
+}
+
 std::size_t std::hash<vc4c::Value>::operator()(vc4c::Value const& val) const noexcept
 {
     // NOTE: Cannot apply hash of type here, since

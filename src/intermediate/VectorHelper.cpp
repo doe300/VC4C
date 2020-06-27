@@ -35,7 +35,7 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
 
     // 0. if the container is a literal, no need to rotate, simply move, since all elements have the same value
     // the same counts for any input register where all elements have the same value
-    if(src.isLiteralValue() || src.hasRegister(REG_UNIFORM) || src.hasRegister(REG_QPU_NUMBER))
+    if(src.isAllSame())
     {
         assign(it, dest) = src;
         return it;
@@ -159,7 +159,7 @@ InstructionWalker intermediate::insertReplication(
 InstructionWalker intermediate::insertVectorExtraction(
     InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& dest)
 {
-    if(container.isLiteralValue() || container.hasRegister(REG_UNIFORM) || container.hasRegister(REG_QPU_NUMBER))
+    if(container.isAllSame())
     {
         // vector extraction from literal is a simple move of the first element, since all elements of a literal are the
         // same
@@ -174,7 +174,7 @@ InstructionWalker intermediate::insertVectorInsertion(
     InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& value)
 {
     Value tmp = UNDEFINED_VALUE;
-    if(value.isLiteralValue() || value.hasRegister(REG_UNIFORM) || value.hasRegister(REG_QPU_NUMBER))
+    if(value.isAllSame())
     {
         // simplified version, just insert into container at index (no rotation necessary)
         tmp = value;

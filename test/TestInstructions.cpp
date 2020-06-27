@@ -1072,6 +1072,48 @@ void TestInstructions::testBranchConditions()
     TEST_ASSERT_EQUALS(COND_CARRY_SET, BRANCH_ANY_C_SET.toConditionCode());
     TEST_ASSERT_EQUALS(COND_CARRY_CLEAR, BRANCH_ANY_C_CLEAR.toConditionCode());
     TEST_ASSERT_EQUALS(COND_ALWAYS, BRANCH_ALWAYS.toConditionCode());
+
+    VectorFlags flags{ElementFlags{FlagStatus::UNDEFINED, FlagStatus::UNDEFINED, FlagStatus::CLEAR}};
+    TEST_ASSERT(flags.matchesCondition(BRANCH_ALL_C_CLEAR));
+    TEST_ASSERT(!flags.matchesCondition(BRANCH_ANY_C_SET));
+    flags[2].carry = FlagStatus::SET;
+    TEST_ASSERT(!flags.matchesCondition(BRANCH_ALL_C_CLEAR));
+    TEST_ASSERT(flags.matchesCondition(BRANCH_ANY_C_SET));
+
+    flags = VectorFlags{ElementFlags{FlagStatus::UNDEFINED, FlagStatus::CLEAR, FlagStatus::UNDEFINED}};
+    TEST_ASSERT(flags.matchesCondition(BRANCH_ALL_N_CLEAR));
+    TEST_ASSERT(!flags.matchesCondition(BRANCH_ANY_N_SET));
+    flags[13].negative = FlagStatus::SET;
+    TEST_ASSERT(!flags.matchesCondition(BRANCH_ALL_N_CLEAR));
+    TEST_ASSERT(flags.matchesCondition(BRANCH_ANY_N_SET));
+
+    flags = VectorFlags{ElementFlags{FlagStatus::CLEAR, FlagStatus::UNDEFINED, FlagStatus::UNDEFINED}};
+    TEST_ASSERT(flags.matchesCondition(BRANCH_ALL_Z_CLEAR));
+    TEST_ASSERT(!flags.matchesCondition(BRANCH_ANY_Z_SET));
+    flags[11].zero = FlagStatus::SET;
+    TEST_ASSERT(!flags.matchesCondition(BRANCH_ALL_Z_CLEAR));
+    TEST_ASSERT(flags.matchesCondition(BRANCH_ANY_Z_SET));
+
+    flags = VectorFlags{ElementFlags{FlagStatus::UNDEFINED, FlagStatus::UNDEFINED, FlagStatus::SET}};
+    TEST_ASSERT(flags.matchesCondition(BRANCH_ALL_C_SET));
+    TEST_ASSERT(!flags.matchesCondition(BRANCH_ANY_C_CLEAR));
+    flags[2].carry = FlagStatus::CLEAR;
+    TEST_ASSERT(!flags.matchesCondition(BRANCH_ALL_C_SET));
+    TEST_ASSERT(flags.matchesCondition(BRANCH_ANY_C_CLEAR));
+
+    flags = VectorFlags{ElementFlags{FlagStatus::UNDEFINED, FlagStatus::SET, FlagStatus::UNDEFINED}};
+    TEST_ASSERT(flags.matchesCondition(BRANCH_ALL_N_SET));
+    TEST_ASSERT(!flags.matchesCondition(BRANCH_ANY_N_CLEAR));
+    flags[13].negative = FlagStatus::CLEAR;
+    TEST_ASSERT(!flags.matchesCondition(BRANCH_ALL_N_SET));
+    TEST_ASSERT(flags.matchesCondition(BRANCH_ANY_N_CLEAR));
+
+    flags = VectorFlags{ElementFlags{FlagStatus::SET, FlagStatus::UNDEFINED, FlagStatus::UNDEFINED}};
+    TEST_ASSERT(flags.matchesCondition(BRANCH_ALL_Z_SET));
+    TEST_ASSERT(!flags.matchesCondition(BRANCH_ANY_Z_CLEAR));
+    flags[11].zero = FlagStatus::CLEAR;
+    TEST_ASSERT(!flags.matchesCondition(BRANCH_ALL_Z_SET));
+    TEST_ASSERT(flags.matchesCondition(BRANCH_ANY_Z_CLEAR));
 }
 
 void TestInstructions::testRegister()
@@ -1431,6 +1473,12 @@ void TestInstructions::testValue()
         TEST_ASSERT(!!zero);
         TEST_ASSERT(zero->isZeroInitializer());
     }
+
+    TEST_ASSERT(UNIFORM_REGISTER.isAllSame());
+    TEST_ASSERT(INT_ZERO.isAllSame());
+    TEST_ASSERT(Value(UNDEFINED_LITERAL, TYPE_INT16).isAllSame());
+    TEST_ASSERT(!ELEMENT_NUMBERS.isAllSame());
+    TEST_ASSERT(!ELEMENT_NUMBER_REGISTER.isAllSame());
 }
 
 void TestInstructions::testTypes()
