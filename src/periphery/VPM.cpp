@@ -384,11 +384,15 @@ static uint8_t calculateQPUSideAddress(DataType type, unsigned char rowIndex, un
 static NODISCARD InstructionWalker calculateElementOffsetInVPM(
     Method& method, InstructionWalker it, DataType elementType, const Value& inAreaOffset, Value& elementOffset)
 {
+    // e.g. long4 type, 64 byte offset -> 4 32-bit element offset
     // e.g. 32-bit type, 4 byte offset -> 1 32-bit element offset
     // e.g. byte4 type, 4 byte offset -> 1 byte-element offset
     // e.g. half-word8 type, 32 byte offset -> 2 half-word element offset
     if(inAreaOffset == INT_ZERO)
         elementOffset = INT_ZERO;
+    else if(elementType.getScalarBitCount() >= 64)
+        elementOffset = assign(it, TYPE_INT16, "%vpm_element_offset") =
+            inAreaOffset / Literal(TYPE_INT32.toVectorType(elementType.getVectorWidth()).getInMemoryWidth());
     else
         elementOffset = assign(it, TYPE_INT16, "%vpm_element_offset") =
             inAreaOffset / Literal(elementType.getInMemoryWidth());

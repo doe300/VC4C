@@ -53,10 +53,19 @@ static LivenessChanges analyzeLivenessChangesInner(
     auto& conditionalWrites = cache.conditionalWrites;
     auto& conditionalReads = cache.conditionalReads;
     auto& liveLocals = cache.liveLocals;
+    auto& phiWrites = cache.conditionalPhiWrites;
 
     if(dynamic_cast<const intermediate::BranchLabel*>(&instr))
-        // labels do not change any lifetime, since we do not track label lifetimes
+    {
+        // end the liveness range of all phi-nodes (that are still phi-only nodes)
+        for(auto loc : phiWrites)
+        {
+            changes.removedLocals.emplace(loc);
+            liveLocals.erase(loc);
+        }
+        // labels by themselves do not change any lifetime, since we do not track label lifetimes
         return changes;
+    }
 
     auto localConsumer = [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
         auto extendedInst = dynamic_cast<const intermediate::ExtendedInstruction*>(&inst);
@@ -72,6 +81,7 @@ static LivenessChanges analyzeLivenessChangesInner(
                 {
                     // the local only exists within a conditional block (e.g. temporary within the same flag)
                     changes.removedLocals.emplace(loc);
+                    phiWrites.erase(loc);
                     liveLocals.erase(loc);
                 }
                 else if(conditionalWrites.find(loc) != conditionalWrites.end() &&
@@ -81,15 +91,11 @@ static LivenessChanges analyzeLivenessChangesInner(
                     // (since the other write is already added to conditionalWrites)
                     // NOTE: For conditions (if there are several conditional writes, we need to keep the local)
                     changes.removedLocals.emplace(loc);
+                    phiWrites.erase(loc);
                     liveLocals.erase(loc);
                 }
                 else if(inst.hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
                 {
-                    // TODO is this true in general?
-                    // 1. Is there a case where the conditional write (and therefore non-termination) of the phi-node
-                    // is required?
-                    // 2. Is there a case where a phi-node is actually conditional, e.g. at the end of the same block,
-                    // the phi-node is written by different instructions depending on some condition?
                     /*
                      * Phi-nodes for conditional branches are by default (unless optimized away) marked with the
                      * condition of taking the associated branch. Since there is no write for the opposite condition
@@ -109,16 +115,34 @@ static LivenessChanges analyzeLivenessChangesInner(
                      * phi-node write associated branch, but via some other way, that the phi-node local is always
                      * overwritten along the execution path. This allows us to assume a phi-node write to
                      * unconditionally end the local's live range for this execution path.
+                     *
+                     * This is not quite true, at least not for single-block loops where the following code would
+                     * generate a wrong liveness range:
+                     *   %inc = add %i, 1
+                     *   [...]
+                     *   %i = %inc (phi ifzc)
+                     * => %i would have two distinct live ranges, although in the case where the condition for the
+                     * assignment is not met, the original value has to be retained!
+                     *
+                     * To also handle this case, we treat all phi-node writes special and do not immediately end their
+                     * liveness (if they are conditional), but instead keep them live to the beginning of the block.
+                     *
+                     * TODO what guarantees this to be correct instead?? E.g. can we have the same problem for
+                     * multi-block loops?
                      */
-                    changes.removedLocals.emplace(loc);
+                    phiWrites.emplace(loc);
                     liveLocals.erase(loc);
                 }
                 else
+                {
                     conditionalWrites.emplace(loc);
+                    phiWrites.erase(loc);
+                }
             }
             else
             {
                 changes.removedLocals.emplace(loc);
+                phiWrites.erase(loc);
                 liveLocals.erase(loc);
             }
         }
@@ -140,6 +164,7 @@ static LivenessChanges analyzeLivenessChangesInner(
                 else
                     conditionalReads.emplace(loc, extendedInst->getCondition());
             }
+            phiWrites.erase(loc);
         }
     };
 

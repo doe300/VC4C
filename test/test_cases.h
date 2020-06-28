@@ -251,6 +251,25 @@ namespace vc4c
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/sub_buffers_read_write.cl", "readTest",
 					{toParameter(std::vector<unsigned>{0x01020304, 0x05060708}), toScalarParameter(0x10)}, toConfig(4, 1, 1, 2), maxExecutionCycles),
 					addVector({}, 0, std::vector<unsigned>{0x11121314, 0x15161718})
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/boost-compute/initial_reduce.cl", "initial_reduce",
+					{toScalarParameter(static_cast<uint32_t>(32 * sizeof(uint32_t))), toParameter(std::vector<unsigned>(2 * (sizeof(uint64_t) / sizeof(uint32_t)))),
+					    toParameter(std::vector<unsigned>{0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0})
+					}, toConfig(8, 1, 1, 2), maxExecutionCycles),
+					addVector({}, 1, std::vector<unsigned>{8, 0, 7, 0})
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/boost-compute/adjacent_find.cl", "serial_adjacent_find",
+					{toScalarParameter(16u), toParameter(std::vector<unsigned>(1)),
+					    toParameter(std::vector<unsigned>{0, 1, 2, 3, 4, 5, 6, 7, 7, 8, 9, 10, 11, 11, 12, 13})
+					}, toConfig(1), maxExecutionCycles), addVector({}, 1, std::vector<unsigned>{7})
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/boost-compute/adjacent_find.cl", "adjacent_find_with_atomics",
+					{toParameter(std::vector<unsigned>{0xFFFFFFFFu}), toParameter(std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7, 7, 8, 9, 10, 11, 11, 12, 13})
+					}, toConfig(8, 1, 1, 2, 1, 1), maxExecutionCycles), addVector({}, 0, std::vector<unsigned>{7})
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/boost-compute/test_functional_popcount.cl", "copy",
+					{toParameter(std::vector<unsigned>(4)), toParameter(std::vector<unsigned>{1, 0, 17, 0, 1, 2, 15, 1}), toScalarParameter(4)
+					}, toConfig(8, 1, 1), maxExecutionCycles), addVector({}, 0, std::vector<unsigned>{1, 2, 2, 5})
 				)
 		};
 

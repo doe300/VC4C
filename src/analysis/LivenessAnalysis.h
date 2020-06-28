@@ -30,6 +30,7 @@ namespace vc4c
             FastSet<const Local*> conditionalWrites;
             FastMap<const Local*, ConditionCode> conditionalReads;
             FastSet<const Local*> liveLocals;
+            FastSet<const Local*> conditionalPhiWrites;
         };
 
         /**
