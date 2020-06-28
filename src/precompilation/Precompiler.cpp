@@ -511,6 +511,13 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
             SPIRVTextResult res = outputFile ? SPIRVTextResult(outputFile.value()) : SPIRVTextResult(&tempStream);
             compileLLVMToSPIRVText(std::move(src), extendedOptions, res);
         }
+#ifdef LLVM_DIS_PATH
+        else if(outputType == SourceType::LLVM_IR_TEXT)
+        {
+            LLVMIRTextResult res = outputFile ? LLVMIRTextResult(outputFile.value()) : LLVMIRTextResult(&tempStream);
+            disassembleLLVM(std::move(src), extendedOptions, res);
+        }
+#endif
     }
     else if(inputType == SourceType::SPIRV_BIN && outputType == SourceType::SPIRV_TEXT)
     {

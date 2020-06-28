@@ -299,6 +299,20 @@ void precompilation::disassembleSPIRV(SPIRVSource&& source, const std::string& u
     PROFILE_END(DisassembleSPIRV);
 }
 
+#ifdef LLVM_DIS_PATH
+void precompilation::disassembleLLVM(LLVMIRSource&& source, const std::string& userOptions, LLVMIRTextResult& result)
+{
+    PROFILE_START(DisassembleLLVM);
+    std::string command = LLVM_DIS_PATH;
+    command.append(" -o ").append(result.file.value_or("/dev/stdout")).append(" ");
+    command.append(source.file.value_or("/dev/stdin"));
+    CPPLOG_LAZY(
+        logging::Level::INFO, log << "Disassembling LLVM IR to LLVM IR text with: " << command << logging::endl);
+    runPrecompiler(command, source.file ? nullptr : source.stream, result.file ? nullptr : result.stream);
+    PROFILE_END(DisassembleLLVM);
+}
+#endif
+
 static std::string getEmptyModule()
 {
     static TemporaryFile emptyModule = []() {

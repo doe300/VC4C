@@ -98,6 +98,9 @@ namespace vc4c
         void assembleSPIRV(SPIRVTextSource&& source, const std::string& userOptions, SPIRVResult& result);
         void compileLLVMToSPIRVText(LLVMIRSource&& source, const std::string& userOptions, SPIRVTextResult& result);
         void disassembleSPIRV(SPIRVSource&& source, const std::string& userOptions, SPIRVTextResult& result);
+#ifdef LLVM_DIS_PATH
+        void disassembleLLVM(LLVMIRSource&& source, const std::string& userOptions, LLVMIRTextResult& result);
+#endif
         void linkLLVMModules(std::vector<LLVMIRSource>&& sources, const std::string& userOptions, LLVMIRResult& result);
         void linkSPIRVModules(std::vector<SPIRVSource>&& sources, const std::string& userOptions, SPIRVResult& result);
         void optimizeLLVMIR(LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult& result);

@@ -390,7 +390,7 @@ static NODISCARD InstructionWalker calculateElementOffsetInVPM(
     // e.g. half-word8 type, 32 byte offset -> 2 half-word element offset
     if(inAreaOffset == INT_ZERO)
         elementOffset = INT_ZERO;
-    else if(elementType.getScalarBitCount() >= 64)
+    else if(elementType.getScalarBitCount() > 32)
         elementOffset = assign(it, TYPE_INT16, "%vpm_element_offset") =
             inAreaOffset / Literal(TYPE_INT32.toVectorType(elementType.getVectorWidth()).getInMemoryWidth());
     else
