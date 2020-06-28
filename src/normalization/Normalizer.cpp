@@ -16,6 +16,7 @@
 #include "../optimization/ControlFlow.h"
 #include "../optimization/Eliminator.h"
 #include "../optimization/Reordering.h"
+#include "../intermediate/operators.h"
 #include "../periphery/VPM.h"
 #include "../spirv/SPIRVBuiltins.h"
 #include "Inliner.h"
@@ -34,6 +35,7 @@
 using namespace vc4c;
 using namespace vc4c::normalization;
 using namespace vc4c::periphery;
+using namespace vc4c::operators;
 
 static bool checkWorkGroupUniform(const Value& arg)
 {
@@ -729,10 +731,15 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
 
                                         // TODO: limit loadInstrs.size()
 
+                                        Value offset = assign(it, TYPE_INT32) = addrValues[0] << 4_val;
+                                        Value addr   = assign(it, TYPE_INT32) = offset + call->assertArgument(1);
+
+                                        DataType TYPE_UCHAR16{DataType::BYTE, 16, false};
+
                                         uint64_t rows = loadInstrs.size();
                                         VPMArea area(VPMUsage::SCRATCH, 0, static_cast<uint8_t>(rows));
                                         auto entries = Value(Literal(static_cast<uint32_t>(rows)), TYPE_INT32);
-                                        it = method.vpm->insertReadRAM(method, it, call->assertArgument(1), TYPE_INT32, &area,
+                                        it = method.vpm->insertReadRAM(method, it, addr, TYPE_UCHAR16, &area,
                                                 true, INT_ZERO, entries, Optional<uint16_t>(memoryPitch));
                                     }
 
