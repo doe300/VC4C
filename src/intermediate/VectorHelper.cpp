@@ -188,7 +188,7 @@ InstructionWalker intermediate::insertVectorInsertion(
             it, value, index, tmp, intermediate::Direction::UP, value.type.isScalarType());
     }
     // 2) insert element(s) into container
-    if(value.type.isScalarType())
+    if(value.type.isScalarType() || value.type.getPointerType())
     {
         // single element -> create condition only met in given index
         auto cond = assignNop(it) = selectSIMDElement(index);
@@ -256,11 +256,11 @@ static NODISCARD InstructionWalker insertDynamicVectorShuffle(
         Value resultTmp = method.addNewLocal(source.type.getElementType(), "%shuffle_tmp");
         // Rotate into temporary, because of "An instruction that does a vector rotate by r5 must not immediately follow
         // an instruction that writes to r5." - Broadcom Specification, page 37
-        it = insertVectorRotation(it, mask, Value(Literal(i), TYPE_INT8), offsetTmp0, Direction::DOWN);
+        it = insertVectorRotation(it, mask, Value(SmallImmediate(i), TYPE_INT8), offsetTmp0, Direction::DOWN);
         // TODO reuse insertVectorInsertion/Extraction, but only if 2 rotations by variable + constant are optimized
         // into one (like is done here)
         // pos 3 -> 1 => rotate up by -2 (14), pos 1 -> 3 => rotate up by 2
-        Value offsetTmp1 = assign(it, TYPE_INT8, "%shuffle_offset") = Value(Literal(i), TYPE_INT8) - offsetTmp0;
+        Value offsetTmp1 = assign(it, TYPE_INT8, "%shuffle_offset") = Value(SmallImmediate(i), TYPE_INT8) - offsetTmp0;
         it = insertVectorRotation(it, source, offsetTmp1, resultTmp, Direction::UP);
 
         if(i == 0)
@@ -296,7 +296,7 @@ static NODISCARD InstructionWalker insertDynamicVectorShuffle2Vectors(Instructio
     {
         // Rotate mask vector index to element 0
         Value offsetTmp0 = method.addNewLocal(TYPE_INT8, "%shuffle_offset");
-        it = insertVectorRotation(it, mask, Value(Literal(index), TYPE_INT8), offsetTmp0, Direction::DOWN);
+        it = insertVectorRotation(it, mask, Value(SmallImmediate(index), TYPE_INT8), offsetTmp0, Direction::DOWN);
         // Only consider 0th element: zero set if first source, zero clear otherwise
         auto offsetTmp1 = assign(it, TYPE_INT8, "%vector_selection") =
             offsetTmp0 / Literal(static_cast<uint32_t>(NATIVE_VECTOR_SIZE));
@@ -311,12 +311,12 @@ static NODISCARD InstructionWalker insertDynamicVectorShuffle2Vectors(Instructio
         // Extract value from source vector at position determined from mask vector and insert in destination vector
         Value valTmp = method.addNewLocal(destination.type.getElementType(), "%vector_shuffle");
         it = insertVectorExtraction(it, method, sourceTmp, offsetTmp0, valTmp);
-        it = insertVectorInsertion(it, method, destination, Value(Literal(index), TYPE_INT8), valTmp);
+        it = insertVectorInsertion(it, method, destination, Value(SmallImmediate(index), TYPE_INT8), valTmp);
     }
     return it;
 }
 
-static uint32_t toLowestIndex(uint32_t mask)
+static uint8_t toLowestIndex(uint32_t mask)
 {
     uint32_t index = 0;
     while(mask != 0)
@@ -325,7 +325,7 @@ static uint32_t toLowestIndex(uint32_t mask)
         ++index;
     }
     // bit set at index 0 is first/only iteration -> index is already incremented to 1
-    return index - 1;
+    return static_cast<uint8_t>(index - 1);
 }
 
 InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method& method, const Value& destination,
@@ -401,7 +401,9 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
             // if the index to be used is not 0, rotate to position 0
             tmp = method.addNewLocal(source.type, "%vector_shuffle");
             // allow per-quad rotation, since we only care about the 0th element, since we replicate this one
-            it = insertVectorRotation(it, source, Value(Literal(indexValue), TYPE_INT8), tmp, Direction::DOWN, true);
+            it = insertVectorRotation(it, source,
+                Value(SmallImmediate::fromInteger(static_cast<int8_t>(indexValue)).value(), TYPE_INT8), tmp,
+                Direction::DOWN, true);
         }
         return insertReplication(it, tmp, destination);
     }
@@ -451,13 +453,14 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         if(sources.second.count() == destination.type.getVectorWidth())
         {
             it = insertVectorRotation(
-                it, src, Value(Literal(sources.first.first), TYPE_INT8), destination, Direction::DOWN);
+                it, src, Value(SmallImmediate(sources.first.first), TYPE_INT8), destination, Direction::DOWN);
         }
         else
         {
             auto tmp = method.addNewLocal(destination.type, "%vector_shuffle");
             // rotate source vector by the given offset
-            it = insertVectorRotation(it, src, Value(Literal(sources.first.first), TYPE_INT8), tmp, Direction::DOWN);
+            it = insertVectorRotation(
+                it, src, Value(SmallImmediate(sources.first.first), TYPE_INT8), tmp, Direction::DOWN);
             // set flags only for the selected elements
             ConditionCode cond = COND_NEVER;
             if(sources.second.count() == 1)
@@ -465,7 +468,8 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
                 // for cosmetic purposes (and possible combination with other instructions), mask single elements via
                 // xoring small immediates
                 assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER ^
-                        Value(Literal(toLowestIndex(static_cast<uint32_t>(sources.second.to_ulong()))), TYPE_INT8),
+                        Value(
+                            SmallImmediate(toLowestIndex(static_cast<uint32_t>(sources.second.to_ulong()))), TYPE_INT8),
                     SetFlag::SET_FLAGS);
                 cond = COND_ZERO_SET;
             }
@@ -497,11 +501,11 @@ NODISCARD InstructionWalker intermediate::insertVectorConcatenation(
     // rotate the second vector with the size of the first as offset
     Value tmpSource1 = method.addNewLocal(source1.type.toVectorType(16), "%vector_concat");
     it = insertVectorRotation(
-        it, source1, Value(Literal(source0.type.getVectorWidth()), TYPE_INT8), tmpSource1, Direction::UP);
+        it, source1, Value(SmallImmediate(source0.type.getVectorWidth()), TYPE_INT8), tmpSource1, Direction::UP);
     // insert the elements of the second vector with an element-number of higher or equals the size of the first
     // vector into the result
     assign(it, NOP_REGISTER) =
-        (ELEMENT_NUMBER_REGISTER - Value(Literal(source0.type.getVectorWidth()), TYPE_INT8), SetFlag::SET_FLAGS);
+        (ELEMENT_NUMBER_REGISTER - Value(SmallImmediate(source0.type.getVectorWidth()), TYPE_INT8), SetFlag::SET_FLAGS);
     assign(it, dest) = (tmpSource1, COND_NEGATIVE_CLEAR, InstructionDecorations::ELEMENT_INSERTION);
     return it;
 }
@@ -950,7 +954,7 @@ InstructionWalker intermediate::insertAssembleVector(
     uint8_t index = 0;
     for(auto& elem : elements)
     {
-        it = insertVectorInsertion(it, method, dest, Value(Literal(index), TYPE_INT8), elem);
+        it = insertVectorInsertion(it, method, dest, Value(SmallImmediate(index), TYPE_INT8), elem);
         ++index;
     }
     return it;
@@ -998,7 +1002,7 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
         auto tmpUp = method.addNewLocal(dest.type.toVectorType(halfSize), "%vector_fold.upper");
         auto newTmpResult = method.addNewLocal(dest.type.toVectorType(halfSize), "%vector_fold");
 
-        it = insertVectorRotation(it, tmpResult, Value(Literal(halfSize), TYPE_INT8), tmpUp, Direction::DOWN);
+        it = insertVectorRotation(it, tmpResult, Value(SmallImmediate(halfSize), TYPE_INT8), tmpUp, Direction::DOWN);
 
         it.emplace(new Operation(foldingOp, newTmpResult, tmpResult, tmpUp));
         it->addDecorations(decorations);

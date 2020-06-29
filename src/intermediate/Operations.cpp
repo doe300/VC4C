@@ -852,10 +852,11 @@ bool CombinedOperation::writesLocal(const Local* local) const
     return (op1 && op1->writesLocal(local)) || (op2 && op2->writesLocal(local));
 }
 
-void CombinedOperation::replaceLocal(const Local* oldLocal, const Local* newLocal, const LocalUse::Type type)
+bool CombinedOperation::replaceValue(const Value& oldValue, const Value& newValue, LocalUse::Type type)
 {
-    op1->replaceLocal(oldLocal, newLocal, type);
-    op2->replaceLocal(oldLocal, newLocal, type);
+    bool replaced1 = op1->replaceValue(oldValue, newValue, type);
+    bool replaced2 = op2->replaceValue(oldValue, newValue, type);
+    return replaced1 | replaced2;
 }
 
 LCOV_EXCL_START

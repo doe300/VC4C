@@ -53,33 +53,8 @@ FastSet<const DominatorTreeNodeBase*> DominatorTreeNodeBase::getDominatedNodes()
     return dominatedNodes;
 }
 
-static FastSet<const CFGNode*> getDominatorCandidates(const CFGNode& node)
-{
-    // check all incoming edges that are not back edges or bidirectional (e.g. for small loops)
-    FastSet<const CFGNode*> possibleDominators;
-    std::size_t numIncomingEdges = 0;
-    node.forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge& edge) -> bool {
-        ++numIncomingEdges;
-        if(!edge.data.isBackEdge(predecessor.key) && !edge.data.isWorkGroupLoop &&
-            edge.getDirection() != Direction::BOTH)
-            possibleDominators.emplace(&predecessor);
-        return true;
-    });
-
-    // if there is only exactly 1 incoming edge, this is our dominator, even if we jump back to it at some point
-    if(numIncomingEdges == 1)
-        node.forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge& edge) -> bool {
-            possibleDominators.emplace(&predecessor);
-            return true;
-        });
-
-    // don't use the node itself as dominator (e.g. for single-block loop)
-    possibleDominators.erase(&node);
-
-    return possibleDominators;
-}
-
-std::unique_ptr<DominatorTree> DominatorTree::createDominatorTree(ControlFlowGraph& cfg)
+static std::unique_ptr<DominatorTree> createTreeInner(
+    ControlFlowGraph& cfg, FastSet<const CFGNode*> (*getCandidates)(const CFGNode& node), const std::string& treeName)
 {
     PROFILE_START(createDominatorTree);
     std::unique_ptr<DominatorTree> tree(new DominatorTree(cfg.getNodes().size()));
@@ -91,7 +66,7 @@ std::unique_ptr<DominatorTree> DominatorTree::createDominatorTree(ControlFlowGra
     for(const auto& node : cfg.getNodes())
     {
         auto& entry = tree->getOrCreateNode(&node.second);
-        auto tmp = getDominatorCandidates(node.second);
+        auto tmp = getCandidates(node.second);
 
         if(tmp.empty())
         {
@@ -196,11 +171,72 @@ std::unique_ptr<DominatorTree> DominatorTree::createDominatorTree(ControlFlowGra
     logging::logLazy(logging::Level::DEBUG, [&]() {
         auto nameFunc = [](const CFGNode* node) -> std::string { return node->key->to_string(); };
         DebugGraph<const CFGNode*, DominationRelation, Directionality::DIRECTED>::dumpGraph<DominatorTree>(
-            *tree, "/tmp/vc4c-dominators.dot", nameFunc);
+            *tree, "/tmp/vc4c-" + treeName + ".dot", nameFunc);
     });
     LCOV_EXCL_STOP
 #endif
 
     PROFILE_END(createDominatorTree);
     return tree;
+}
+
+static FastSet<const CFGNode*> getDominatorCandidates(const CFGNode& node)
+{
+    // check all incoming edges that are not back edges or bidirectional (e.g. for small loops)
+    FastSet<const CFGNode*> possibleDominators;
+    std::size_t numIncomingEdges = 0;
+    node.forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge& edge) -> bool {
+        ++numIncomingEdges;
+        if(!edge.data.isBackEdge(predecessor.key) && !edge.data.isWorkGroupLoop &&
+            edge.getDirection() != Direction::BOTH)
+            possibleDominators.emplace(&predecessor);
+        return true;
+    });
+
+    // if there is only exactly 1 incoming edge, this is our dominator, even if we jump back to it at some point
+    if(numIncomingEdges == 1)
+        node.forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge& edge) -> bool {
+            possibleDominators.emplace(&predecessor);
+            return true;
+        });
+
+    // don't use the node itself as dominator (e.g. for single-block loop)
+    possibleDominators.erase(&node);
+
+    return possibleDominators;
+}
+
+std::unique_ptr<DominatorTree> DominatorTree::createDominatorTree(ControlFlowGraph& cfg)
+{
+    return createTreeInner(cfg, getDominatorCandidates, "dominators");
+}
+
+static FastSet<const CFGNode*> getPostdominatorCandidates(const CFGNode& node)
+{
+    // check all outgoing edges that are not back edges or bidirectional (e.g. for small loops)
+    FastSet<const CFGNode*> possiblePostdominators;
+    std::size_t numOutgoingEdges = 0;
+    node.forAllOutgoingEdges([&](const CFGNode& successor, const CFGEdge& edge) -> bool {
+        ++numOutgoingEdges;
+        if(!edge.data.isBackEdge(node.key) && !edge.data.isWorkGroupLoop && edge.getDirection() != Direction::BOTH)
+            possiblePostdominators.emplace(&successor);
+        return true;
+    });
+
+    // if there is only exactly 1 outgoing edge, this is our postdominator, even if we jump back to it at some point
+    if(numOutgoingEdges == 1)
+        node.forAllOutgoingEdges([&](const CFGNode& successor, const CFGEdge& edge) -> bool {
+            possiblePostdominators.emplace(&successor);
+            return true;
+        });
+
+    // don't use the node itself as postdominator (e.g. for single-block loop)
+    possiblePostdominators.erase(&node);
+
+    return possiblePostdominators;
+}
+
+std::unique_ptr<DominatorTree> DominatorTree::createPostdominatorTree(ControlFlowGraph& cfg)
+{
+    return createTreeInner(cfg, getPostdominatorCandidates, "postdominators");
 }

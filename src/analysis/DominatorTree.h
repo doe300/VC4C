@@ -51,6 +51,7 @@ namespace vc4c
             explicit DominatorTree(std::size_t numNodes) : Graph(numNodes) {}
 
             static std::unique_ptr<DominatorTree> createDominatorTree(ControlFlowGraph& cfg);
+            static std::unique_ptr<DominatorTree> createPostdominatorTree(ControlFlowGraph& cfg);
         };
 
     } // namespace analysis

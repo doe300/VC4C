@@ -154,10 +154,9 @@ namespace vc4c
                 const;
             virtual bool readsLocal(const Local* local) const;
             virtual bool writesLocal(const Local* local) const;
-            virtual void replaceLocal(
-                const Local* oldLocal, const Local* newLocal, LocalUse::Type type = LocalUse::Type::BOTH);
-            virtual void replaceLocal(
-                const Local* oldLocal, const Value& newValue, LocalUse::Type type = LocalUse::Type::BOTH);
+            void replaceLocal(const Local* oldLocal, const Local* newLocal, LocalUse::Type type = LocalUse::Type::BOTH);
+            void replaceLocal(const Local* oldLocal, const Value& newValue, LocalUse::Type type = LocalUse::Type::BOTH);
+            virtual bool replaceValue(const Value& oldValue, const Value& newValue, LocalUse::Type type);
 
             /*
              * Whether this instructions reads the given register
@@ -323,8 +322,6 @@ namespace vc4c
              * NOTE: The constant value returned can be of value-type REGISTER, LITERAL, SMALL_IMMEDIATE or CONTAINER
              */
             virtual PrecalculatedValue precalculate(std::size_t numIterations = 1) const;
-
-            bool replaceValue(const Value& oldValue, const Value& newValue, LocalUse::Type type);
 
             /* Determine constant instruction, such as
              * - load immediate instruction
@@ -749,7 +746,7 @@ namespace vc4c
                 const override;
             bool readsLocal(const Local* local) const override;
             bool writesLocal(const Local* local) const override;
-            void replaceLocal(const Local* oldLocal, const Local* newLocal, LocalUse::Type type) override;
+            bool replaceValue(const Value& oldValue, const Value& newValue, LocalUse::Type type) override;
 
             std::string to_string() const override;
 
