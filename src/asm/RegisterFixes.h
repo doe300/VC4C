@@ -74,6 +74,35 @@ namespace vc4c
          * livenesses changed.
          */
         FixupResult groupParameters(Method& method, const Configuration& config, const GraphColoring& coloredGraph);
+
+        /**
+         * Reduces register pressure by grouping scalar and pointer locals into the elements of vector locals.
+         *
+         * NOTE: This modification increases the number of instructions drastically!
+         *
+         * Example:
+         *   %in = reg uniform
+         *   %out = reg uniform
+         *   [...]
+         *   %in_addr = %in
+         *   [...]
+         *   %out_addr = %out
+         *
+         * is converted to:
+         *   - = xor reg elem_num, 0 (setf)
+         *   %param_group = reg uniform (ifz)
+         *   - = xor reg elem_num, 1 (setf)
+         *   %param_group reg uniform (ifz)
+         *   [...]
+         *   %in_addr = %param_group >> 0
+         *   [...]
+         *   %out_addr = %param_group >> 1
+         *
+         * Returns whether at least one group of scalar locals was created and therefore instructions and local
+         * livenesses changed.
+         */
+        FixupResult groupScalarLocals(
+            Method& method, const Configuration& config, const GraphColoring& coloredGraph, bool runConservative);
     } // namespace qpu_asm
 
 } // namespace vc4c

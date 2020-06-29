@@ -32,7 +32,23 @@ const std::vector<std::pair<std::string, RegisterFixupStep>> qpu_asm::FIXUP_STEP
             return coloredGraph.fixErrors() ? FixupResult::ALL_FIXED : FixupResult::FIXES_APPLIED_KEEP_GRAPH;
         }},
     // Try to group pointer parameters into vectors to save registers used
-    {"Group parameters", groupParameters}};
+    {"Group parameters", groupParameters},
+    // Try to group any scalar/pointer local into vectors to save registers used
+    {"Group scalar locals (conversative)",
+        [](Method& method, const Configuration& config, GraphColoring& coloredGraph) -> FixupResult {
+            // In the first run, skip e.g. locals which are used inside of (nested) loops
+            return groupScalarLocals(method, config, coloredGraph, true);
+        }},
+    {"Small rewrites",
+        [](Method& method, const Configuration& config, GraphColoring& coloredGraph) -> FixupResult {
+            // same as above
+            return coloredGraph.fixErrors() ? FixupResult::ALL_FIXED : FixupResult::FIXES_APPLIED_KEEP_GRAPH;
+        }},
+    {"Group scalar locals (aggressive)",
+        [](Method& method, const Configuration& config, GraphColoring& coloredGraph) -> FixupResult {
+            return groupScalarLocals(method, config, coloredGraph, false);
+        }},
+};
 
 FixupResult qpu_asm::groupParameters(Method& method, const Configuration& config, const GraphColoring& coloredGraph)
 {
@@ -133,7 +149,7 @@ FixupResult qpu_asm::groupParameters(Method& method, const Configuration& config
 
             auto tmp = method.addNewLocal((*paramIt)->type, (*paramIt)->name);
             readerIt = intermediate::insertVectorExtraction(
-                readerIt, method, tmpGroup, Value(Literal(groupIndex), TYPE_INT8), tmp);
+                readerIt, method, tmpGroup, Value(SmallImmediate(groupIndex), TYPE_INT8), tmp);
             readerIt->replaceLocal(*paramIt, tmp);
         }
 
@@ -143,4 +159,165 @@ FixupResult qpu_asm::groupParameters(Method& method, const Configuration& config
     }
 
     return somethingChanged ? FixupResult::FIXES_APPLIED_RECREATE_GRAPH : FixupResult::NOTHING_FIXED;
+}
+
+static std::pair<const Local*, uint8_t> reserveGroupSpace(
+    Method& method, FastMap<const Local*, std::array<const Local*, NATIVE_VECTOR_SIZE>>& groups, const Local* loc)
+{
+    for(auto& group : groups)
+    {
+        for(uint8_t i = 0; i < group.second.size(); ++i)
+        {
+            if(group.second[i] == nullptr)
+            {
+                group.second[i] = loc;
+                return std::make_pair(group.first, i);
+            }
+        }
+    }
+    // insert new group
+    auto group = method.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%local_group").local();
+    groups[group].fill(nullptr);
+    groups[group][0] = loc;
+    return std::make_pair(group, 0);
+}
+
+FixupResult qpu_asm::groupScalarLocals(
+    Method& method, const Configuration& config, const GraphColoring& coloredGraph, bool runConservative)
+{
+    FastMap<const Local*, InstructionWalker> candidateLocals;
+    FastMap<const Local*, FastSet<InstructionWalker>> localReaders;
+    for(auto& block : method)
+    {
+        FastMap<const Local*, InstructionWalker> localsWrittenInBlock;
+        // the value is a list (as in not-unique) on purpose to keep the count correct for i.e. combined instructions
+        FastMap<const Local*, FastAccessList<InstructionWalker>> localsReadInBlock;
+        for(auto it = block.walk(); !it.isEndOfBlock(); it.nextInBlock())
+        {
+            if(!it.get())
+                continue;
+            it->forUsedLocals(
+                [&](const Local* loc, LocalUse::Type use, const intermediate::IntermediateInstruction& instr) {
+                    if(loc->type.isLabelType() || (!loc->type.isScalarType() && !loc->type.getPointerType()))
+                        // XXX out of simplicity, for now only handle scalar values
+                        return;
+                    if(has_flag(use, LocalUse::Type::WRITER))
+                    {
+                        if(!instr.hasConditionalExecution() && loc->getSingleWriter() == &instr &&
+                            !instr.hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
+                            // track only unconditionally written locals with a single writer
+                            // XXX otherwise we would need to write-back the updated result into the group vector
+                            // also don't track phi-writes, since they are always used immediately after the branch
+                            // destination label and therefore don't really have a large usage range
+                            localsWrittenInBlock.emplace(loc, it);
+                    }
+                    if(has_flag(use, LocalUse::Type::READER))
+                    {
+                        localsReadInBlock[loc].emplace_back(it);
+                        localReaders[loc].emplace(it);
+                    }
+                });
+        }
+
+        for(auto& pair : localsWrittenInBlock)
+        {
+            auto readIt = localsReadInBlock.find(pair.first);
+            if(readIt != localsReadInBlock.end())
+            {
+                if(readIt->second.size() == pair.first->getUsers(LocalUse::Type::READER).size())
+                    // exclude all locals which have all readers inside the block they are written in - locals which are
+                    // only live inside a single block
+                    // TODO to simplify, could skip all locals which have any readers inside the block they are
+                    // written?! this would reduce the number of locals grouped and therefore the number of registers
+                    // freed, but also the number of instructions inserted
+                    continue;
+
+                if(!readIt->second.empty())
+                {
+                    // if the local is read inside this and other blocks, do some optimization
+                    // 1. remove all reads inside this block from the tracked reads, so we do not spill/rematerialize
+                    // inside a single block
+                    auto& readers = localReaders[pair.first];
+                    for(auto& inst : readIt->second)
+                        readers.erase(inst);
+                    // 2. move the position to insert the spilling code after the last read
+                    candidateLocals.emplace(pair.first, readIt->second.back());
+                }
+            }
+            candidateLocals.emplace(pair);
+        }
+    }
+
+    if(runConservative)
+    {
+        analysis::LocalUsageRangeAnalysis localUsageRangeAnalysis(&coloredGraph.getLivenessAnalysis());
+        localUsageRangeAnalysis(method);
+
+        for(const auto& entry : localUsageRangeAnalysis.getOverallUsages())
+        {
+            auto candIt = candidateLocals.find(entry.local);
+            if(candIt == candidateLocals.end())
+                continue;
+            if(entry.numLoops > 1)
+                // skip locals used in nested loops
+                candidateLocals.erase(candIt);
+            else if(entry.numAccesses > 8)
+                // skip locals with too many accesses
+                candidateLocals.erase(candIt);
+        }
+    }
+
+    if(candidateLocals.size() < 4)
+        // for 0 and 1 locals this does not help anything at all anyway...
+        return FixupResult::NOTHING_FIXED;
+
+    // map of "original" local -> group local (+ index in group) where it is located in
+    FastMap<const Local*, std::pair<const Local*, uint8_t>> currentlyGroupedLocals;
+    // map of group local -> contained "original" locals and their positions
+    FastMap<const Local*, std::array<const Local*, NATIVE_VECTOR_SIZE>> groups;
+
+    for(auto& entry : candidateLocals)
+    {
+        // allocate an element in our spill register
+        auto pos = reserveGroupSpace(method, groups, entry.first);
+        currentlyGroupedLocals.emplace(entry.first, pos);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Grouping local '" << entry.first->to_string() << "' into " << pos.first->to_string() << " at index "
+                << static_cast<unsigned>(pos.second) << logging::endl);
+
+        // after the local write (or the last read within the writing block), insert the spill code
+        // we spill a copy to not force the local to an accumulator (since we do full vector rotation)
+        {
+            auto spillIt = entry.second.nextInBlock();
+            auto tmpValue = assign(spillIt, entry.first->type) = entry.first->createReference();
+            spillIt = intermediate::insertVectorInsertion(entry.second.nextInBlock(), method,
+                pos.first->createReference(), Value(SmallImmediate(pos.second), TYPE_INT8), tmpValue);
+            if(!spillIt.isEndOfBlock() && spillIt.get() && spillIt->readsLocal(pos.first))
+                // if we happen to insert a write just before a read of the same container, insert a NOP to prevent the
+                // container to be forced to an accumulator
+                nop(spillIt, intermediate::DelayType::WAIT_REGISTER);
+        }
+
+        // before all reads (not located in the writing block), insert a dematerialization and use a new temporary
+        // local in the read
+        auto& readers = localReaders[entry.first];
+        for(auto reader : readers)
+        {
+            auto checkIt = reader.copy().previousInBlock();
+            if(!checkIt.isEndOfBlock() && checkIt.get() && checkIt->writesLocal(pos.first))
+                // if we happen to insert a read just after a write of the same container, insert a NOP to prevent the
+                // container to be forced to an accumulator
+                nop(reader, intermediate::DelayType::WAIT_REGISTER);
+            // need to extract from temporary container to not force the group container to an accumulator
+            auto tmpValue = method.addNewLocal(entry.first->type, entry.first->name);
+            auto tmpContainer = assign(reader, pos.first->type) = pos.first->createReference();
+            reader = intermediate::insertVectorExtraction(
+                reader, method, tmpContainer, Value(SmallImmediate(pos.second), TYPE_INT8), tmpValue);
+            if(reader->hasUnpackMode() || reader->readsLiteral() || reader.get<intermediate::VectorRotation>())
+                // insert a NOP before the  actually reading instruction to allow for e.g. unpack-modes
+                nop(reader, intermediate::DelayType::WAIT_REGISTER);
+            reader->replaceLocal(entry.first, tmpValue);
+        }
+    }
+    return FixupResult::FIXES_APPLIED_RECREATE_GRAPH;
 }

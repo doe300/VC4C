@@ -55,6 +55,10 @@ if(OPT_FOUND)
 	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE OPT_PATH="${OPT_FOUND}")
 	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE OPT_PATH="${OPT_FOUND}")
 endif()
+if(LLVM_DIS_FOUND)
+	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE LLVM_DIS_PATH="${LLVM_DIS_FOUND}")
+	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE LLVM_DIS_PATH="${LLVM_DIS_FOUND}")
+endif()
 
 # Add all sources
 include(sources.list)

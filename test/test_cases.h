@@ -267,10 +267,13 @@ namespace vc4c
 					{toParameter(std::vector<unsigned>{0xFFFFFFFFu}), toParameter(std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7, 7, 8, 9, 10, 11, 11, 12, 13})
 					}, toConfig(8, 1, 1, 2, 1, 1), maxExecutionCycles), addVector({}, 0, std::vector<unsigned>{7})
 				),
+#ifndef SPIRV_FRONTEND
+// 64-bit constants (that have a high word of neither zero nor one) are not yet implemented for SPIR-V front-end
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/boost-compute/test_functional_popcount.cl", "copy",
 					{toParameter(std::vector<unsigned>(4)), toParameter(std::vector<unsigned>{1, 0, 17, 0, 1, 2, 15, 1}), toScalarParameter(4)
 					}, toConfig(8, 1, 1), maxExecutionCycles), addVector({}, 0, std::vector<unsigned>{1, 2, 2, 5})
 				)
+#endif
 		};
 
 		//TODO NVIDIA/matrixMul, NVIDIA/transpose, OpenCLIPP/Arithmetic, OpenCLIPP/Logic, OpenCLIPP/Thresholding, test_signedness

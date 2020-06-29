@@ -139,11 +139,6 @@ namespace vc4c
         unsigned replaceNopThreshold = 16;
 
         /*
-         * Maximum number of rounds the register-checker tries to resolve conflicts
-         */
-        unsigned registerResolverMaxRounds = 6;
-
-        /*
          * Depth of loops whose constants are moved to out side of it
          *
          * * If it has no value, this optimization will not performed.

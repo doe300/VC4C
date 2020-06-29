@@ -384,7 +384,7 @@ void normalization::lowerLongOperation(
         else if(!move->hasOtherSideEffects(intermediate::SideEffectType::FLAGS) &&
             (move->getSource().type.getScalarBitCount() <= 32 || move->getSource().getConstantValue()))
         {
-            assign(it, out->lower->createReference()) = move->getSource();
+            assign(it, out->lower->createReference()) = (move->getSource(), move->getCondition());
             move->setOutput(out->upper->createReference());
             move->setSource(Value(0_lit, move->getSource().type));
         }

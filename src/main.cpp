@@ -60,8 +60,6 @@ static void printHelp()
               << "\tThe maximum live-range of a local still considered to be mapped to an accumulator" << std::endl;
     std::cout << "\t--freplace-nop-threshold=" << defaultConfig.additionalOptions.replaceNopThreshold
               << "\tThe number of instructions to search for a replacement for NOPs" << std::endl;
-    std::cout << "\t--fregister-resolver-rounds=" << defaultConfig.additionalOptions.registerResolverMaxRounds
-              << "\tThe maximum number of rows for the register allocator" << std::endl;
     std::cout << "\t--fmove-constants-depth=" << defaultConfig.additionalOptions.moveConstantsDepth
               << "\tThe maximum depth of nested loops to move constants out of" << std::endl;
     std::cout << "\t--foptimization-iterations=" << defaultConfig.additionalOptions.maxOptimizationIterations

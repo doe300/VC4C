@@ -94,10 +94,9 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
 
     // check and fix possible errors with register-association
     std::unique_ptr<GraphColoring> coloredGraph;
-    std::size_t round = 0;
     auto stepIt = FIXUP_STEPS.begin();
     FixupResult lastResult = FixupResult::FIXES_APPLIED_RECREATE_GRAPH;
-    while(round < config.additionalOptions.registerResolverMaxRounds && stepIt != FIXUP_STEPS.end())
+    while(stepIt != FIXUP_STEPS.end())
     {
         if(!coloredGraph || lastResult == FixupResult::FIXES_APPLIED_RECREATE_GRAPH)
         {
@@ -119,11 +118,10 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
         if(lastResult == FixupResult::ALL_FIXED)
             // all errors were fixed
             break;
-        ++round;
         ++stepIt;
     }
 
-    if(round >= config.additionalOptions.registerResolverMaxRounds || stepIt == FIXUP_STEPS.end())
+    if(stepIt == FIXUP_STEPS.end())
     {
         logging::warn() << "Register conflict resolver has exceeded its maximum rounds, there might still be errors!"
                         << logging::endl;
