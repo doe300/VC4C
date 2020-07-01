@@ -112,6 +112,24 @@ namespace vc4c
          */
         InstructionWalker simplifyFlag(
             const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+
+        /**
+         * Tries to rewrite flags (and their conditional operations) depending on conditional values (most often bool
+         * depending on another flags) to directly depend on the originating flags, removing the need for intermediate
+         * conditional writes.
+         *
+         * Example:
+         *   - = max %iterator, %limit (setf)
+         *   %comp = 1 (ifc)
+         *   %comp = 0 (ifcc)
+         *   - = %comp (setf)
+         *   %out = %in (ifzc)
+         *
+         * can be simplified to:
+         *   - = max %iterator, %limit (setf)
+         *   %out = %in (ifc)
+         */
+        bool removeConditionalFlags(const Module& module, Method& method, const Configuration& config);
     } /* namespace optimizations */
 } /* namespace vc4c */
 

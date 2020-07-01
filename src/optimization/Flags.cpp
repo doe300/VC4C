@@ -314,9 +314,9 @@ static bool checkAllInputElementsAreSame(const Value& input)
 static bool checkConditionalsAcceptFlagRewrite(InstructionWalker it, ElementFlags conditionFlags)
 {
     it.nextInBlock();
-    while(!it.isEndOfBlock() && it->doesSetFlag())
+    while(!it.isEndOfBlock() && !it->doesSetFlag())
     {
-        if(!it->hasConditionalExecution())
+        if(it->hasConditionalExecution())
             // normal conditionals are per-element, so we cannot rewrite their flag setters
             return false;
         if(auto br = it.get<intermediate::Branch>())
@@ -392,4 +392,124 @@ InstructionWalker optimizations::simplifyFlag(
     it.reset((new intermediate::MoveOperation(it->getOutput().value(), *input, COND_ALWAYS, SetFlag::SET_FLAGS))
                  ->copyExtrasFrom(it.get()));
     return it;
+}
+
+// Returns (if matching) the condition for the boolean true value
+Optional<ConditionCode> getConditionalBooleanWrites(const Value& val, InstructionWalker it)
+{
+    // check source local
+    auto loc = val.checkLocal();
+    if(!loc)
+        return {};
+    // check local written exactly twice
+    auto writers = loc->getUsers(LocalUse::Type::WRITER);
+    if(writers.size() != 2)
+        return {};
+    // check local writes are within the same block
+    std::vector<InstructionWalker> writerWalkers;
+    for(auto writer : writers)
+    {
+        if(auto writerIt = it.getBasicBlock()->findWalkerForInstruction(writer, it))
+            writerWalkers.emplace_back(*writerIt);
+        else
+            return {};
+    }
+    // check writes are conditional with inverted conditions
+    if(!writerWalkers.front()->hasConditionalExecution() || !writerWalkers.back()->hasConditionalExecution())
+        return {};
+    if(!writerWalkers.front().get<intermediate::ExtendedInstruction>()->getCondition().isInversionOf(
+           writerWalkers.back().get<intermediate::ExtendedInstruction>()->getCondition()))
+        return {};
+    // check writes are conditional on the same setting of flags
+    auto firstFlagIt = it.getBasicBlock()->findLastSettingOfFlags(writerWalkers.front());
+    auto secondFlagIt = it.getBasicBlock()->findLastSettingOfFlags(writerWalkers.back());
+    if(!firstFlagIt || firstFlagIt != secondFlagIt)
+        return {};
+    // check written values are boolean true or false
+    auto firstValue = writerWalkers.front()->precalculate().first;
+    auto secondValue = writerWalkers.back()->precalculate().first;
+    if(!firstValue || !secondValue)
+        return {};
+    if(firstValue == BOOL_TRUE && secondValue == BOOL_FALSE)
+        return writerWalkers.front().get<intermediate::ExtendedInstruction>()->getCondition();
+    if(firstValue == BOOL_FALSE && secondValue == BOOL_TRUE)
+        return writerWalkers.back().get<intermediate::ExtendedInstruction>()->getCondition();
+    return {};
+}
+
+static bool checkAllConditionalsMatchingCondition(
+    InstructionWalker pos, ConditionCode code, FastAccessList<InstructionWalker>& conditionalInstructions)
+{
+    pos.nextInBlock();
+    while(!pos.isEndOfBlock())
+    {
+        if(pos.get())
+        {
+            if(pos->doesSetFlag())
+                // next setting of flags, end
+                return !pos->hasConditionalExecution();
+
+            auto condCode = code;
+            if(pos->hasConditionalExecution())
+            {
+                condCode = pos.get<intermediate::ExtendedInstruction>()->getCondition();
+                conditionalInstructions.emplace_back(pos);
+            }
+            else if(auto br = pos.get<intermediate::Branch>())
+            {
+                condCode = br->branchCondition.toConditionCode();
+                conditionalInstructions.emplace_back(pos);
+            }
+            if(condCode != code && !condCode.isInversionOf(code))
+                // conditional instruction depending on different flags
+                return false;
+        }
+        pos.nextInBlock();
+    }
+    return true;
+}
+
+bool optimizations::removeConditionalFlags(const Module& module, Method& method, const Configuration& config)
+{
+    bool rewroteFlags = false;
+    for(auto& block : method)
+    {
+        auto it = block.walk();
+        while(!it.isEndOfBlock())
+        {
+            auto move = it.get<intermediate::MoveOperation>();
+            FastAccessList<InstructionWalker> conditionalInstructions;
+            if(move && move->doesSetFlag() && move->writesRegister(REG_NOP) &&
+                checkAllConditionalsMatchingCondition(it, COND_ZERO_SET, conditionalInstructions))
+            {
+                // very simple case, move of some variable to to NOP to set zero/non-zero flags
+                if(auto cond = getConditionalBooleanWrites(move->getSource(), it))
+                {
+                    // move sets non-zero, iff cond is set, otherwise it sets zero
+                    // we can replace all checks for zero/non-zero with the cond (and its inversion) and remove this
+                    // flag setter
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Removing superfluous conditional setting of flags by making all dependent conditional "
+                               "instruction dependent on the original flags instead: "
+                            << move->to_string() << logging::endl);
+                    for(auto condIt : conditionalInstructions)
+                    {
+                        if(auto inst = condIt.get<intermediate::ExtendedInstruction>())
+                            inst->setCondition(inst->getCondition() == COND_ZERO_CLEAR ? *cond : cond->invert());
+                        // TODO support for branches! Required at all? Do branches ever have a single move to set flags?
+                        else
+                            throw CompilationError(CompilationStep::OPTIMIZER,
+                                "Unhandled type of conditional instruction", condIt->to_string());
+                    }
+                    rewroteFlags = true;
+                    it.erase();
+                    // to not skip the next instruction
+                    it.previousInBlock();
+                }
+            }
+            it.nextInBlock();
+        }
+    }
+
+    return rewroteFlags;
 }
