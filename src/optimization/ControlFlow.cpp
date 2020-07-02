@@ -1648,6 +1648,8 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
                         if(lastIt->writesLocal(loc) && lastIt.get<ExtendedInstruction>())
                         {
                             lastIt.get<ExtendedInstruction>()->setCondition(cond);
+                            lastIt->decoration =
+                                remove_flag(lastIt->decoration, InstructionDecorations::IDENTICAL_ELEMENTS);
                             break;
                         }
                     }
@@ -1795,6 +1797,7 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     // insert after label, not before
     it.nextInBlock();
 
+    InstructionDecorations condDecorations = InstructionDecorations::NONE;
     if(mergedValueIndex < 0)
     {
         // First increment current id then reset previous dimension to be able to skip inserting a nop, since we read
@@ -1802,6 +1805,8 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
         assign(it, id) = id + INT_ONE;
         if(previousId)
             assign(it, previousId->createReference()) = INT_ZERO;
+        // setting this decoration allows for most of the conditional code inserted below to be optimized away
+        condDecorations = InstructionDecorations::IDENTICAL_ELEMENTS;
     }
     else
     {
@@ -1821,10 +1826,10 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     // NOTE: using signed comparison limits the number of work-groups per dimension to INT_MAX - 1 to avoid overflow.
     // This is also reflected host-side on the kernel_config::MAX_WORK_ITEM_DIMENSIONS limit and checked in
     // Kernel::enqueueNDRange.
-    auto cond = assignNop(it) = as_signed{id} < as_signed{maxValue};
+    auto cond = assignNop(it) = (as_signed{id} < as_signed{maxValue}, condDecorations);
     auto condValue = method.addNewLocal(TYPE_BOOL);
-    assign(it, condValue) = (BOOL_TRUE, cond);
-    assign(it, condValue) = (BOOL_TRUE ^ BOOL_TRUE, cond.invert());
+    assign(it, condValue) = (BOOL_TRUE, cond, condDecorations);
+    assign(it, condValue) = (BOOL_TRUE ^ BOOL_TRUE, cond.invert(), condDecorations);
     BranchCond branchCond = BRANCH_ALWAYS;
     std::tie(it, branchCond) =
         intermediate::insertBranchCondition(method, it, condValue, 1u << std::max(int8_t{0}, mergedValueIndex));

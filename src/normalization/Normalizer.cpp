@@ -30,46 +30,73 @@
 using namespace vc4c;
 using namespace vc4c::normalization;
 
+static bool checkWorkGroupUniform(const Value& arg)
+{
+    if(arg.checkRegister())
+        return arg.hasRegister(REG_UNIFORM) || arg.hasRegister(REG_ELEMENT_NUMBER);
+    if(arg.checkImmediate() || arg.checkLiteral() || arg.checkVector())
+        return true;
+    if(auto local = arg.checkLocal())
+    {
+        auto writes = local->getUsers(LocalUse::Type::WRITER);
+        return local->is<Parameter>() || local->is<Global>() ||
+            std::all_of(writes.begin(), writes.end(), [](const intermediate::IntermediateInstruction* instr) -> bool {
+                return instr->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+            });
+    }
+    return false;
+}
+
+static bool checkSplatValue(const Value& arg)
+{
+    if(arg.isAllSame())
+        return true;
+    if(auto local = arg.checkLocal())
+    {
+        auto writes = local->getUsers(LocalUse::Type::WRITER);
+        return std::all_of(
+            writes.begin(), writes.end(), [](const intermediate::IntermediateInstruction* instr) -> bool {
+                return instr->hasDecoration(intermediate::InstructionDecorations::IDENTICAL_ELEMENTS);
+            });
+    }
+    return false;
+}
+
 /*
- * Propagate WORK_GROUP_UNIFORM_VALUE decoration through the kernel code
+ * Propagate WORK_GROUP_UNIFORM_VALUE and IDENTICAL_ELEMENTS decorations through the kernel code
  */
-static void propagateGroupUniforms(Module& module, Method& method, InstructionWalker it, const Configuration& config)
+static void propagateDecorations(Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     // XXX does not propagate decoration via phi-nodes of back jumps
-    static const auto check = [](const Value& arg) -> bool {
-        if(arg.checkRegister())
-            return arg.hasRegister(REG_UNIFORM) || arg.hasRegister(REG_ELEMENT_NUMBER);
-        if(arg.checkImmediate() || arg.checkLiteral() || arg.checkVector())
-            return true;
-        if(auto local = arg.checkLocal())
-        {
-            auto writes = local->getUsers(LocalUse::Type::WRITER);
-            return local->is<Parameter>() || local->is<Global>() ||
-                std::all_of(
-                    writes.begin(), writes.end(), [](const intermediate::IntermediateInstruction* instr) -> bool {
-                        return instr->hasDecoration(
-                            vc4c::intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
-                    });
-        }
-        return false;
+    static std::vector<std::pair<intermediate::InstructionDecorations, bool (*)(const Value&)>> checks = {
+        {intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, checkWorkGroupUniform},
+        {intermediate::InstructionDecorations::IDENTICAL_ELEMENTS, checkSplatValue},
     };
+
     if(it.get<intermediate::Nop>() || it.get<intermediate::BranchLabel>() || it.get<intermediate::MutexLock>() ||
         it.get<intermediate::SemaphoreAdjustment>() || it.get<intermediate::MemoryBarrier>())
         return;
-    if(it->hasDecoration(intermediate::InstructionDecorations::BUILTIN_GLOBAL_ID) ||
-        it->hasDecoration(intermediate::InstructionDecorations::BUILTIN_LOCAL_ID))
-        return;
-    if(it->hasConditionalExecution())
+
+    for(auto check : checks)
     {
-        auto flagsIt = it.getBasicBlock()->findLastSettingOfFlags(it);
-        if(!(flagsIt && (*flagsIt)->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE)))
+        if(check.first == intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE &&
+            (it->hasDecoration(intermediate::InstructionDecorations::BUILTIN_GLOBAL_ID) ||
+                it->hasDecoration(intermediate::InstructionDecorations::BUILTIN_LOCAL_ID)))
+            continue;
+        if(check.first == intermediate::InstructionDecorations::IDENTICAL_ELEMENTS &&
+            it.get<intermediate::MemoryInstruction>())
+            continue;
+        if(it->hasConditionalExecution())
         {
-            // for conditional writes need to check whether condition is met by all work-items (e.g. element insertion)
-            return;
+            auto flagsIt = it.getBasicBlock()->findLastSettingOfFlags(it);
+            if(!(flagsIt && (*flagsIt)->hasDecoration(check.first)))
+                // for conditional writes need to check whether condition is met by all work-items (e.g. element
+                // insertion)
+                continue;
         }
+        if(std::all_of(it->getArguments().begin(), it->getArguments().end(), check.second))
+            it->addDecorations(check.first);
     }
-    if(std::all_of(it->getArguments().begin(), it->getArguments().end(), check))
-        it->addDecorations(intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
 }
 
 /*
@@ -153,8 +180,8 @@ const static std::vector<std::pair<std::string, NormalizationStep>> initialNorma
     // this first run here is only required, so some loading of literals can be optimized, which is no longer possible
     // after the second run
     {"HandleImmediates", handleImmediate},
-    // propagates the instruction decoration whether values are work-group uniform
-    {"PropagateGroupUniformValues", propagateGroupUniforms},
+    // propagates instruction decorations across the kernel code
+    {"PropagateDecorations", propagateDecorations},
     // propagates the unsigned result instruction decoration
     {"PropagateUnsigned", propagateUnsignedValues}};
 

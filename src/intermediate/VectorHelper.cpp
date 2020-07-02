@@ -152,7 +152,7 @@ InstructionWalker intermediate::insertReplication(
     assign(it, Value(REG_REPLICATE_ALL, src.type)) = src;
     if(useDestination)
         //"Reading r5 returns the per-quad 32-bit value replicated across the four elements of that quad" (p. 18)
-        assign(it, dest) = Value(REG_REPLICATE_ALL, src.type);
+        assign(it, dest) = (Value(REG_REPLICATE_ALL, src.type), InstructionDecorations::IDENTICAL_ELEMENTS);
     return it;
 }
 

@@ -137,8 +137,10 @@ namespace vc4c
             ConditionCode code;
             Value arg0;
             Value arg1;
-            using FuncType = std::function<void(InstructionWalker&, const Value&, const Value&, const Value&)>;
+            using FuncType = std::function<void(
+                InstructionWalker&, const Value&, const Value&, const Value&, intermediate::InstructionDecorations)>;
             FuncType func;
+            intermediate::InstructionDecorations decoration = intermediate::InstructionDecorations::NONE;
 
             ComparisonWrapper(ConditionCode code, const Value& arg0, const Value& arg1, FuncType&& func) :
                 code(code), arg0(arg0), arg1(arg1), func(std::forward<FuncType>(func))
@@ -147,8 +149,14 @@ namespace vc4c
 
             NODISCARD inline ConditionCode operator()(InstructionWalker& it, const Value& out) const
             {
-                func(it, out, arg0, arg1);
+                func(it, out, arg0, arg1, decoration);
                 return code;
+            }
+
+            NODISCARD ComparisonWrapper operator,(intermediate::InstructionDecorations deco) &&
+            {
+                decoration = add_flag(decoration, deco);
+                return std::move(*this);
             }
         };
 
@@ -546,16 +554,17 @@ namespace vc4c
         NODISCARD inline ComparisonWrapper operator==(as_type<T>&& a, as_type<T>&& b)
         {
             // a == b <=> a xor b == 0 [<=> a - b == 0]
-            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
                 if(arg1.hasLiteral(Literal(0u)))
                     // special case for a == 0
                     // does not save instructions, but does not force value a to be on register-file A (since B is
                     // reserved for literal 0)
-                    assign(it, out) = (arg0, SetFlag::SET_FLAGS);
+                    assign(it, out) = (arg0, SetFlag::SET_FLAGS, deco);
                 else if(arg0.hasLiteral(Literal(0u)))
-                    assign(it, out) = (arg1, SetFlag::SET_FLAGS);
+                    assign(it, out) = (arg1, SetFlag::SET_FLAGS, deco);
                 else
-                    assign(it, out) = (arg0 ^ arg1, SetFlag::SET_FLAGS);
+                    assign(it, out) = (arg0 ^ arg1, SetFlag::SET_FLAGS, deco);
             };
             return ComparisonWrapper{COND_ZERO_SET, a.val, b.val, func};
         }
@@ -571,10 +580,11 @@ namespace vc4c
         NODISCARD inline ComparisonWrapper operator>(as_signed&& a, as_signed&& b)
         {
             // min/max(a, b) set flag carry if a > b
-            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
                 if(!arg0.type.isIntegralType() || !arg1.type.isIntegralType())
                     throw CompilationError(CompilationStep::GENERAL, "Can only compare integer values");
-                assign(it, out) = (max(arg0, arg1), SetFlag::SET_FLAGS);
+                assign(it, out) = (max(arg0, arg1), SetFlag::SET_FLAGS, deco);
             };
             return ComparisonWrapper{COND_CARRY_SET, a.val, b.val, func};
         }
@@ -582,10 +592,11 @@ namespace vc4c
         NODISCARD inline ComparisonWrapper operator>(as_float&& a, as_float&& b)
         {
             // fmin/fmax(a, b) set flag carry if a > b
-            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
                 if(!arg0.type.isFloatingType() || !arg1.type.isFloatingType())
                     throw CompilationError(CompilationStep::GENERAL, "Can only compare float values");
-                assign(it, out) = (max(arg0, arg1), SetFlag::SET_FLAGS);
+                assign(it, out) = (max(arg0, arg1), SetFlag::SET_FLAGS, deco);
             };
             return ComparisonWrapper{COND_CARRY_SET, a.val, b.val, func};
         }
@@ -593,10 +604,11 @@ namespace vc4c
         NODISCARD inline ComparisonWrapper operator>=(as_signed&& a, as_signed&& b)
         {
             // min/max(a, b) set flag carry if a > b => min/max(b, a) set carry if a < b
-            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
                 if(!arg0.type.isIntegralType() || !arg1.type.isIntegralType())
                     throw CompilationError(CompilationStep::GENERAL, "Can only compare integer values");
-                assign(it, out) = (max(arg1, arg0), SetFlag::SET_FLAGS);
+                assign(it, out) = (max(arg1, arg0), SetFlag::SET_FLAGS, deco);
             };
             return ComparisonWrapper{COND_CARRY_CLEAR, a.val, b.val, func};
         }
@@ -604,10 +616,11 @@ namespace vc4c
         NODISCARD inline ComparisonWrapper operator>=(as_float&& a, as_float&& b)
         {
             // fmin/fmax(a, b) set flag carry if a > b => fmin/fmax(b, a) set carry if a < b
-            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
                 if(!arg0.type.isFloatingType() || !arg1.type.isFloatingType())
                     throw CompilationError(CompilationStep::GENERAL, "Can only compare float values");
-                assign(it, out) = (max(arg1, arg0), SetFlag::SET_FLAGS);
+                assign(it, out) = (max(arg1, arg0), SetFlag::SET_FLAGS, deco);
             };
             return ComparisonWrapper{COND_CARRY_CLEAR, a.val, b.val, func};
         }
@@ -615,10 +628,11 @@ namespace vc4c
         NODISCARD inline ComparisonWrapper operator<(as_signed&& a, as_signed&& b)
         {
             // min/max(a, b) set flag carry if a > b => min/max(b, a) set carry if a < b
-            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
                 if(!arg0.type.isIntegralType() || !arg1.type.isIntegralType())
                     throw CompilationError(CompilationStep::GENERAL, "Can only compare integer values");
-                assign(it, out) = (max(arg1, arg0), SetFlag::SET_FLAGS);
+                assign(it, out) = (max(arg1, arg0), SetFlag::SET_FLAGS, deco);
             };
             return ComparisonWrapper{COND_CARRY_SET, a.val, b.val, func};
         }
@@ -626,10 +640,11 @@ namespace vc4c
         NODISCARD inline ComparisonWrapper operator<(as_float&& a, as_float&& b)
         {
             // fmin/fmax(a, b) set flag carry if a > b => fmin/fmax(b, a) set carry if a < b
-            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
                 if(!arg0.type.isFloatingType() || !arg1.type.isFloatingType())
                     throw CompilationError(CompilationStep::GENERAL, "Can only compare float values");
-                assign(it, out) = (max(arg1, arg0), SetFlag::SET_FLAGS);
+                assign(it, out) = (max(arg1, arg0), SetFlag::SET_FLAGS, deco);
             };
             return ComparisonWrapper{COND_CARRY_SET, a.val, b.val, func};
         }
@@ -637,10 +652,11 @@ namespace vc4c
         NODISCARD inline ComparisonWrapper operator<=(as_signed&& a, as_signed&& b)
         {
             // min/max(a, b) set flag carry if a > b
-            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
                 if(!arg0.type.isIntegralType() || !arg1.type.isIntegralType())
                     throw CompilationError(CompilationStep::GENERAL, "Can only compare integer values");
-                assign(it, out) = (max(arg0, arg1), SetFlag::SET_FLAGS);
+                assign(it, out) = (max(arg0, arg1), SetFlag::SET_FLAGS, deco);
             };
             return ComparisonWrapper{COND_CARRY_CLEAR, a.val, b.val, func};
         }
@@ -648,10 +664,11 @@ namespace vc4c
         NODISCARD inline ComparisonWrapper operator<=(as_float&& a, as_float&& b)
         {
             // fmin/fmax(a, b) set flag carry if a > b
-            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
                 if(!arg0.type.isFloatingType() || !arg1.type.isFloatingType())
                     throw CompilationError(CompilationStep::GENERAL, "Can only compare float values");
-                assign(it, out) = (max(arg0, arg1), SetFlag::SET_FLAGS);
+                assign(it, out) = (max(arg0, arg1), SetFlag::SET_FLAGS, deco);
             };
             return ComparisonWrapper{COND_CARRY_CLEAR, a.val, b.val, func};
         }
@@ -667,9 +684,11 @@ namespace vc4c
         {
             // VideoCore IV considers NaN > Inf for min/fmax/fminabs/fmaxabs
             // isinf(a) || isnan(a) <=> fmaxabs(a, highest-float) -> sets carry
-            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
                 it.emplace((new intermediate::Operation(OP_FMAXABS, out, arg0, Value(Literal(0x7F7FFFFFu), TYPE_FLOAT)))
-                               ->setSetFlags(SetFlag::SET_FLAGS));
+                               ->setSetFlags(SetFlag::SET_FLAGS)
+                               ->addDecorations(deco));
                 it.nextInBlock();
             };
             return ComparisonWrapper{COND_CARRY_SET, val.val, UNDEFINED_VALUE, func};
@@ -679,10 +698,11 @@ namespace vc4c
         {
             // VideoCore IV considers NaN > Inf for min/fmax/fminabs/fmaxabs
             // isinf(a) <=> a == Inf || a == -Inf <=> (a & 0x7FFFFFFF) == Inf
-            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
                 auto tmp = assign(it, TYPE_INT32.toVectorType(arg0.type.getVectorWidth())) =
                     (arg0 & Value(Literal(0x7FFFFFFFu), TYPE_INT32));
-                assign(it, out) = (tmp ^ FLOAT_INF, SetFlag::SET_FLAGS);
+                assign(it, out) = (tmp ^ FLOAT_INF, SetFlag::SET_FLAGS, deco);
             };
             return ComparisonWrapper{COND_ZERO_SET, val.val, UNDEFINED_VALUE, func};
         }
@@ -699,10 +719,12 @@ namespace vc4c
 
         NODISCARD inline ComparisonWrapper selectSIMDElements(std::bitset<NATIVE_VECTOR_SIZE> indices)
         {
-            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1) {
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
                 it.emplace((new intermediate::LoadImmediate(out, arg0.getLiteralValue().value().unsignedInt(),
                                 intermediate::LoadType::PER_ELEMENT_UNSIGNED))
-                               ->setSetFlags(SetFlag::SET_FLAGS));
+                               ->setSetFlags(SetFlag::SET_FLAGS)
+                               ->addDecorations(deco));
                 it.nextInBlock();
             };
             return ComparisonWrapper{COND_ZERO_CLEAR,

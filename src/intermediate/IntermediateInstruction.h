@@ -82,7 +82,9 @@ namespace vc4c
             // b) * b == a and for shifts (a >> b) << b == a.
             EXACT_OPERATION = 1u << 23u,
             // The instruction is part of the work-group-loop and not of the actual kernel body
-            WORK_GROUP_LOOP = 1u << 24u
+            WORK_GROUP_LOOP = 1u << 24u,
+            // The instruction result contains the same bits in all 16 SIMD-elements (a "splat" value)
+            IDENTICAL_ELEMENTS = 1u << 25u
         };
 
         std::string toString(InstructionDecorations decoration);
