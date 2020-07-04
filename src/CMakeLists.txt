@@ -137,12 +137,12 @@ add_dependencies(${VC4C_LIBRARY_NAME} variant-dependencies)
 target_include_directories(${VC4C_LIBRARY_NAME} SYSTEM PRIVATE ${variant_HEADERS})
 target_include_directories(${VC4C_PROGRAM_NAME} SYSTEM PRIVATE ${variant_HEADERS})
 
-if(VC4CL_STDLIB_DIR)
+if(VC4CL_STDLIB_PRECOMPILE AND VC4CL_STDLIB_DIR)
 	# Pre-compile VC4CL standard library files if development headers available and output files do not yet exist
 	add_custom_command(TARGET ${VC4C_PROGRAM_NAME} POST_BUILD
 	    COMMAND if \[ ! -e ${VC4CL_STDLIB_DIR}/VC4CLStdLib.bc -o ! -e ${VC4CL_STDLIB_DIR}/VC4CLStdLib.h.pch \]; then $<TARGET_FILE:${VC4C_PROGRAM_NAME}> --quiet --precompile-stdlib -o ${VC4CL_STDLIB_DIR}/ ${VC4CL_STDLIB_DIR}/VC4CLStdLib.h && echo \"VC4CL standard library precompiled into ${VC4CL_STDLIB_DIR}\" \; fi
 	)
-endif(VC4CL_STDLIB_DIR)
+endif(VC4CL_STDLIB_PRECOMPILE AND VC4CL_STDLIB_DIR)
 
 # "For shared libraries VERSION and SOVERSION can be used to specify the build version and API version respectively."
 set_target_properties(

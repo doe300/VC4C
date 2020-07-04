@@ -24,6 +24,8 @@ option(ENABLE_COVERAGE "Enables collection of code coverage via gcov" OFF)
 option(CLANG_LIBRARY "Uses the libclang library for compilation, uses the clang executable otherwise" OFF)
 # Option whether to enable more compile-time checks
 option(ADVANCED_CHECKS "Enable advanced compile-time checks" OFF)
+# Option to skipping pre-compiling the VC4CLStdLib standard-library headers at compile time. NOTE: The headers still need to be pre-compiled before execution!
+option(VC4CL_STDLIB_PRECOMPILE "Enable pre-compiling of the VC4CLStdLib headers at compile time" ON)
 
 # Path to the VC4CL standard library
 # NOTE: Resolving ~ (for home directory) is currently not supported
