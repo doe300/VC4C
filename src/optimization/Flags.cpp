@@ -296,19 +296,62 @@ InstructionWalker optimizations::combineFlagWithOutput(
     return it;
 }
 
-static bool checkAllInputElementsAreSame(const Value& input)
+static bool checkAllResultElementsAreSame(
+    const intermediate::IntermediateInstruction& inst, Optional<InstructionWalker>);
+
+static bool checkAllInputElementsAreSame(const Value& input, InstructionWalker it)
 {
     bool allElementsSame = input.isAllSame();
     if(!allElementsSame && input.checkLocal())
     {
         auto writers = input.local()->getUsers(LocalUse::Type::WRITER);
-        allElementsSame = std::all_of(writers.begin(), writers.end(), [](const LocalUser* writer) -> bool {
-            // conditional writes would be per-element and therefore have to be excluded (XXX unless we can argue the
-            // flags the conditional write depends on to be all the same)
-            return !writer->hasConditionalExecution() && writer->precalculate().first & &Value::isAllSame;
+        allElementsSame = std::all_of(writers.begin(), writers.end(), [&](const LocalUser* writer) -> bool {
+            return checkAllResultElementsAreSame(*writer, it.getBasicBlock()->findWalkerForInstruction(writer, it));
         });
     }
     return allElementsSame;
+}
+
+static bool checkAllResultElementsAreSame(
+    const intermediate::IntermediateInstruction& inst, Optional<InstructionWalker> it)
+{
+    if(inst.hasDecoration(intermediate::InstructionDecorations::IDENTICAL_ELEMENTS))
+        return true;
+    if(inst.hasConditionalExecution())
+    {
+        auto flagIt = it ? it->getBasicBlock()->findLastSettingOfFlags(*it) : Optional<InstructionWalker>{};
+        if(flagIt && !flagIt->isEndOfBlock() && checkAllResultElementsAreSame(*(*flagIt).get(), *flagIt))
+            // If we can argue that the (required) flags are set the same for all elements, then the conditional
+            // instruction sets the same value for all elements.
+            return true;
+        // Otherwise, we need to exclude this, since conditional writes would be per-element
+        return false;
+    }
+    if(inst.precalculate().first & &Value::isAllSame)
+        // constant value which is the same in all SIMD elements
+        return true;
+    if(inst.checkOutputLocal() && inst.readsLocal(inst.checkOutputLocal()))
+    {
+        if(dynamic_cast<const intermediate::Operation*>(&inst) &&
+            inst.findOtherArgument(*inst.getOutput()) & &Value::isAllSame)
+            // Assuming the written (and read) variable is all the same across the SIMD vector (which is decided by
+            // the other writers that have to exist), and we only do (any kind of) operation taking another value
+            // which is the same across all SIMD elements, then we know the result to also have this property, since
+            // all (unconditional) operations are independent of the SIMD element. This is e.g. true for iteration
+            // variables.
+            return true;
+
+        // for any other instruction reading its output abort, since we might get to an infinite stack recursion below
+        // when we recursively recheck for the operation inputs
+        return false;
+    }
+
+    if(it && std::all_of(inst.getArguments().begin(), inst.getArguments().end(), [&](const Value& arg) -> bool {
+           return checkAllInputElementsAreSame(arg, *it);
+       }))
+        // TODO do we need to exclude some operation types? Or heed some extra option/flags?
+        return true;
+    return false;
 }
 
 static bool checkConditionalsAcceptFlagRewrite(InstructionWalker it, ElementFlags conditionFlags)
@@ -338,7 +381,7 @@ static bool checkConditionalsAcceptFlagRewrite(InstructionWalker it, ElementFlag
             }
             else
                 // any other branch condition will be changed by simplifying the flag setter
-                return false;
+                return br->branchCondition == BRANCH_ALWAYS;
         }
         it.nextInBlock();
     }
@@ -379,7 +422,7 @@ InstructionWalker optimizations::simplifyFlag(
         return it;
 
     // check whether all our inputs are identical over the whole SIMD vector
-    if(!checkAllInputElementsAreSame(*input))
+    if(!checkAllInputElementsAreSame(*input, it))
         return it;
 
     // check all depending conditional executions, whether they allow us to change the flags
@@ -496,7 +539,18 @@ bool optimizations::removeConditionalFlags(const Module& module, Method& method,
                     {
                         if(auto inst = condIt.get<intermediate::ExtendedInstruction>())
                             inst->setCondition(inst->getCondition() == COND_ZERO_CLEAR ? *cond : cond->invert());
-                        // TODO support for branches! Required at all? Do branches ever have a single move to set flags?
+                        else if(auto br = condIt.get<intermediate::Branch>())
+                        {
+                            // at least after running some of the optimizations above, this can happen
+                            if(br->branchCondition == BRANCH_ALL_Z_CLEAR)
+                                br->branchCondition = cond->toBranchCondition(true);
+                            else if(br->branchCondition == BRANCH_ALL_Z_SET)
+                                br->branchCondition = cond->invert().toBranchCondition(true);
+                            else if(br->branchCondition == BRANCH_ANY_Z_CLEAR)
+                                br->branchCondition = cond->toBranchCondition(false);
+                            else if(br->branchCondition == BRANCH_ANY_Z_SET)
+                                br->branchCondition = cond->invert().toBranchCondition(false);
+                        }
                         else
                             throw CompilationError(CompilationStep::OPTIMIZER,
                                 "Unhandled type of conditional instruction", condIt->to_string());
