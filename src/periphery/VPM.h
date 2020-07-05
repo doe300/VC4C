@@ -801,7 +801,7 @@ namespace vc4c
              *
              * If the data-type is set to unknown, the default element-type of this area is used
              */
-            VPRGenericSetup toReadSetup(DataType elementType, uint8_t numRows = 1) const;
+            VPRGenericSetup toReadSetup(DataType elementType/*, uint8_t numRows = 1*/) const;
 
             /*
              * Generates a RAM-to-VPM DMA read setup for loading the contents of a memory address into this VPM area
@@ -909,12 +909,12 @@ namespace vc4c
              */
             void dumpUsage() const;
 
+            InstructionWalker insertLockMutex(InstructionWalker it, bool useMutex) const;
+            InstructionWalker insertUnlockMutex(InstructionWalker it, bool useMutex) const;
+
         private:
             const unsigned maximumVPMSize;
             std::vector<std::shared_ptr<VPMArea>> areas;
-
-            InstructionWalker insertLockMutex(InstructionWalker it, bool useMutex) const;
-            InstructionWalker insertUnlockMutex(InstructionWalker it, bool useMutex) const;
         };
 
         /*

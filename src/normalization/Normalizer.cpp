@@ -301,7 +301,7 @@ public:
 class ValueTerm : public ValueExpr
 {
 public:
-    ValueTerm(Value& value) : value(value) {}
+    ValueTerm(const Value& value) : value(value) {}
 
     bool operator==(const ValueExpr& other) const override
     {
@@ -348,7 +348,7 @@ public:
         return value.to_string();
     }
 
-    Value value;
+    const Value value;
 };
 
 bool ValueBinaryOp::operator==(const ValueExpr& other) const
@@ -585,9 +585,9 @@ std::shared_ptr<ValueExpr> calcValueExpr(std::shared_ptr<ValueExpr> expr)
     ValueExpr::ExpandedExprs expanded;
     expr->expand(expanded);
 
-    for(auto& p : expanded)
-        logging::debug() << (p.first ? "+" : "-") << p.second->to_string() << " ";
-    logging::debug() << logging::endl;
+    // for(auto& p : expanded)
+    //     logging::debug() << (p.first ? "+" : "-") << p.second->to_string() << " ";
+    // logging::debug() << logging::endl;
 
     for(auto p = expanded.begin(); p != expanded.end();)
     {
@@ -606,10 +606,9 @@ std::shared_ptr<ValueExpr> calcValueExpr(std::shared_ptr<ValueExpr> expr)
         }
     }
 
-    auto result = expanded[0].second;
-    for(size_t i = 1; i < expanded.size(); i++)
+    std::shared_ptr<ValueExpr> result = std::make_shared<ValueTerm>(INT_ZERO);
+    for(auto& p : expanded)
     {
-        auto p = expanded[i];
         result = std::make_shared<ValueBinaryOp>(result, p.first ? BO::Add : BO::Sub, p.second);
     }
 
@@ -633,8 +632,6 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
                 if(call->methodName == VLOAD16_METHOD_NAME)
                 {
                     auto addr = call->assertArgument(0);
-                    logging::debug() << "method call = " << call->to_string() << ", " << call->methodName << ", "
-                                     << addr.to_string() << logging::endl;
                     addrValues.push_back(addr);
                     loadInstrs.push_back(call);
                 }
@@ -654,10 +651,10 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
                 {
                     addrExprs.push_back(std::make_pair(addrValue, iiToExpr(addrValue, writer)));
                 }
-            }
-            else
-            {
-                addrExprs.push_back(std::make_pair(addrValue, std::make_shared<ValueTerm>(addrValue)));
+                else
+                {
+                    addrExprs.push_back(std::make_pair(addrValue, std::make_shared<ValueTerm>(addrValue)));
+                }
             }
         }
 
@@ -670,10 +667,10 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
             }
         }
 
-        for(auto& pair : addrExprs)
+        /*for(auto& pair : addrExprs)
         {
             logging::debug() << pair.first.to_string() << " = " << pair.second->to_string() << logging::endl;
-        }
+        }*/
 
         std::shared_ptr<ValueExpr> diff = nullptr;
         bool eqDiff = true;
@@ -687,8 +684,6 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
             // Apply calcValueExpr again for integer literals.
             currentDiff = calcValueExpr(currentDiff);
 
-            logging::debug() << i << ": " << currentDiff->to_string() << logging::endl;
-
             if(diff == nullptr)
             {
                 diff = currentDiff;
@@ -700,21 +695,20 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
             }
         }
 
-        logging::debug() << "all loads are " << (eqDiff ? "" : "not ") << "equal difference" << logging::endl;
+        // logging::debug() << "all loads are " << (eqDiff ? "" : "not ") << "equal difference" << logging::endl;
 
         if(eqDiff)
         {
-            logging::debug() << "diff: " << diff->to_string() << logging::endl;
-
             if (auto term = std::dynamic_pointer_cast<ValueTerm>(diff))
             {
                 if (auto mpValue = term->value.getConstantValue())
                 {
                     if (auto mpLiteral = mpValue->getLiteralValue())
                     {
-                        if (mpLiteral->unsignedInt() < 1u << 12)
+                        if (mpLiteral->unsignedInt() < (1u << 12))
                         {
-                            uint16_t memoryPitch = static_cast<uint16_t>(mpLiteral->unsignedInt());
+                            // TODO: cover types other than uchar
+                            uint16_t memoryPitch = static_cast<uint16_t>(mpLiteral->unsignedInt()) * 1 * 16;
 
                             auto it = bb.walk();
                             bool firstCall = true;
@@ -725,6 +719,7 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
                                 {
                                     it.erase();
 
+                                    auto output = *call->getOutput();
                                     if(firstCall)
                                     {
                                         firstCall = false;
@@ -739,12 +734,18 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
                                         uint64_t rows = loadInstrs.size();
                                         VPMArea area(VPMUsage::SCRATCH, 0, static_cast<uint8_t>(rows));
                                         auto entries = Value(Literal(static_cast<uint32_t>(rows)), TYPE_INT32);
-                                        it = method.vpm->insertReadRAM(method, it, addr, TYPE_UCHAR16, &area,
+                                        it = method.vpm->insertReadRAM(method, it, addr, TYPE_UCHAR16,/* &area */ nullptr,
                                                 true, INT_ZERO, entries, Optional<uint16_t>(memoryPitch));
-                                    }
 
-                                    auto output = *call->getOutput();
-                                    it = method.vpm->insertReadVPM(method, it, output);
+                                        // const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
+                                        it = method.vpm->insertReadVPM(method, it, output, &area, true);
+                                    }
+                                    else {
+                                        // TODO: gather these instructions in one mutex lock
+                                        it = method.vpm->insertLockMutex(it, true);
+                                        assign(it, output) = VPM_IO_REGISTER;
+                                        it = method.vpm->insertUnlockMutex(it, true);
+                                    }
                                 }
                                 else
                                 {
@@ -779,45 +780,12 @@ void Normalizer::normalize(Module& module) const
     }
 
     {
-        logging::info() << "=====================================" << __FILE__ << " : " << __LINE__ << logging::endl;
-        for(auto& method : module)
-        {
-            auto it = method->walkAllInstructions();
-            while(!it.isEndOfMethod())
-            {
-                auto ii = it.get();
-                logging::info() << ii->to_string() << logging::endl;
-                it = it.nextInMethod();
-            }
-        }
-
-        std::string a;
-        std::cin >> a;
-    }
-
-    {
+        // TODO: move this optimization to appropriate location
         auto kernels = module.getKernels();
         for(Method* kernelFunc : kernels)
         {
             combineDMALoads(module, *kernelFunc, config);
         }
-    }
-
-    {
-        logging::info() << "=====================================" << __FILE__ << " : " << __LINE__ << logging::endl;
-        for(auto& method : module)
-        {
-            auto it = method->walkAllInstructions();
-            while(!it.isEndOfMethod())
-            {
-                auto ii = it.get();
-                logging::info() << ii->to_string() << logging::endl;
-                it = it.nextInMethod();
-            }
-        }
-
-        std::string a;
-        std::cin >> a;
     }
 
     auto kernels = module.getKernels();

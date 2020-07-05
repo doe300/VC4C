@@ -1170,15 +1170,17 @@ VPWDMASetup VPMArea::toWriteDMASetup(DataType elementType, uint8_t numRows) cons
     return setup;
 }
 
-VPRGenericSetup VPMArea::toReadSetup(DataType elementType, uint8_t numRows) const
+VPRGenericSetup VPMArea::toReadSetup(DataType elementType/*, uint8_t numRows*/) const
 {
+    uint8_t numRows_ = numRows;
+
     elementType = simplifyComplexTypes(elementType);
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
     {
         // 64-bit integer vectors are stored as 2 rows of 32-bit integer vectors in VPM
         type = DataType{32, type.getVectorWidth(), type.isFloatingType()};
-        numRows = 2 * numRows;
+        numRows_ = 2 * numRows_;
     }
     if(type.isUnknown())
         throw CompilationError(
@@ -1187,7 +1189,7 @@ VPRGenericSetup VPMArea::toReadSetup(DataType elementType, uint8_t numRows) cons
     // if we can pack into a single row, do so. Otherwise set stride to beginning of next row
     const uint8_t stride =
         canBePackedIntoRow() ? 1 : static_cast<uint8_t>(TYPE_INT32.getScalarBitCount() / type.getScalarBitCount());
-    VPRGenericSetup setup(getVPMSize(type), stride, numRows, calculateQPUSideAddress(type, rowOffset, 0));
+    VPRGenericSetup setup(getVPMSize(type), stride, numRows_, calculateQPUSideAddress(type, rowOffset, 0));
     setup.setHorizontal(IS_HORIZONTAL);
     setup.setLaned(!IS_PACKED);
     return setup;
