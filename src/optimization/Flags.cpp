@@ -468,6 +468,11 @@ Optional<ConditionCode> getConditionalBooleanWrites(const Value& val, Instructio
     auto secondFlagIt = it.getBasicBlock()->findLastSettingOfFlags(writerWalkers.back());
     if(!firstFlagIt || firstFlagIt != secondFlagIt)
         return {};
+    // check the flags setter for the conditional value is also the last flag setter in the block as seen from the
+    // current flag setter
+    auto selfFlagIt = it.getBasicBlock()->findLastSettingOfFlags(it);
+    if(!selfFlagIt || *selfFlagIt != *firstFlagIt || *selfFlagIt != *secondFlagIt)
+        return {};
     // check written values are boolean true or false
     auto firstValue = writerWalkers.front()->precalculate().first;
     auto secondValue = writerWalkers.back()->precalculate().first;
