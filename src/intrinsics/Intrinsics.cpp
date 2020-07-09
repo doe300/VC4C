@@ -18,6 +18,7 @@
 #include "Comparisons.h"
 #include "Images.h"
 #include "Operators.h"
+#include "Others.h"
 #include "log.h"
 
 #include <cmath>
@@ -422,7 +423,9 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> unaryIn
             }}},
     {"vc4cl_vload3", Intrinsic{intrinsifyMemoryAccess(MemoryAccess::READ, true)}},
     /* simply set the event to something so it is initialized */
-    {"vc4cl_set_event", Intrinsic{intrinsifyValueRead(INT_ZERO), [](const Value& val) -> Value { return INT_ZERO; }}}};
+    {"vc4cl_set_event", Intrinsic{intrinsifyValueRead(INT_ZERO), [](const Value& val) -> Value { return INT_ZERO; }}},
+    {"vc4cl_barrier", Intrinsic{intrinsifyBarrier}},
+};
 
 const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryIntrinsicMapping = {
     {"vc4cl_fmax",
