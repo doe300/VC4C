@@ -172,23 +172,26 @@ static SortedSet<Local*> findInductionCandidates(
 }
 
 static void addForwardCandidates(SortedSet<const intermediate::IntermediateInstruction*>& candidates,
-    const intermediate::IntermediateInstruction& inst, const ControlFlowLoop& loop)
+    const intermediate::IntermediateInstruction& inst, const ControlFlowLoop& loop, bool initialRun)
 {
     // if the instruction is a phi-node, abort
-    if(inst.hasDecoration(intermediate::InstructionDecorations::PHI_NODE) || inst.hasConditionalExecution())
+    if(inst.hasConditionalExecution())
+        return;
+    if(!initialRun && inst.hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
         return;
     // if the instruction is a move, recursively check all readers of the instruction's result that are inside of the
     // loop
     if(auto move = dynamic_cast<const intermediate::MoveOperation*>(&inst))
     {
-        if(!move->isSimpleMove())
+        if(!move->isSimpleMove() || move->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
+            // allow phi-node only if it is directly the step operation candidate
             return;
         if(auto loc = move->getOutput()->checkLocal())
         {
             for(auto reader : loc->getUsers(LocalUse::Type::READER))
             {
                 if(loop.findInLoop(reader))
-                    addForwardCandidates(candidates, *reader, loop);
+                    addForwardCandidates(candidates, *reader, loop, false);
             }
         }
     }
@@ -293,7 +296,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
             }
             if(pair.second.readsLocal() && it)
                 // read inside of loop - walk all readers to assemble the list of step candiates
-                addForwardCandidates(forwardStepCandidates, *pair.first, *this);
+                addForwardCandidates(forwardStepCandidates, *pair.first, *this, true);
         }
 
         SortedSet<const intermediate::IntermediateInstruction*> stepCandidates{};

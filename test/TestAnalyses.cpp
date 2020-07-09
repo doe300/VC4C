@@ -178,8 +178,8 @@ void TestAnalyses::testControlFlowGraph()
         TEST_THROWS_NOTHING(cfg.getStartOfControlFlow());
         // An end of the CFG
         TEST_ASSERT_EQUALS(BasicBlock::LAST_BLOCK, cfg.getEndOfControlFlow().key->getLabel()->getLabel()->name);
-        // 10 nodes
-        TEST_ASSERT_EQUALS(40, numNodes);
+        // 41 nodes
+        TEST_ASSERT_EQUALS(41, numNodes);
         FastSet<const CFGEdge*> backEdges;
         FastSet<const CFGEdge*> implicitEdges;
         FastSet<const CFGEdge*> workGroupEdges;
@@ -196,8 +196,8 @@ void TestAnalyses::testControlFlowGraph()
         });
         // 2 back edges (2 for loops)
         TEST_ASSERT_EQUALS(2u, backEdges.size());
-        // 4 implicit edges (into and out of the function calls)
-        TEST_ASSERT_EQUALS(7u, implicitEdges.size());
+        // 8 implicit edges (into and out of the function calls, 1 inside barrier())
+        TEST_ASSERT_EQUALS(8u, implicitEdges.size());
         // no work-group edges (they are only created by optimizations which are not yet run)
         TEST_ASSERT_EQUALS(0u, workGroupEdges.size());
 
@@ -215,8 +215,8 @@ void TestAnalyses::testControlFlowGraph()
         TEST_THROWS_NOTHING(cfg.getStartOfControlFlow());
         // An end of the CFG
         TEST_ASSERT_EQUALS(BasicBlock::LAST_BLOCK, cfg.getEndOfControlFlow().key->getLabel()->getLabel()->name);
-        // 40 nodes (some added for the work-group loop, some merged)
-        TEST_ASSERT_EQUALS(40, numNodes);
+        // 41 nodes (some added for the work-group loop, some merged)
+        TEST_ASSERT_EQUALS(41, numNodes);
         backEdges.clear();
         implicitEdges.clear();
         workGroupEdges.clear();
@@ -233,9 +233,9 @@ void TestAnalyses::testControlFlowGraph()
         });
         // 5 back edges (2 for the inner loops + 3 for the work-group loops)
         TEST_ASSERT_EQUALS(5u, backEdges.size());
-        // 18 implicit edges (into first loop, out of if-block, out of second loop, 2 * for work-group loop +  a lot for
-        // if-then-after blocks)
-        TEST_ASSERT_EQUALS(18u, implicitEdges.size());
+        // 20 implicit edges (into first loop, out of if-block, out of second loop, 2 * for work-group loop +  a lot for
+        // if-then-after blocks, 2 for barrier())
+        TEST_ASSERT_EQUALS(20u, implicitEdges.size());
         // 3 work-group edges (one per dimension)
         TEST_ASSERT_EQUALS(3u, workGroupEdges.size());
     }
@@ -717,9 +717,16 @@ void TestAnalyses::testDataDependency()
             auto edge = preheaderNode.getEdge(&headerNode);
             TEST_ASSERT(!!edge);
             auto preheaderDependencies = edge->data.at(preheader->key);
-            edge = headerNode.getEdge(&headerNode);
+            auto loopNode = loop.begin();
+            while(loopNode != loop.end() &&
+                (edge = headerNode.getEdge(&dataDependencies->assertNode((*loopNode)->key))) == nullptr)
+            {
+                // the in-loop dependency does not necessarily originate from the header node (e.g. it does not for
+                // barriers)
+                ++loopNode;
+            }
             TEST_ASSERT(!!edge);
-            auto loopDependencies = edge->data.at(headerNode.key);
+            auto loopDependencies = edge->data.at(edge->getOtherNode(headerNode).key);
             TEST_ASSERT(!preheaderDependencies.empty());
             TEST_ASSERT(!loopDependencies.empty());
             auto inductionVars = loop.findInductionVariables(*dataDependencies, false);
@@ -748,7 +755,7 @@ void TestAnalyses::testDataDependency()
 
             auto deps = headerNode.getAllIncomingDependencies();
             TEST_ASSERT(deps.find(loopIt->first) != deps.end());
-            deps = headerNode.getAllOutgoingDependencies();
+            deps = dataDependencies->assertNode((*loopNode)->key).getAllOutgoingDependencies();
             TEST_ASSERT(deps.find(loopIt->first) != deps.end());
             deps = preheaderNode.getAllOutgoingDependencies();
             TEST_ASSERT(deps.find(loopIt->first) != deps.end());

@@ -68,7 +68,7 @@ static bool checkSplatValue(const Value& arg)
 static void propagateDecorations(Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     // XXX does not propagate decoration via phi-nodes of back jumps
-    static std::vector<std::pair<intermediate::InstructionDecorations, bool (*)(const Value&)>> checks = {
+    std::vector<std::pair<intermediate::InstructionDecorations, bool (*)(const Value&)>> checks = {
         {intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, checkWorkGroupUniform},
         {intermediate::InstructionDecorations::IDENTICAL_ELEMENTS, checkSplatValue},
     };
