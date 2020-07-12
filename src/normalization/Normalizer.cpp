@@ -30,8 +30,6 @@
 #include <string>
 #include <vector>
 
-#include <iostream>
-
 using namespace vc4c;
 using namespace vc4c::normalization;
 using namespace vc4c::periphery;
@@ -623,7 +621,8 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
     for(auto& bb : method)
     {
         std::vector<intermediate::MethodCall*> loadInstrs;
-        std::vector<Value> addrValues;
+        std::vector<Value> offsetValues;
+        Optional<Value> addrValue;
         for(auto& it : bb)
         {
             // Find all method calls
@@ -631,19 +630,27 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
             {
                 if(call->methodName == VLOAD16_METHOD_NAME)
                 {
-                    auto addr = call->assertArgument(0);
-                    addrValues.push_back(addr);
+                    offsetValues.push_back(call->assertArgument(0));
                     loadInstrs.push_back(call);
+
+                    if (!addrValue.has_value())
+                    {
+                        addrValue = call->getArgument(1);
+                    }
+                    else if (addrValue == call->getArgument(1))
+                    {
+                        continue;
+                    }
                 }
             }
         }
 
-        if(addrValues.size() == 0)
+        if(offsetValues.size() <= 1)
             continue;
 
         std::vector<std::pair<Value, std::shared_ptr<ValueExpr>>> addrExprs;
 
-        for(auto& addrValue : addrValues)
+        for(auto& addrValue : offsetValues)
         {
             if(auto loc = addrValue.checkLocal())
             {
@@ -726,7 +733,7 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
 
                                         // TODO: limit loadInstrs.size()
 
-                                        Value offset = assign(it, TYPE_INT32) = addrValues[0] << 4_val;
+                                        Value offset = assign(it, TYPE_INT32) = offsetValues[0] << 4_val;
                                         Value addr   = assign(it, TYPE_INT32) = offset + call->assertArgument(1);
 
                                         DataType TYPE_UCHAR16{DataType::BYTE, 16, false};

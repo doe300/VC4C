@@ -1189,6 +1189,9 @@ VPRGenericSetup VPMArea::toReadSetup(DataType elementType/*, uint8_t numRows*/) 
     // if we can pack into a single row, do so. Otherwise set stride to beginning of next row
     const uint8_t stride =
         canBePackedIntoRow() ? 1 : static_cast<uint8_t>(TYPE_INT32.getScalarBitCount() / type.getScalarBitCount());
+
+    if (numRows_ >= 16) numRows_ = 1;
+
     VPRGenericSetup setup(getVPMSize(type), stride, numRows_, calculateQPUSideAddress(type, rowOffset, 0));
     setup.setHorizontal(IS_HORIZONTAL);
     setup.setLaned(!IS_PACKED);
