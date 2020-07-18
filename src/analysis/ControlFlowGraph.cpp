@@ -508,7 +508,12 @@ void ControlFlowGraph::updateOnBranchInsertion(Method& method, InstructionWalker
      */
     auto& node = assertNode(it.getBasicBlock());
     // may not yet exist, e.g. for forward branches
-    auto& nextNode = getOrCreateNode(method.findBasicBlock(it.get<intermediate::Branch>()->getTarget()));
+    auto targetBlock = method.findBasicBlock(it.get<intermediate::Branch>()->getTarget());
+    if(!targetBlock)
+        throw CompilationError(CompilationStep::GENERAL,
+            "Branch target does not belong to any basic block, make sure the block is inserted before the branch",
+            it->to_string());
+    auto& nextNode = getOrCreateNode(targetBlock);
 
     auto& edge = node.getOrCreateEdge(&nextNode).addInput(node);
     // overwrite possible fall-through edge

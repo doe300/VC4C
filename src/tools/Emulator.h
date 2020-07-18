@@ -218,18 +218,17 @@ namespace vc4c
         class Semaphores : private NonCopyable
         {
         public:
-            explicit Semaphores() : counter{}
-            {
-                counter.fill(0);
-            }
+            explicit Semaphores() : counter{0}, blockedQPUs{}, releasedQPUs{} {}
 
-            std::pair<SIMDVector, bool> increment(uint8_t index);
-            std::pair<SIMDVector, bool> decrement(uint8_t index);
+            std::pair<SIMDVector, bool> increment(uint8_t index, uint8_t qpu);
+            std::pair<SIMDVector, bool> decrement(uint8_t index, uint8_t qpu);
 
             void checkAllZero() const;
 
         private:
             std::array<uint8_t, 16> counter;
+            std::array<std::deque<uint8_t>, 16> blockedQPUs;
+            std::array<std::deque<uint8_t>, 16> releasedQPUs;
         };
 
         using ProgramCounter = uint32_t;

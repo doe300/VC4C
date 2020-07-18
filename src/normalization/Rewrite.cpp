@@ -107,6 +107,18 @@ void normalization::extendBranches(const Module& module, Method& method, const C
     }
 }
 
+/*
+ * Check whether there is a phi-instruction that writes the output which is read by the phi-instruction to be inserted.
+ *
+ * In such case, we need to insert the new phi-instruction before the old one, since we need to act "as-if" the
+ * phi-writes would have happen at the beginning of the jumped-to block (or on the edge itself), in which case the input
+ * variable still has its old value.
+ */
+static bool doesWritePhiInput(InstructionWalker it, const Value& phiInput)
+{
+    return it->hasDecoration(intermediate::InstructionDecorations::PHI_NODE) && it->getOutput() == phiInput;
+}
+
 static void mapPhi(const intermediate::PhiNode& node, Method& method, InstructionWalker it)
 {
     while(!it.isStartOfBlock())
@@ -128,6 +140,7 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
         ConditionCode jumpCondition = COND_ALWAYS;
         Value condition(UNDEFINED_VALUE);
         while(blockIt.copy().previousInBlock().get<intermediate::Branch>() ||
+            doesWritePhiInput(blockIt.copy().previousInBlock(), pair.second) ||
             blockIt.copy().previousInBlock()->doesSetFlag())
         {
             blockIt.previousInBlock();

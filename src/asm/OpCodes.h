@@ -1253,6 +1253,11 @@ namespace vc4c
      * behaves like a 32-bit load immediate instruction, so the ALU outputs will not generally be useful.
      *
      * page 33
+     *
+     * Additional observed behavior:
+     * When multiple QPUs wait for a semaphore decremented below 0 and it is incremented, only one QPU at a time is
+     * woken up. In other words, an increment only wakes up at most a single waiting QPU. Thus, to wake up all QPUs
+     * blocked on a semaphore, the semaphore has to be incremented once per blocked QPU.
      */
     enum class OpSemaphore : unsigned char
     {

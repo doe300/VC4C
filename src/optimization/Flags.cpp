@@ -227,8 +227,8 @@ InstructionWalker optimizations::combineFlagWithOutput(
         // only remove this setting of flags, if we have no other side effects and don't execute conditionally
         return it;
     const auto movesFromSameInput = [&](InstructionWalker checkIt) -> bool {
-        return checkIt.has() && !checkIt->doesSetFlag() && !checkIt->hasSideEffects() &&
-            checkIt.get<intermediate::MoveOperation>() &&
+        return checkIt.has() &&
+            (check(checkIt.get<intermediate::MoveOperation>()) & &intermediate::MoveOperation::isSimpleMove) &&
             (checkIt->assertArgument(0) == in ||
                 (in.getLiteralValue() && checkIt->assertArgument(0).hasLiteral(*in.getLiteralValue())));
     };

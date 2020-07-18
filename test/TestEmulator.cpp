@@ -171,37 +171,76 @@ void TestEmulator::testPrime()
 
 void TestEmulator::testBarrier()
 {
-    std::stringstream buffer;
-    compileFile(buffer, "./testing/test_barrier.cl", "", cachePrecompilation);
-
-    EmulationData data;
-    data.kernelName = "test_barrier";
-    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
-    data.module = std::make_pair("", &buffer);
-    data.workGroup.localSizes = {8, 1, 1};
-    data.workGroup.numGroups = {2, 1, 1};
-
-    // output parameter has size: 12 * sizes
-    data.parameter.emplace_back(0u, std::vector<uint32_t>(12 * data.calcNumWorkItems()));
-
-    const auto result = emulate(data);
-    TEST_ASSERT(result.executionSuccessful)
-    TEST_ASSERT_EQUALS(1u, result.results.size())
-
-    const auto& out = *result.results.front().second;
-
-    for(uint32_t i = 0; i < data.calcNumWorkItems(); ++i)
+    // run once without compile-time constant work-group size
     {
-        TEST_ASSERT_EQUALS(0u, out[0 + i * 12])
-        TEST_ASSERT_EQUALS(1u, out[1 + i * 12])
-        TEST_ASSERT_EQUALS(2u, out[2 + i * 12])
-        TEST_ASSERT_EQUALS(4u, out[4 + i * 12])
-        TEST_ASSERT_EQUALS(5u, out[5 + i * 12])
-        TEST_ASSERT_EQUALS(6u, out[6 + i * 12])
-        TEST_ASSERT_EQUALS(7u, out[7 + i * 12])
-        TEST_ASSERT_EQUALS(8u, out[8 + i * 12])
-        TEST_ASSERT_EQUALS(9u, out[9 + i * 12])
-        TEST_ASSERT_EQUALS(10u, out[10 + i * 12])
+        std::stringstream buffer;
+        compileFile(buffer, "./testing/test_barrier.cl", "", cachePrecompilation);
+
+        EmulationData data;
+        data.kernelName = "test_barrier";
+        data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+        data.module = std::make_pair("", &buffer);
+        data.workGroup.localSizes = {8, 1, 1};
+        data.workGroup.numGroups = {2, 1, 1};
+
+        // output parameter has size: 12 * sizes
+        data.parameter.emplace_back(0u, std::vector<uint32_t>(12 * data.calcNumWorkItems()));
+
+        const auto result = emulate(data);
+        TEST_ASSERT(result.executionSuccessful)
+        TEST_ASSERT_EQUALS(1u, result.results.size())
+
+        const auto& out = *result.results.front().second;
+
+        for(uint32_t i = 0; i < data.calcNumWorkItems(); ++i)
+        {
+            TEST_ASSERT_EQUALS(0u, out[0 + i * 12])
+            TEST_ASSERT_EQUALS(1u, out[1 + i * 12])
+            TEST_ASSERT_EQUALS(2u, out[2 + i * 12])
+            TEST_ASSERT_EQUALS(4u, out[4 + i * 12])
+            TEST_ASSERT_EQUALS(5u, out[5 + i * 12])
+            TEST_ASSERT_EQUALS(6u, out[6 + i * 12])
+            TEST_ASSERT_EQUALS(7u, out[7 + i * 12])
+            TEST_ASSERT_EQUALS(8u, out[8 + i * 12])
+            TEST_ASSERT_EQUALS(9u, out[9 + i * 12])
+            TEST_ASSERT_EQUALS(10u, out[10 + i * 12])
+        }
+    }
+
+    // run once with compile-time constant work-group size
+    {
+        std::stringstream buffer;
+        compileFile(buffer, "./testing/test_barrier.cl", "-DFIXED_SIZE=1", cachePrecompilation);
+
+        EmulationData data;
+        data.kernelName = "test_barrier";
+        data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+        data.module = std::make_pair("", &buffer);
+        data.workGroup.localSizes = {8, 1, 1};
+        data.workGroup.numGroups = {2, 1, 1};
+
+        // output parameter has size: 12 * sizes
+        data.parameter.emplace_back(0u, std::vector<uint32_t>(12 * data.calcNumWorkItems()));
+
+        const auto result = emulate(data);
+        TEST_ASSERT(result.executionSuccessful)
+        TEST_ASSERT_EQUALS(1u, result.results.size())
+
+        const auto& out = *result.results.front().second;
+
+        for(uint32_t i = 0; i < data.calcNumWorkItems(); ++i)
+        {
+            TEST_ASSERT_EQUALS(0u, out[0 + i * 12])
+            TEST_ASSERT_EQUALS(1u, out[1 + i * 12])
+            TEST_ASSERT_EQUALS(2u, out[2 + i * 12])
+            TEST_ASSERT_EQUALS(4u, out[4 + i * 12])
+            TEST_ASSERT_EQUALS(5u, out[5 + i * 12])
+            TEST_ASSERT_EQUALS(6u, out[6 + i * 12])
+            TEST_ASSERT_EQUALS(7u, out[7 + i * 12])
+            TEST_ASSERT_EQUALS(8u, out[8 + i * 12])
+            TEST_ASSERT_EQUALS(9u, out[9 + i * 12])
+            TEST_ASSERT_EQUALS(10u, out[10 + i * 12])
+        }
     }
 }
 

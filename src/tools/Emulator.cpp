@@ -1092,13 +1092,41 @@ void VPM::dumpContents() const
 }
 LCOV_EXCL_STOP
 
-std::pair<SIMDVector, bool> Semaphores::increment(uint8_t index)
+std::pair<SIMDVector, bool> Semaphores::increment(uint8_t index, uint8_t qpu)
 {
     auto& cnt = counter.at(index);
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 140, "semaphore increment", cnt < 15);
+    auto& blocked = blockedQPUs.at(index);
+    auto& released = releasedQPUs.at(index);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 140, "semaphore increment",
+        cnt < 15 || (!released.empty() && released.front() == qpu));
     if(cnt == 15)
+    {
+        if(!released.empty() && released.front() == qpu)
+        {
+            released.pop_front();
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Semaphore " << static_cast<unsigned>(index) << " released QPU: " << static_cast<unsigned>(qpu)
+                    << logging::endl);
+            return std::make_pair(SIMDVector(Literal(15)), true);
+        }
+        auto it = std::find(blocked.begin(), blocked.end(), qpu);
+        if(it == blocked.end())
+            blocked.push_back(qpu);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Semaphore " << static_cast<unsigned>(index) << " blocked QPU: " << static_cast<unsigned>(qpu)
+                << logging::endl);
         return std::make_pair(SIMDVector(Literal(15)), false);
-    ++cnt;
+    }
+    else if(cnt == 0 && !blocked.empty())
+    {
+        released.push_back(blocked.front());
+        blocked.pop_front();
+    }
+    else
+        ++cnt;
+    auto it = std::find(released.begin(), released.end(), qpu);
+    if(it != released.end())
+        released.erase(it);
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Semaphore " << static_cast<unsigned>(index) << " increased to: " << static_cast<unsigned>(cnt)
             << logging::endl);
@@ -1107,13 +1135,41 @@ std::pair<SIMDVector, bool> Semaphores::increment(uint8_t index)
     return std::make_pair(SIMDVector(Literal(static_cast<uint32_t>(cnt))), true);
 }
 
-std::pair<SIMDVector, bool> Semaphores::decrement(uint8_t index)
+std::pair<SIMDVector, bool> Semaphores::decrement(uint8_t index, uint8_t qpu)
 {
     auto& cnt = counter.at(index);
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 150, "semaphore decrement", cnt > 0);
+    auto& blocked = blockedQPUs.at(index);
+    auto& released = releasedQPUs.at(index);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 150, "semaphore decrement",
+        cnt > 0 || (!released.empty() && released.front() == qpu));
     if(cnt == 0)
+    {
+        if(!released.empty() && released.front() == qpu)
+        {
+            released.pop_front();
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Semaphore " << static_cast<unsigned>(index) << " released QPU: " << static_cast<unsigned>(qpu)
+                    << logging::endl);
+            return std::make_pair(SIMDVector(Literal(0u)), true);
+        }
+        auto it = std::find(blocked.begin(), blocked.end(), qpu);
+        if(it == blocked.end())
+            blocked.push_back(qpu);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Semaphore " << static_cast<unsigned>(index) << " blocked QPU: " << static_cast<unsigned>(qpu)
+                << logging::endl);
         return std::make_pair(SIMDVector(Literal(0u)), false);
-    --cnt;
+    }
+    else if(cnt == 15 && !blocked.empty())
+    {
+        released.push_back(blocked.front());
+        blocked.pop_front();
+    }
+    else
+        --cnt;
+    auto it = std::find(released.begin(), released.end(), qpu);
+    if(it != released.end())
+        released.erase(it);
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Semaphore " << static_cast<unsigned>(index) << " decreased to: " << static_cast<unsigned>(cnt)
             << logging::endl);
@@ -1124,14 +1180,32 @@ std::pair<SIMDVector, bool> Semaphores::decrement(uint8_t index)
 
 void Semaphores::checkAllZero() const
 {
+    bool anyError = false;
     for(unsigned i = 0; i < counter.size(); ++i)
     {
         if(counter[i] != 0)
         {
+            anyError = true;
             CPPLOG_LAZY(logging::Level::ERROR,
                 log << "Semaphore " << i << " (" << counter[i] << ") is not reset to zero!" << logging::endl);
         }
+        if(!blockedQPUs[i].empty())
+        {
+            anyError = true;
+            CPPLOG_LAZY(logging::Level::ERROR,
+                log << "There are blocked QPUs for semaphore " << i << ": " << to_string<uint8_t>(blockedQPUs[i])
+                    << logging::endl);
+        }
+        if(!releasedQPUs[i].empty())
+        {
+            anyError = true;
+            CPPLOG_LAZY(logging::Level::ERROR,
+                log << "There are released but not yet checked QPUs for semaphore " << i << ": "
+                    << to_string<uint8_t>(releasedQPUs[i]) << logging::endl);
+        }
     }
+    if(anyError)
+        throw CompilationError(CompilationStep::GENERAL, "Semaphores are not in a good state!");
 }
 
 uint32_t QPU::getCurrentCycle() const
@@ -1249,9 +1323,9 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
             SIMDVector result{};
             if(semaphore->getAcquire())
                 // NOTE: "acquire" is decrement, see SemaphoreInstruction#getAcquire() function documentation
-                std::tie(result, dontStall) = semaphores.decrement(static_cast<uint8_t>(semaphore->getSemaphore()));
+                std::tie(result, dontStall) = semaphores.decrement(static_cast<uint8_t>(semaphore->getSemaphore()), ID);
             else
-                std::tie(result, dontStall) = semaphores.increment(static_cast<uint8_t>(semaphore->getSemaphore()));
+                std::tie(result, dontStall) = semaphores.increment(static_cast<uint8_t>(semaphore->getSemaphore()), ID);
 
             if(dontStall)
             {

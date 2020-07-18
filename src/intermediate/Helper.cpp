@@ -388,10 +388,13 @@ BasicBlock& intermediate::insertLoop(
     auto headerLabel = method.addNewLocal(TYPE_LABEL, loopLabel.local()->name, "header");
     auto afterLoopLabel = method.addNewLocal(TYPE_LABEL, loopLabel.local()->name, "after");
 
+    // we need to insert all blocks before inserting the branches to them to make a possible existing CFG happy!
     auto headerIt = method.emplaceLabel(it, new BranchLabel(*headerLabel.local()));
-    headerIt.nextInBlock();
+    auto inLoopIt = method.emplaceLabel(headerIt.copy().nextInBlock(), new BranchLabel(*loopLabel.local()));
+    it = method.emplaceLabel(inLoopIt.copy().nextInBlock(), new BranchLabel(*afterLoopLabel.local()));
 
     // in the header, jump over loop only when condition becomes false, otherwise fall through loop content block
+    headerIt.nextInBlock();
     BranchCond cond = BRANCH_ALWAYS;
     std::tie(headerIt, cond) = insertBranchCondition(method, headerIt, conditionValue);
     headerIt.emplace(new Branch(loopLabel.local(), cond));
@@ -399,14 +402,11 @@ BasicBlock& intermediate::insertLoop(
     headerIt.emplace(new Branch(afterLoopLabel.local(), cond.invert()));
     headerIt.nextInBlock();
 
-    auto inLoopIt = method.emplaceLabel(headerIt, new BranchLabel(*loopLabel.local()));
-    inLoopIt.nextInBlock();
-
     // in loop content block, unconditionally jump back to header
+    inLoopIt.nextInBlock();
     inLoopIt.emplace(new Branch(headerLabel.local()));
     inLoopIt.nextInBlock();
 
-    it = method.emplaceLabel(inLoopIt, new BranchLabel(*afterLoopLabel.local()));
     return *inLoopIt.getBasicBlock();
 }
 

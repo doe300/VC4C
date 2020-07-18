@@ -1,5 +1,8 @@
 #define TPB 8
 
+#ifdef FIXED_SIZE
+__attribute__((reqd_work_group_size(TPB,1,1)))
+#endif
 __kernel void test_barrier(__global int* status)
 {
 	__global int* base = status + get_global_id(0) * (TPB + 4);
