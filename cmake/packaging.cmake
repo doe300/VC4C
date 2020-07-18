@@ -6,15 +6,15 @@ configure_file(cmake/deb-prerem.in "${CMAKE_BINARY_DIR}/prerem" @ONLY NEWLINE_ST
 set(PACKAGE_DEPENDENCIES "vc4cl-stdlib")
 if(NOT SPIRV_CLANG_FOUND AND CLANG_FOUND)
 	# If we build with "default" clang, require its package
-	set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, clang-3.9")
+	set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, clang-6.0")
 	if(LLVMLIB_FRONTEND)
-		# If we also build with libLLVM front-end, require the LLVM library and its development files too (llvm-3.9-dev contains the libLLVM.so)
-		set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, llvm-3.9, llvm-3.9-dev")
+		# If we also build with libLLVM front-end, require the LLVM library and its development files too (llvm-6.0-dev contains the libLLVM.so)
+		set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, llvm-6.0, llvm-6.0-dev")
 	endif()
 	if(LIBCLANG_LIBRARY_PATH)
 		# If we also build with libclang, require the library
 		# TODO check versions/development headers required?
-		set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, libclang-3.9, libclang-3.9-dev")
+		set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, libclang1-6.0, libclang-6.0-dev")
 	endif()
 endif()
 
