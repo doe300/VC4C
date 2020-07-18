@@ -153,10 +153,11 @@ void TestAnalyses::testControlFlowGraph()
                 return true;
             });
         });
-        // 5 back edges (2 for the inner loops + 3 for the work-group loops)
-        TEST_ASSERT_EQUALS(5u, backEdges.size());
-        // 6 implicit edges (into first loop, 2 * out of if-blocks, out of second loop, 2 * for work-group loop)
-        TEST_ASSERT_EQUALS(6u, implicitEdges.size());
+        // 6 back edges (2 for the inner loops, 3 for the work-group loops, 1 for work-group barrier loops)
+        TEST_ASSERT_EQUALS(6u, backEdges.size());
+        // 20 implicit edges (into first loop, 2 out of if-blocks, out of second loop, 2 for work-group loop, some for
+        // work-group barrier loops)
+        TEST_ASSERT_EQUALS(20u, implicitEdges.size());
         // 3 work-group edges (one per dimension)
         TEST_ASSERT_EQUALS(3u, workGroupEdges.size());
     }
@@ -231,11 +232,11 @@ void TestAnalyses::testControlFlowGraph()
                 return true;
             });
         });
-        // 5 back edges (2 for the inner loops + 3 for the work-group loops)
-        TEST_ASSERT_EQUALS(5u, backEdges.size());
-        // 20 implicit edges (into first loop, out of if-block, out of second loop, 2 * for work-group loop +  a lot for
-        // if-then-after blocks, 2 for barrier())
-        TEST_ASSERT_EQUALS(20u, implicitEdges.size());
+        // 6 back edges (3 for the inner loops, 3 for the work-group loops, 1 for work-group barrier loops)
+        TEST_ASSERT_EQUALS(6u, backEdges.size());
+        // 34 implicit edges (into first loop, out of if-block, out of second loop, 2 for work-group loop, some for
+        // if-then-after blocks, a lot for barrier(), 5 for work-group barrier loops)
+        TEST_ASSERT_EQUALS(34u, implicitEdges.size());
         // 3 work-group edges (one per dimension)
         TEST_ASSERT_EQUALS(3u, workGroupEdges.size());
     }
@@ -702,7 +703,8 @@ void TestAnalyses::testDataDependency()
         // The end of control flow has no incoming or outgoing dependencies, so it has no dependency node at all
         TEST_ASSERT_EQUALS(nullptr, dataDependencies->findNode(cfg.getEndOfControlFlow().key));
 
-        // The 2 inner-most loop has the induction variable as dependency to its dominator/preceding node and themselves
+        // The 2 inner-most loop have the induction variable as dependency to their dominator/preceding node and
+        // themselves
         auto loops = cfg.findLoops(false);
         TEST_ASSERT_EQUALS(2u, loops.size());
         for(auto& loop : loops)

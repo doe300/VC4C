@@ -33,7 +33,6 @@ __kernel void test_private_storage(__global int* in, __global int* out)
     loc[10] = in[gid] + 13;
     loc[11] = in[gid] + 14;
 
-    barrier(CLK_LOCAL_MEM_FENCE);
     loc[0] = loc[0] + loc[lid];
     out[gid] = loc[0];
 }

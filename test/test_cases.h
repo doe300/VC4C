@@ -272,8 +272,17 @@ namespace vc4c
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/boost-compute/test_functional_popcount.cl", "copy",
 					{toParameter(std::vector<unsigned>(4)), toParameter(std::vector<unsigned>{1, 0, 17, 0, 1, 2, 15, 1}), toScalarParameter(4)
 					}, toConfig(8, 1, 1), maxExecutionCycles), addVector({}, 0, std::vector<unsigned>{1, 2, 2, 5})
-				)
+				),
 #endif
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/local_kernel_scope.cl", "test",
+					{toParameter(toRange<unsigned>(0, 64)), toParameter(std::vector<unsigned>(8))}, toConfig(8, 1, 1, 8), maxExecutionCycles),
+					addVector({}, 1, std::vector<unsigned>{7, 15, 23, 31, 39, 47, 55, 63})
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/barrier.cl", "compute_sum",
+					{toParameter(toRange<unsigned>(0, 24)), toScalarParameter(23), toParameter(std::vector<unsigned>(16)), toParameter(std::vector<unsigned>(1))
+					}, toConfig(11), maxExecutionCycles),
+					addVector({}, 3, std::vector<unsigned>{253})
+				),
 		};
 
 		//TODO NVIDIA/matrixMul, NVIDIA/transpose, OpenCLIPP/Arithmetic, OpenCLIPP/Logic, OpenCLIPP/Thresholding, test_signedness

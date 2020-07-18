@@ -16,9 +16,11 @@
 #include "../intermediate/TypeConversions.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
+#include "../intrinsics/WorkItems.h"
 #include "../normalization/LiteralValues.h"
 #include "../periphery/VPM.h"
 #include "./Combiner.h"
+#include "Optimizer.h"
 #include "log.h"
 
 #include <algorithm>
@@ -861,12 +863,35 @@ static void generateStopSegment(Method& method)
     method.appendToEnd(new intermediate::Nop(intermediate::DelayType::THREAD_END));
 }
 
-static const Local* isLocalUsed(Method& method, BuiltinLocal::Type type)
+static const Local* isLocalUsed(Method& method, BuiltinLocal::Type type, bool forceUse = false)
 {
+    if(forceUse)
+        return method.findOrCreateBuiltin(type);
     auto loc = method.findBuiltin(type);
     if(loc != nullptr && !loc->getUsers(LocalUse::Type::READER).empty())
         return loc;
     return nullptr;
+}
+
+/*
+ * For inserting the work-group loop, we need the presence of the the local IDs and local sizes UNIFORM, independent of
+ * whether they are ever used in the "actual" kernel code.
+ */
+static bool isLocalInformationRequired(const Configuration& config)
+{
+    std::string workGroupLoopOptimization = "loop-work-groups";
+
+    if(config.additionalDisabledOptimizations.find(workGroupLoopOptimization) !=
+        config.additionalDisabledOptimizations.end())
+        // explicitly disabled
+        return false;
+    if(config.additionalEnabledOptimizations.find(workGroupLoopOptimization) !=
+        config.additionalEnabledOptimizations.end())
+        // explicitly enabled
+        return true;
+
+    auto enabledPasses = Optimizer::getPasses(config.optimizationLevel);
+    return enabledPasses.find(workGroupLoopOptimization) != enabledPasses.end();
 }
 
 void optimizations::addStartStopSegment(const Module& module, Method& method, const Configuration& config)
@@ -915,17 +940,18 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     method.metaData.uniformsUsed.value = 0;
     auto workInfoDecorations =
         add_flag(InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+    bool isLocalInfoRequired = isLocalInformationRequired(config);
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::WORK_DIMENSIONS))
     {
         method.metaData.uniformsUsed.setWorkDimensionsUsed(true);
         assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT8), workInfoDecorations);
     }
-    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::LOCAL_SIZES))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::LOCAL_SIZES, isLocalInfoRequired))
     {
         method.metaData.uniformsUsed.setLocalSizesUsed(true);
         assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
     }
-    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::LOCAL_IDS))
+    if(auto loc = isLocalUsed(method, BuiltinLocal::Type::LOCAL_IDS, isLocalInfoRequired))
     {
         method.metaData.uniformsUsed.setLocalIDsUsed(true);
         assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32),
@@ -1763,11 +1789,8 @@ static void resetReturnBranches(Method& method, BasicBlock& lastBlock, BasicBloc
 NODISCARD static InstructionWalker insertAddressResetBlock(
     Method& method, InstructionWalker it, const Value& maxGroupIdX, const Value& maxGroupIdY, const Value& maxGroupIdZ)
 {
-    auto& lastBlock = *it.getBasicBlock();
     it = method.emplaceLabel(
         it, new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL, "", "%work_group_repetition").local()));
-    auto& resetBlock = *it.getBasicBlock();
-    resetReturnBranches(method, lastBlock, resetBlock);
 
     // insert after label, not before
     it.nextInBlock();
@@ -1862,6 +1885,33 @@ static void insertRepetitionBlocks(
         method, defaultBlock, groupIdZ, maxGroupIdZ, it, groupIdY.local(), mergeGroupIds ? 2 : -1);
 }
 
+/**
+ * We need to synchronize the execution paths of all work-item executions (QPUs).
+ *
+ * This is required due to some work-item executions might still be stuck in the previous work-group iteration (e.g. if
+ * stalled on memory access), while some work-item executions already moved to the next work-group iteration. Thus, the
+ * work-item executions might access memory which is already overwritten in the next work-group iteration.
+ *
+ * This is especially true for code which differs in the execution path based on the local ID, e.g. for some special
+ * reduction step only executed by get_local_id() == 0, which is not an uncommon pattern!
+ *
+ * To avoid this, we need to make sure all work-item executions are done with the previous work-group iteration before
+ * any of them can start executing the next work-group iteration. The expected behavior is very similar to the
+ * barrier(...) OpenCL C function.
+ */
+static void insertSynchronizationBlock(Method& method, BasicBlock& lastBlock)
+{
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Inserting work-item synchronization block..." << logging::endl);
+
+    auto it = method.emplaceLabel(lastBlock.walk(),
+        new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL, "", "%work_item_synchronization").local()));
+    auto& syncBlock = *it.getBasicBlock();
+    resetReturnBranches(method, lastBlock, syncBlock);
+
+    it.nextInBlock();
+    intrinsics::insertControlFlowBarrier(method, it);
+}
+
 bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const Configuration& config)
 {
     if(method.walkAllInstructions().isEndOfMethod())
@@ -1891,6 +1941,9 @@ bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const
 
     // Remove reads of UNIFORMs for group ids and move initializing to zero out of loop
     bool groupIdsNotUsed = moveGroupIdInitializers(method, defaultBlock, startBlock);
+
+    // Insert a block to synchronize all work-item/QPUs to avoid data races between work-group iterations
+    insertSynchronizationBlock(method, *lastBlock);
 
     // Insert all the code required to increment/reset the ids and repeat the kernel code
     insertRepetitionBlocks(method, defaultBlock, *lastBlock, groupIdsNotUsed);

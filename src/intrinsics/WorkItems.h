@@ -34,6 +34,8 @@ namespace vc4c
          */
         NODISCARD InstructionWalker intrinsifyBarrier(
             Method& method, InstructionWalker it, const intermediate::MethodCall* callSite);
+
+        void insertControlFlowBarrier(Method& method, InstructionWalker it);
     } // namespace intrinsics
 } // namespace vc4c
 #endif /* INTRINSICS_OTHERS_H */

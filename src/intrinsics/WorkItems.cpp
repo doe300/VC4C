@@ -401,7 +401,7 @@ static void insertPrimaryBarrierCode(Method& method, BasicBlock& block, const Va
     it.emplace(new Branch(afterLabel));
 }
 
-InstructionWalker intrinsics::intrinsifyBarrier(Method& method, InstructionWalker it, const MethodCall* callSite)
+static void lowerBarrier(Method& method, InstructionWalker it, const MethodCall* callSite)
 {
     /*
      * "All work-items in a work-group executing the kernel on a processor must execute this function
@@ -428,8 +428,6 @@ InstructionWalker intrinsics::intrinsifyBarrier(Method& method, InstructionWalke
      * Since the semaphores have 4-bit (16 values) and there is a maximum of 12 work-items, they can't stall because of
      * overflow beyond 15
      */
-    CPPLOG_LAZY(
-        logging::Level::DEBUG, log << "Intrinsifying control flow barrier: " << callSite->to_string() << logging::endl);
 
     Optional<Value> localSizeScalar = NO_VALUE;
     auto maximumWorkGroupSize = NUM_QPUS;
@@ -443,17 +441,12 @@ InstructionWalker intrinsics::intrinsifyBarrier(Method& method, InstructionWalke
                 log << "Control flow barrier with single work-item is a no-op!" << logging::endl);
             // erase barrier() function call
             it.erase();
-            // so next instruction is not skipped
-            it.previousInBlock();
-            return it;
+            return;
         }
         // for other (fixed known) work-group sized, we can at least simplify some of the checks and skip some blocks
         maximumWorkGroupSize = method.metaData.getWorkGroupSize();
         localSizeScalar = Value(Literal(maximumWorkGroupSize), TYPE_INT8);
     }
-
-    // since we do insert functions that needs intrinsification, we need to go over all of them again
-    auto origIt = it.copy().previousInBlock();
 
     // calculate the scalar local ID and size
     auto localIdX = method.addNewLocal(TYPE_INT8, "%local_id_x");
@@ -543,6 +536,20 @@ InstructionWalker intrinsics::intrinsifyBarrier(Method& method, InstructionWalke
     insertNonPrimaryBarrierCode(
         method, *secondaryBlock, localIdScalar, *localSizeScalar, maximumWorkGroupSize, afterLabel);
     insertPrimaryBarrierCode(method, *primaryBlock, localIdScalar, *localSizeScalar, maximumWorkGroupSize, afterLabel);
+}
 
+InstructionWalker intrinsics::intrinsifyBarrier(Method& method, InstructionWalker it, const MethodCall* callSite)
+{
+    CPPLOG_LAZY(
+        logging::Level::DEBUG, log << "Intrinsifying control flow barrier: " << callSite->to_string() << logging::endl);
+    // since we do insert functions that needs intrinsification, we need to go over all of them again
+    auto origIt = it.copy().previousInBlock();
+    lowerBarrier(method, it, callSite);
     return origIt.nextInBlock();
+}
+
+void intrinsics::insertControlFlowBarrier(Method& method, InstructionWalker it)
+{
+    it.emplace(new intermediate::MethodCall("dummy", {}));
+    lowerBarrier(method, it, it.get<intermediate::MethodCall>());
 }
