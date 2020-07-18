@@ -4,5 +4,5 @@ target_sources(${VC4C_LIBRARY_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/Images.cpp
     ${CMAKE_CURRENT_LIST_DIR}/Intrinsics.cpp
     ${CMAKE_CURRENT_LIST_DIR}/Operators.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/Others.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/WorkItems.cpp
 )
