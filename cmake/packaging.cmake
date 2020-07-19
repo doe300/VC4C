@@ -6,15 +6,19 @@ configure_file(cmake/deb-prerem.in "${CMAKE_BINARY_DIR}/prerem" @ONLY NEWLINE_ST
 set(PACKAGE_DEPENDENCIES "vc4cl-stdlib")
 if(NOT SPIRV_CLANG_FOUND AND CLANG_FOUND)
 	# If we build with "default" clang, require its package
-	set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, clang-6.0")
+	if(CLANG_VERSION_STRING VERSION_GREATER_EQUAL 7.0)
+		# As of clang 7.0, the package does not list the minor version number (clang-7 instead of clang-7.0), so we need to rewrite the version string
+		string (REGEX REPLACE "([0-9]+)\\.*[0-9]+" "\\1" CLANG_VERSION_STRING "${CLANG_VERSION_STRING}")
+	endif()
+	set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, clang-${CLANG_VERSION_STRING}")
 	if(LLVMLIB_FRONTEND)
-		# If we also build with libLLVM front-end, require the LLVM library and its development files too (llvm-6.0-dev contains the libLLVM.so)
-		set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, llvm-6.0, llvm-6.0-dev")
+		# If we also build with libLLVM front-end, require the LLVM library and its development files too (llvm-x.y-dev contains the libLLVM.so)
+		set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, llvm-${CLANG_VERSION_STRING}, llvm-${CLANG_VERSION_STRING}-dev")
 	endif()
 	if(LIBCLANG_LIBRARY_PATH)
 		# If we also build with libclang, require the library
 		# TODO check versions/development headers required?
-		set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, libclang1-6.0, libclang-6.0-dev")
+		set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, libclang1-${CLANG_VERSION_STRING}, libclang-${CLANG_VERSION_STRING}-dev")
 	endif()
 endif()
 

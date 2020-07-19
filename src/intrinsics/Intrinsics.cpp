@@ -63,6 +63,8 @@ static IntrinsicFunction intrinsifyUnaryALUInstruction(const std::string& opCode
             it.reset(
                 (new Operation(OpCode::toOpCode(opCode), callSite->getOutput().value(), callSite->assertArgument(0)))
                     ->copyExtrasFrom(callSite));
+        // XXX pack modes do not write all bytes, need to zero/sign extend before? Would only be necessary if we
+        // actually use the other bits.
         if(packMode.hasEffect())
             it.get<ExtendedInstruction>()->setPackMode(packMode);
         if(unpackMode.hasEffect())

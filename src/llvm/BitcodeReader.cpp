@@ -615,6 +615,8 @@ static ParameterDecorations toParameterDecorations(const llvm::Argument& arg, Da
     if(arg.hasNoAliasAttr())
         deco = add_flag(deco, ParameterDecorations::RESTRICT);
     if(arg.onlyReadsMemory())
+        // XXX this sets the CL_KERNEL_ARG_TYPE_QUALIFIER for the parameter to CL_KERNEL_ARG_TYPE_CONST, which it
+        // should not. Somehow this seems to be no problem anymore for LLVM 6.0 and up?!
         deco = add_flag(deco, ParameterDecorations::READ_ONLY);
     if(type.getImageType())
     {
