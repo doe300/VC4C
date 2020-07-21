@@ -470,3 +470,29 @@ std::pair<Optional<Value>, std::bitset<NATIVE_VECTOR_SIZE>> intermediate::getBra
     // failed to determine
     return std::make_pair(NO_VALUE, 0);
 }
+
+void intermediate::redirectAllBranches(BasicBlock& oldTarget, BasicBlock& newTarget)
+{
+    // Since (at least if the CFG for the method is already created), by resetting the branch to this block we modify
+    // the incoming edges we iterate over, we need to split the finding the function to modify and replacing it.
+    FastAccessList<InstructionWalker> instructionsToBeReset;
+    oldTarget.forPredecessors([&](InstructionWalker walker) {
+        if(auto branch = walker.get<intermediate::Branch>())
+        {
+            if(branch->getTarget() == oldTarget.getLabel()->getLabel())
+                instructionsToBeReset.emplace_back(walker);
+        }
+        // fall-throughs are already handled by inserting the block
+    });
+
+    for(auto& walker : instructionsToBeReset)
+    {
+        auto branch = walker.get<intermediate::Branch>();
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Resetting branch to '" << oldTarget.to_string() << "' to jump to '" << newTarget.to_string()
+                << "' instead: " << walker->to_string() << logging::endl);
+        // need to reset the instruction to correctly update the CFG
+        walker.reset((new intermediate::Branch(newTarget.getLabel()->getLabel(), branch->branchCondition))
+                         ->copyExtrasFrom(branch));
+    }
+}

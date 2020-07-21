@@ -42,6 +42,26 @@ namespace vc4c
             std::string to_string() const;
         };
 
+        struct MemoryAccess
+        {
+            /**
+             * The map of the instructions accessing the memory location and the local the memory location is accessed
+             * as.
+             *
+             * In most cases, the local will be the actual memory local (e.g. Parameter, Global, StackAllocation).
+             * However, if the corresponding memory access is conditional (e.g. the address is assigned via phi-node or
+             * selection), then the value in this mapping will represent the conditionally assigned address local.
+             */
+            FastMap<InstructionWalker, const Local*> accessInstructions;
+            MemoryAccessType preferred;
+            MemoryAccessType fallback;
+            /**
+             * Whether the associated memory area can be cached in VPM at all. This flag is only valid for the
+             * RAM_READ_WRITE_VPM access type.
+             */
+            bool canBeCachedInVPM = true;
+        };
+
         using GroupedAccessRanges =
             FastMap<const Local*, std::pair<FastAccessList<MemoryAccessRange>, const periphery::VPMArea*>>;
         using MemoryAccessMap = SortedMap<const Local*, MemoryAccess, analysis::LocalUsageOrdering>;

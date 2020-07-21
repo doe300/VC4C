@@ -9,6 +9,7 @@
 
 #include "../InstructionWalker.h"
 
+#include <functional>
 #include <string>
 
 namespace vc4c
@@ -35,7 +36,18 @@ namespace vc4c
         NODISCARD InstructionWalker intrinsifyBarrier(
             Method& method, InstructionWalker it, const intermediate::MethodCall* callSite);
 
-        void insertControlFlowBarrier(Method& method, InstructionWalker it);
+        /**
+         * Inserts a control-flow barrier similar to the barrier(...) OpenCL C function at the given position.
+         *
+         * The optional function is called to insert code into the code path of the first work-item (local ID zero) at
+         * the point where all other work-items are blocked on one of the semaphores. This can be used e.g. to pre-load
+         * or write-back data from/to a cache.
+         *
+         * NOTE: The function inserting the optional code to be executed by the first work-item only may be executed
+         * multiple times to insert code into multiple blocks!
+         */
+        void insertControlFlowBarrier(Method& method, InstructionWalker it,
+            const std::function<InstructionWalker(InstructionWalker)>& insertFirstWorkItemOnlyCode = {});
     } // namespace intrinsics
 } // namespace vc4c
 #endif /* INTRINSICS_OTHERS_H */

@@ -110,6 +110,11 @@ namespace vc4c
          * #insertBranchCondition(...) which created the given instruction.
          */
         std::pair<Optional<Value>, std::bitset<NATIVE_VECTOR_SIZE>> getBranchCondition(const ExtendedInstruction* inst);
+
+        /**
+         * Redirects all EXPLICIT branches previously targeting the old target to now jump to the new target.
+         */
+        void redirectAllBranches(BasicBlock& oldTarget, BasicBlock& newTarget);
     } // namespace intermediate
 } // namespace vc4c
 

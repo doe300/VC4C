@@ -21,27 +21,6 @@ namespace vc4c
     namespace analysis
     {
         /**
-         * Enum for the different ways of how to access memory areas
-         */
-        enum class MemoryAccessType
-        {
-            // lower the value into a register and replace all loads with moves
-            QPU_REGISTER_READONLY,
-            // lower the value into a register and replace all loads/stores with moves
-            QPU_REGISTER_READWRITE,
-            // store in VPM in extra space per QPU!!
-            VPM_PER_QPU,
-            // store in VPM, QPUs share access to common data
-            VPM_SHARED_ACCESS,
-            // keep in RAM/global data segment, read via TMU
-            RAM_LOAD_TMU,
-            // keep in RAM/global data segment, access via VPM
-            RAM_READ_WRITE_VPM
-        };
-
-        std::string toString(MemoryAccessType type);
-
-        /**
          * Analysis data for the range of memory accessed per memory object
          *
          * The final address is calculated as following:
@@ -83,21 +62,6 @@ namespace vc4c
             std::string to_string() const;
         };
 
-        struct MemoryAccess
-        {
-            /**
-             * The map of the instructions accessing the memory location and the local the memory location is accessed
-             * as.
-             *
-             * In most cases, the local will be the actual memory local (e.g. Parameter, Global, StackAllocation).
-             * However, if the corresponding memory access is conditional (e.g. the address is assigned via phi-node or
-             * selection), then the value in this mapping will represent the conditionally assigned address local.
-             */
-            FastMap<InstructionWalker, const Local*> accessInstructions;
-            MemoryAccessType preferred;
-            MemoryAccessType fallback;
-        };
-
         struct LocalUsageOrdering
         {
             bool operator()(const Local* l1, const Local* l2) const;
@@ -122,7 +86,7 @@ namespace vc4c
          * NOTE: This function is intended to be run BEFORE the MemoryInstructions have been lowered!
          */
         FastAccessList<MemoryAccessRange> determineAccessRanges(
-            Method& method, const Local* baseAddr, MemoryAccess& access);
+            Method& method, const Local* baseAddr, FastMap<InstructionWalker, const Local*>& accessInstructions);
 
         /**
          * Checks whether all work-group uniform parts of the memory accesses are equal.

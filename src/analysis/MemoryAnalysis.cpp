@@ -9,27 +9,6 @@ using namespace vc4c;
 using namespace vc4c::analysis;
 
 LCOV_EXCL_START
-std::string analysis::toString(MemoryAccessType type)
-{
-    switch(type)
-    {
-    case MemoryAccessType::QPU_REGISTER_READONLY:
-        return "read-only register";
-    case MemoryAccessType::QPU_REGISTER_READWRITE:
-        return "read-write register";
-    case MemoryAccessType::VPM_PER_QPU:
-        return "private VPM area";
-    case MemoryAccessType::VPM_SHARED_ACCESS:
-        return "shared VPM area";
-    case MemoryAccessType::RAM_LOAD_TMU:
-        return "read-only RAM via TMU";
-    case MemoryAccessType::RAM_READ_WRITE_VPM:
-        return "read-write RAM via DMA";
-    }
-    throw CompilationError(
-        CompilationStep::GENERAL, "Unhandled memory access type", std::to_string(static_cast<unsigned>(type)));
-}
-
 std::string MemoryAccessRange::to_string() const
 {
     std::string exprPart{};
@@ -509,11 +488,11 @@ static Optional<MemoryAccessRange> findAccessRange(Method& method, const Value& 
 }
 
 FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
-    Method& method, const Local* baseAddr, MemoryAccess& access)
+    Method& method, const Local* baseAddr, FastMap<InstructionWalker, const Local*>& accessInstructions)
 {
     // NOTE: If we cannot find one access range for a local, we cannot combine any other access ranges for this local!
     FastAccessList<MemoryAccessRange> result;
-    for(const auto& entry : access.accessInstructions)
+    for(const auto& entry : accessInstructions)
     {
         const auto memInstr = entry.first.get<intermediate::MemoryInstruction>();
         switch(memInstr->op)

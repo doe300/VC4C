@@ -377,7 +377,8 @@ static void insertNonPrimaryBarrierCode(Method& method, BasicBlock& block, const
 }
 
 static void insertPrimaryBarrierCode(Method& method, BasicBlock& block, const Value& localIdScalar,
-    const Value& localSizeScalar, uint32_t maxGroupSize, const Local* afterLabel)
+    const Value& localSizeScalar, uint32_t maxGroupSize, const Local* afterLabel,
+    const std::function<InstructionWalker(InstructionWalker)>& insertFirstWorkItemOnlyCode)
 {
     // the first work-item waits on its semaphore for all other to have increased it (size -1 times) and then wakes up
     // the second work-item
@@ -393,15 +394,20 @@ static void insertPrimaryBarrierCode(Method& method, BasicBlock& block, const Va
         loopIt.nextInBlock();
         assign(loopIt, numRepetitions) = (numRepetitions - 1_val, InstructionDecorations::PHI_NODE);
     }
-
     // after loop
     it.nextInBlock();
+
+    // at this point, local ID is the only work-item running, the rest is blocked on the semaphores
+    if(insertFirstWorkItemOnlyCode)
+        it = insertFirstWorkItemOnlyCode(it);
+
     it.emplace(new SemaphoreAdjustment(static_cast<Semaphore>(1), true));
     it.nextInBlock();
     it.emplace(new Branch(afterLabel));
 }
 
-static void lowerBarrier(Method& method, InstructionWalker it, const MethodCall* callSite)
+static void lowerBarrier(Method& method, InstructionWalker it, const MethodCall* callSite,
+    const std::function<InstructionWalker(InstructionWalker)>& insertFirstWorkItemOnlyCode)
 {
     /*
      * "All work-items in a work-group executing the kernel on a processor must execute this function
@@ -439,6 +445,8 @@ static void lowerBarrier(Method& method, InstructionWalker it, const MethodCall*
             // for a single work-item there is no need to synchronize
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Control flow barrier with single work-item is a no-op!" << logging::endl);
+            if(insertFirstWorkItemOnlyCode)
+                it = insertFirstWorkItemOnlyCode(it);
             // erase barrier() function call
             it.erase();
             return;
@@ -507,9 +515,25 @@ static void lowerBarrier(Method& method, InstructionWalker it, const MethodCall*
     auto primaryBlock = it.getBasicBlock();
     it.nextInBlock();
 
+    auto beforeAfterIt = it.copy().previousInMethod();
     auto afterLabel = method.addNewLocal(TYPE_LABEL, "%barrier_after").local();
     it = method.emplaceLabel(it, new BranchLabel(*afterLabel));
     it.nextInBlock();
+
+    auto skipBarrierLabel = afterLabel;
+    if(insertFirstWorkItemOnlyCode)
+    {
+        // if we insert some first work-item only code, we need to also execute it if we have a single work-item
+        // (work-group size is one)!
+        skipBarrierLabel = method.addNewLocal(TYPE_LABEL, "%barrier_skip").local();
+        beforeAfterIt.nextInMethod();
+        beforeAfterIt = method.emplaceLabel(beforeAfterIt, new BranchLabel(*skipBarrierLabel));
+        beforeAfterIt.nextInBlock();
+        beforeAfterIt = insertFirstWorkItemOnlyCode(beforeAfterIt);
+        beforeAfterIt.emplace(new Branch(afterLabel));
+        beforeAfterIt.nextInBlock();
+    }
+
     // erase barrier() function call
     it.erase();
 
@@ -529,13 +553,14 @@ static void lowerBarrier(Method& method, InstructionWalker it, const MethodCall*
     std::tie(branchIt, cond) = insertBranchCondition(method, branchIt, tmp /* local size != 1 */);
     branchIt.emplace(new Branch(primaryLabel, cond));
     branchIt.nextInBlock();
-    branchIt.emplace(new Branch(afterLabel, cond.invert()));
+    branchIt.emplace(new Branch(skipBarrierLabel, cond.invert()));
     branchIt.nextInBlock();
 
     // insert the actual content
     insertNonPrimaryBarrierCode(
         method, *secondaryBlock, localIdScalar, *localSizeScalar, maximumWorkGroupSize, afterLabel);
-    insertPrimaryBarrierCode(method, *primaryBlock, localIdScalar, *localSizeScalar, maximumWorkGroupSize, afterLabel);
+    insertPrimaryBarrierCode(method, *primaryBlock, localIdScalar, *localSizeScalar, maximumWorkGroupSize, afterLabel,
+        insertFirstWorkItemOnlyCode);
 }
 
 InstructionWalker intrinsics::intrinsifyBarrier(Method& method, InstructionWalker it, const MethodCall* callSite)
@@ -544,12 +569,13 @@ InstructionWalker intrinsics::intrinsifyBarrier(Method& method, InstructionWalke
         logging::Level::DEBUG, log << "Intrinsifying control flow barrier: " << callSite->to_string() << logging::endl);
     // since we do insert functions that needs intrinsification, we need to go over all of them again
     auto origIt = it.copy().previousInBlock();
-    lowerBarrier(method, it, callSite);
+    lowerBarrier(method, it, callSite, {});
     return origIt.nextInBlock();
 }
 
-void intrinsics::insertControlFlowBarrier(Method& method, InstructionWalker it)
+void intrinsics::insertControlFlowBarrier(Method& method, InstructionWalker it,
+    const std::function<InstructionWalker(InstructionWalker)>& insertFirstWorkItemOnlyCode)
 {
     it.emplace(new intermediate::MethodCall("dummy", {}));
-    lowerBarrier(method, it, it.get<intermediate::MethodCall>());
+    lowerBarrier(method, it, it.get<intermediate::MethodCall>(), insertFirstWorkItemOnlyCode);
 }

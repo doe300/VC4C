@@ -18,6 +18,29 @@ using namespace vc4c::intermediate;
 using namespace vc4c::normalization;
 using namespace vc4c::operators;
 
+LCOV_EXCL_START
+std::string normalization::toString(MemoryAccessType type)
+{
+    switch(type)
+    {
+    case MemoryAccessType::QPU_REGISTER_READONLY:
+        return "read-only register";
+    case MemoryAccessType::QPU_REGISTER_READWRITE:
+        return "read-write register";
+    case MemoryAccessType::VPM_PER_QPU:
+        return "private VPM area";
+    case MemoryAccessType::VPM_SHARED_ACCESS:
+        return "shared VPM area";
+    case MemoryAccessType::RAM_LOAD_TMU:
+        return "read-only RAM via TMU";
+    case MemoryAccessType::RAM_READ_WRITE_VPM:
+        return "read-write RAM via DMA";
+    }
+    throw CompilationError(
+        CompilationStep::GENERAL, "Unhandled memory access type", std::to_string(static_cast<unsigned>(type)));
+}
+LCOV_EXCL_STOP
+
 MemoryAccessType normalization::toMemoryAccessType(periphery::VPMUsage usage)
 {
     switch(usage)
@@ -224,5 +247,26 @@ InstructionWalker normalization::insertAddressToWorkItemSpecificOffset(
     if(range.typeSizeShift)
         out = assign(it, dynamicParts->first.type) =
             (dynamicParts->first << range.typeSizeShift->assertArgument(1), dynamicParts->second);
+    return it;
+}
+
+InstructionWalker normalization::insertAddressToWorkGroupUniformOffset(
+    InstructionWalker it, Method& method, Value& out, MemoryAccessRange& range)
+{
+    if(range.constantOffset)
+        throw CompilationError(CompilationStep::NORMALIZER,
+            "Calculating work-group uniform offset with constant part is not yet implemented", range.to_string());
+    auto uniformParts = combineAdditions(method, it, range.groupUniformAddressParts);
+    if(!uniformParts)
+    {
+        for(const auto& part : range.groupUniformAddressParts)
+            logging::error() << part.first.to_string() << " - " << toString(part.second) << logging::endl;
+        throw CompilationError(CompilationStep::NORMALIZER,
+            "Failed to calculate uniform parts of work-group uniform offset", range.to_string());
+    }
+    out = uniformParts->first;
+    if(range.typeSizeShift)
+        out = assign(it, uniformParts->first.type) =
+            (uniformParts->first << range.typeSizeShift->assertArgument(1), uniformParts->second);
     return it;
 }

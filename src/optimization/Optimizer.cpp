@@ -22,6 +22,8 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 
+const std::string optimizations::PASS_WORK_GROUP_LOOP = "loop-work-groups";
+
 OptimizationPass::OptimizationPass(const std::string& name, const std::string& parameterName, const Pass& pass,
     const std::string& description, OptimizationType type) :
     name(name),
@@ -123,14 +125,7 @@ Optimizer::Optimizer(const Configuration& config) : config(config)
     auto enabledPasses = getPasses(config.optimizationLevel);
     for(const OptimizationPass& pass : ALL_PASSES)
     {
-        if(config.additionalDisabledOptimizations.find(pass.parameterName) !=
-            config.additionalDisabledOptimizations.end())
-            continue;
-        if(config.additionalEnabledOptimizations.find(pass.parameterName) !=
-            config.additionalEnabledOptimizations.end())
-            addToPasses(pass, initialPasses, repeatingPasses, finalPasses);
-        // don't add a pass twice if it is manually enabled and in the list of enabled passed via the optimization level
-        else if(enabledPasses.find(pass.parameterName) != enabledPasses.end())
+        if(isEnabled(pass.parameterName, config))
             addToPasses(pass, initialPasses, repeatingPasses, finalPasses);
     }
 }
@@ -235,7 +230,7 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
     /*
      * The first optimizations run modify the control-flow of the method.
      */
-    OptimizationPass("AddWorkGroupLoops", "loop-work-groups", addWorkGroupLoop,
+    OptimizationPass("AddWorkGroupLoops", PASS_WORK_GROUP_LOOP, addWorkGroupLoop,
         "merges all work-group executions into a single kernel execution", OptimizationType::INITIAL),
     OptimizationPass("ReorderBasicBlocks", "reorder-blocks", reorderBasicBlocks,
         "reorders basic blocks to eliminate as many explicit branches as possible", OptimizationType::INITIAL),
@@ -334,7 +329,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("reorder");
         passes.emplace("combine");
         passes.emplace("remove-unused-flags");
-        passes.emplace("loop-work-groups");
+        passes.emplace(PASS_WORK_GROUP_LOOP);
         FALL_THROUGH
     case OptimizationLevel::NONE:
         // TODO this is not an optimization, more a normalization step.
@@ -346,4 +341,14 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
     }
 
     return passes;
+}
+
+bool Optimizer::isEnabled(const std::string& optimizationPass, const Configuration& config)
+{
+    if(config.additionalDisabledOptimizations.find(optimizationPass) != config.additionalDisabledOptimizations.end())
+        return false;
+    if(config.additionalEnabledOptimizations.find(optimizationPass) != config.additionalEnabledOptimizations.end())
+        return true;
+    auto enabledPasses = getPasses(config.optimizationLevel);
+    return enabledPasses.find(optimizationPass) != enabledPasses.end();
 }

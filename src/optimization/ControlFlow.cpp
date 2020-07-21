@@ -879,19 +879,8 @@ static const Local* isLocalUsed(Method& method, BuiltinLocal::Type type, bool fo
  */
 static bool isLocalInformationRequired(const Configuration& config)
 {
-    std::string workGroupLoopOptimization = "loop-work-groups";
-
-    if(config.additionalDisabledOptimizations.find(workGroupLoopOptimization) !=
-        config.additionalDisabledOptimizations.end())
-        // explicitly disabled
-        return false;
-    if(config.additionalEnabledOptimizations.find(workGroupLoopOptimization) !=
-        config.additionalEnabledOptimizations.end())
-        // explicitly enabled
-        return true;
-
-    auto enabledPasses = Optimizer::getPasses(config.optimizationLevel);
-    return enabledPasses.find(workGroupLoopOptimization) != enabledPasses.end();
+    return Optimizer::isEnabled(optimizations::PASS_WORK_GROUP_LOOP, config) ||
+        Optimizer::isEnabled(optimizations::PASS_CACHE_MEMORY, config);
 }
 
 void optimizations::addStartStopSegment(const Module& module, Method& method, const Configuration& config)
@@ -1755,33 +1744,6 @@ NODISCARD static bool moveGroupIdInitializers(Method& method, BasicBlock& defaul
     return groupIdsOnlyRead;
 }
 
-// Reset all branches to the last-block (e.g. for return statements) to the reset block instead
-static void resetReturnBranches(Method& method, BasicBlock& lastBlock, BasicBlock& resetBlock)
-{
-    // Since (at least if the CFG for the method is already created), by resetting the branch to this block we modify
-    // the incoming edges we iterate over, we need to split the finding the function to modify and replacing it.
-    FastAccessList<InstructionWalker> instructionsToBeReset;
-    lastBlock.forPredecessors([&](InstructionWalker walker) {
-        if(auto branch = walker.get<intermediate::Branch>())
-        {
-            if(branch->getTarget() == lastBlock.getLabel()->getLabel())
-                instructionsToBeReset.emplace_back(walker);
-        }
-        // fall-throughs are already handled by inserting the block
-    });
-
-    for(auto& walker : instructionsToBeReset)
-    {
-        auto branch = walker.get<intermediate::Branch>();
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Resetting branch to last block to jump to first work-group repetition block instead: "
-                << walker->to_string() << logging::endl);
-        // need to reset the instruction to correctly update the CFG
-        walker.reset((new intermediate::Branch(resetBlock.getLabel()->getLabel(), branch->branchCondition))
-                         ->copyExtrasFrom(branch));
-    }
-}
-
 // After the main kernel code executed, insert a block which
 // - reads uniform address
 // - reads maximum values for all group id dimensions
@@ -1906,7 +1868,7 @@ static void insertSynchronizationBlock(Method& method, BasicBlock& lastBlock)
     auto it = method.emplaceLabel(lastBlock.walk(),
         new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL, "", "%work_item_synchronization").local()));
     auto& syncBlock = *it.getBasicBlock();
-    resetReturnBranches(method, lastBlock, syncBlock);
+    intermediate::redirectAllBranches(lastBlock, syncBlock);
 
     it.nextInBlock();
     intrinsics::insertControlFlowBarrier(method, it);

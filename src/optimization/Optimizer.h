@@ -22,6 +22,9 @@ namespace vc4c
 
     namespace optimizations
     {
+        // Some pass names which are explicitly accessed by other parts of the code
+        extern const std::string PASS_WORK_GROUP_LOOP;
+
         /**
          * Type of optimization.
          * This determines when and how often the optimization is executed
@@ -112,6 +115,11 @@ namespace vc4c
              * Returns the list of enabled passes when using the specific optimization level
              */
             static std::set<std::string> getPasses(OptimizationLevel level);
+
+            /**
+             * Returns whether the given optimization pass is enabled for the given configuration
+             */
+            static bool isEnabled(const std::string& optimizationPass, const Configuration& config);
 
         private:
             Configuration config;

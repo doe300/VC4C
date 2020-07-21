@@ -24,9 +24,27 @@ namespace vc4c
     namespace normalization
     {
         using MemoryAccessRange = analysis::MemoryAccessRange;
-        using MemoryAccessType = analysis::MemoryAccessType;
-        using MemoryAccess = analysis::MemoryAccess;
 
+        /**
+         * Enum for the different ways of how to access memory areas
+         */
+        enum class MemoryAccessType
+        {
+            // lower the value into a register and replace all loads with moves
+            QPU_REGISTER_READONLY,
+            // lower the value into a register and replace all loads/stores with moves
+            QPU_REGISTER_READWRITE,
+            // store in VPM in extra space per QPU!!
+            VPM_PER_QPU,
+            // store in VPM, QPUs share access to common data
+            VPM_SHARED_ACCESS,
+            // keep in RAM/global data segment, read via TMU
+            RAM_LOAD_TMU,
+            // keep in RAM/global data segment, access via VPM
+            RAM_READ_WRITE_VPM
+        };
+
+        std::string toString(MemoryAccessType type);
         MemoryAccessType toMemoryAccessType(periphery::VPMUsage usage);
 
         /*
@@ -78,6 +96,18 @@ namespace vc4c
          * * E.g. get_global_id(0) (= get_group_id(0) + get_local_id(0)) will be converted to get_local_id(0)
          */
         NODISCARD InstructionWalker insertAddressToWorkItemSpecificOffset(
+            InstructionWalker it, Method& method, Value& out, MemoryAccessRange& range);
+
+        /*
+         * Converts an address (e.g. index-chain) which contains work-group uniform and work-item specific parts (as
+         * specified in range) to the work-group uniform part only.
+         * This can be seen as a specialization of #insertAddressToOffset
+         *
+         * NOTE: The result itself is still in "memory-address mode", meaning the offset is the number of bytes
+         *
+         * * E.g. get_global_id(0) (= get_group_id(0) + get_local_id(0)) will be converted to get_group_id(0)
+         */
+        NODISCARD InstructionWalker insertAddressToWorkGroupUniformOffset(
             InstructionWalker it, Method& method, Value& out, MemoryAccessRange& range);
 
     } /* namespace normalization */
