@@ -738,65 +738,75 @@ void combineDMALoads(const Module& module, Method& method, const Configuration& 
             // The form of diff should be "0 (+/-) expressions...", then remove the value 0 at most right.
             ValueExpr::ExpandedExprs expanded;
             diff->expand(expanded);
-            diff = expanded[0].second;
+            if (expanded.size() == 1) {
+                diff = expanded[0].second;
 
-            logging::debug() << "diff = " << diff->to_string()  << logging::endl;
+                // logging::debug() << "diff = " << diff->to_string()  << logging::endl;
 
-            if (auto term = std::dynamic_pointer_cast<ValueTerm>(diff))
-            {
-                if (auto mpValue = term->value.getConstantValue())
+                if (auto term = std::dynamic_pointer_cast<ValueTerm>(diff))
                 {
-                    if (auto mpLiteral = mpValue->getLiteralValue())
+                    // logging::debug() << "term = " << term->to_string()  << logging::endl;
+
+                    if (auto mpValue = term->value.getConstantValue())
                     {
-                        if (mpLiteral->unsignedInt() < (1u << 12))
+                        // logging::debug() << "mpValue = " << mpValue->to_string()  << logging::endl;
+
+                        if (auto mpLiteral = mpValue->getLiteralValue())
                         {
-
-                            auto it = bb.walk();
-                            bool firstCall = true;
-                            while(!it.isEndOfBlock())
+                            if (mpLiteral->unsignedInt() < (1u << 12))
                             {
-                                auto call = it.get<intermediate::MethodCall>();
-                                if(call && std::find(loadInstrs.begin(), loadInstrs.end(), call) != loadInstrs.end())
+                                auto it = bb.walk();
+                                bool firstCall = true;
+                                while(!it.isEndOfBlock())
                                 {
-                                    it.erase();
-
-                                    auto output = *call->getOutput();
-                                    if(firstCall)
+                                    auto call = it.get<intermediate::MethodCall>();
+                                    if(call && std::find(loadInstrs.begin(), loadInstrs.end(), call) != loadInstrs.end())
                                     {
-                                        firstCall = false;
+                                        it.erase();
 
-                                        auto addrArg = call->assertArgument(1);
+                                        auto output = *call->getOutput();
+                                        if(firstCall)
+                                        {
+                                            firstCall = false;
 
-                                        // TODO: limit loadInstrs.size()
-                                        Value offset = assign(it, TYPE_INT32) = offsetValues[0] << 4_val;
-                                        Value addr   = assign(it, TYPE_INT32) = offset + addrArg;
+                                            auto addrArg = call->assertArgument(1);
 
-                                        auto elemType = addrArg.type.getElementType();
-                                        uint16_t memoryPitch = static_cast<uint16_t>(mpLiteral->unsignedInt()) * elemType.getInMemoryWidth() * 16;
+                                            auto elemType = addrArg.type.getElementType();
+                                            auto vectorSize = elemType.getInMemoryWidth() * 16;
 
-                                        // TODO: cover types other than uchar
-                                        DataType TYPE16{elemType.getInMemoryWidth() * DataType::BYTE, 16, false};
+                                            // TODO: limit loadInstrs.size()
+                                            Value offset = assign(it, TYPE_INT32) = offsetValues[0] << 4_val;
+                                            // Value offset = assign(it, TYPE_INT32) = offsetValues[0] * Literal(vectorSize);
+                                            Value addr   = assign(it, TYPE_INT32) = offset + addrArg;
 
-                                        uint64_t rows = loadInstrs.size();
-                                        VPMArea area(VPMUsage::SCRATCH, 0, static_cast<uint8_t>(rows));
-                                        auto entries = Value(Literal(static_cast<uint32_t>(rows)), TYPE_INT32);
-                                        it = method.vpm->insertReadRAM(method, it, addr, TYPE16,/* &area */ nullptr,
-                                                true, INT_ZERO, entries, Optional<uint16_t>(memoryPitch));
+                                            uint16_t memoryPitch = static_cast<uint16_t>(mpLiteral->unsignedInt()) * vectorSize;
 
-                                        // const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
-                                        it = method.vpm->insertReadVPM(method, it, output, &area, true);
+                                            // TODO: cover types other than vector16
+                                            DataType TYPE16{elemType.getInMemoryWidth() * DataType::BYTE, 16, false};
+
+                                            uint64_t rows = loadInstrs.size();
+                                            VPMArea area(VPMUsage::SCRATCH, 0, static_cast<uint8_t>(rows));
+                                            auto entries = Value(Literal(static_cast<uint32_t>(rows)), TYPE_INT32);
+                                            it = method.vpm->insertReadRAM(method, it, addr, TYPE16,/* &area */ nullptr,
+                                                    true, INT_ZERO, entries, Optional<uint16_t>(memoryPitch));
+
+                                            // const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
+                                            it = method.vpm->insertReadVPM(method, it, output, &area, true);
+                                        }
+                                        else {
+                                            // TODO: gather these instructions in one mutex lock
+                                            it = method.vpm->insertLockMutex(it, true);
+                                            assign(it, output) = VPM_IO_REGISTER;
+                                            it = method.vpm->insertUnlockMutex(it, true);
+                                        }
                                     }
-                                    else {
-                                        // TODO: gather these instructions in one mutex lock
-                                        it = method.vpm->insertLockMutex(it, true);
-                                        assign(it, output) = VPM_IO_REGISTER;
-                                        it = method.vpm->insertUnlockMutex(it, true);
+                                    else
+                                    {
+                                        it.nextInBlock();
                                     }
                                 }
-                                else
-                                {
-                                    it.nextInBlock();
-                                }
+
+                                logging::debug() << loadInstrs.size() << " loads are combined" << logging::endl;
                             }
                         }
                     }
