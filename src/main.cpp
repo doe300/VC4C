@@ -235,7 +235,7 @@ int main(int argc, char** argv)
             // increment `i` more than usual, because argv[i + 1] is already consumed
             i += 1;
         }
-        else if(!vc4c::tools::parseConfigurationParameter(config, argv[i]) || strstr(argv[i], "-cl") == argv[i])
+        else if(!vc4c::tools::parseConfigurationParameter(config, true, argv[i]) || strstr(argv[i], "-cl") == argv[i])
             // pass every not understood option to the pre-compiler, as well as every OpenCL compiler option
             options.append(argv[i]).append(" ");
     }

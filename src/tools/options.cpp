@@ -25,7 +25,7 @@ static std::set<std::string> createAvailableOptimizations()
     return opts;
 }
 
-bool tools::parseConfigurationParameter(Configuration& config, const std::string& arg)
+bool tools::parseConfigurationParameter(Configuration& config, bool printFlag, const std::string& arg)
 {
     static auto availableOptimizations = createAvailableOptimizations();
     if(arg == "-cl-opt-disable")
@@ -151,7 +151,8 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
             return true;
         }
 
-        std::cerr << "Cannot disable unknown optimization: " << passName << std::endl;
+        if(printFlag)
+            std::cerr << "Cannot disable unknown optimization: " << passName << std::endl;
         return false;
     }
     else if(arg.find("--f") == 0)
@@ -169,8 +170,9 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
             }
             catch(std::exception& e)
             {
-                std::cerr << "Error converting optimization parameter for '" << paramName << ": " << e.what()
-                          << std::endl;
+                if(printFlag)
+                    std::cerr << "Error converting optimization parameter for '" << paramName << ": " << e.what()
+                              << std::endl;
                 return false;
             }
             if(paramName == "combine-load-threshold")
@@ -187,7 +189,9 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
                 config.additionalOptions.maxCommonExpressionDinstance = static_cast<unsigned>(intValue);
             else
             {
-                std::cerr << "Cannot set unknown optimization parameter: " << paramName << " to " << value << std::endl;
+                if(printFlag)
+                    std::cerr << "Cannot set unknown optimization parameter: " << paramName << " to " << value
+                              << std::endl;
                 return false;
             }
             return true;
@@ -198,7 +202,9 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
             CPPLOG_LAZY(logging::Level::DEBUG, log << "Enabling optimization: " << passName << logging::endl);
             return true;
         }
-        std::cerr << "Cannot enable unknown optimization: " << passName << std::endl;
+
+        if(printFlag)
+            std::cerr << "Cannot enable unknown optimization: " << passName << std::endl;
         return false;
     }
     return false;

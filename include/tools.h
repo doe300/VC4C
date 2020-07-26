@@ -248,7 +248,7 @@ namespace vc4c
          *
          * @return whether the parameter was successfully parsed and applied to the configuration
          */
-        bool parseConfigurationParameter(Configuration& config, const std::string& arg);
+        bool parseConfigurationParameter(Configuration& config, bool, const std::string& arg);
 
     } /* namespace tools */
 } /* namespace vc4c */
