@@ -614,6 +614,19 @@ namespace vc4c
             return *this;
         }
 
+        Edge& removeInput(const NodeType& node)
+        {
+            static_assert(
+                Direction == Directionality::BIDIRECTIONAL, "Can only remove input for bidirectional graphs!");
+            if(&node == &this->first)
+                this->firstInput = false;
+            else if(&node == &this->second)
+                this->secondInput = false;
+            else
+                throw CompilationError(CompilationStep::GENERAL, "Node is not a part of this edge!");
+            return *this;
+        }
+
         static constexpr Directionality Directed = Direction;
 
         Relation data;

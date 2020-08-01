@@ -619,6 +619,7 @@ namespace vc4c
         {
             explicit Branch(const Local* target);
             Branch(const Local* target, BranchCond branchCond);
+            Branch(const Value& linkAddressOut, const Local* target, BranchCond branchCond = BRANCH_ALWAYS);
             ~Branch() override = default;
 
             std::string to_string() const override;

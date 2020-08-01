@@ -489,8 +489,8 @@ void intermediate::redirectAllBranches(BasicBlock& oldTarget, BasicBlock& newTar
     {
         auto branch = walker.get<intermediate::Branch>();
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Resetting branch to '" << oldTarget.to_string() << "' to jump to '" << newTarget.to_string()
-                << "' instead: " << walker->to_string() << logging::endl);
+            log << "Resetting branch in block '" << walker.getBasicBlock()->to_string() << "' to jump to '"
+                << newTarget.to_string() << "' instead: " << walker->to_string() << logging::endl);
         // need to reset the instruction to correctly update the CFG
         walker.reset((new intermediate::Branch(newTarget.getLabel()->getLabel(), branch->branchCondition))
                          ->copyExtrasFrom(branch));

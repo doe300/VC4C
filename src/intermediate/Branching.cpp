@@ -72,22 +72,31 @@ Branch::Branch(const Local* target, BranchCond branchCond) :
     setArgument(0, target->createReference());
 }
 
+Branch::Branch(const Value& linkAddressOut, const Local* target, BranchCond branchCond) :
+    SignalingInstruction(SIGNAL_BRANCH, linkAddressOut), branchCondition(branchCond)
+{
+    setArgument(0, target->createReference());
+}
+
 LCOV_EXCL_START
 std::string Branch::to_string() const
 {
+    auto linkString = getOutput() ? (getOutput()->to_string(true) + " = ") : "";
     if(branchCondition == BRANCH_ALWAYS)
     {
-        return std::string("br ") + getTarget()->name + createAdditionalInfoString();
+        return linkString + std::string("br ") + getTarget()->name + createAdditionalInfoString();
     }
-    return std::string("br.") + (branchCondition.to_string() + " ") + getTarget()->name + createAdditionalInfoString();
+    return linkString + std::string("br.") + (branchCondition.to_string() + " ") + getTarget()->name +
+        createAdditionalInfoString();
 }
 LCOV_EXCL_STOP
 
 IntermediateInstruction* Branch::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
+    auto newOut = getOutput() ? renameValue(method, *getOutput(), localPrefix, localMapping) : NO_VALUE;
     return (new Branch(renameValue(method, assertArgument(0), localPrefix, localMapping).local(), branchCondition))
-        ->setOutput(getOutput())
+        ->setOutput(newOut)
         ->copyExtrasFrom(this);
 }
 
@@ -102,6 +111,11 @@ qpu_asm::DecoratedInstruction Branch::convertToAsm(const FastMap<const Local*, R
      * Broadcom specification, page 34:
      * "branch target is relative to PC+4 (add PC+4 to target)"
      */
+    Register outReg = REG_NOP;
+    if(auto out = getOutput())
+        outReg = out->checkLocal() ? registerMapping.at(out->local()) : out->reg();
+    auto addOut = outReg.file == RegisterFile::PHYSICAL_A ? outReg : REG_NOP;
+    auto mulOut = outReg.file == RegisterFile::PHYSICAL_B ? outReg : REG_NOP;
     auto labelPos = labelMapping.find(getTarget());
     if(labelPos == labelMapping.end())
         throw CompilationError(
@@ -115,7 +129,7 @@ qpu_asm::DecoratedInstruction Branch::convertToAsm(const FastMap<const Local*, R
             "Cannot jump a distance not fitting into 32-bit integer", std::to_string(branchOffset));
     return qpu_asm::DecoratedInstruction(
         qpu_asm::BranchInstruction(branchCondition, BranchRel::BRANCH_RELATIVE, BranchReg::NONE,
-            0 /* only 5 bits, so REG_NOP doesn't fit */, REG_NOP.num, REG_NOP.num, static_cast<int32_t>(branchOffset)),
+            0 /* only 5 bits, so REG_NOP doesn't fit */, addOut.num, mulOut.num, static_cast<int32_t>(branchOffset)),
         "to " + this->getTarget()->name);
 }
 

@@ -458,27 +458,27 @@ static void lowerBarrier(Method& method, InstructionWalker it, const MethodCall*
 
     // calculate the scalar local ID and size
     auto localIdX = method.addNewLocal(TYPE_INT8, "%local_id_x");
-    it.emplace(new MethodCall(Value(localIdX), "vc4cl_local_id", {0_val}));
+    it.emplace(new MethodCall(Value(localIdX), std::string(intrinsics::FUNCTION_NAME_LOCAL_ID), {0_val}));
     it = intrinsifyReadLocalID(method, it, 0_val);
     it.nextInBlock();
     auto localIdY = method.addNewLocal(TYPE_INT8, "%local_id_y");
-    it.emplace(new MethodCall(Value(localIdY), "vc4cl_local_id", {1_val}));
+    it.emplace(new MethodCall(Value(localIdY), std::string(intrinsics::FUNCTION_NAME_LOCAL_ID), {1_val}));
     it = intrinsifyReadLocalID(method, it, 1_val);
     it.nextInBlock();
     auto localIdZ = method.addNewLocal(TYPE_INT8, "%local_id_z");
-    it.emplace(new MethodCall(Value(localIdZ), "vc4cl_local_id", {2_val}));
+    it.emplace(new MethodCall(Value(localIdZ), std::string(intrinsics::FUNCTION_NAME_LOCAL_ID), {2_val}));
     it = intrinsifyReadLocalID(method, it, 2_val);
     it.nextInBlock();
     auto localSizeX = method.addNewLocal(TYPE_INT8, "%local_size_x");
-    it.emplace(new MethodCall(Value(localSizeX), "vc4cl_local_size", {0_val}));
+    it.emplace(new MethodCall(Value(localSizeX), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), {0_val}));
     it = intrinsifyReadLocalSize(method, it, 0_val);
     it.nextInBlock();
     auto localSizeY = method.addNewLocal(TYPE_INT8, "%local_size_y");
-    it.emplace(new MethodCall(Value(localSizeY), "vc4cl_local_size", {1_val}));
+    it.emplace(new MethodCall(Value(localSizeY), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), {1_val}));
     it = intrinsifyReadLocalSize(method, it, 1_val);
     it.nextInBlock();
     auto localSizeZ = method.addNewLocal(TYPE_INT8, "%local_size_z");
-    it.emplace(new MethodCall(Value(localSizeZ), "vc4cl_local_size", {2_val}));
+    it.emplace(new MethodCall(Value(localSizeZ), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), {2_val}));
     it = intrinsifyReadLocalSize(method, it, 2_val);
     it.nextInBlock();
 

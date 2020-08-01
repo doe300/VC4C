@@ -416,25 +416,22 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
     const Local* lastWrittenLocal1 = nullptr;
     while(!it.isEndOfMethod())
     {
-        if(it.get() != nullptr && !it.get<intermediate::Branch>() && !it.get<intermediate::BranchLabel>() &&
-            !it.get<intermediate::MemoryBarrier>())
+        if(it.get() != nullptr && !it.get<intermediate::BranchLabel>() && !it.get<intermediate::MemoryBarrier>())
         {
             // 1) create entry per local
             it->forUsedLocals([this, it](const Local* l, const LocalUse::Type type,
                                   const intermediate::IntermediateInstruction& inst) -> void {
-                if(localUses.find(l) == localUses.end())
-                {
-                    if(l->type == TYPE_LABEL)
-                        throw CompilationError(
-                            CompilationStep::LABEL_REGISTER_MAPPING, "Created use for label", it->to_string());
+                if(l->type != TYPE_LABEL && localUses.find(l) == localUses.end())
                     localUses.emplace(l, LocalUsage(it, it));
-                }
             });
             // 2) update fixed locals
             PROFILE(fixLocals, it, localUses, lastWrittenLocal0, lastWrittenLocal1);
             // 3) update local usage-ranges as well as assign all locals to closed-set or open-set
             it->forUsedLocals([this, it](const Local* l, const LocalUse::Type type,
                                   const intermediate::IntermediateInstruction& inst) -> void {
+                if(l->type == TYPE_LABEL)
+                    return;
+
                 auto& range = localUses.at(l);
                 range.associatedInstructions.insert(it);
                 range.lastOccurrence = it;

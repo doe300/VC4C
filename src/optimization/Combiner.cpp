@@ -669,6 +669,7 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
     }
     else if(it.get<MoveOperation>() && it->readsLiteral())
     {
+        // for literal sources, any possible applied rotation has no effect, so we can accept them here
         return it.get<MoveOperation>()->getSource().getLiteralValue();
     }
     else if(auto op = it.get<Operation>())
@@ -682,6 +683,9 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
 
 static Optional<Register> getSourceConstantRegister(InstructionWalker it)
 {
+    if(it.get<VectorRotation>())
+        // XXX would need to check for same (constant) offset too!
+        return {};
     if(it.get<MoveOperation>() && (it->readsRegister(REG_ELEMENT_NUMBER) || it->readsRegister(REG_QPU_NUMBER)))
     {
         return it.get<MoveOperation>()->getSource().reg();
@@ -1220,7 +1224,7 @@ bool optimizations::cacheWorkGroupDMAAccess(const Module& module, Method& method
                 offsetRange.maxValue - offsetRange.minValue + 1 /* bounds of range are inclusive! */));
 
         // TODO the local is not correct, at least not if there is a work-group uniform offset
-        auto vpmArea = method.vpm->addArea(pair.first, accessedType, false);
+        auto vpmArea = method.vpm->addArea(pair.first, accessedType);
         if(vpmArea == nullptr)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,

@@ -441,7 +441,11 @@ void ControlFlowGraph::updateOnBlockInsertion(Method& method, BasicBlock& newBlo
         });
         if(fallThroughEdge)
         {
-            prevNode.removeEdge(*fallThroughEdge);
+            fallThroughEdge->data.predecessors.erase(prevNode.key);
+            fallThroughEdge->removeInput(prevNode);
+            if(fallThroughEdge->data.predecessors.empty())
+                // do not remove any edge in the other direction, if there is one
+                prevNode.removeEdge(*fallThroughEdge);
             auto& edge = prevNode.getOrCreateEdge(&node, CFGRelation{}).addInput(prevNode);
             edge.data.predecessors.emplace(prevNode.key, Optional<InstructionWalker>{});
         }
@@ -538,8 +542,14 @@ void ControlFlowGraph::updateOnBranchInsertion(Method& method, InstructionWalker
     });
 
     if(fallThroughEdge && !node.key->fallsThroughToNextBlock(false))
+    {
         // we have a fall-through edge left but the block no longer falls through
-        node.removeEdge(*fallThroughEdge);
+        fallThroughEdge->data.predecessors.erase(node.key);
+        fallThroughEdge->removeInput(node);
+        if(fallThroughEdge->data.predecessors.empty())
+            // only remove the edge completely, if there was no branch in the other direction
+            node.removeEdge(*fallThroughEdge);
+    }
 
     // update back edges
     updateBackEdges(*this, &getStartOfControlFlow());
@@ -570,15 +580,10 @@ void ControlFlowGraph::updateOnBranchRemoval(Method& method, BasicBlock& affecte
         throw CompilationError(
             CompilationStep::GENERAL, "No CFG edge found for branch to target", branchTarget->to_string());
 
-    if(branchEdge->getDirection() == Direction::BOTH)
-    {
+    branchEdge->data.predecessors.erase(node.key);
+    branchEdge->removeInput(node);
+    if(branchEdge->data.predecessors.empty())
         // we only want to remove the one direction, the jump-back needs to remain
-        // also if reverse direction is implicit, copy as such
-        auto reversePred = branchEdge->data.predecessors.at(destNode.key);
-        node.removeEdge(*branchEdge);
-        destNode.addEdge(&node, CFGRelation{})->data.predecessors.emplace(destNode.key, reversePred);
-    }
-    else
         node.removeEdge(*branchEdge);
 
     if(node.key->fallsThroughToNextBlock(false))
