@@ -24,6 +24,7 @@ namespace vc4c
     {
         // Some pass names which are explicitly accessed by other parts of the code
         extern const std::string PASS_WORK_GROUP_LOOP;
+        extern const std::string PASS_CACHE_MEMORY;
 
         /**
          * Type of optimization.

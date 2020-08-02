@@ -684,7 +684,14 @@ namespace vc4c
              * NOTE:
              * Its size needs include the spilled locals for all available QPUs!
              */
-            STACK
+            STACK,
+            /**
+             * This area contains data located in RAM which is cached in the VPM.
+             *
+             * NOTE:
+             * The cache needs to be pre-loaded and written back from/to RAM.
+             */
+            RAM_CACHE
         };
 
         /*
@@ -829,8 +836,8 @@ namespace vc4c
 
             const VPMArea& getScratchArea() const;
             const VPMArea* findArea(const Local* local);
-            const VPMArea* addArea(
-                const Local* local, DataType elementType, bool isStackArea, unsigned numStacks = NUM_QPUS);
+            const VPMArea* addArea(const Local* local, DataType elementType, bool isStackArea = false,
+                bool isMemoryCache = false, unsigned numStacks = NUM_QPUS);
 
             /*
              * The maximum number of vectors (of the given type) which can be cached in this VPM.

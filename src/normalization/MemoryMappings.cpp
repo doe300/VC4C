@@ -10,6 +10,7 @@
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
+#include "../intrinsics/WorkItems.h"
 #include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
 #include "log.h"
@@ -82,7 +83,7 @@ std::string MemoryInfo::to_string() const
     case MemoryAccessType::RAM_LOAD_TMU:
         return "read-only memory access via TMU" + std::string(tmuFlag ? "1" : "0");
     case MemoryAccessType::RAM_READ_WRITE_VPM:
-        return "read-write memory access via VPM" + (area ? " (cached in" + area->to_string() + ")" : "");
+        return "read-write memory access via VPM" + (area ? " (cached in " + area->to_string() + ")" : "");
     }
     throw CompilationError(
         CompilationStep::NORMALIZER, "Unhandled memory info type", std::to_string(static_cast<uint32_t>(type)));
@@ -950,5 +951,81 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
         throw CompilationError(
             CompilationStep::NORMALIZER, "Unhandled case for handling memory copy", mem->to_string());
         LCOV_EXCL_STOP
+    }
+}
+
+static InstructionWalker insertWriteBackCode(
+    Method& method, InstructionWalker it, const Local* memoryArea, const MemoryInfo* info)
+{
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Inserting code to write back data cached in VPM area '" << info->area->to_string()
+            << "' to: " << memoryArea->to_string() << logging::endl);
+
+    // We either loaded the previous contents of the RAM region into the VPM area at beginning of the work-group or have
+    // proven that the whole VPM area is overwritten by the work-items. So we can simply copy the whole VPM area to RAM.
+    // Since this code is only executed for the first work-item while the rest is blocked, we do not have to use the
+    // mutex.
+
+    // the address is the work-group constant offset to the base address!
+    auto memoryOffset = method.addNewLocal(memoryArea->type, "%cache_uniform_offset");
+    std::vector<MemoryAccessRange> tmpRanges = info->ranges.value();
+    auto tmp = analysis::checkWorkGroupUniformParts(tmpRanges);
+    if(!tmp.first)
+        throw CompilationError(CompilationStep::NORMALIZER,
+            "Cannot insert write-back code for cached local with different work-group uniform parts",
+            memoryArea->to_string());
+    it = insertAddressToWorkGroupUniformOffset(it, method, memoryOffset, tmpRanges.at(0));
+    // TODO how to get number and type of elements? E.g. for char8 per row, don't write upper garbage of rows...
+    // TODO add checks whether the ranges/limits/types are all acceptable 8e.g. in range)!
+    auto memoryAddress = assign(it, memoryArea->type, "%cache_base_address") =
+        memoryArea->createReference() + memoryOffset;
+    Value numEntries = UNDEFINED_VALUE;
+    {
+        // FIXME this is only correct if every work-item writes a single entry. tmp.second only lists the maximum number
+        // of entries written. TODO how to reliably get the actual number of entries written by all work-items?
+        // calculate the scalar local size
+        auto localSizeX = method.addNewLocal(TYPE_INT8, "%local_size_x");
+        it.emplace(new MethodCall(Value(localSizeX), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), {0_val}));
+        auto oldIt = it;
+        it.nextInBlock();
+        intrinsics::intrinsifyWorkItemFunction(method, oldIt);
+        auto localSizeY = method.addNewLocal(TYPE_INT8, "%local_size_y");
+        it.emplace(new MethodCall(Value(localSizeY), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), {1_val}));
+        oldIt = it;
+        it.nextInBlock();
+        intrinsics::intrinsifyWorkItemFunction(method, oldIt);
+        auto localSizeZ = method.addNewLocal(TYPE_INT8, "%local_size_z");
+        it.emplace(new MethodCall(Value(localSizeZ), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), {2_val}));
+        oldIt = it;
+        it.nextInBlock();
+        intrinsics::intrinsifyWorkItemFunction(method, oldIt);
+
+        // local_size_scalar = local_size_z * local_size_y * local_size_x
+        auto tmp = assign(it, TYPE_INT8, "%local_size_scalar") = mul24(localSizeZ, localSizeY);
+        numEntries = assign(it, TYPE_INT8, "%local_size_scalar") = mul24(tmp, localSizeX);
+    }
+    auto elementType = info->area->originalAddress->type.getElementType();
+    return method.vpm->insertWriteRAM(
+        method, it, memoryAddress, elementType, info->area, false /* no mutex required */, INT_ZERO, numEntries);
+}
+
+void normalization::insertCacheSynchronizationCode(
+    Method& method, const FastMap<const Local*, CacheMemoryData>& cachedLocals)
+{
+    if(std::any_of(cachedLocals.begin(), cachedLocals.end(),
+           [](const auto& cacheEntry) -> bool { return cacheEntry.second.insertWriteBack; }))
+    {
+        // insert control-flow barrier block at end of kernel with cache write-back code
+        auto lastBlock = method.findBasicBlock(BasicBlock::LAST_BLOCK);
+        auto newLabel = method.addNewLocal(TYPE_LABEL, "%cache_write_back").local();
+        auto it = method.emplaceLabel(lastBlock->walk(), new intermediate::BranchLabel(*newLabel));
+        auto newBlock = it.getBasicBlock();
+        it.nextInBlock();
+        intrinsics::insertControlFlowBarrier(method, it, [&](InstructionWalker blockIt) -> InstructionWalker {
+            for(const auto& entry : cachedLocals)
+                blockIt = insertWriteBackCode(method, blockIt, entry.first, entry.second.info);
+            return blockIt;
+        });
+        intermediate::redirectAllBranches(*lastBlock, *newBlock);
     }
 }

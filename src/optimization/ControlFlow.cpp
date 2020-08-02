@@ -1865,6 +1865,17 @@ static void insertSynchronizationBlock(Method& method, BasicBlock& lastBlock)
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Inserting work-item synchronization block..." << logging::endl);
 
+    if(auto predecessor = method.getCFG().assertNode(&lastBlock).getSinglePredecessor())
+    {
+        // If there is already a control flow barrier at the end of the kernel code (e.g. as inserted by writing back
+        // memory cached in VPM), don't insert another barrier, since all work-items are already synchronized!
+        if(predecessor->key->getLabel()->getLabel()->name.find("%barrier_after") == 0)
+            // TODO better check!
+            return;
+    }
+    // TODO similarly, if we inserted a control flow barrier at the beginning of the kernel (e.g. for pre-loading data),
+    // we can also omit this control flow barrier.
+
     auto it = method.emplaceLabel(lastBlock.walk(),
         new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL, "", "%work_item_synchronization").local()));
     auto& syncBlock = *it.getBasicBlock();

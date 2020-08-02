@@ -11,6 +11,7 @@
 #include "../Profiler.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/operators.h"
+#include "../optimization/Optimizer.h"
 #include "../periphery/VPM.h"
 #include "AddressCalculation.h"
 #include "MemoryMappings.h"
@@ -851,19 +852,28 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
     auto memoryAccessInfo = determineMemoryAccess(method);
 
     FastMap<const Local*, MemoryInfo> infos;
+    FastMap<const Local*, CacheMemoryData> localsCachedInVPM;
+    bool allowVPMCaching = optimizations::Optimizer::isEnabled(optimizations::PASS_CACHE_MEMORY, config);
     {
         // gather more information about the memory areas and modify the access types. E.g. if the preferred access type
         // cannot be used, use the fall-back
         infos.reserve(memoryAccessInfo.memoryAccesses.size());
         for(auto& mapping : memoryAccessInfo.memoryAccesses)
         {
-            auto it = infos.emplace(mapping.first, checkMemoryMapping(method, mapping.first, mapping.second));
+            auto it = infos.emplace(mapping.first, checkMemoryMapping(method, mapping.first, mapping.second)).first;
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << (it.first->first->is<Parameter>() ?
-                               "Parameter" :
-                               (it.first->first->is<StackAllocation>() ? "Stack variable" : "Local"))
-                    << " '" << it.first->first->to_string() << "' will be mapped to: " << it.first->second.to_string()
+                log << (it->first->is<Parameter>() ? "Parameter" :
+                                                     (it->first->is<StackAllocation>() ? "Stack variable" : "Local"))
+                    << " '" << it->first->to_string() << "' will be mapped to: " << it->second.to_string()
                     << logging::endl);
+            if(allowVPMCaching && it->second.type == MemoryAccessType::RAM_READ_WRITE_VPM && it->second.area)
+            {
+                // access memory in RAM, but cache in VPM ->store for pre-load and write-back and treat as lowered to
+                // VPM
+                localsCachedInVPM.emplace(it->first, CacheMemoryData{&it->second, false, false});
+                it->second.type = MemoryAccessType::VPM_SHARED_ACCESS;
+            }
+            // TODO if we disallow the caching, the VPM cache rows are still allocated!
         }
     }
 
@@ -886,13 +896,36 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
             affectedBlocks.emplace(InstructionWalker{memIt}.getBasicBlock());
 
         mapMemoryAccess(method, memIt, const_cast<MemoryInstruction*>(mem), sourceInfos, destInfos);
-        // TODO mark local for prefetch/write-back (if necessary)
+
+        // enrich caching information with input/output locals
+        for(auto* info : sourceInfos)
+        {
+            auto cacheIt = localsCachedInVPM.find(info->local);
+            if(cacheIt != localsCachedInVPM.end())
+                // we read, so pre-load
+                // XXX could be omitted if we can guarantee every entry to be written before read (e.g. everything
+                // written before barrier() and only read afterwards)
+                cacheIt->second.insertPreload = true;
+        }
+        for(auto* info : destInfos)
+        {
+            auto cacheIt = localsCachedInVPM.find(info->local);
+            if(cacheIt != localsCachedInVPM.end())
+            {
+                // we write, so write-back
+                cacheIt->second.insertWriteBack = true;
+                // TODO unless we can prove to overwrite all of the data in any case, we need to initially fill the
+                // cache with the original data to not write garbage values back to the RAM
+                cacheIt->second.insertPreload = true;
+            }
+        }
     }
 
     method.vpm->dumpUsage();
 
     // TODO move this to optimization?
     combineVPMAccess(affectedBlocks, method);
+    insertCacheSynchronizationCode(method, localsCachedInVPM);
 
     // TODO clean up no longer used (all kernels!) globals and stack allocations
 }

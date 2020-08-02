@@ -994,6 +994,10 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                 conditionalAccessedMemory.first, conditionalAccessedMemory.second.first);
             preferredTypes.emplace(memoryAccess.preferred);
             fallbackTypes.emplace(memoryAccess.fallback);
+            // Disable caching any conditionally accessed memory area in VPM (if the final access type turns out to be
+            // RAM_READ_WRITE_VPM. Otherwise, we would need to lower and cache all memory areas accessed in the same
+            // conditional access and waterfall that...
+            memoryAccess.canBeCachedInVPM = false;
         }
 
         while(preferredTypes.size() > 1)
@@ -1031,7 +1035,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
         }
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Conditionally written memory address '" << conditionalAccessedMemory.second.first->to_string()
-                << "' will access all source memory locations as " << analysis::toString(*preferredTypes.begin())
+                << "' will access all source memory locations as " << normalization::toString(*preferredTypes.begin())
                 << logging::endl);
     }
 
@@ -1127,7 +1131,7 @@ static MemoryInfo toSharedVPMArea(const Local* baseAddr, const periphery::VPMAre
 
 static MemoryInfo canLowerToSharedVPMArea(Method& method, const Local* baseAddr, MemoryAccess& access)
 {
-    auto area = method.vpm->addArea(baseAddr, baseAddr->type.getElementType(), false);
+    auto area = method.vpm->addArea(baseAddr, baseAddr->type.getElementType());
     if(area)
         return toSharedVPMArea(baseAddr, area, {}, convertSmallArrayToRegister(baseAddr));
 
@@ -1146,29 +1150,43 @@ static MemoryInfo canMapToTMUReadOnly(Method& method, const Local* baseAddr, Mem
 }
 
 static const periphery::VPMArea* checkCacheMemoryAccessRanges(
-    Method& method, const Local* baseAddr, FastAccessList<MemoryAccessRange>& accesRanges);
+    Method& method, const Local* baseAddr, FastAccessList<MemoryAccessRange>& accesRanges, bool isCached);
 
 static MemoryInfo canMapToDMAReadWrite(Method& method, const Local* baseAddr, MemoryAccess& access)
 {
     PROFILE_START(DetermineAccessRanges);
-    auto ranges = analysis::determineAccessRanges(method, baseAddr, access);
+    auto ranges = analysis::determineAccessRanges(method, baseAddr, access.accessInstructions);
     PROFILE_END(DetermineAccessRanges);
 
-    if(!ranges.empty() && baseAddr->type.getPointerType() &&
-        baseAddr->type.getPointerType()->addressSpace == AddressSpace::LOCAL)
-    {
-        auto area = checkCacheMemoryAccessRanges(method, baseAddr, ranges);
-        if(area)
-        {
-            // for local/private memory, there is no need for initial load/write-back
-            return toSharedVPMArea(baseAddr, area, std::move(ranges), {});
-        }
-    }
-    return MemoryInfo{baseAddr, MemoryAccessType::RAM_READ_WRITE_VPM};
+    const periphery::VPMArea* area = nullptr;
+    bool isLocalMemory = baseAddr->type.getPointerType()->addressSpace == AddressSpace::LOCAL;
+    // we can't lower structs and we cannot (yet) write multiple rows of 64-bit data
+    auto memoryDataType = baseAddr->type.getElementType();
+    bool isCacheableType = memoryDataType.isSimpleType() && memoryDataType.getScalarBitCount() <= 32;
+    bool hasOnlyCacheableAccesses = isLocalMemory ||
+        std::none_of(access.accessInstructions.begin(), access.accessInstructions.end(),
+            [](const std::pair<InstructionWalker, const Local*>& pair) -> bool {
+                // XXX for now, don't cache any copy between RAM and RAM, since we will have to rewrite the layout
+                // inside the VPM (or read/write initially with the correct/not-packed layout)
+                // XXX also for now, don't cache any 64-bit access, since we cannot (yet) write multiple rows of 64-bit
+                // data
+                auto memoryInst = pair.first.get<intermediate::MemoryInstruction>();
+                return memoryInst &&
+                    (memoryInst->op == intermediate::MemoryOperation::COPY ||
+                        memoryInst->getDestinationElementType().getScalarBitCount() > 32 ||
+                        memoryInst->getSourceElementType().getScalarBitCount() > 32);
+            });
+    if(!ranges.empty() && baseAddr->type.getPointerType() && isCacheableType && hasOnlyCacheableAccesses &&
+        (isLocalMemory || access.canBeCachedInVPM))
+        area = checkCacheMemoryAccessRanges(method, baseAddr, ranges, !isLocalMemory);
+    if(area && isLocalMemory)
+        // for local/private memory, there is no need for initial load/write-back
+        return toSharedVPMArea(baseAddr, area, std::move(ranges), {});
+    return MemoryInfo{baseAddr, MemoryAccessType::RAM_READ_WRITE_VPM, area, std::move(ranges)};
 }
 
 static const periphery::VPMArea* checkCacheMemoryAccessRanges(
-    Method& method, const Local* baseAddr, FastAccessList<MemoryAccessRange>& memoryAccessRanges)
+    Method& method, const Local* baseAddr, FastAccessList<MemoryAccessRange>& memoryAccessRanges, bool isCached)
 {
     auto maxNumVectors = method.vpm->getMaxCacheVectors(TYPE_INT32, true);
     GroupedAccessRanges result;
@@ -1208,7 +1226,7 @@ static const periphery::VPMArea* checkCacheMemoryAccessRanges(
 
     // XXX the local is not correct, at least not if there is a work-group uniform offset, but since all work-items
     // use the same work-group offset, it doesn't matter
-    auto vpmArea = method.vpm->addArea(baseAddr, accessedType, false);
+    auto vpmArea = method.vpm->addArea(baseAddr, accessedType, false, isCached);
     if(vpmArea == nullptr)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,

@@ -23,6 +23,7 @@ using namespace vc4c;
 using namespace vc4c::optimizations;
 
 const std::string optimizations::PASS_WORK_GROUP_LOOP = "loop-work-groups";
+const std::string optimizations::PASS_CACHE_MEMORY = "cache-memory";
 
 OptimizationPass::OptimizationPass(const std::string& name, const std::string& parameterName, const Pass& pass,
     const std::string& description, OptimizationType type) :
@@ -99,6 +100,12 @@ static bool runSingleSteps(const Module& module, Method& method, const Configura
 
     // XXX
     return true;
+}
+
+// optimization pass which does not do anything (e.g. the actual optimization is done somewhere else)
+static bool dummyPass(const Module& module, Method& method, const Configuration& config)
+{
+    return false;
 }
 
 static void addToPasses(const OptimizationPass& pass, std::vector<const OptimizationPass*>& initialPasses,
@@ -230,6 +237,9 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
     /*
      * The first optimizations run modify the control-flow of the method.
      */
+    // XXX not enabled with any optimization level for now
+    OptimizationPass("CacheMemoryInVPM", PASS_CACHE_MEMORY, dummyPass, "caches memory accesses in VPM where applicable",
+        OptimizationType::INITIAL),
     OptimizationPass("AddWorkGroupLoops", PASS_WORK_GROUP_LOOP, addWorkGroupLoop,
         "merges all work-group executions into a single kernel execution", OptimizationType::INITIAL),
     OptimizationPass("ReorderBasicBlocks", "reorder-blocks", reorderBasicBlocks,

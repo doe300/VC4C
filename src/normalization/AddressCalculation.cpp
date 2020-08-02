@@ -232,9 +232,6 @@ static Optional<std::pair<Value, InstructionDecorations>> combineAdditions(
 InstructionWalker normalization::insertAddressToWorkItemSpecificOffset(
     InstructionWalker it, Method& method, Value& out, analysis::MemoryAccessRange& range)
 {
-    if(range.constantOffset)
-        throw CompilationError(CompilationStep::NORMALIZER,
-            "Calculating work-item specific offset with constant part is not yet implemented", range.to_string());
     auto dynamicParts = combineAdditions(method, it, range.dynamicAddressParts);
     if(!dynamicParts)
     {
@@ -253,9 +250,6 @@ InstructionWalker normalization::insertAddressToWorkItemSpecificOffset(
 InstructionWalker normalization::insertAddressToWorkGroupUniformOffset(
     InstructionWalker it, Method& method, Value& out, MemoryAccessRange& range)
 {
-    if(range.constantOffset)
-        throw CompilationError(CompilationStep::NORMALIZER,
-            "Calculating work-group uniform offset with constant part is not yet implemented", range.to_string());
     auto uniformParts = combineAdditions(method, it, range.groupUniformAddressParts);
     if(!uniformParts)
     {
@@ -265,8 +259,9 @@ InstructionWalker normalization::insertAddressToWorkGroupUniformOffset(
             "Failed to calculate uniform parts of work-group uniform offset", range.to_string());
     }
     out = uniformParts->first;
+    if(range.constantOffset)
+        out = assign(it, out.type) = out + *range.constantOffset;
     if(range.typeSizeShift)
-        out = assign(it, uniformParts->first.type) =
-            (uniformParts->first << range.typeSizeShift->assertArgument(1), uniformParts->second);
+        out = assign(it, out.type) = (out << range.typeSizeShift->assertArgument(1), uniformParts->second);
     return it;
 }

@@ -127,6 +127,15 @@ namespace vc4c
         InstructionWalker mapMemoryAccess(Method& method, InstructionWalker it, intermediate::MemoryInstruction* mem,
             const tools::SmallSortedPointerSet<const MemoryInfo*>& srcInfos,
             const tools::SmallSortedPointerSet<const MemoryInfo*>& destInfos);
+
+        struct CacheMemoryData
+        {
+            const MemoryInfo* info;
+            bool insertPreload;
+            bool insertWriteBack;
+        };
+
+        void insertCacheSynchronizationCode(Method& method, const FastMap<const Local*, CacheMemoryData>& cachedLocals);
     } // namespace normalization
 } // namespace vc4c
 

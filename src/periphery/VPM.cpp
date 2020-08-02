@@ -381,8 +381,8 @@ static uint8_t calculateQPUSideAddress(DataType type, unsigned char rowIndex, un
         throw CompilationError(CompilationStep::GENERAL, "Invalid bit-width to store in VPM", type.to_string());
 }
 
-static NODISCARD InstructionWalker calculateElementOffsetInVPM(
-    Method& method, InstructionWalker it, DataType elementType, const Value& inAreaOffset, Value& elementOffset)
+static NODISCARD InstructionWalker calculateElementOffsetInVPM(Method& method, InstructionWalker it,
+    DataType elementType, const Value& inAreaOffset, Value& elementOffset, bool dontPack)
 {
     // e.g. long4 type, 64 byte offset -> 4 32-bit element offset
     // e.g. 32-bit type, 4 byte offset -> 1 32-bit element offset
@@ -396,6 +396,16 @@ static NODISCARD InstructionWalker calculateElementOffsetInVPM(
     else
         elementOffset = assign(it, TYPE_INT16, "%vpm_element_offset") =
             inAreaOffset / Literal(elementType.getInMemoryWidth());
+
+    if(elementType.getScalarBitCount() < 32 && dontPack)
+        // If we disallow packing, make sure all addresses are aligned to a row. Thus, we make sure the address is a
+        // multiple of 4(2) for 8-bit (16-bit) types.
+        // inAreaOffset = I * sizeof(<element-type * N>)
+        // (initial) elementOffset = inAreaOffset / sizeof(<element-type * N>) = I
+        // For 8-bit types: (final) elementOffset = I * 4
+        // For 16-bit types: (final) elementOffset = I * 2
+        elementOffset = assign(it, TYPE_INT16, "%vpm_element_offset") =
+            elementOffset * Literal(TYPE_INT32.getScalarBitCount() / elementType.getElementType().getScalarBitCount());
     return it;
 }
 
@@ -463,7 +473,8 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
          * - Copy elements [N-R, N] from the second vector U into the result
          */
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, dest.type, internalOffset, elementOffset);
+        it = calculateElementOffsetInVPM(
+            method, it, dest.type, internalOffset, elementOffset, !realArea.canBePackedIntoRow());
         genericSetup.genericSetup.setNumber(2);
         assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
             InstructionDecorations::VPM_READ_CONFIGURATION);
@@ -501,7 +512,8 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, dest.type, internalOffset, elementOffset);
+        it = calculateElementOffsetInVPM(
+            method, it, dest.type, internalOffset, elementOffset, !realArea.canBePackedIntoRow());
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
         assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
@@ -572,9 +584,13 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
          * - Write 2 <E16> vectors L and U into VPM address B and B + 1
          */
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, src.type, internalOffset, elementOffset);
+        it = calculateElementOffsetInVPM(
+            method, it, src.type, internalOffset, elementOffset, !realArea.canBePackedIntoRow());
         {
             VPRSetup genericReadSetup(realArea.toReadSetup(src.type));
+            // XXX this might lead to reading 64th (as in one-past-the-end) VPM row, if the original addressed row is
+            // the 63th (last row) while reading the second row. This should not be a problem, since the address wraps
+            // at 64 rows, thus we read the 0th row, but never actually access its data.
             genericReadSetup.genericSetup.setNumber(2);
             assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericReadSetup.value), TYPE_INT32) + elementOffset,
                 InstructionDecorations::VPM_READ_CONFIGURATION);
@@ -615,7 +631,8 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, src.type, internalOffset, elementOffset);
+        it = calculateElementOffsetInVPM(
+            method, it, src.type, internalOffset, elementOffset, !realArea.canBePackedIntoRow());
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
         assign(it, VPM_OUT_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
@@ -677,7 +694,8 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
+        it = calculateElementOffsetInVPM(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset,
+            !realArea.canBePackedIntoRow());
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // TODO is this correct? it fails memory-emulation tests. Is the element offset different for
         // master/remove_mutex branch?
@@ -762,7 +780,8 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset);
+        it = calculateElementOffsetInVPM(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset,
+            !realArea.canBePackedIntoRow());
         // 2) dynamically calculate new VPM address from base and offset (shift and add offset to setup-value)
         // TODO is this correct? See #insertReadRAM
         // if(!realArea.canBePackedIntoRow())
@@ -979,6 +998,7 @@ DataType VPMArea::getElementType() const
     case VPMUsage::SCRATCH:
         // is not known
         return TYPE_UNKNOWN;
+    case VPMUsage::RAM_CACHE:
     case VPMUsage::LOCAL_MEMORY:
         // element-type of local assigned to this area
         return originalAddress->type.getElementType();
@@ -1008,13 +1028,29 @@ uint8_t VPMArea::getElementsInRow(DataType elementType) const
 
 bool VPMArea::canBeAccessedViaDMA() const
 {
-    return usageType == VPMUsage::SCRATCH || getElementType().getVectorWidth() == NATIVE_VECTOR_SIZE;
+    return usageType == VPMUsage::SCRATCH || usageType == VPMUsage::RAM_CACHE ||
+        getElementType().getVectorWidth() == NATIVE_VECTOR_SIZE;
 }
 
 bool VPMArea::canBePackedIntoRow() const
 {
     // TODO proper calculation (or pass in constructor!)
-    return /* !canBeAccessedViaDMA() || */ getElementType().getVectorWidth() == NATIVE_VECTOR_SIZE;
+    // FIXME if we allow packing, QPU->VPM->RAM (simple) works, but RAM-> (single) VPM-> (all) RAM does not! If we
+    // disallow it, other way round
+    // FIXME also uses path for unaligned memory access which has a lot of overhead!
+    return /* !canBeAccessedViaDMA() || */ getElementType().getVectorWidth() == NATIVE_VECTOR_SIZE &&
+        usageType != VPMUsage::RAM_CACHE;
+}
+
+static DataType simplifyComplexTypes(DataType type)
+{
+    if(auto arrayType = type.getArrayType())
+        // treat single-element array as the single element
+        return arrayType->size == 1 ? arrayType->elementType : type;
+    if(auto structType = type.getStructType())
+        // treat single-element struct as the single element
+        return structType->elementTypes.size() == 1 ? structType->elementTypes.front() : type;
+    return type;
 }
 
 /*
@@ -1038,6 +1074,7 @@ bool VPMArea::canBePackedIntoRow() const
 
 VPWGenericSetup VPMArea::toWriteSetup(DataType elementType) const
 {
+    elementType = simplifyComplexTypes(elementType);
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
     {
@@ -1059,14 +1096,15 @@ VPWGenericSetup VPMArea::toWriteSetup(DataType elementType) const
 
 VPWDMASetup VPMArea::toWriteDMASetup(DataType elementType, uint8_t numRows) const
 {
+    elementType = simplifyComplexTypes(elementType);
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
     {
         // 64-bit integer vectors are stored as 2 rows of 32-bit integer vectors in VPM
         type = DataType{32, type.getVectorWidth(), type.isFloatingType()};
         if(numRows != 1)
-            // TODO we need to issue multiple setups (unless vector-width is 16 or long vectors are packed, in which
-            // case the Depth can just be set to vector-width * numRows)
+            // TODO we need to issue multiple setups, since we need to interleave the Nth 32-bit element of every other
+            // row after Nth element of the row before, instead of one row after the other or one column after the other
             throw CompilationError(
                 CompilationStep::GENERAL, "Writing multiple rows of 64-bit vectors into DMA is not supported yet");
         numRows = 2;
@@ -1113,6 +1151,7 @@ VPWDMASetup VPMArea::toWriteDMASetup(DataType elementType, uint8_t numRows) cons
 
 VPRGenericSetup VPMArea::toReadSetup(DataType elementType, uint8_t numRows) const
 {
+    elementType = simplifyComplexTypes(elementType);
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
     {
@@ -1135,6 +1174,7 @@ VPRGenericSetup VPMArea::toReadSetup(DataType elementType, uint8_t numRows) cons
 
 VPRDMASetup VPMArea::toReadDMASetup(DataType elementType, uint8_t numRows) const
 {
+    elementType = simplifyComplexTypes(elementType);
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
     {
@@ -1176,6 +1216,8 @@ static std::string toUsageString(VPMUsage usage, const Local* local)
 {
     switch(usage)
     {
+    case VPMUsage::RAM_CACHE:
+        return (local ? local->to_string() : "(nullptr)") + " (cached)";
     case VPMUsage::LOCAL_MEMORY:
         return (local ? local->to_string() : "(nullptr)") + " (lowered)";
     case VPMUsage::REGISTER_SPILLING:
@@ -1216,7 +1258,8 @@ const VPMArea* VPM::findArea(const Local* local)
     return nullptr;
 }
 
-const VPMArea* VPM::addArea(const Local* local, DataType elementType, bool isStackArea, unsigned numStacks)
+const VPMArea* VPM::addArea(
+    const Local* local, DataType elementType, bool isStackArea, bool isMemoryCache, unsigned numStacks)
 {
     // Since we can only read/write in packages of 16-element vectors on the QPU-side, we need to reserve enough space
     // for 16-element vectors (even if we do not use all of the elements)
@@ -1257,7 +1300,8 @@ const VPMArea* VPM::addArea(const Local* local, DataType elementType, bool isSta
         return nullptr;
 
     // for now align all new VPM areas at the beginning of a row
-    auto ptr = std::make_shared<VPMArea>(isStackArea ? VPMUsage::STACK : VPMUsage::LOCAL_MEMORY,
+    auto ptr = std::make_shared<VPMArea>(
+        isStackArea ? VPMUsage::STACK : (isMemoryCache ? VPMUsage::RAM_CACHE : VPMUsage::LOCAL_MEMORY),
         static_cast<uint8_t>(rowOffset.value()), numRows, local);
     for(auto i = rowOffset.value(); i < (rowOffset.value() + numRows); ++i)
         areas[i] = ptr;
