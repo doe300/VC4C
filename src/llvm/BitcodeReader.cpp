@@ -465,7 +465,7 @@ void BitcodeReader::parse(Module& module)
                 logging::Level::DEBUG, log << "Found SPIR kernel-function: " << func.getName() << logging::endl);
             Method& kernelFunc = parseFunction(module, func);
             extractKernelMetadata(kernelFunc, func, *llvmModule, context);
-            kernelFunc.isKernel = true;
+            kernelFunc.flags = add_flag(kernelFunc.flags, MethodFlags::KERNEL);
         }
     }
 

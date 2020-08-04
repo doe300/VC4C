@@ -24,6 +24,32 @@ namespace vc4c
     class Module;
     struct Global;
 
+    /**
+     * Additional flags set for functions.
+     *
+     * This is a bitmask and the single flags can therefore be combined.
+     */
+    enum class MethodFlags : uint16_t
+    {
+        NONE = 0,
+        /**
+         * This method is a kernel function
+         */
+        KERNEL = 1 << 0,
+        /**
+         * This kernel function has been enclosed by a work-group loop
+         */
+        WORK_GROUP_LOOP = 1 << 1,
+        /**
+         * This kernel function has a leading work-group synchronization (control-flow barrier)
+         */
+        LEADING_CONTROL_FLOW_BARRIER = 1 << 2,
+        /**
+         * This kernel function has a trailing work-group synchronization (control-flow barrier)
+         */
+        TRAILING_CONTROL_FLOW_BARRIER = 2 << 2
+    };
+
     /*
      * Base class representing a function (e.g. an OpenCL kernel)
      */
@@ -32,10 +58,10 @@ namespace vc4c
         using BasicBlockList = FastModificationList<BasicBlock>;
 
     public:
-        /*
-         * Whether this function is a kernel-function
+        /**
+         * Additional flags
          */
-        bool isKernel;
+        MethodFlags flags;
         /*
          * The function-name
          */

@@ -560,7 +560,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         if(static_cast<spv::ExecutionModel>(getWord(parsed_instruction, 1)) != spv::ExecutionModel::Kernel)
             throw CompilationError(CompilationStep::PARSER, "Invalid execution model");
         SPIRVMethod& m = getOrCreateMethod(*module, methods, getWord(parsed_instruction, 2));
-        m.method->isKernel = true;
+        m.method->flags = add_flag(m.method->flags, MethodFlags::KERNEL);
         m.method->name = readLiteralString(parsed_instruction, &parsed_instruction->operands[2]);
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Kernel-method found: " << m.method->name << logging::endl);
         return SPV_SUCCESS;

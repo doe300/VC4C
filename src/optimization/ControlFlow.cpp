@@ -1863,18 +1863,20 @@ static void insertRepetitionBlocks(
  */
 static void insertSynchronizationBlock(Method& method, BasicBlock& lastBlock)
 {
-    CPPLOG_LAZY(logging::Level::DEBUG, log << "Inserting work-item synchronization block..." << logging::endl);
-
-    if(auto predecessor = method.getCFG().assertNode(&lastBlock).getSinglePredecessor())
+    if(has_flag(method.flags, MethodFlags::TRAILING_CONTROL_FLOW_BARRIER) ||
+        has_flag(method.flags, MethodFlags::LEADING_CONTROL_FLOW_BARRIER))
     {
         // If there is already a control flow barrier at the end of the kernel code (e.g. as inserted by writing back
         // memory cached in VPM), don't insert another barrier, since all work-items are already synchronized!
-        if(predecessor->key->getLabel()->getLabel()->name.find("%barrier_after") == 0)
-            // TODO better check!
-            return;
+        // That same counts for any control flow barrier at the beginning of the kernel code (e.g. as inserted by
+        // pre-loading memory into VPM cache).
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Skipping work-item synchronization block due to already trailing barrier in kernel code!"
+                << logging::endl);
+        return;
     }
-    // TODO similarly, if we inserted a control flow barrier at the beginning of the kernel (e.g. for pre-loading data),
-    // we can also omit this control flow barrier.
+
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Inserting work-item synchronization block..." << logging::endl);
 
     auto it = method.emplaceLabel(lastBlock.walk(),
         new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL, "", "%work_item_synchronization").local()));
@@ -1883,6 +1885,7 @@ static void insertSynchronizationBlock(Method& method, BasicBlock& lastBlock)
 
     it.nextInBlock();
     intrinsics::insertControlFlowBarrier(method, it);
+    method.flags = add_flag(method.flags, MethodFlags::TRAILING_CONTROL_FLOW_BARRIER);
 }
 
 bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const Configuration& config)
@@ -1923,6 +1926,7 @@ bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const
 
     // set correct information to metadata
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Adjusting kernel metadata..." << logging::endl);
+    method.flags = add_flag(method.flags, MethodFlags::WORK_GROUP_LOOP);
     method.metaData.uniformsUsed.setGroupIDXUsed(false);
     method.metaData.uniformsUsed.setGroupIDYUsed(false);
     method.metaData.uniformsUsed.setGroupIDZUsed(false);

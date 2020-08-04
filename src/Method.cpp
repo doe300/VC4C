@@ -22,7 +22,7 @@ using namespace vc4c;
 // so local is erased when there is no more use. Local#reference also is shared_ptr
 
 Method::Method(Module& module) :
-    isKernel(false), name(), returnType(TYPE_UNKNOWN),
+    flags(MethodFlags::NONE), name(), returnType(TYPE_UNKNOWN),
     vpm(new periphery::VPM(module.compilationConfig.availableVPMSize)), module(module)
 {
 }

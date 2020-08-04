@@ -14,7 +14,7 @@ std::vector<Method*> Module::getKernels()
 {
     std::vector<Method*> kernels;
     for(auto& method : methods)
-        if(method->isKernel)
+        if(has_flag(method->flags, MethodFlags::KERNEL))
             kernels.push_back(method.get());
     return kernels;
 }
@@ -54,7 +54,7 @@ const Global* Module::findGlobal(const std::string& name) const
 
 void Module::dropNonKernels()
 {
-    auto it = std::remove_if(
-        methods.begin(), methods.end(), [](const auto& method) -> bool { return !method || !method->isKernel; });
+    auto it = std::remove_if(methods.begin(), methods.end(),
+        [](const auto& method) -> bool { return !method || !has_flag(method->flags, MethodFlags::KERNEL); });
     methods.erase(it, methods.end());
 }

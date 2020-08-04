@@ -180,7 +180,7 @@ const static std::vector<std::pair<std::string, NormalizationStep>> initialNorma
     // this first run here is only required, so some loading of literals can be optimized, which is no longer possible
     // after the second run
     {"HandleImmediates", handleImmediate},
-    // propagates instruction decorations across the kernel code
+    // propagates instruction decorations across the kernel code (this is required to aid memory lowering)
     {"PropagateDecorations", propagateDecorations},
     // propagates the unsigned result instruction decoration
     {"PropagateUnsigned", propagateUnsignedValues}};
@@ -197,7 +197,12 @@ const static std::vector<std::pair<std::string, NormalizationStep>> initialNorma
     // operations, we rerun this after any other normalization step.
     {"Lower64BitOperations", lowerLongOperation},
     // dummy step which simply checks whether all remaining instructions are normalized
-    {"CheckNormalized", checkNormalized}};
+    {"CheckNormalized", checkNormalized},
+    // propagates instruction decorations across the kernel code (this is done to have more complete list of decorated
+    // instructions)
+    {"PropagateDecorations", propagateDecorations},
+    // propagates the unsigned result instruction decoration
+    {"PropagateUnsigned", propagateUnsignedValues}};
 
 const static std::vector<std::pair<std::string, NormalizationStep>> adjustmentSteps = {
     // needs to re-run this, since optimization steps may insert literals

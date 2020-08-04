@@ -1027,5 +1027,6 @@ void normalization::insertCacheSynchronizationCode(
             return blockIt;
         });
         intermediate::redirectAllBranches(*lastBlock, *newBlock);
+        method.flags = add_flag(method.flags, MethodFlags::TRAILING_CONTROL_FLOW_BARRIER);
     }
 }
