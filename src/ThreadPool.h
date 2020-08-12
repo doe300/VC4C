@@ -14,6 +14,11 @@
 #include <thread>
 #include <vector>
 
+namespace logging
+{
+    class Logger;
+} // namespace logging
+
 namespace vc4c
 {
     class ThreadPool
@@ -27,16 +32,17 @@ namespace vc4c
         ThreadPool& operator=(const ThreadPool&) = delete;
         ThreadPool& operator=(ThreadPool&&) noexcept = delete;
 
-        std::future<void> schedule(std::function<void()>&& func);
+        std::future<void> schedule(std::function<void()>&& func, logging::Logger* logger = nullptr);
 
         template <typename T, typename Container = std::list<T>>
-        void scheduleAll(const Container& c, const std::function<void(const T&)>& func)
+        void scheduleAll(
+            const Container& c, const std::function<void(const T&)>& func, logging::Logger* logger = nullptr)
         {
             std::vector<std::future<void>> futures;
             futures.reserve(c.size());
 
             for(auto& elem : c)
-                futures.emplace_back(schedule([&]() { func(elem); }));
+                futures.emplace_back(schedule([&]() { func(elem); }, logger));
 
             for(auto& fut : futures)
                 fut.get();

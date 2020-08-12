@@ -10,7 +10,6 @@
 #include "../InstructionWalker.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
-#include "log.h"
 
 using namespace vc4c;
 using namespace vc4c::periphery;

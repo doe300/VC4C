@@ -131,7 +131,7 @@ static Test::Suite* newOptimizationsTest()
 int main(int argc, char** argv)
 {
     //only output errors
-    logging::LOGGER.reset(new logging::ConsoleLogger(logging::Level::WARNING));
+    logging::DEFAULT_LOGGER.reset(new logging::ConsoleLogger(logging::Level::WARNING));
 
     Test::registerSuite(Test::newInstance<TestOptimizationSteps>, "test-optimization-steps", "Runs unit tests on the single optimization steps");
     Test::registerSuite(newOptimizationsTest, "test-optimizations", "Runs smoke tests on the single optimization steps");

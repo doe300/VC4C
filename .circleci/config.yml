@@ -85,25 +85,22 @@ jobs:
             - build/vc4cl-stdlib-0.4-Linux.deb
   build-spirv:
     docker:
-      - image: nomaddo/cross-rpi:0.1
+      - image: doe300/cross-rpi:stretch-spirv
     steps:
       - checkout
       - run:
           name: download header
-          command: git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib && cd VC4CLStdLib && cmake . -DCROSS_COMPILE=OFF && make install && cd ..
+          command: git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib && cd VC4CLStdLib && cmake . -DBUILD_NUMBER=$CIRCLE_BUILD_NUM -DCROSS_COMPILE=OFF && sudo make install && cd ..
       - run:
           name: configure
           command: mkdir build && cd build && cmake ../ -DBUILD_NUMBER=$CIRCLE_BUILD_NUM -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=OFF -DSPIRV_FRONTEND=ON
-      - run:
-          name: spirv-tools
-          command: cd build && make spirv-tools-project spirv-tools-project-build
       - run:
           name: make
           # TODO CicleCI runs out of memory
           command: cd build && make # -j`nproc`
       - run:
           name: deb-packing
-          command: cd build && cpack -G DEB && cpack -G DEB --config ../VC4CLStdLib/CPackConfig.cmake
+          command: cd build && cpack -G DEB && sudo cpack -G DEB --config ../VC4CLStdLib/CPackConfig.cmake
       - store_artifacts:
           path: build/src/libVC4CC.so.0.4
           distination: libVC4CC.so.0.4
@@ -120,7 +117,7 @@ jobs:
           path: build/vc4cl-stdlib-0.4-Linux.deb
           distination: vc4cl-stdlib-0.4-Linux.deb
       - persist_to_workspace:
-          root: /root/project
+          root: /home/idein/project
           paths:
             - build/test/TestVC4C
             - build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9
@@ -143,17 +140,17 @@ jobs:
       - run: dpkg -r vc4cl-stdlib
   test-spirv:
     docker:
-      - image: nomaddo/cross-rpi:0.1
+      - image: doe300/cross-rpi:stretch-spirv
     steps:
       - attach_workspace:
-          at: /root/project
-      - run: dpkg -i build/vc4cl-stdlib-0.4-Linux.deb
-      - run: dpkg -i build/vc4c-0.4-Linux.deb
-      - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
-      - run: ldconfig
-      - run: build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-common --emulate-conversions --emulate-geometric --emulate-relational --emulate-vector --test-emulator --test-frontend --test-container
-      - run: dpkg -r vc4c
-      - run: dpkg -r vc4cl-stdlib
+          at: /home/idein/project
+      - run: sudo dpkg -i build/vc4cl-stdlib-0.4-Linux.deb
+      - run: sudo dpkg -i build/vc4c-0.4-Linux.deb
+      - run: sudo ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
+      - run: sudo ldconfig
+      - run: sudo build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-common --emulate-conversions --emulate-geometric --emulate-relational --emulate-vector --test-emulator --test-frontend --test-container
+      - run: sudo dpkg -r vc4c
+      - run: sudo dpkg -r vc4cl-stdlib
 workflows:
   version: 2
   commit:

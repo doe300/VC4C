@@ -7,6 +7,7 @@
 #include "Compiler.h"
 
 #include "CompilationError.h"
+#include "Logger.h"
 #include "Parser.h"
 #include "Precompiler.h"
 #include "Profiler.h"
@@ -110,7 +111,7 @@ std::size_t Compiler::convert()
 
     auto kernels = module.getKernels();
     const auto f = [&codeGen](Method* kernelFunc) -> void { codeGen.toMachineCode(*kernelFunc); };
-    ThreadPool{"CodeGenerator"}.scheduleAll<Method*>(kernels, f);
+    ThreadPool{"CodeGenerator"}.scheduleAll<Method*>(kernels, f, THREAD_LOGGER.get());
 
     // TODO could discard unused globals
     // since they are exported, they are still in the intermediate code, even if not used (e.g. optimized away)
@@ -173,12 +174,18 @@ std::size_t Compiler::compile(std::istream& input, std::ostream& output, const C
     }
 }
 
-std::unique_ptr<logging::Logger> logging::LOGGER(new logging::ColoredLogger(std::wcout, logging::Level::WARNING));
+std::unique_ptr<logging::Logger> logging::DEFAULT_LOGGER(
+    new logging::ColoredLogger(std::wcout, logging::Level::WARNING));
+
+thread_local std::unique_ptr<logging::Logger> vc4c::THREAD_LOGGER;
 
 void vc4c::setLogger(std::wostream& outputStream, const bool coloredOutput, const LogLevel level)
 {
+    // Only update the logger for this thread (and all tasks/threads) started by this thread to allow parallel logging
+    // into different outputs
     if(coloredOutput)
-        logging::LOGGER = std::make_unique<logging::ColoredLogger>(outputStream, static_cast<logging::Level>(level));
+        THREAD_LOGGER = std::make_unique<logging::ColoredLogger>(outputStream, static_cast<logging::Level>(level));
     else
-        logging::LOGGER = std::make_unique<logging::StreamLogger>(outputStream, static_cast<logging::Level>(level));
+        THREAD_LOGGER = std::make_unique<logging::StreamLogger>(outputStream, static_cast<logging::Level>(level));
+    logging::setThreadLogger(THREAD_LOGGER.get());
 }

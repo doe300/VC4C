@@ -6,6 +6,8 @@
 
 #include "ThreadPool.h"
 
+#include "log.h"
+
 #include <sys/prctl.h>
 
 using namespace vc4c;
@@ -31,9 +33,15 @@ ThreadPool::~ThreadPool()
 #endif
 }
 
-std::future<void> ThreadPool::schedule(std::function<void()>&& func)
+std::future<void> ThreadPool::schedule(std::function<void()>&& func, logging::Logger* logger)
 {
-    std::packaged_task<void()> task{func};
+    std::packaged_task<void()> task{[func{std::move(func)}, logger]() {
+        // Since this is unconditionally called for every task, the logger is only used for the tasks where is
+        // explicitly set. In other words, the next task overwrites the logger to be used (possibly with a NULL pointer,
+        // to use the global logger).
+        logging::setThreadLogger(logger);
+        func();
+    }};
     auto fut = task.get_future();
 #ifdef MULTI_THREADED
     {

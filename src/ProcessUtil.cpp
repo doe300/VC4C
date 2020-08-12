@@ -8,7 +8,6 @@
 
 #include "CompilationError.h"
 #include "Profiler.h"
-#include "log.h"
 
 #include <array>
 #include <chrono>

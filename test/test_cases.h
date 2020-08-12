@@ -283,6 +283,11 @@ namespace vc4c
 					}, toConfig(11), maxExecutionCycles),
 					addVector({}, 3, std::vector<unsigned>{253})
 				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/boost-compute/test_reduce.cl", "reduce",
+					{toParameter(std::vector<unsigned>{1, 5, 9, 13, 17}), toScalarParameter(0u), toScalarParameter(5u), toParameter(std::vector<unsigned>(1)), toScalarParameter(0u)
+					}, toConfig(12, 1, 1), maxExecutionCycles),
+					addVector({}, 3, std::vector<unsigned>{1 + 5 + 9 + 13 + 17})
+				),
 		};
 
 		//TODO NVIDIA/matrixMul, NVIDIA/transpose, OpenCLIPP/Arithmetic, OpenCLIPP/Logic, OpenCLIPP/Thresholding, test_signedness
