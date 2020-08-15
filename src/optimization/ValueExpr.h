@@ -13,7 +13,7 @@
 
 namespace vc4c
 {
-    namespace optimization
+    namespace optimizations
     {
         class ValueExpr
         {

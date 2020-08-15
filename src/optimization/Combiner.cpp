@@ -11,12 +11,17 @@
 #include "../intermediate/Helper.h"
 #include "../intermediate/operators.h"
 #include "../periphery/VPM.h"
+#include "../optimization/ValueExpr.h"
 #include "Eliminator.h"
 #include "log.h"
 
 #include <algorithm>
 #include <cstdlib>
 #include <memory>
+
+#ifdef __GNUC__
+#include <cxxabi.h>
+#endif
 
 // TODO combine y = (x >> n) << n with and
 // same for y = (x << n) >> n (at least of n constant)
@@ -27,6 +32,7 @@ using namespace vc4c;
 using namespace vc4c::optimizations;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
+using namespace vc4c::periphery;
 
 // Taken from https://stackoverflow.com/questions/2835469/how-to-perform-rotate-shift-in-c?noredirect=1&lq=1
 constexpr static uint32_t rotate_left_halfword(uint32_t value, uint8_t shift) noexcept
@@ -1119,6 +1125,332 @@ InstructionWalker optimizations::combineArithmeticOperations(
         it.previousInBlock();
     }
     return it;
+}
+
+std::shared_ptr<ValueExpr> makeValueBinaryOpFromLocal(Value& left, ValueBinaryOp::BinaryOp binOp, Value& right)
+{
+    return std::make_shared<ValueBinaryOp>(
+        std::make_shared<ValueTerm>(left), binOp, std::make_shared<ValueTerm>(right));
+}
+
+// try to convert shl to mul and return it as ValueExpr
+std::shared_ptr<ValueExpr> shlToMul(Value& value, const intermediate::Operation* op)
+{
+    auto left = op->getFirstArg();
+    auto right = *op->getSecondArg();
+    int shiftValue = 0;
+    if(auto lit = right.checkLiteral())
+    {
+        shiftValue = lit->signedInt();
+    }
+    else if(auto imm = right.checkImmediate())
+    {
+        shiftValue = imm->getIntegerValue().value_or(0);
+    }
+
+    if(shiftValue > 0)
+    {
+        auto right = Value(Literal(1 << shiftValue), TYPE_INT32);
+        return makeValueBinaryOpFromLocal(left, ValueBinaryOp::BinaryOp::Mul, right);
+    }
+    else
+    {
+        return std::make_shared<ValueTerm>(value);
+    }
+}
+
+std::shared_ptr<ValueExpr> iiToExpr(Value& value, const LocalUser* inst)
+{
+    using BO = ValueBinaryOp::BinaryOp;
+    BO binOp = BO::Other;
+
+    // add, sub, shr, shl, asr
+    if(auto op = dynamic_cast<const intermediate::Operation*>(inst))
+    {
+        if(op->op == OP_ADD)
+        {
+            binOp = BO::Add;
+        }
+        else if(op->op == OP_SUB)
+        {
+            binOp = BO::Sub;
+        }
+        else if(op->op == OP_SHL)
+        {
+            // convert shl to mul
+            return shlToMul(value, op);
+            // TODO: shr, asr
+        }
+        else
+        {
+            // If op is neither add nor sub, return value as-is.
+            return std::make_shared<ValueTerm>(value);
+        }
+
+        auto left = op->getFirstArg();
+        auto right = *op->getSecondArg();
+        return makeValueBinaryOpFromLocal(left, binOp, right);
+    }
+    // mul, div
+    else if(auto op = dynamic_cast<const intermediate::IntrinsicOperation*>(inst))
+    {
+        if(op->opCode == "mul")
+        {
+            binOp = BO::Mul;
+        }
+        else if(op->opCode == "div")
+        {
+            binOp = BO::Div;
+        }
+        else
+        {
+            // If op is neither add nor sub, return value as-is.
+            return std::make_shared<ValueTerm>(value);
+        }
+
+        auto left = op->getFirstArg();
+        auto right = *op->getSecondArg();
+        return makeValueBinaryOpFromLocal(left, binOp, right);
+    }
+
+    return std::make_shared<ValueTerm>(value);
+}
+
+std::shared_ptr<ValueExpr> calcValueExpr(std::shared_ptr<ValueExpr> expr)
+{
+    using BO = ValueBinaryOp::BinaryOp;
+
+    ValueExpr::ExpandedExprs expanded;
+    expr->expand(expanded);
+
+    // for(auto& p : expanded)
+    //     logging::debug() << (p.first ? "+" : "-") << p.second->to_string() << " ";
+    // logging::debug() << logging::endl;
+
+    for(auto p = expanded.begin(); p != expanded.end();)
+    {
+        auto comp = std::find_if(
+            expanded.begin(), expanded.end(), [&p](const std::pair<bool, std::shared_ptr<ValueExpr>>& other) {
+                return p->first != other.first && *p->second == *other.second;
+            });
+        if(comp != expanded.end())
+        {
+            expanded.erase(comp);
+            p = expanded.erase(p);
+        }
+        else
+        {
+            p++;
+        }
+    }
+
+    std::shared_ptr<ValueExpr> result = std::make_shared<ValueTerm>(INT_ZERO);
+    for(auto& p : expanded)
+    {
+        result = std::make_shared<ValueBinaryOp>(result, p.first ? BO::Add : BO::Sub, p.second);
+    }
+
+    return result;
+}
+
+void optimizations::combineDMALoads(const Module& module, Method& method, const Configuration& config)
+{
+    for(auto& bb : method)
+    {
+        std::vector<intermediate::MethodCall*> loadInstrs;
+        std::vector<Value> offsetValues;
+        Optional<Value> addrValue;
+        for(auto& it : bb)
+        {
+            // Find all method calls
+            if(auto call = dynamic_cast<intermediate::MethodCall*>(it.get()))
+            {
+
+                auto name = call->methodName;
+
+#ifdef __GNUC__
+                // Copied from src/spirv/SPIRVHelper.cpp
+                // TODO: Move these codes to the new helper file.
+                int status;
+                char* real_name = abi::__cxa_demangle(name.data(), nullptr, nullptr, &status);
+                std::string result = name;
+
+                if(status == 0)
+                {
+                    // if demangling is successful, output the demangled function name
+                    result = real_name;
+                    // the demangled name contains the arguments, so we need ignore them
+                    result = result.substr(0, result.find('('));
+                }
+                free(real_name);
+                auto isVload16 = result == "vload16";
+#else
+                auto isVload16 = name.find("vload16") != std::string::npos;
+#endif
+
+                // TODO: Check whether all second argument values are equal.
+                if(isVload16)
+                {
+                    if (!addrValue.has_value())
+                    {
+                        addrValue = call->getArgument(1);
+                    }
+                    else if (addrValue != call->getArgument(1))
+                    {
+                        continue;
+                    }
+
+                    offsetValues.push_back(call->assertArgument(0));
+                    loadInstrs.push_back(call);
+                }
+            }
+        }
+
+        if(offsetValues.size() <= 1)
+            continue;
+
+        for(auto& inst : loadInstrs)
+        {
+            logging::debug() << inst->to_string() << logging::endl;
+        }
+
+        std::vector<std::pair<Value, std::shared_ptr<ValueExpr>>> addrExprs;
+
+        for(auto& addrValue : offsetValues)
+        {
+            if(auto loc = addrValue.checkLocal())
+            {
+                if(auto writer = loc->getSingleWriter())
+                {
+                    addrExprs.push_back(std::make_pair(addrValue, iiToExpr(addrValue, writer)));
+                }
+                else
+                {
+                    addrExprs.push_back(std::make_pair(addrValue, std::make_shared<ValueTerm>(addrValue)));
+                }
+            }
+        }
+
+        for(auto& current : addrExprs)
+        {
+            for(auto& other : addrExprs)
+            {
+                auto replaced = current.second->replaceLocal(other.first, other.second);
+                current.second = replaced;
+            }
+        }
+
+        for(auto& pair : addrExprs)
+        {
+            logging::debug() << pair.first.to_string() << " = " << pair.second->to_string() << logging::endl;
+        }
+
+        std::shared_ptr<ValueExpr> diff = nullptr;
+        bool eqDiff = true;
+        for(size_t i = 1; i < addrExprs.size(); i++)
+        {
+            auto x = addrExprs[i - 1].second;
+            auto y = addrExprs[i].second;
+            auto diffExpr = std::make_shared<ValueBinaryOp>(y, ValueBinaryOp::BinaryOp::Sub, x);
+
+            auto currentDiff = calcValueExpr(diffExpr);
+            // Apply calcValueExpr again for integer literals.
+            currentDiff = calcValueExpr(currentDiff);
+
+            if(diff == nullptr)
+            {
+                diff = currentDiff;
+            }
+            if(*currentDiff != *diff)
+            {
+                eqDiff = false;
+                break;
+            }
+        }
+
+        logging::debug() << addrExprs.size() << " loads are " << (eqDiff ? "" : "not ") << "equal difference" << logging::endl;
+
+        if(eqDiff)
+        {
+            // The form of diff should be "0 (+/-) expressions...", then remove the value 0 at most right.
+            ValueExpr::ExpandedExprs expanded;
+            diff->expand(expanded);
+            if (expanded.size() == 1) {
+                diff = expanded[0].second;
+
+                // logging::debug() << "diff = " << diff->to_string()  << logging::endl;
+
+                if (auto term = std::dynamic_pointer_cast<ValueTerm>(diff))
+                {
+                    // logging::debug() << "term = " << term->to_string()  << logging::endl;
+
+                    if (auto mpValue = term->value.getConstantValue())
+                    {
+                        // logging::debug() << "mpValue = " << mpValue->to_string()  << logging::endl;
+
+                        if (auto mpLiteral = mpValue->getLiteralValue())
+                        {
+                            if (mpLiteral->unsignedInt() < (1u << 12))
+                            {
+                                auto it = bb.walk();
+                                bool firstCall = true;
+                                while(!it.isEndOfBlock())
+                                {
+                                    auto call = it.get<intermediate::MethodCall>();
+                                    if(call && std::find(loadInstrs.begin(), loadInstrs.end(), call) != loadInstrs.end())
+                                    {
+                                        it.erase();
+
+                                        auto output = *call->getOutput();
+                                        if(firstCall)
+                                        {
+                                            firstCall = false;
+
+                                            auto addrArg = call->assertArgument(1);
+
+                                            auto elemType = addrArg.type.getElementType();
+                                            auto vectorSize = elemType.getInMemoryWidth() * 16;
+
+                                            // TODO: limit loadInstrs.size()
+                                            Value offset = assign(it, TYPE_INT32) = offsetValues[0] << 4_val;
+                                            // Value offset = assign(it, TYPE_INT32) = offsetValues[0] * Literal(vectorSize);
+                                            Value addr   = assign(it, TYPE_INT32) = offset + addrArg;
+
+                                            uint16_t memoryPitch = static_cast<uint16_t>(mpLiteral->unsignedInt()) * vectorSize;
+
+                                            // TODO: cover types other than vector16
+                                            DataType TYPE16{elemType.getInMemoryWidth() * DataType::BYTE, 16, false};
+
+                                            uint64_t rows = loadInstrs.size();
+                                            VPMArea area(VPMUsage::SCRATCH, 0, static_cast<uint8_t>(rows));
+                                            auto entries = Value(Literal(static_cast<uint32_t>(rows)), TYPE_INT32);
+                                            it = method.vpm->insertReadRAM(method, it, addr, TYPE16,/* &area */ nullptr,
+                                                    true, INT_ZERO, entries, Optional<uint16_t>(memoryPitch));
+
+                                            // const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
+                                            it = method.vpm->insertReadVPM(method, it, output, &area, true);
+                                        }
+                                        else {
+                                            // TODO: gather these instructions in one mutex lock
+                                            it = method.vpm->insertLockMutex(it, true);
+                                            assign(it, output) = VPM_IO_REGISTER;
+                                            it = method.vpm->insertUnlockMutex(it, true);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        it.nextInBlock();
+                                    }
+                                }
+
+                                logging::debug() << loadInstrs.size() << " loads are combined" << logging::endl;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 static Optional<std::pair<Value, InstructionDecorations>> combineAdditions(

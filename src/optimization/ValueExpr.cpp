@@ -9,7 +9,7 @@
 #include "../Locals.h"
 
 using namespace vc4c;
-using namespace vc4c::optimization;
+using namespace vc4c::optimizations;
 
 bool ValueBinaryOp::operator==(const ValueExpr& other) const
 {
