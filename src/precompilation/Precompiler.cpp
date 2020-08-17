@@ -223,37 +223,9 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
     std::vector<std::unique_ptr<TemporaryFile>> tempFiles;
     std::tie(llvmLinkerPossible, spirvLinkerPossible) = determinePossibleLinkers(inputs);
 
-    // prefer SPIR-V linker, since it a) does not require an extra process and b) supports more source code types
-    if(spirvLinkerPossible)
-    {
-        std::vector<SPIRVSource> sources;
-        sources.reserve(inputs.size());
-        std::transform(inputs.begin(), inputs.end(), std::back_inserter(sources), [&](const auto& pair) -> SPIRVSource {
-            if(auto temp = compileToSPIRV(pair))
-            {
-                tempFiles.emplace_back(std::make_unique<TemporaryFile>(std::move(temp.value())));
-                return SPIRVSource(tempFiles.back()->fileName);
-            }
-            if(pair.second)
-                return SPIRVSource(pair.second.value());
-            return SPIRVSource(*pair.first);
-        });
-
-        if(includeStandardLibrary)
-        {
-            // FIXME this does not work, since the SPIRV-LLVM does not generate a correct VC4CL standard-library module
-            tempFiles.emplace_back(std::make_unique<TemporaryFile>());
-            SPIRVResult stdLib(tempFiles.back()->fileName);
-            compileLLVMToSPIRV(LLVMIRSource(findStandardLibraryFiles().llvmModule), "", stdLib);
-            sources.emplace_back(stdLib);
-        }
-
-        SPIRVResult result(&output);
-        linkSPIRVModules(std::move(sources), "", result);
-        PROFILE_END(linkSourceCode);
-        return SourceType::SPIRV_BIN;
-    }
-    else if(llvmLinkerPossible)
+    // prefer LLVM IR linker - although it requires spawning an extra process - since LLVM-SPIRV translation is not
+    // complete (e.g. some LLVM intrinsics are not supported)
+    if(llvmLinkerPossible)
     {
         std::vector<LLVMIRSource> sources;
         sources.reserve(inputs.size());
@@ -286,6 +258,35 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
         }
         PROFILE_END(linkSourceCode);
         return SourceType::LLVM_IR_BIN;
+    }
+    else if(spirvLinkerPossible)
+    {
+        std::vector<SPIRVSource> sources;
+        sources.reserve(inputs.size());
+        std::transform(inputs.begin(), inputs.end(), std::back_inserter(sources), [&](const auto& pair) -> SPIRVSource {
+            if(auto temp = compileToSPIRV(pair))
+            {
+                tempFiles.emplace_back(std::make_unique<TemporaryFile>(std::move(temp.value())));
+                return SPIRVSource(tempFiles.back()->fileName);
+            }
+            if(pair.second)
+                return SPIRVSource(pair.second.value());
+            return SPIRVSource(*pair.first);
+        });
+
+        if(includeStandardLibrary)
+        {
+            // FIXME this does not work, since the SPIRV-LLVM does not generate a correct VC4CL standard-library module
+            tempFiles.emplace_back(std::make_unique<TemporaryFile>());
+            SPIRVResult stdLib(tempFiles.back()->fileName);
+            compileLLVMToSPIRV(LLVMIRSource(findStandardLibraryFiles().llvmModule), "", stdLib);
+            sources.emplace_back(stdLib);
+        }
+
+        SPIRVResult result(&output);
+        linkSPIRVModules(std::move(sources), "", result);
+        PROFILE_END(linkSourceCode);
+        return SourceType::SPIRV_BIN;
     }
     throw CompilationError(CompilationStep::LINKER, "Cannot find a linker which can be used for all inputs!");
 }

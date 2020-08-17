@@ -29,6 +29,10 @@ if(SPIRV_TRANSLATOR_ROOT)
 		message(STATUS "LLVM-link found: " ${LLVM_LINK_FOUND})
 		set(SPIRV_LINK_MODULES ON)
 	endif()
+	if(NOT CLANG_VERSION_STRING)
+		EXECUTE_PROCESS( COMMAND ${SPIRV_CLANG_FOUND} --version OUTPUT_VARIABLE clang_full_version_string )
+		string (REGEX REPLACE ".*clang version ([0-9]+\\.[0-9]+).*" "\\1" CLANG_VERSION_STRING ${clang_full_version_string})
+	endif()
 endif()
 
 ####

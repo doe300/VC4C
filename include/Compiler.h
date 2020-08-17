@@ -76,8 +76,12 @@ namespace vc4c
     };
 
     /*
-     * Sets the global logger and its level
+     * Sets the logger and its level to be used for any upcoming (pre-)compilation or emulation.
+     *
      * This defaults to logging to the console
+     *
+     * NOTE: The logger is only used for any upcoming API calls on this thread and any worker threads/tasks spawned by
+     * this thread and does not affect any parallel or already running API calls.
      */
     void setLogger(std::wostream& outputStream, bool coloredOutput, LogLevel level = LogLevel::WARNING);
 } // namespace vc4c

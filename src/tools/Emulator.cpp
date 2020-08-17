@@ -1742,7 +1742,7 @@ bool QPU::executeSignal(Signaling signal)
 
 void QPU::setFlags(const SIMDVector& output, ConditionCode cond, const VectorFlags& newFlags)
 {
-    for(uint8_t i = 0; i < flags.size(); ++i)
+    for(std::size_t i = 0; i < flags.size(); ++i)
     {
         if(flags[i].matchesCondition(cond))
         {
