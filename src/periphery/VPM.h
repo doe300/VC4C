@@ -408,7 +408,9 @@ namespace vc4c
          *
          * see Broadcom spec, table 36
          */
-        class VPRDMASetup : private Bitfield<uint32_t>
+        // class VPRDMASetup : private Bitfield<uint32_t>
+        // TODO: Changed to public, is it ok?
+        class VPRDMASetup : public Bitfield<uint32_t>
         {
         public:
             VPRDMASetup(

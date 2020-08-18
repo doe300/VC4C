@@ -8,14 +8,18 @@
 #include "Expression.h"
 #include "Method.h"
 #include "Module.h"
+#include "Bitfield.h"
 #include "intermediate/Helper.h"
 #include "intermediate/operators.h"
 #include "optimization/Combiner.h"
 #include "optimization/ControlFlow.h"
 #include "optimization/Eliminator.h"
 #include "optimization/Flags.h"
+#include "periphery/VPM.h"
 
 #include <cmath>
+
+#include "log.h"
 
 using namespace vc4c;
 using namespace vc4c::optimizations;
@@ -35,6 +39,7 @@ TestOptimizationSteps::TestOptimizationSteps()
     TEST_ADD(TestOptimizationSteps::testEliminateBitOperations);
     TEST_ADD(TestOptimizationSteps::testCombineRotations);
     TEST_ADD(TestOptimizationSteps::testLoopInvariantCodeMotion);
+    TEST_ADD(TestOptimizationSteps::testCombineDMALoads);
 }
 
 static bool checkEquals(
@@ -1988,4 +1993,91 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
     TEST_ASSERT(it->getOutput().value() == NOP_REGISTER);
     it.nextInMethod();
     TEST_ASSERT(!!it.get<Branch>());
+}
+
+void TestOptimizationSteps::testCombineDMALoads()
+{
+    using namespace vc4c::intermediate;
+    Configuration config{};
+    Module module{config};
+    Method inputMethod(module);
+
+    auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+
+    auto in = assign(inIt, TYPE_INT32, "%in") = UNIFORM_REGISTER;
+
+    // TODO: Add a case that the first argument of vload16 is a variable.
+
+    DataType TYPE16{DataType::WORD, 16, true};
+
+    const Local* createLocal(DataType type, const std::string& name) __attribute__((returns_nonnull));
+    auto res1 = inputMethod.addNewLocal(TYPE16);
+    auto res2 = inputMethod.addNewLocal(TYPE16);
+    auto res3 = inputMethod.addNewLocal(TYPE16);
+    inIt.emplace((new intermediate::MethodCall(std::move(res1), "vload16", {0_val, in})));
+    inIt.emplace((new intermediate::MethodCall(std::move(res2), "vload16", {1_val, in})));
+    inIt.emplace((new intermediate::MethodCall(std::move(res3), "vload16", {2_val, in})));
+
+    const int numOfLoads = 3;
+    periphery::VPRDMASetup expectedDMASetup(0, 0, numOfLoads, 1, 0);
+
+    combineDMALoads(module, inputMethod, config);
+
+    for(auto& bb : inputMethod)
+    {
+        int numOfDMASetup = 0;
+        int numOfStrideSetup = 0;
+        int numOfVPMSetup = 0;
+        int numOfVPMRead = 0;
+
+        for(auto& it : bb)
+        {
+            if(auto move = dynamic_cast<intermediate::MoveOperation*>(it.get()))
+            {
+                auto source = move->getSource();
+                if(source.getLiteralValue() &&
+                        (move->getOutput()->hasRegister(REG_VPM_IN_SETUP) ||
+                         has_flag(move->decoration, InstructionDecorations::VPM_READ_CONFIGURATION)))
+                {
+                    auto dmaSetup = periphery::VPRSetup::fromLiteral(source.getLiteralValue()->unsignedInt()).dmaSetup;
+                    TEST_ASSERT_EQUALS(expectedDMASetup, dmaSetup);
+
+                    numOfDMASetup++;
+                }
+                else if (auto reg = source.checkRegister())
+                {
+                    // VPM Read
+                    if (reg->file != RegisterFile::ACCUMULATOR && reg->num == 48)
+                    {
+                        numOfVPMRead++;
+                    }
+                }
+            }
+            else if (auto load = dynamic_cast<intermediate::LoadImmediate*>(it.get()))
+            {
+                if (load->type == LoadType::REPLICATE_INT32 &&
+                        (load->getOutput()->hasRegister(REG_VPM_IN_SETUP) ||
+                        has_flag(load->decoration, InstructionDecorations::VPM_READ_CONFIGURATION)))
+                {
+                    auto vpr = periphery::VPRSetup::fromLiteral(load->getImmediate().unsignedInt());
+                    if (vpr.isStrideSetup())
+                    {
+                        TEST_ASSERT_EQUALS(64, vpr.strideSetup.getPitch());
+                        numOfStrideSetup++;
+                    }
+                    if (vpr.isGenericSetup())
+                    {
+                        auto vpmSetup = vpr.genericSetup;
+                        TEST_ASSERT_EQUALS(numOfLoads, vpmSetup.getNumber());
+                        numOfVPMSetup++;
+                    }
+                }
+            }
+        }
+
+        TEST_ASSERT_EQUALS(1, numOfDMASetup);
+        TEST_ASSERT_EQUALS(1, numOfStrideSetup);
+        TEST_ASSERT_EQUALS(1, numOfVPMSetup);
+        TEST_ASSERT_EQUALS(numOfLoads, numOfVPMRead);
+    }
 }
