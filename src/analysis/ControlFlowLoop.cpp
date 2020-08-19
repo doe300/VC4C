@@ -124,11 +124,11 @@ bool ControlFlowLoop::includes(const ControlFlowLoop& other) const
     return true;
 }
 
-static SortedSet<Local*> findInductionCandidates(
+static SortedSet<const Local*> findInductionCandidates(
     const ControlFlowLoop& loop, const DataDependencyGraph& dependencyGraph)
 {
-    SortedSet<Local*> innerDependencies;
-    SortedSet<Local*> outerDependencies;
+    SortedSet<const Local*> innerDependencies;
+    SortedSet<const Local*> outerDependencies;
     for(auto& node : loop)
     {
         // not all basic blocks have an entry in the dependency graph (e.g. if they have no dependency)
@@ -163,7 +163,7 @@ static SortedSet<Local*> findInductionCandidates(
         }
     }
 
-    SortedSet<Local*> intersection;
+    SortedSet<const Local*> intersection;
     // NOTE: Cannot pass unordered_set into set_intersection, since it requires its inputs (and output) to be sorted!
     std::set_intersection(innerDependencies.begin(), innerDependencies.end(), outerDependencies.begin(),
         outerDependencies.end(), std::inserter(intersection, intersection.begin()));
@@ -340,7 +340,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
         // we have an initial value as well as a single step expression
         // since the remaining values and instructions are not required for an induction variable, we try to find it out
         // after adding the variable to the result
-        variables.emplace_back(InductionVariable{local, initialAssignment, stepOperation});
+        variables.emplace_back(InductionVariable{const_cast<Local*>(local), initialAssignment, stepOperation});
 
         if(!includeIterationInformation)
             // if we don't care for iteration variable information, we are done here
@@ -356,7 +356,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
             break;
         }
 
-        Local* repeatConditionLocal = nullptr;
+        const Local* repeatConditionLocal = nullptr;
         ConditionCode repeatCondition = COND_NEVER;
 
         if(auto branch = tailBranch.get<intermediate::Branch>())

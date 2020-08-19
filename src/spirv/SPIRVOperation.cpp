@@ -1280,7 +1280,7 @@ void SPIRVLifetimeInstruction::mapInstruction(TypeMapping& types, ConstantMappin
 
     if(auto loc = pointer.checkLocal())
     {
-        if(auto alloc = const_cast<StackAllocation*>(loc->getBase(true)->as<StackAllocation>()))
+        if(auto alloc = loc->getBase(true)->as<StackAllocation>())
             pointer = alloc->createReference();
     }
 

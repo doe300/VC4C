@@ -672,7 +672,7 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
             memoryAddress.local()->as<Parameter>()->decorations =
                 add_flag(param->decorations, ParameterDecorations::INPUT);
         if(auto param = local->getBase(true)->as<Parameter>())
-            const_cast<Parameter*>(param)->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
+            param->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
     }
 
     auto rowCount = numEntries.getLiteralValue() ? numEntries.getLiteralValue()->unsignedInt() : 0;
@@ -765,7 +765,7 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
             memoryAddress.local()->as<Parameter>()->decorations =
                 add_flag(param->decorations, ParameterDecorations::OUTPUT);
         if(auto param = local->getBase(true)->as<Parameter>())
-            const_cast<Parameter*>(param)->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
+            param->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
     }
 
     it = insertLockMutex(it, useMutex);
@@ -890,7 +890,7 @@ InstructionWalker VPM::insertCopyRAMDynamic(Method& method, InstructionWalker it
                 srcAddress.local()->as<Parameter>()->decorations =
                     add_flag(param->decorations, ParameterDecorations::INPUT);
             if(auto param = local->getBase(true)->as<Parameter>())
-                const_cast<Parameter*>(param)->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
+                param->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
             if(auto data = local->get<ReferenceData>())
                 tmpSource.local()->set(ReferenceData(*data->base, ANY_ELEMENT));
         }
@@ -901,7 +901,7 @@ InstructionWalker VPM::insertCopyRAMDynamic(Method& method, InstructionWalker it
                 destAddress.local()->as<Parameter>()->decorations =
                     add_flag(param->decorations, ParameterDecorations::OUTPUT);
             if(auto param = local->getBase(true)->as<Parameter>())
-                const_cast<Parameter*>(param)->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
+                param->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
             if(auto data = local->get<ReferenceData>())
                 tmpDest.local()->set(ReferenceData(*data->base, ANY_ELEMENT));
         }

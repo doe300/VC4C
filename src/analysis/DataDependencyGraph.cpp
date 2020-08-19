@@ -106,8 +106,8 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
                         auto& neighbor = graph.getOrCreateNode(instIt.getBasicBlock());
                         auto& neighborDependencies =
                             graph.getOrCreateNode(&bb).getOrCreateEdge(&neighbor).addInput(neighbor).data;
-                        neighborDependencies[instIt.getBasicBlock()][const_cast<Local*>(local)] =
-                            add_flag(neighborDependencies[instIt.getBasicBlock()][const_cast<Local*>(local)], type);
+                        neighborDependencies[instIt.getBasicBlock()][local] =
+                            add_flag(neighborDependencies[instIt.getBasicBlock()][local], type);
                     }
                 });
             }
@@ -126,8 +126,8 @@ static void findDependencies(BasicBlock& bb, DataDependencyGraph& graph, Instruc
                                 node.getOrCreateEdge(&graph.getOrCreateNode(instIt.getBasicBlock()))
                                     .addInput(node)
                                     .data;
-                            neighborDependencies[&bb][const_cast<Local*>(local)] = add_flag(
-                                neighborDependencies[&bb][const_cast<Local*>(local)], DataDependencyType::ANTI);
+                            neighborDependencies[&bb][local] =
+                                add_flag(neighborDependencies[&bb][local], DataDependencyType::ANTI);
                         }
                     });
             }
@@ -152,8 +152,8 @@ static void makeTransitive(
                 // TODO add "normal" data dependency graph for
                 // 1) distinguish between direct and transitive dependencies
                 // 2) flow and anti/phi dependencies
-                edgeData[const_cast<Local*>(loc)] = add_flag(edgeData[const_cast<Local*>(loc)],
-                    add_flag(DataDependencyType::FLOW, DataDependencyType::TRANSITIVE));
+                edgeData[loc] =
+                    add_flag(edgeData[loc], add_flag(DataDependencyType::FLOW, DataDependencyType::TRANSITIVE));
             }
             return true;
         });

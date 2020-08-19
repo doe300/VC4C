@@ -344,7 +344,7 @@ namespace vc4c
         /*
          * The decorations for this parameter
          */
-        ParameterDecorations decorations;
+        mutable ParameterDecorations decorations;
         /*
          * For pointer-types, this value specifies the maximum offset in bytes from the base-address this parameter is
          * accessed.
@@ -375,7 +375,7 @@ namespace vc4c
          * NOTE: Only __local parameters (where the temporary buffers are managed by the OpenCL implementations) can be
          * lowered into VPM.
          */
-        bool isLowered = false;
+        mutable bool isLowered = false;
     };
 
     /*
@@ -401,7 +401,7 @@ namespace vc4c
          *
          * E.g. the first stack-allocation has a per-QPU offset of zero, the second the size of the first, etc.
          */
-        std::size_t offset;
+        mutable std::size_t offset;
         /*
          * The alignment of the data, in bytes.
          *
@@ -418,7 +418,7 @@ namespace vc4c
          * Whether this stack allocation is lowered into VPM or register. For lowered stack allocations, no area in the
          * "constant" memory block needs to be reserved.
          */
-        bool isLowered = false;
+        mutable bool isLowered = false;
     };
 
     /*

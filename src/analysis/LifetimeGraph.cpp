@@ -110,7 +110,7 @@ struct StackNodeSorter
     }
 };
 
-static void assignOffset(StackAllocation* s, FastSet<LifetimeNode*>& processedNodes,
+static void assignOffset(const StackAllocation* s, FastSet<LifetimeNode*>& processedNodes,
     SortedSet<LifetimeNode*, StackNodeSorter>::iterator it, std::size_t offset)
 {
     s->offset = offset;
@@ -144,7 +144,7 @@ unsigned LifetimeGraph::calculateRequiredStackSize()
 
         // set stack-offset and add to processed nodes
         // TODO alignment
-        assignOffset(const_cast<StackAllocation*>((*it)->key->as<StackAllocation>()), processedNodes, it, currentSize);
+        assignOffset((*it)->key->as<StackAllocation>(), processedNodes, it, currentSize);
 
         // check all other outstanding nodes whether they can be assigned to the same offset
         for(auto it2 = it; it2 != stackNodes.end(); ++it2)
@@ -156,8 +156,7 @@ unsigned LifetimeGraph::calculateRequiredStackSize()
                 // life-times overlay, skip
                 continue;
             // TODO alignment?!
-            assignOffset(
-                const_cast<StackAllocation*>((*it2)->key->as<StackAllocation>()), processedNodes, it, currentSize);
+            assignOffset((*it2)->key->as<StackAllocation>(), processedNodes, it, currentSize);
         }
 
         currentSize += (*it)->key->as<StackAllocation>()->size;

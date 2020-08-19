@@ -54,7 +54,7 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(
         auto& liveLocals = blockAnalysis.getEndResult();
         FastMap<const Local*, InterferenceNode*> liveNodes(liveLocals.size());
         for(auto loc : liveLocals)
-            liveNodes.emplace(loc, &graph.getOrCreateNode(const_cast<Local*>(loc)));
+            liveNodes.emplace(loc, &graph.getOrCreateNode(loc));
         // NOTE: iterate in reverse order to be able to track the changes in live locals (which are also generated in
         // reverse order) correctly
         for(auto it = block.rbegin(); it != block.rend(); ++it)
@@ -67,9 +67,8 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(
                 auto secondOut = combInstr->op2->checkOutputLocal();
                 if(firstOut && secondOut && firstOut != secondOut)
                 {
-                    graph.getOrCreateNode(const_cast<Local*>(firstOut))
-                        .getOrCreateEdge(
-                            &graph.getOrCreateNode(const_cast<Local*>(secondOut)), InterferenceType::USED_TOGETHER)
+                    graph.getOrCreateNode(firstOut)
+                        .getOrCreateEdge(&graph.getOrCreateNode(secondOut), InterferenceType::USED_TOGETHER)
                         .data = InterferenceType::USED_TOGETHER;
                 }
             }
@@ -79,7 +78,7 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(
             (*it)->forUsedLocals(
                 [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
                     if(has_flag(type, LocalUse::Type::READER) && !loc->type.isLabelType())
-                        localsRead.emplace(&graph.getOrCreateNode(const_cast<Local*>(loc)));
+                        localsRead.emplace(&graph.getOrCreateNode(loc));
                 });
             if(localsRead.size() > 1)
             {
@@ -106,7 +105,7 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(
 
             for(auto loc : changes.addedLocals)
             {
-                auto& firstNode = graph.getOrCreateNode(const_cast<Local*>(loc));
+                auto& firstNode = graph.getOrCreateNode(loc);
                 for(auto node : liveNodes)
                 {
                     if(node.second != &firstNode)
@@ -127,7 +126,7 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(
     logging::logLazy(logging::Level::DEBUG, [&]() {
         auto nameFunc = [](const Local* loc) -> std::string { return loc->name; };
         auto edgeFunc = [](InterferenceType type) -> bool { return !has_flag(type, InterferenceType::USED_TOGETHER); };
-        DebugGraph<Local*, InterferenceType, Directionality::UNDIRECTED>::dumpGraph(
+        DebugGraph<const Local*, InterferenceType, Directionality::UNDIRECTED>::dumpGraph(
             graph, "/tmp/vc4c-interference.dot", nameFunc, edgeFunc);
     });
     LCOV_EXCL_STOP

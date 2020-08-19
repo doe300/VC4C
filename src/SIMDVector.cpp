@@ -168,8 +168,8 @@ Value SIMDVectorHolder::storeVector(SIMDVector&& vec, DataType type)
     }
     // TODO does this mutex lock too often??
     std::lock_guard<std::mutex> guard(accessMutex);
+    vec.storage = this;
     auto it = constantVectors.emplace(std::move(vec)).first;
-    const_cast<SIMDVectorHolder*&>(it->storage) = this;
     return Value(&*it, type);
 }
 

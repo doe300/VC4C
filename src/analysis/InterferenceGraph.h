@@ -37,13 +37,13 @@ namespace vc4c
             USED_TOGETHER = 2
         };
 
-        using InterferenceNode = vc4c::Node<vc4c::Local*, InterferenceType, vc4c::Directionality::UNDIRECTED>;
+        using InterferenceNode = vc4c::Node<const vc4c::Local*, InterferenceType, vc4c::Directionality::UNDIRECTED>;
         using Interference = InterferenceNode::EdgeType;
 
         /*
          * The interference graph connects locals by how they interfere which each other (are live at the same time)
          */
-        class InterferenceGraph : public Graph<vc4c::Local*, InterferenceNode>
+        class InterferenceGraph : public Graph<const vc4c::Local*, InterferenceNode>
         {
         public:
             using NodeType = InterferenceNode;

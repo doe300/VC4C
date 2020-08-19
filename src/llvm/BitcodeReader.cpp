@@ -486,7 +486,7 @@ static DataType& addToMap(DataType&& dataType, const llvm::Type* type, FastMap<c
     return typesMap.emplace(type, dataType).first->second;
 }
 
-DataType BitcodeReader::toDataType(Module& module, const llvm::Type* type)
+DataType BitcodeReader::toDataType(Module& module, const llvm::Type* type, Optional<AddressSpace> overrideAddressSpace)
 {
     if(type == nullptr)
         return TYPE_UNKNOWN;
@@ -598,8 +598,8 @@ DataType BitcodeReader::toDataType(Module& module, const llvm::Type* type)
     if(type->isPointerTy())
     {
         DataType elementType = toDataType(module, type->getPointerElementType());
-        return DataType(module.createPointerType(
-            elementType, toAddressSpace(static_cast<int32_t>(type->getPointerAddressSpace()))));
+        return DataType(module.createPointerType(elementType,
+            overrideAddressSpace.value_or(toAddressSpace(static_cast<int32_t>(type->getPointerAddressSpace())))));
     }
     dumpLLVM(type);
     throw CompilationError(CompilationStep::PARSER, "Unknown LLVM type", std::to_string(type->getTypeID()));
@@ -678,12 +678,11 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
     for(const llvm::Argument& arg : func.getArgumentList())
 #endif
     {
-        auto type = toDataType(module, arg.getType());
-        if(arg.hasByValAttr())
-            // is always read-only, and the address-space initially set is __private, which we cannot have for pointer
-            // Parameters
-            // TODO remove, pass to consructor! Same for all other setting of values
-            const_cast<PointerType*>(type.getPointerType())->addressSpace = AddressSpace::CONSTANT;
+        // by-val parameter is always read-only, and the address-space initially set is __private, which we cannot have
+        // for pointer Parameters
+        auto overrideAddressSpace = arg.hasByValAttr() ? AddressSpace::CONSTANT : Optional<AddressSpace>{};
+        auto type = toDataType(module, arg.getType(), overrideAddressSpace);
+
         auto& param = method->addParameter(Parameter(toParameterName(arg, paramCounter), type,
             toParameterDecorations(arg, type, func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)));
         if(arg.getDereferenceableBytes() != 0)
@@ -1212,14 +1211,14 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val, LLVMInstruc
     if(llvm::dyn_cast<const llvm::BranchInst>(val) != nullptr)
     {
         // label
-        Local* loc = method.addNewLocal(TYPE_LABEL, "%label").local();
+        auto loc = method.addNewLocal(TYPE_LABEL, "%label").local();
         localMap[val] = loc;
         return loc->createReference();
     }
-    const DataType type = toDataType(const_cast<Module&>(method.module), val->getType());
+    const DataType type = toDataType(method.module, val->getType());
     if(llvm::dyn_cast<const llvm::Constant>(val) != nullptr)
     {
-        return toConstant(const_cast<Module&>(method.module), val, &method, instructions);
+        return toConstant(method.module, val, &method, instructions);
     }
     // locals of any kind have no name (most of the time)
     if(!val->getName().empty())

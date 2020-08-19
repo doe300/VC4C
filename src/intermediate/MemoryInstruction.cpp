@@ -22,9 +22,9 @@ static void checkMemoryLocation(const Value& val)
 
 static void checkLocalValue(const Value& val)
 {
-    if(val.checkLocal() &&
-        (val.local()->residesInMemory() ||
-            (val.local()->is<Parameter>() && (val.local()->type.getPointerType() || val.local()->type.getArrayType()))))
+    if(val.checkLocal() && (val.type.getPointerType() || val.type.getArrayType()))
+        // NOTE: This check explicitly allows for values referencing a memory location while being a non-pointer type
+        // (e.g. for bit-cast pointers to integer)!
         throw CompilationError(
             CompilationStep::LLVM_2_IR, "Operand needs to be a local value (local, register)", val.to_string());
 }

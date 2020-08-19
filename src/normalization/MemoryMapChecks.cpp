@@ -1080,7 +1080,7 @@ static MemoryInfo canLowerToRegisterReadWrite(Method& method, const Local* baseA
     if(baseAddr->type.isScalarType())
     {
         if(auto stackAllocation = baseAddr->as<StackAllocation>())
-            const_cast<StackAllocation*>(stackAllocation)->isLowered = true;
+            stackAllocation->isLowered = true;
         return MemoryInfo{baseAddr, MemoryAccessType::QPU_REGISTER_READWRITE, nullptr, {},
             method.addNewLocal(baseAddr->type, "%lowered_stack")};
     }
@@ -1089,7 +1089,7 @@ static MemoryInfo canLowerToRegisterReadWrite(Method& method, const Local* baseA
     if(convertedType)
     {
         if(auto stackAllocation = baseAddr->as<StackAllocation>())
-            const_cast<StackAllocation*>(stackAllocation)->isLowered = true;
+            stackAllocation->isLowered = true;
         return MemoryInfo{baseAddr, MemoryAccessType::QPU_REGISTER_READWRITE, nullptr, {},
             method.addNewLocal(*convertedType, "%lowered_stack"), convertedType};
     }
@@ -1109,7 +1109,7 @@ static MemoryInfo canLowerToPrivateVPMArea(Method& method, const Local* baseAddr
     {
         // mark stack allocation as lowered to VPM to skip reserving a stack area
         if(auto stackAllocation = baseAddr->as<StackAllocation>())
-            const_cast<StackAllocation*>(stackAllocation)->isLowered = true;
+            stackAllocation->isLowered = true;
         return MemoryInfo{
             baseAddr, MemoryAccessType::VPM_PER_QPU, area, {}, NO_VALUE, convertSmallArrayToRegister(baseAddr)};
     }
@@ -1124,7 +1124,7 @@ static MemoryInfo toSharedVPMArea(const Local* baseAddr, const periphery::VPMAre
 {
     if(auto parameter = baseAddr->as<Parameter>())
         // mark parameter as lowered
-        const_cast<Parameter*>(parameter)->isLowered = true;
+        parameter->isLowered = true;
     return MemoryInfo{
         baseAddr, MemoryAccessType::VPM_SHARED_ACCESS, area, std::move(ranges), NO_VALUE, std::move(areaType)};
 }

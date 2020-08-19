@@ -592,7 +592,7 @@ static InstructionWalker loadMemoryViaTMU(Method& method, InstructionWalker it, 
         for(auto srcInfo : srcInfos)
         {
             if(auto param = srcInfo->local->as<Parameter>())
-                const_cast<Parameter*>(param)->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
+                param->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
             ++(srcInfo->tmuFlag ? numTMU0 : numTMU1);
         }
         // prefer TMU1 here, since statistically TMU0 will be used more often
@@ -665,7 +665,7 @@ static InstructionWalker accessMemoryInRAMViaVPM(Method& method, InstructionWalk
         for(auto destInfo : destInfos)
         {
             if(auto param = destInfo->local->as<Parameter>())
-                const_cast<Parameter*>(param)->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
+                param->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
         }
         break;
     }
@@ -675,7 +675,7 @@ static InstructionWalker accessMemoryInRAMViaVPM(Method& method, InstructionWalk
         for(auto srcInfo : srcInfos)
         {
             if(auto param = srcInfo->local->as<Parameter>())
-                const_cast<Parameter*>(param)->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
+                param->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
         }
 
         break;
@@ -686,7 +686,7 @@ static InstructionWalker accessMemoryInRAMViaVPM(Method& method, InstructionWalk
         for(auto destInfo : destInfos)
         {
             if(auto param = destInfo->local->as<Parameter>())
-                const_cast<Parameter*>(param)->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
+                param->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
         }
         break;
     }
@@ -735,12 +735,12 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
     for(auto srcInfo : srcInfos)
     {
         if(auto param = srcInfo->local->as<Parameter>())
-            const_cast<Parameter*>(param)->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
+            param->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
     }
     for(auto destInfo : destInfos)
     {
         if(auto param = destInfo->local->as<Parameter>())
-            const_cast<Parameter*>(param)->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
+            param->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
     }
 
     // for some/all copies, LLVM generates memcpy of i8* to i8* with the number of bytes as number of elements. We need

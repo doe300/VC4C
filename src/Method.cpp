@@ -68,8 +68,9 @@ const StackAllocation* Method::findStackAllocation(const std::string& name) cons
 
 const Local* Method::createLocal(DataType type, const std::string& name)
 {
-    auto it = locals.emplace(Local(type, name)).first;
-    addLocalData(const_cast<Local&>(*it));
+    Local loc(type, name);
+    addLocalData(loc);
+    auto it = locals.emplace(std::move(loc)).first;
     return &(*it);
 }
 
@@ -527,7 +528,7 @@ void Method::calculateStackOffsets()
         if((stackBaseOffset + currentOffset) % stackAllocation.alignment != 0)
             currentOffset +=
                 stackAllocation.alignment - ((stackBaseOffset + currentOffset) % stackAllocation.alignment);
-        const_cast<std::size_t&>(stackAllocation.offset) = currentOffset;
+        stackAllocation.offset = currentOffset;
         currentOffset += stackAllocation.size;
     }
 
@@ -550,7 +551,7 @@ void Method::calculateStackOffsets()
         if((stackBaseOffset + currentOffset) % stackAllocation.alignment != 0)
             currentOffset +=
                 stackAllocation.alignment - ((stackBaseOffset + currentOffset) % stackAllocation.alignment);
-        const_cast<std::size_t&>(stackAllocation.offset) = currentOffset;
+        stackAllocation.offset = currentOffset;
         currentOffset += stackAllocation.size;
     }
 }
@@ -624,22 +625,22 @@ void Method::moveBlock(BasicBlockList::iterator origin, BasicBlockList::iterator
 
 DataType Method::createPointerType(DataType elementType, AddressSpace addressSpace, unsigned alignment)
 {
-    return DataType(const_cast<Module&>(module).createPointerType(elementType, addressSpace, alignment));
+    return DataType(module.createPointerType(elementType, addressSpace, alignment));
 }
 
 DataType Method::createStructType(const std::string& name, const std::vector<DataType>& elementTypes, bool isPacked)
 {
-    return DataType(const_cast<Module&>(module).createStructType(name, elementTypes, isPacked));
+    return DataType(module.createStructType(name, elementTypes, isPacked));
 }
 
 DataType Method::createArrayType(DataType elementType, unsigned int size)
 {
-    return DataType(const_cast<Module&>(module).createArrayType(elementType, size));
+    return DataType(module.createArrayType(elementType, size));
 }
 
 DataType Method::createImageType(uint8_t dimensions, bool isImageArray, bool isImageBuffer, bool isSampled)
 {
-    return DataType(const_cast<Module&>(module).createImageType(dimensions, isImageArray, isImageBuffer, isSampled));
+    return DataType(module.createImageType(dimensions, isImageArray, isImageBuffer, isSampled));
 }
 
 BasicBlock* Method::getNextBlockAfter(const BasicBlock* block)

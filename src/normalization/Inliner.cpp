@@ -16,7 +16,7 @@
 using namespace vc4c;
 using namespace vc4c::normalization;
 
-static const Method* matchSignatures(
+static Method* matchSignatures(
     const std::vector<std::unique_ptr<Method>>& methods, const intermediate::MethodCall* callSignature)
 {
     for(const auto& m : methods)
@@ -68,7 +68,7 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                             std::string("%") + (calledMethod->name + ".") + std::to_string(rand())) +
                     '.';
                 const Local* methodEndLabel = currentMethod.createLocal(TYPE_LABEL, newLocalPrefix + "after");
-                inlineMethod(newLocalPrefix, methods, functionAliases, const_cast<Method&>(*calledMethod));
+                inlineMethod(newLocalPrefix, methods, functionAliases, *calledMethod);
                 // at this point, the called method has already inlined all other methods
 
                 intermediate::InlineMapping mapping;

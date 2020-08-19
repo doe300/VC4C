@@ -66,8 +66,7 @@ bool CallSite::mapInstruction(Method& method)
         {
             //"The first argument is a constant integer representing the size of the object, or -1 if it is variable
             // sized"
-            StackAllocation* alloc = pointer.local()->as<StackAllocation>();
-            if(alloc == nullptr)
+            if(!pointer.local()->is<StackAllocation>())
                 throw CompilationError(CompilationStep::LLVM_2_IR,
                     "Cannot start life-time of object not located on stack", pointer.to_string());
         }
@@ -120,7 +119,7 @@ bool CallSite::mapInstruction(Method& method)
             memAddr.local()->getBase(true)->is<Parameter>())
         {
             // set parameter to volatile
-            const_cast<Local*>(memAddr.local()->getBase(true))->as<Parameter>()->decorations =
+            memAddr.local()->getBase(true)->as<Parameter>()->decorations =
                 add_flag(memAddr.local()->getBase(true)->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
         }
         method.appendToEnd(new intermediate::MemoryInstruction(

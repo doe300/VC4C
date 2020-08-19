@@ -38,7 +38,7 @@ namespace vc4c
          *
          * NOTE: The basic block key is the writing/input block!
          */
-        using DataDependency = FastMap<const BasicBlock*, FastMap<Local*, DataDependencyType>>;
+        using DataDependency = FastMap<const BasicBlock*, FastMap<const Local*, DataDependencyType>>;
 
         class DataDependencyGraph;
 

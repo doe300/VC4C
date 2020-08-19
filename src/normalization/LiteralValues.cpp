@@ -689,11 +689,11 @@ static ImmediateHandler mapImmediateValue(const Literal& source)
 }
 
 static NODISCARD InstructionWalker handleImmediateInOperation(
-    Method& method, InstructionWalker it, intermediate::Operation* op)
+    Method& method, InstructionWalker it, intermediate::Operation& op)
 {
-    for(std::size_t i = 0; i < op->getArguments().size(); ++i)
+    for(std::size_t i = 0; i < op.getArguments().size(); ++i)
     {
-        const Value source = op->assertArgument(i);
+        const Value source = op.assertArgument(i);
         if(auto lit = source.checkLiteral())
         {
             PROFILE_START(mapImmediateValue);
@@ -709,14 +709,14 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
                     // requires load immediate
                     CPPLOG_LAZY(
                         logging::Level::DEBUG, log << "Loading immediate value: " << lit->to_string() << logging::endl);
-                    it.emplace(new intermediate::LoadImmediate(tmp, *lit, op->getCondition()));
+                    it.emplace(new intermediate::LoadImmediate(tmp, *lit, op.getCondition()));
                     // propagate the decorations so the loads are displayed as setups, not value loads
-                    if(op->hasDecoration(intermediate::InstructionDecorations::VPM_READ_CONFIGURATION))
+                    if(op.hasDecoration(intermediate::InstructionDecorations::VPM_READ_CONFIGURATION))
                         it->addDecorations(intermediate::InstructionDecorations::VPM_READ_CONFIGURATION);
-                    if(op->hasDecoration(intermediate::InstructionDecorations::VPM_WRITE_CONFIGURATION))
+                    if(op.hasDecoration(intermediate::InstructionDecorations::VPM_WRITE_CONFIGURATION))
                         it->addDecorations(intermediate::InstructionDecorations::VPM_WRITE_CONFIGURATION);
                     it.nextInBlock();
-                    op->setArgument(i, std::move(tmp));
+                    op.setArgument(i, std::move(tmp));
                 }
                 else if(mapped.opCode != OP_NOP)
                 {
@@ -727,19 +727,19 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
                             << logging::endl);
                     if(mapped.opCode.numOperands == 1)
                         it.emplace(new intermediate::Operation(
-                            mapped.opCode, tmp, Value(mapped.immediate, type), op->getCondition()));
+                            mapped.opCode, tmp, Value(mapped.immediate, type), op.getCondition()));
                     else
                         it.emplace(new intermediate::Operation(mapped.opCode, tmp, Value(mapped.immediate, type),
-                            Value(mapped.immediate, type), op->getCondition()));
+                            Value(mapped.immediate, type), op.getCondition()));
                     it.nextInBlock();
-                    op->setArgument(i, std::move(tmp));
+                    op.setArgument(i, std::move(tmp));
                 }
                 else
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Mapping constant for immediate value " << lit->to_string()
                             << " to: " << mapped.immediate.to_string() << logging::endl);
-                    op->setArgument(i, Value(mapped.immediate, source.type));
+                    op.setArgument(i, Value(mapped.immediate, source.type));
                 }
             }
         }
@@ -805,14 +805,14 @@ InstructionWalker normalization::handleImmediate(
     if(auto op = it.get<intermediate::Operation>())
     {
         // check for both arguments
-        it = handleImmediateInOperation(method, it, op);
+        it = handleImmediateInOperation(method, it, *op);
     }
     if(auto comb = it.get<intermediate::CombinedOperation>())
     {
-        if(comb->getFirstOp() != nullptr)
-            it = handleImmediateInOperation(method, it, const_cast<intermediate::Operation*>(comb->getFirstOp()));
-        if(comb->getSecondOP() != nullptr)
-            it = handleImmediateInOperation(method, it, const_cast<intermediate::Operation*>(comb->getSecondOP()));
+        if(auto firstOp = dynamic_cast<intermediate::Operation*>(comb->op1.get()))
+            it = handleImmediateInOperation(method, it, *firstOp);
+        if(auto secondOp = dynamic_cast<intermediate::Operation*>(comb->op2.get()))
+            it = handleImmediateInOperation(method, it, *secondOp);
     }
     return it;
 }
