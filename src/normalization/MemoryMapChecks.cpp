@@ -218,7 +218,7 @@ static Optional<FastSet<const IntermediateInstruction*>> checkAllWritersArePhiNo
             return;
         if(writer->hasDecoration(InstructionDecorations::PHI_NODE))
         {
-            if(auto loc = writer->assertArgument(0).checkLocal())
+            if(writer->assertArgument(0).checkLocal())
                 phiNodes.emplace(writer);
             else
                 allWritersArePhiNodes = false;
@@ -227,7 +227,7 @@ static Optional<FastSet<const IntermediateInstruction*>> checkAllWritersArePhiNo
         else if(dynamic_cast<const MoveOperation*>(writer) && writer->hasConditionalExecution())
         {
             // TODO more precise check? E.g. for same setting of flag?
-            if(auto loc = writer->assertArgument(0).checkLocal())
+            if(writer->assertArgument(0).checkLocal())
                 selections.emplace(writer);
             else
                 allWritersAreSelections = false;
@@ -1131,9 +1131,14 @@ static MemoryInfo toSharedVPMArea(const Local* baseAddr, const periphery::VPMAre
 
 static MemoryInfo canLowerToSharedVPMArea(Method& method, const Local* baseAddr, MemoryAccess& access)
 {
-    auto area = method.vpm->addArea(baseAddr, baseAddr->type.getElementType());
-    if(area)
-        return toSharedVPMArea(baseAddr, area, {}, convertSmallArrayToRegister(baseAddr));
+    auto elementType = baseAddr->type.getElementType();
+    bool hasStructContent =
+        elementType.getStructType() || (elementType.getArrayType() && elementType.getElementType().getStructType());
+    if(!hasStructContent)
+    {
+        if(auto area = method.vpm->addArea(baseAddr, baseAddr->type.getElementType()))
+            return toSharedVPMArea(baseAddr, area, {}, convertSmallArrayToRegister(baseAddr));
+    }
 
     // cannot lower to register, use fall-back
     access.preferred = access.fallback;

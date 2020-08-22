@@ -1445,6 +1445,11 @@ Value BitcodeReader::precalculateConstantExpression(
         {
             switch(destType.getScalarBitCount())
             {
+            case 64:
+                // this is e.g. pointer to long conversion, the actual writing of the lower part only and filling of the
+                // upper part is handled while lowering long operations
+                dest.type = TYPE_INT32.toVectorType(dest.type.getVectorWidth());
+                FALL_THROUGH
             case 32:
                 return dest;
             case 16:

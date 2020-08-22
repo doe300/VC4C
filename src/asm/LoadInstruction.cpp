@@ -13,8 +13,8 @@
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
 
-LoadInstruction::LoadInstruction(const Pack pack, const ConditionCode condAdd, const ConditionCode condMul,
-    const SetFlag sf, const WriteSwap ws, const Address addOut, const Address mulOut, const uint32_t value)
+LoadInstruction::LoadInstruction(Pack pack, ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws,
+    Address addOut, Address mulOut, uint32_t value)
 {
     setType(OpLoad::LOAD_IMM_32);
     setPack(pack);
@@ -27,9 +27,8 @@ LoadInstruction::LoadInstruction(const Pack pack, const ConditionCode condAdd, c
     setImmediateInt(value);
 }
 
-LoadInstruction::LoadInstruction(const Pack pack, const ConditionCode condAdd, const ConditionCode condMul,
-    const SetFlag sf, const WriteSwap ws, const Address addOut, const Address mulOut, const int16_t value0,
-    int16_t value1)
+LoadInstruction::LoadInstruction(Pack pack, ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws,
+    Address addOut, Address mulOut, int16_t value0, int16_t value1)
 {
     setType(OpLoad::LOAD_SIGNED);
     setPack(pack);
@@ -43,9 +42,8 @@ LoadInstruction::LoadInstruction(const Pack pack, const ConditionCode condAdd, c
     setImmediateSignedShort1(value1);
 }
 
-LoadInstruction::LoadInstruction(const Pack pack, const ConditionCode condAdd, const ConditionCode condMul,
-    const SetFlag sf, const WriteSwap ws, const Address addOut, const Address mulOut, const uint16_t value0,
-    uint16_t value1)
+LoadInstruction::LoadInstruction(Pack pack, ConditionCode condAdd, ConditionCode condMul, SetFlag sf, WriteSwap ws,
+    Address addOut, Address mulOut, uint16_t value0, uint16_t value1)
 {
     setType(OpLoad::LOAD_UNSIGNED);
     setPack(pack);

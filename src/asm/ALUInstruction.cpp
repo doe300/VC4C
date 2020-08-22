@@ -14,10 +14,9 @@
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
 
-ALUInstruction::ALUInstruction(const Signaling sig, const Unpack unpack, const Pack pack, const ConditionCode condAdd,
-    const ConditionCode condMul, const SetFlag sf, const WriteSwap ws, const Address addOut, const Address mulOut,
-    const OpCode& mul, const OpCode& add, const Address addInA, const Address addInB, const InputMultiplex muxAddA,
-    const InputMultiplex muxAddB, const InputMultiplex muxMulA, const InputMultiplex muxMulB)
+ALUInstruction::ALUInstruction(Signaling sig, Unpack unpack, Pack pack, ConditionCode condAdd, ConditionCode condMul,
+    SetFlag sf, WriteSwap ws, Address addOut, Address mulOut, const OpCode& mul, const OpCode& add, Address addInA,
+    Address addInB, InputMultiplex muxAddA, InputMultiplex muxAddB, InputMultiplex muxMulA, InputMultiplex muxMulB)
 {
     this->setSig(sig);
     this->setUnpack(unpack);

@@ -10,7 +10,7 @@
 using namespace vc4c;
 using namespace vc4c::intermediate;
 
-SemaphoreAdjustment::SemaphoreAdjustment(const Semaphore semaphore, const bool increase) :
+SemaphoreAdjustment::SemaphoreAdjustment(Semaphore semaphore, bool increase) :
     ExtendedInstruction(SIGNAL_SEMAPHORE, COND_ALWAYS, SetFlag::DONT_SET, PACK_NOP), semaphore(semaphore),
     increase(increase)
 {
@@ -25,7 +25,7 @@ std::string SemaphoreAdjustment::to_string() const
 LCOV_EXCL_STOP
 
 qpu_asm::DecoratedInstruction SemaphoreAdjustment::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
-    const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
+    const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const
 {
     if(conditional != COND_ALWAYS)
         throw CompilationError(CompilationStep::CODE_GENERATION,
@@ -62,13 +62,13 @@ bool SemaphoreAdjustment::innerEquals(const IntermediateInstruction& other) cons
     return false;
 }
 
-MemoryBarrier::MemoryBarrier(const MemoryScope scope, const MemorySemantics semantics) :
+MemoryBarrier::MemoryBarrier(MemoryScope scope, MemorySemantics semantics) :
     IntermediateInstruction(Optional<Value>{}), scope(scope), semantics(semantics)
 {
 }
 
 LCOV_EXCL_START
-static std::string toString(const MemoryScope scope)
+static std::string toString(MemoryScope scope)
 {
     switch(scope)
     {
@@ -87,7 +87,7 @@ static std::string toString(const MemoryScope scope)
         CompilationStep::GENERAL, "Unsupported memory scope value", std::to_string(static_cast<int>(scope)));
 }
 
-static std::string toString(const MemorySemantics semantics)
+static std::string toString(MemorySemantics semantics)
 {
     std::vector<std::string> result;
     if(has_flag(semantics, MemorySemantics::ACQUIRE) || has_flag(semantics, MemorySemantics::ACQUIRE_RELEASE))
@@ -116,7 +116,7 @@ std::string MemoryBarrier::to_string() const
 }
 
 qpu_asm::DecoratedInstruction MemoryBarrier::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
-    const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
+    const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const
 {
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "There should be no more memory barriers at this point", to_string());
@@ -146,7 +146,7 @@ bool MemoryBarrier::innerEquals(const IntermediateInstruction& other) const
     return false;
 }
 
-LifetimeBoundary::LifetimeBoundary(const Value& allocation, const bool lifetimeEnd) :
+LifetimeBoundary::LifetimeBoundary(const Value& allocation, bool lifetimeEnd) :
     IntermediateInstruction(Optional<Value>{}), isLifetimeEnd(lifetimeEnd)
 {
     if(!allocation.checkLocal() || !allocation.local()->is<StackAllocation>())
@@ -163,7 +163,7 @@ std::string LifetimeBoundary::to_string() const
 }
 
 qpu_asm::DecoratedInstruction LifetimeBoundary::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
-    const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
+    const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const
 {
     throw CompilationError(
         CompilationStep::CODE_GENERATION, "There should be no more lifetime instructions at this point", to_string());

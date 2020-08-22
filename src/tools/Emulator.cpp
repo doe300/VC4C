@@ -1002,9 +1002,6 @@ void VPM::setDMAReadAddress(const SIMDVector& val)
     if(setup.value == 0)
         throw CompilationError(
             CompilationStep::GENERAL, "VPM DMA read setup was not previously set", setup.to_string());
-    if(setup.dmaSetup.getVertical())
-        throw CompilationError(
-            CompilationStep::GENERAL, "Vertical access to VPM is not yet supported", setup.to_string());
     if(setup.dmaSetup.getMPitch() != 0)
         throw CompilationError(CompilationStep::GENERAL, "Memory pitch is not yet supported", setup.to_string());
 
@@ -1012,6 +1009,9 @@ void VPM::setDMAReadAddress(const SIMDVector& val)
         std::make_pair(setup.dmaSetup.getWordRow(), setup.dmaSetup.getWordColumn());
     std::pair<uint32_t, uint32_t> sizes = std::make_pair(setup.dmaSetup.getNumberRows(),
         setup.dmaSetup.getRowLength() == 0 ? 16 /* 0 => 16 */ : setup.dmaSetup.getRowLength());
+    if(setup.dmaSetup.getVertical())
+        // invert columns and rows
+        std::swap(sizes.first, sizes.second);
     uint32_t typeSize =
         setup.dmaSetup.getMode() >= 4 ? 1 /* Byte */ : setup.dmaSetup.getMode() >= 2 ? 2 /* Half-word */ : 4 /* Word */;
     uint32_t byteOffset =
@@ -1028,26 +1028,53 @@ void VPM::setDMAReadAddress(const SIMDVector& val)
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Copying " << sizes.first << " rows with " << sizes.second << " elements of " << typeSize
-            << " bytes each from RAM address " << address << " into VPM at " << vpmBaseAddress.first << ","
-            << vpmBaseAddress.second << " with byte-offset of " << byteOffset << " and a memory pitch of " << pitch
-            << logging::endl);
+            << " bytes each " << (setup.dmaSetup.getVertical() ? "vertically" : "horizontally") << " from RAM address "
+            << address << " into VPM at " << vpmBaseAddress.first << "," << vpmBaseAddress.second
+            << " with byte-offset of " << byteOffset << " and a memory pitch of " << pitch << logging::endl);
 
     if(vpmBaseAddress.first >= 64)
         throw CompilationError(
             CompilationStep::GENERAL, "VPM row address is out of range: ", std::to_string(vpmBaseAddress.first));
 
-    for(uint32_t i = 0; i < sizes.first; ++i)
+    if(setup.dmaSetup.getVertical())
     {
-        memcpy(reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first).at(vpmBaseAddress.second)) + byteOffset,
-            reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
-            typeSize * sizes.second);
-        logging::debug() << "\tVPM row: "
-                         << to_string<unsigned, std::array<unsigned, 16>>(cache.at(vpmBaseAddress.first))
-                         << logging::endl;
-        vpmBaseAddress.first += static_cast<uint32_t>((vpitch * typeSize) / sizeof(Word));
-        vpmBaseAddress.second += static_cast<uint32_t>((vpitch * typeSize) % sizeof(Word));
-        // read pitch is start-to-start, so we don't have to add anything
-        address += pitch;
+        for(uint32_t i = 0; i < sizes.second; ++i)
+        {
+            if(address + typeSize * sizes.first >= memory.getMaximumAddress())
+                throw CompilationError(CompilationStep::GENERAL,
+                    "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
+            for(uint32_t k = 0; k < sizes.first; ++k)
+            {
+                memcpy(reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first + k).at(vpmBaseAddress.second + i)) +
+                        byteOffset,
+                    reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word), typeSize);
+                address += typeSize;
+            }
+            address += pitch;
+        }
+
+        for(uint32_t i = 0; i < sizes.first; ++i)
+        {
+            logging::debug() << "\tVPM row: "
+                             << to_string<unsigned, std::array<unsigned, 16>>(cache.at(vpmBaseAddress.first + i))
+                             << logging::endl;
+        }
+    }
+    else
+    {
+        for(uint32_t i = 0; i < sizes.first; ++i)
+        {
+            memcpy(reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first).at(vpmBaseAddress.second)) + byteOffset,
+                reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
+                typeSize * sizes.second);
+            logging::debug() << "\tVPM row: "
+                             << to_string<unsigned, std::array<unsigned, 16>>(cache.at(vpmBaseAddress.first))
+                             << logging::endl;
+            vpmBaseAddress.first += static_cast<uint32_t>((vpitch * typeSize) / sizeof(Word));
+            vpmBaseAddress.second += static_cast<uint32_t>((vpitch * typeSize) % sizeof(Word));
+            // read pitch is start-to-start, so we don't have to add anything
+            address += pitch;
+        }
     }
 
     lastDMAReadTrigger = currentCycle;

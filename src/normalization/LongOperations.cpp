@@ -45,7 +45,7 @@ std::pair<Value, Value> normalization::getLowerAndUpperWords(const Value& longVa
 }
 
 static void lowerFlags(Method& method, InstructionWalker it, const MultiRegisterData& output, FlagBehavior flagBehavior,
-    bool isFloatOperation)
+    bool isFloatOperation, const Optional<Value>& setCarryFlag = {})
 {
     auto flagType = TYPE_INT32.toVectorType(output.lower->type.getVectorWidth());
     auto flagIt = it.copy().nextInBlock();
@@ -66,6 +66,48 @@ static void lowerFlags(Method& method, InstructionWalker it, const MultiRegister
         auto tmp1 = assign(flagIt, flagType) = output.lower->createReference() & 1_val;
         auto tmp2 = assign(flagIt, flagType) = tmp0 | tmp1;
         assignNop(flagIt) = (tmp2 | output.upper->createReference(), SetFlag::SET_FLAGS);
+    }
+    else if(has_flag(flagBehavior, add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET)) &&
+        setCarryFlag)
+    {
+        /*
+         * This is e.g. the behavior of (F)MIN, (F)MAX, etc.
+         * - OR'ing upper and lower parts together gives the zero-check
+         * - for negative check, need to only consider high bit of upper part
+         * => compress lower part to never set the high bit
+         * - since we take the carry flag from outside, we don't care in here which behavior actually sets the carry
+         *   flag and can apply this block for all operations matching the zero and negative flags
+         *
+         */
+        auto tmp0 = assign(flagIt, flagType) = as_unsigned{output.lower->createReference()} >> 1_val;
+        // since we shift the last bit of the lower part out, need to separately add it again back in
+        auto tmp1 = assign(flagIt, flagType) = output.lower->createReference() & 1_val;
+        auto tmp2 = assign(flagIt, flagType) = tmp0 | tmp1;
+        auto tmp3 = assign(flagIt, flagType) = tmp2 | output.upper->createReference();
+        /*
+         * tmp = upper | compact(lower) // as calculated above
+         * tmp = tmp & 1 ? tmp | 2 : tmp // copy last bit to 2nd last
+         * tmp = tmp & ~1 // mask of last bit, since we use it to set carry flag
+         * tmp = tmp | "carry set" (single bit)
+         * - = tmp >>> 1 (asr), setf
+         *
+         * flags  |   tmp    | operation
+         * zcnccc | >0, %2=0 | asr >> 1
+         * zcnscc | <0, %2=0 | asr >> 1
+         * zcnccs | >0, %2=1 | asr >> 1
+         * zcnscs | <0, %2=1 | asr >> 1
+         * zsnccc | 0, %2=0  | asr >> 1
+         * zsnscc |  <N/A>   | -
+         * zsnccs | 1, %2=1  | asr >> 1
+         * zsnscs |  <N/A>   | -
+         */
+        assignNop(flagIt) = (tmp3 & 1_val, SetFlag::SET_FLAGS);
+        assign(flagIt, tmp3) = (tmp3 | 2_val, COND_ZERO_CLEAR);
+        // mask off the least significant bit, to not set wrong carry flags
+        static_assert(static_cast<int32_t>(uint32_t{0xFFFFFFFE}) == -2, "");
+        auto tmp4 = assign(flagIt, flagType) = tmp3 & Value(SmallImmediate::fromInteger(-2).value(), TYPE_INT32);
+        auto tmp5 = assign(flagIt, flagType) = tmp4 | *setCarryFlag;
+        assignNop(flagIt) = (as_signed{tmp5} >> 1_val, SetFlag::SET_FLAGS);
     }
     else
         throw CompilationError(
@@ -95,6 +137,11 @@ static void lowerLongOperation(
         out = Local::getLocalData<MultiRegisterData>(outLocal);
         isDummyOutput = true;
     }
+
+    // we need to get the flag behavior before possibly rewriting the operation
+    auto flagBehavior = op.op.flagBehavior;
+    bool returnsFloat = op.op.returnsFloat;
+    Optional<Value> setCarryFlag = NO_VALUE;
 
     if(op.op == OP_ADD)
     {
@@ -271,6 +318,14 @@ static void lowerLongOperation(
         op.setArgument(0, upperEqualOrLessLower);
         op.setArgument(1, upperEqualOrLessLower);
         op.setCondition(COND_CARRY_CLEAR);
+
+        // carry is first > second <=> result.upper != second.upper || result.lower != second.lower
+        it.nextInBlock();
+        setCarryFlag = assign(it, TYPE_BOOL) = BOOL_FALSE;
+        auto cond = assignNop(it) = as_unsigned{out->upper->createReference()} != as_unsigned{*in1Up};
+        assign(it, *setCarryFlag) = (BOOL_TRUE, cond);
+        cond = assignNop(it) = as_unsigned{out->lower->createReference()} != as_unsigned{*in1Low};
+        assign(it, *setCarryFlag) = (BOOL_TRUE, cond);
     }
     else if(op.op == OP_MIN)
     {
@@ -311,6 +366,14 @@ static void lowerLongOperation(
         op.setArgument(0, upperEqualOrGreaterLower);
         op.setArgument(1, upperEqualOrGreaterLower);
         op.setCondition(COND_CARRY_CLEAR);
+
+        // carry is first > second <=> result.upper != first.upper || result.lower != first.lower
+        it.nextInBlock();
+        setCarryFlag = assign(it, TYPE_BOOL) = BOOL_FALSE;
+        auto cond = assignNop(it) = as_unsigned{out->upper->createReference()} != as_unsigned{in0Up};
+        assign(it, *setCarryFlag) = (BOOL_TRUE, cond);
+        cond = assignNop(it) = as_unsigned{out->lower->createReference()} != as_unsigned{in0Low};
+        assign(it, *setCarryFlag) = (BOOL_TRUE, cond);
     }
 
     if(isDummyOutput && originalOut && originalOut != NOP_REGISTER)
@@ -323,7 +386,7 @@ static void lowerLongOperation(
     if(op.doesSetFlag())
     {
         op.setSetFlags(SetFlag::DONT_SET);
-        lowerFlags(method, it, *out, op.op.flagBehavior, op.op.returnsFloat);
+        lowerFlags(method, it, *out, flagBehavior, returnsFloat, setCarryFlag);
     }
 }
 

@@ -290,6 +290,20 @@ namespace vc4c
 					addVector({}, 3, std::vector<unsigned>{1 + 5 + 9 + 13 + 17})
 				),
 #endif
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/boost-compute/test_insertion_sort.cl", "serial_insertion_sort",
+					{toParameter(std::vector<unsigned>(32)), toScalarParameter(16u),
+					toParameter(std::vector<unsigned>{1, 0, 0, 0, 2, 0, 15, 0, 14, 0, 3, 0, 11, 0, 12, 0, 4, 0, 8, 0, 7, 0, 5, 0, 10, 0, 6, 0, 9, 0, 13, 0})
+					}, {}, maxExecutionCycles),
+					addVector({}, 2, std::vector<unsigned>{0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0, 10, 0, 11, 0, 12, 0, 13, 0, 14, 0, 15, 0})
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/boost-compute/test_merge.cl", "serial_merge",
+					{toScalarParameter(16u), toScalarParameter(16u),
+					toParameter(std::vector<unsigned>{1, 0, 3, 0, 5, 0, 7, 0, 9, 0, 11, 0, 13, 0, 15, 0, 17, 0, 19, 0, 21, 0, 23, 0, 25, 0, 27, 0, 29, 0, 31, 0}),
+					toParameter(std::vector<unsigned>{0, 0, 2, 0, 4, 0, 6, 0, 8, 0, 10, 0, 12, 0, 14, 0, 16, 0, 18, 0, 20, 0, 22, 0, 24, 0, 26, 0, 28, 0, 30, 0}),
+					toParameter(std::vector<unsigned>(64))
+					}, {}, maxExecutionCycles),
+					addVector({}, 4, std::vector<unsigned>{0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0, 10, 0, 11, 0, 12, 0, 13, 0, 14, 0, 15, 0, 16, 0, 17, 0, 18, 0, 19, 0, 20, 0, 21, 0, 22, 0, 23, 0, 24, 0, 25, 0, 26, 0, 27, 0, 28, 0, 29, 0, 30, 0, 31, 0})
+				),
 		};
 
 		//TODO NVIDIA/matrixMul, NVIDIA/transpose, OpenCLIPP/Arithmetic, OpenCLIPP/Logic, OpenCLIPP/Thresholding, test_signedness

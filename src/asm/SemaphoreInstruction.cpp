@@ -9,9 +9,8 @@
 using namespace vc4c;
 using namespace vc4c::qpu_asm;
 
-SemaphoreInstruction::SemaphoreInstruction(const Pack pack, const ConditionCode condAdd, const ConditionCode condMul,
-    const SetFlag sf, const WriteSwap ws, const Address addOut, const Address mulOut, const bool increment,
-    const Semaphore semaphore)
+SemaphoreInstruction::SemaphoreInstruction(Pack pack, ConditionCode condAdd, ConditionCode condMul, SetFlag sf,
+    WriteSwap ws, Address addOut, Address mulOut, bool increment, Semaphore semaphore)
 {
     setEntry(OpSemaphore::SEMAPHORE, 57, MASK_Septuple);
     setPack(pack);
