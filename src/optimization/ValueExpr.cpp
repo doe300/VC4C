@@ -148,6 +148,12 @@ std::string ValueBinaryOp::to_string() const
     return "(" + left->to_string() + " " + opStr + " " + right->to_string() + ")";
 }
 
+std::shared_ptr<ValueExpr> optimizations::makeValueBinaryOpFromLocal(Value& left, ValueBinaryOp::BinaryOp binOp, Value& right)
+{
+    return std::make_shared<ValueBinaryOp>(
+            std::make_shared<ValueTerm>(left), binOp, std::make_shared<ValueTerm>(right));
+}
+
 bool ValueTerm::operator==(const ValueExpr& other) const
 {
     if(auto otherTerm = dynamic_cast<const ValueTerm*>(&other))

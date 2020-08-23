@@ -1127,12 +1127,6 @@ InstructionWalker optimizations::combineArithmeticOperations(
     return it;
 }
 
-std::shared_ptr<ValueExpr> makeValueBinaryOpFromLocal(Value& left, ValueBinaryOp::BinaryOp binOp, Value& right)
-{
-    return std::make_shared<ValueBinaryOp>(
-        std::make_shared<ValueTerm>(left), binOp, std::make_shared<ValueTerm>(right));
-}
-
 // try to convert shl to mul and return it as ValueExpr
 std::shared_ptr<ValueExpr> shlToMul(Value& value, const intermediate::Operation* op)
 {

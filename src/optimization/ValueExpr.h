@@ -72,6 +72,8 @@ namespace vc4c
             std::shared_ptr<ValueExpr> right;
         };
 
+        std::shared_ptr<ValueExpr> makeValueBinaryOpFromLocal(Value& left, ValueBinaryOp::BinaryOp binOp, Value& right);
+
         class ValueTerm : public ValueExpr
         {
         public:
