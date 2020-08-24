@@ -5,10 +5,10 @@
  */
 #include "TestOptimizationSteps.h"
 
+#include "Bitfield.h"
 #include "Expression.h"
 #include "Method.h"
 #include "Module.h"
-#include "Bitfield.h"
 #include "intermediate/Helper.h"
 #include "intermediate/operators.h"
 #include "optimization/Combiner.h"
@@ -1998,86 +1998,115 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
 void TestOptimizationSteps::testCombineDMALoads()
 {
     using namespace vc4c::intermediate;
-    Configuration config{};
-    Module module{config};
-    Method inputMethod(module);
 
-    auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+    auto testCombineDMALoadsSub = [&](Module& module, Method& inputMethod, Configuration& config, DataType vectorType) {
+        // TODO: Add a case that the first argument of vload16 is a variable.
 
-    auto in = assign(inIt, TYPE_INT32, "%in") = UNIFORM_REGISTER;
+        const int numOfLoads = 3;
+        periphery::VPRDMASetup expectedDMASetup(0, vectorType.getVectorWidth() % 16, numOfLoads, 1, 0);
 
-    // TODO: Add a case that the first argument of vload16 is a variable.
+        combineDMALoads(module, inputMethod, config);
 
-    DataType TYPE16{DataType::WORD, 16, true};
-
-    const Local* createLocal(DataType type, const std::string& name) __attribute__((returns_nonnull));
-    auto res1 = inputMethod.addNewLocal(TYPE16);
-    auto res2 = inputMethod.addNewLocal(TYPE16);
-    auto res3 = inputMethod.addNewLocal(TYPE16);
-    inIt.emplace((new intermediate::MethodCall(std::move(res1), "vload16", {0_val, in})));
-    inIt.emplace((new intermediate::MethodCall(std::move(res2), "vload16", {1_val, in})));
-    inIt.emplace((new intermediate::MethodCall(std::move(res3), "vload16", {2_val, in})));
-
-    const int numOfLoads = 3;
-    periphery::VPRDMASetup expectedDMASetup(0, 0, numOfLoads, 1, 0);
-
-    combineDMALoads(module, inputMethod, config);
-
-    for(auto& bb : inputMethod)
-    {
-        int numOfDMASetup = 0;
-        int numOfStrideSetup = 0;
-        int numOfVPMSetup = 0;
-        int numOfVPMRead = 0;
-
-        for(auto& it : bb)
+        for(auto& bb : inputMethod)
         {
-            if(auto move = dynamic_cast<intermediate::MoveOperation*>(it.get()))
+            int numOfDMASetup = 0;
+            int numOfStrideSetup = 0;
+            int numOfVPMSetup = 0;
+            int numOfVPMRead = 0;
+
+            for(auto& it : bb)
             {
-                auto source = move->getSource();
-                if(source.getLiteralValue() &&
+                if(auto move = dynamic_cast<intermediate::MoveOperation*>(it.get()))
+                {
+                    auto source = move->getSource();
+                    if(source.getLiteralValue() &&
                         (move->getOutput()->hasRegister(REG_VPM_IN_SETUP) ||
-                         has_flag(move->decoration, InstructionDecorations::VPM_READ_CONFIGURATION)))
-                {
-                    auto dmaSetup = periphery::VPRSetup::fromLiteral(source.getLiteralValue()->unsignedInt()).dmaSetup;
-                    TEST_ASSERT_EQUALS(expectedDMASetup, dmaSetup);
-
-                    numOfDMASetup++;
-                }
-                else if (auto reg = source.checkRegister())
-                {
-                    // VPM Read
-                    if (reg->file != RegisterFile::ACCUMULATOR && reg->num == 48)
+                            has_flag(move->decoration, InstructionDecorations::VPM_READ_CONFIGURATION)))
                     {
-                        numOfVPMRead++;
+                        auto dmaSetup =
+                            periphery::VPRSetup::fromLiteral(source.getLiteralValue()->unsignedInt()).dmaSetup;
+                        TEST_ASSERT_EQUALS(expectedDMASetup, dmaSetup);
+
+                        numOfDMASetup++;
+                    }
+                    else if(auto reg = source.checkRegister())
+                    {
+                        // VPM Read
+                        if(reg->file != RegisterFile::ACCUMULATOR && reg->num == 48)
+                        {
+                            numOfVPMRead++;
+                        }
                     }
                 }
-            }
-            else if (auto load = dynamic_cast<intermediate::LoadImmediate*>(it.get()))
-            {
-                if (load->type == LoadType::REPLICATE_INT32 &&
+                else if(auto load = dynamic_cast<intermediate::LoadImmediate*>(it.get()))
+                {
+                    if(load->type == LoadType::REPLICATE_INT32 &&
                         (load->getOutput()->hasRegister(REG_VPM_IN_SETUP) ||
-                        has_flag(load->decoration, InstructionDecorations::VPM_READ_CONFIGURATION)))
-                {
-                    auto vpr = periphery::VPRSetup::fromLiteral(load->getImmediate().unsignedInt());
-                    if (vpr.isStrideSetup())
+                            has_flag(load->decoration, InstructionDecorations::VPM_READ_CONFIGURATION)))
                     {
-                        TEST_ASSERT_EQUALS(64, vpr.strideSetup.getPitch());
-                        numOfStrideSetup++;
-                    }
-                    if (vpr.isGenericSetup())
-                    {
-                        auto vpmSetup = vpr.genericSetup;
-                        TEST_ASSERT_EQUALS(numOfLoads, vpmSetup.getNumber());
-                        numOfVPMSetup++;
+                        auto vpr = periphery::VPRSetup::fromLiteral(load->getImmediate().unsignedInt());
+                        if(vpr.isStrideSetup())
+                        {
+                            TEST_ASSERT_EQUALS(64, vpr.strideSetup.getPitch());
+                            numOfStrideSetup++;
+                        }
+                        if(vpr.isGenericSetup())
+                        {
+                            auto vpmSetup = vpr.genericSetup;
+                            TEST_ASSERT_EQUALS(numOfLoads, vpmSetup.getNumber());
+                            numOfVPMSetup++;
+                        }
                     }
                 }
             }
-        }
 
-        TEST_ASSERT_EQUALS(1, numOfDMASetup);
-        TEST_ASSERT_EQUALS(1, numOfStrideSetup);
-        TEST_ASSERT_EQUALS(1, numOfVPMSetup);
-        TEST_ASSERT_EQUALS(numOfLoads, numOfVPMRead);
+            TEST_ASSERT_EQUALS(1, numOfDMASetup);
+            TEST_ASSERT_EQUALS(1, numOfStrideSetup);
+            TEST_ASSERT_EQUALS(1, numOfVPMSetup);
+            TEST_ASSERT_EQUALS(numOfLoads, numOfVPMRead);
+        }
+    };
+
+    auto putMethodCall = [](Method& inputMethod, InstructionWalker& inIt, const DataType& vectorType, std::string funcName, std::vector<Value>&& args) {
+        auto res = inputMethod.addNewLocal(vectorType);
+        inIt.emplace((new intermediate::MethodCall(std::move(res), std::move(funcName), std::move(args))));
+    };
+
+    const DataType Float16{DataType::WORD, 16, true};
+    const DataType Float8 {DataType::WORD, 8, true};
+
+    // float16 vload16(size_t, const float*)
+    const std::string vload16f = "_Z7vload16jPU3AS1Kf";
+    // float8 vload8(size_t, const float*)
+    const std::string vload8f = "_Z6vload8jPU3AS1Kf";
+
+    Configuration config{};
+
+    {
+        Module module{config};
+        Method inputMethod(module);
+
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+        auto in = assign(inIt, TYPE_INT32, "%in") = UNIFORM_REGISTER;
+
+        putMethodCall(inputMethod, inIt, Float16, vload16f, {0_val, in});
+        putMethodCall(inputMethod, inIt, Float16, vload16f, {1_val, in});
+        putMethodCall(inputMethod, inIt, Float16, vload16f, {2_val, in});
+
+        testCombineDMALoadsSub(module, inputMethod, config, Float16);
+    }
+
+    {
+        Module module{config};
+        Method inputMethod(module);
+
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+        auto in = assign(inIt, TYPE_INT32, "%in") = UNIFORM_REGISTER;
+
+        putMethodCall(inputMethod, inIt, Float8, vload8f, {0_val, in});
+        putMethodCall(inputMethod, inIt, Float8, vload8f, {1_val, in});
+        putMethodCall(inputMethod, inIt, Float8, vload8f, {2_val, in});
+
+        testCombineDMALoadsSub(module, inputMethod, config, Float8);
     }
 }
