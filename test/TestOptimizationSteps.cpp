@@ -2005,7 +2005,11 @@ void TestOptimizationSteps::testCombineDMALoads()
         const int numOfLoads = 3;
         periphery::VPRDMASetup expectedDMASetup(0, vectorType.getVectorWidth() % 16, numOfLoads, 1, 0);
 
+        inputMethod.dumpInstructions();
+
         combineDMALoads(module, inputMethod, config);
+
+        inputMethod.dumpInstructions();
 
         for(auto& bb : inputMethod)
         {
@@ -2047,7 +2051,7 @@ void TestOptimizationSteps::testCombineDMALoads()
                         auto vpr = periphery::VPRSetup::fromLiteral(load->getImmediate().unsignedInt());
                         if(vpr.isStrideSetup())
                         {
-                            TEST_ASSERT_EQUALS(64, vpr.strideSetup.getPitch());
+                            TEST_ASSERT_EQUALS(vectorType.getInMemoryWidth(), vpr.strideSetup.getPitch());
                             numOfStrideSetup++;
                         }
                         if(vpr.isGenericSetup())
@@ -2074,15 +2078,20 @@ void TestOptimizationSteps::testCombineDMALoads()
 
     const DataType Float16{DataType::WORD, 16, true};
     const DataType Float8 {DataType::WORD, 8, true};
+    const DataType Uchar16{DataType::BYTE, 16, false};
 
-    // float16 vload16(size_t, const float*)
+    // vload16(size_t, const float*)
     const std::string vload16f = "_Z7vload16jPU3AS1Kf";
-    // float8 vload8(size_t, const float*)
+    // vload8(size_t, const float*)
     const std::string vload8f = "_Z6vload8jPU3AS1Kf";
+    // vload16(size_t, const float*)
+    const std::string vload16uc = "_Z7vload16jPU3AS1Kh";
 
     Configuration config{};
 
     {
+        // vload16f * 3
+
         Module module{config};
         Method inputMethod(module);
 
@@ -2097,6 +2106,8 @@ void TestOptimizationSteps::testCombineDMALoads()
     }
 
     {
+        // vload8f * 3
+
         Module module{config};
         Method inputMethod(module);
 
@@ -2108,5 +2119,21 @@ void TestOptimizationSteps::testCombineDMALoads()
         putMethodCall(inputMethod, inIt, Float8, vload8f, {2_val, in});
 
         testCombineDMALoadsSub(module, inputMethod, config, Float8);
+    }
+
+    {
+        // vload16uc * 3
+
+        Module module{config};
+        Method inputMethod(module);
+
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+        auto in = assign(inIt, TYPE_INT32, "%in") = UNIFORM_REGISTER;
+
+        putMethodCall(inputMethod, inIt, Uchar16, vload16uc, {0_val, in});
+        putMethodCall(inputMethod, inIt, Uchar16, vload16uc, {1_val, in});
+        putMethodCall(inputMethod, inIt, Uchar16, vload16uc, {2_val, in});
+
+        testCombineDMALoadsSub(module, inputMethod, config, Uchar16);
     }
 }

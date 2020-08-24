@@ -12,16 +12,14 @@
 #include "../intermediate/operators.h"
 #include "../periphery/VPM.h"
 #include "../optimization/ValueExpr.h"
+#include "../spirv/SPIRVHelper.h"
 #include "Eliminator.h"
 #include "log.h"
 
 #include <algorithm>
 #include <cstdlib>
 #include <memory>
-
-#ifdef __GNUC__
-#include <cxxabi.h>
-#endif
+#include <regex>
 
 // TODO combine y = (x >> n) << n with and
 // same for y = (x << n) >> n (at least of n constant)
@@ -1249,42 +1247,33 @@ std::shared_ptr<ValueExpr> calcValueExpr(std::shared_ptr<ValueExpr> expr)
 
 void optimizations::combineDMALoads(const Module& module, Method& method, const Configuration& config)
 {
+    using namespace std;
+
+    const std::regex vloadReg("vload(2|3|4|8|16)");
+
     for(auto& bb : method)
     {
-        std::vector<intermediate::MethodCall*> loadInstrs;
-        std::vector<Value> offsetValues;
-        Optional<Value> addrValue;
+        //             loadInstrs,                        offsetValues,  addrValue
+        map<int, tuple<vector<intermediate::MethodCall*>, vector<Value>, Optional<Value>>> vloads;
+
         for(auto& it : bb)
         {
-            // Find all method calls
+            // Find all vloadn calls
             if(auto call = dynamic_cast<intermediate::MethodCall*>(it.get()))
             {
+                auto name = vc4c::spirv::demangleFunctionName(call->methodName);
 
-                auto name = call->methodName;
+                std::smatch m;
+                if (std::regex_search(name, m, vloadReg)) {
+                    int n = std::stoi(m.str(1));
 
-#ifdef __GNUC__
-                // Copied from src/spirv/SPIRVHelper.cpp
-                // TODO: Move these codes to the new helper file.
-                int status;
-                char* real_name = abi::__cxa_demangle(name.data(), nullptr, nullptr, &status);
-                std::string result = name;
+                    // TODO: Check whether all second argument values are equal.
 
-                if(status == 0)
-                {
-                    // if demangling is successful, output the demangled function name
-                    result = real_name;
-                    // the demangled name contains the arguments, so we need ignore them
-                    result = result.substr(0, result.find('('));
-                }
-                free(real_name);
-                auto isVload16 = result == "vload16";
-#else
-                auto isVload16 = name.find("vload16") != std::string::npos;
-#endif
+                    auto& vload = vloads[n];
+                    auto& loadInstrs   = get<0>(vload);
+                    auto& offsetValues = get<1>(vload);
+                    auto& addrValue    = get<2>(vload);
 
-                // TODO: Check whether all second argument values are equal.
-                if(isVload16)
-                {
                     if (!addrValue.has_value())
                     {
                         addrValue = call->getArgument(1);
@@ -1300,144 +1289,156 @@ void optimizations::combineDMALoads(const Module& module, Method& method, const 
             }
         }
 
-        if(offsetValues.size() <= 1)
-            continue;
+        for (auto &p : vloads) {
+            auto vectorLength = p.first;
+            auto& vload = p.second;
+            auto& loadInstrs   = get<0>(vload);
+            auto& offsetValues = get<1>(vload);
+            auto& addrValue    = get<2>(vload);
 
-        for(auto& inst : loadInstrs)
-        {
-            logging::debug() << inst->to_string() << logging::endl;
-        }
+            if(offsetValues.size() <= 1)
+                continue;
 
-        std::vector<std::pair<Value, std::shared_ptr<ValueExpr>>> addrExprs;
-
-        for(auto& addrValue : offsetValues)
-        {
-            if(auto loc = addrValue.checkLocal())
+            for(auto& inst : loadInstrs)
             {
-                if(auto writer = loc->getSingleWriter())
+                logging::debug() << inst->to_string() << logging::endl;
+            }
+
+            std::vector<std::pair<Value, std::shared_ptr<ValueExpr>>> addrExprs;
+
+            for(auto& addrValue : offsetValues)
+            {
+                if(auto loc = addrValue.checkLocal())
                 {
-                    addrExprs.push_back(std::make_pair(addrValue, iiToExpr(addrValue, writer)));
+                    if(auto writer = loc->getSingleWriter())
+                    {
+                        addrExprs.push_back(std::make_pair(addrValue, iiToExpr(addrValue, writer)));
+                    }
+                    else
+                    {
+                        addrExprs.push_back(std::make_pair(addrValue, std::make_shared<ValueTerm>(addrValue)));
+                    }
                 }
                 else
                 {
+                    // TODO: is it ok?
                     addrExprs.push_back(std::make_pair(addrValue, std::make_shared<ValueTerm>(addrValue)));
                 }
             }
-        }
 
-        for(auto& current : addrExprs)
-        {
-            for(auto& other : addrExprs)
+            for(auto& current : addrExprs)
             {
-                auto replaced = current.second->replaceLocal(other.first, other.second);
-                current.second = replaced;
-            }
-        }
-
-        for(auto& pair : addrExprs)
-        {
-            logging::debug() << pair.first.to_string() << " = " << pair.second->to_string() << logging::endl;
-        }
-
-        std::shared_ptr<ValueExpr> diff = nullptr;
-        bool eqDiff = true;
-        for(size_t i = 1; i < addrExprs.size(); i++)
-        {
-            auto x = addrExprs[i - 1].second;
-            auto y = addrExprs[i].second;
-            auto diffExpr = std::make_shared<ValueBinaryOp>(y, ValueBinaryOp::BinaryOp::Sub, x);
-
-            auto currentDiff = calcValueExpr(diffExpr);
-            // Apply calcValueExpr again for integer literals.
-            currentDiff = calcValueExpr(currentDiff);
-
-            if(diff == nullptr)
-            {
-                diff = currentDiff;
-            }
-            if(*currentDiff != *diff)
-            {
-                eqDiff = false;
-                break;
-            }
-        }
-
-        logging::debug() << addrExprs.size() << " loads are " << (eqDiff ? "" : "not ") << "equal difference" << logging::endl;
-
-        if(eqDiff)
-        {
-            // The form of diff should be "0 (+/-) expressions...", then remove the value 0 at most right.
-            ValueExpr::ExpandedExprs expanded;
-            diff->expand(expanded);
-            if (expanded.size() == 1) {
-                diff = expanded[0].second;
-
-                // logging::debug() << "diff = " << diff->to_string()  << logging::endl;
-
-                if (auto term = std::dynamic_pointer_cast<ValueTerm>(diff))
+                for(auto& other : addrExprs)
                 {
-                    // logging::debug() << "term = " << term->to_string()  << logging::endl;
+                    auto replaced = current.second->replaceLocal(other.first, other.second);
+                    current.second = replaced;
+                }
+            }
 
-                    if (auto mpValue = term->value.getConstantValue())
+            for(auto& pair : addrExprs)
+            {
+                logging::debug() << pair.first.to_string() << " = " << pair.second->to_string() << logging::endl;
+            }
+
+            std::shared_ptr<ValueExpr> diff = nullptr;
+            bool eqDiff = true;
+            for(size_t i = 1; i < addrExprs.size(); i++)
+            {
+                auto x = addrExprs[i - 1].second;
+                auto y = addrExprs[i].second;
+                auto diffExpr = std::make_shared<ValueBinaryOp>(y, ValueBinaryOp::BinaryOp::Sub, x);
+
+                auto currentDiff = calcValueExpr(diffExpr);
+                // Apply calcValueExpr again for integer literals.
+                currentDiff = calcValueExpr(currentDiff);
+
+                if(diff == nullptr)
+                {
+                    diff = currentDiff;
+                }
+                if(*currentDiff != *diff)
+                {
+                    eqDiff = false;
+                    break;
+                }
+            }
+
+            logging::debug() << addrExprs.size() << " loads are " << (eqDiff ? "" : "not ") << "equal difference" << logging::endl;
+
+            if(eqDiff)
+            {
+                // The form of diff should be "0 (+/-) expressions...", then remove the value 0 at most right.
+                ValueExpr::ExpandedExprs expanded;
+                diff->expand(expanded);
+                if (expanded.size() == 1) {
+                    diff = expanded[0].second;
+
+                    // logging::debug() << "diff = " << diff->to_string()  << logging::endl;
+
+                    if (auto term = std::dynamic_pointer_cast<ValueTerm>(diff))
                     {
-                        // logging::debug() << "mpValue = " << mpValue->to_string()  << logging::endl;
+                        // logging::debug() << "term = " << term->to_string()  << logging::endl;
 
-                        if (auto mpLiteral = mpValue->getLiteralValue())
+                        if (auto mpValue = term->value.getConstantValue())
                         {
-                            if (mpLiteral->unsignedInt() < (1u << 12))
+                            // logging::debug() << "mpValue = " << mpValue->to_string()  << logging::endl;
+
+                            if (auto mpLiteral = mpValue->getLiteralValue())
                             {
-                                auto it = bb.walk();
-                                bool firstCall = true;
-                                while(!it.isEndOfBlock())
+                                if (mpLiteral->unsignedInt() < (1u << 12))
                                 {
-                                    auto call = it.get<intermediate::MethodCall>();
-                                    if(call && std::find(loadInstrs.begin(), loadInstrs.end(), call) != loadInstrs.end())
+                                    auto it = bb.walk();
+                                    bool firstCall = true;
+                                    while(!it.isEndOfBlock())
                                     {
-                                        it.erase();
-
-                                        auto output = *call->getOutput();
-                                        if(firstCall)
+                                        auto call = it.get<intermediate::MethodCall>();
+                                        if(call && std::find(loadInstrs.begin(), loadInstrs.end(), call) != loadInstrs.end())
                                         {
-                                            firstCall = false;
+                                            it.erase();
 
-                                            auto addrArg = call->assertArgument(1);
+                                            auto output = *call->getOutput();
+                                            if(firstCall)
+                                            {
+                                                firstCall = false;
 
-                                            auto elemType = addrArg.type.getElementType();
-                                            auto vectorSize = elemType.getInMemoryWidth() * 16;
+                                                auto addrArg = call->assertArgument(1);
 
-                                            // TODO: limit loadInstrs.size()
-                                            Value offset = assign(it, TYPE_INT32) = offsetValues[0] << 4_val;
-                                            // Value offset = assign(it, TYPE_INT32) = offsetValues[0] * Literal(vectorSize);
-                                            Value addr   = assign(it, TYPE_INT32) = offset + addrArg;
+                                                auto elemType = addrArg.type.getElementType();
+                                                auto vectorSize = elemType.getInMemoryWidth() * vectorLength;
 
-                                            uint16_t memoryPitch = static_cast<uint16_t>(mpLiteral->unsignedInt()) * vectorSize;
+                                                // TODO: limit loadInstrs.size()
+                                                Value offset = assign(it, TYPE_INT32) = offsetValues[0] << 4_val;
+                                                // Value offset = assign(it, TYPE_INT32) = offsetValues[0] * Literal(vectorSize);
+                                                Value addr   = assign(it, TYPE_INT32) = offset + addrArg;
 
-                                            // TODO: cover types other than vector16
-                                            DataType TYPE16{elemType.getInMemoryWidth() * DataType::BYTE, 16, false};
+                                                uint16_t memoryPitch = static_cast<uint16_t>(mpLiteral->unsignedInt()) * vectorSize;
 
-                                            uint64_t rows = loadInstrs.size();
-                                            VPMArea area(VPMUsage::SCRATCH, 0, static_cast<uint8_t>(rows));
-                                            auto entries = Value(Literal(static_cast<uint32_t>(rows)), TYPE_INT32);
-                                            it = method.vpm->insertReadRAM(method, it, addr, TYPE16,/* &area */ nullptr,
-                                                    true, INT_ZERO, entries, Optional<uint16_t>(memoryPitch));
+                                                DataType VectorType{elemType.getInMemoryWidth() * DataType::BYTE, vectorLength, false};
 
-                                            // const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
-                                            it = method.vpm->insertReadVPM(method, it, output, &area, true);
+                                                uint64_t rows = loadInstrs.size();
+                                                VPMArea area(VPMUsage::SCRATCH, 0, static_cast<uint8_t>(rows));
+                                                auto entries = Value(Literal(static_cast<uint32_t>(rows)), TYPE_INT32);
+                                                it = method.vpm->insertReadRAM(method, it, addr, VectorType,/* &area */ nullptr,
+                                                        true, INT_ZERO, entries, Optional<uint16_t>(memoryPitch));
+
+                                                // const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
+                                                it = method.vpm->insertReadVPM(method, it, output, &area, true);
+                                            }
+                                            else {
+                                                // TODO: gather these instructions in one mutex lock
+                                                it = method.vpm->insertLockMutex(it, true);
+                                                assign(it, output) = VPM_IO_REGISTER;
+                                                it = method.vpm->insertUnlockMutex(it, true);
+                                            }
                                         }
-                                        else {
-                                            // TODO: gather these instructions in one mutex lock
-                                            it = method.vpm->insertLockMutex(it, true);
-                                            assign(it, output) = VPM_IO_REGISTER;
-                                            it = method.vpm->insertUnlockMutex(it, true);
+                                        else
+                                        {
+                                            it.nextInBlock();
                                         }
                                     }
-                                    else
-                                    {
-                                        it.nextInBlock();
-                                    }
+
+                                    logging::debug() << loadInstrs.size() << " loads are combined" << logging::endl;
                                 }
-
-                                logging::debug() << loadInstrs.size() << " loads are combined" << logging::endl;
                             }
                         }
                     }

@@ -14,6 +14,10 @@
 
 #include <sstream>
 
+#endif
+
+#include <string>
+
 namespace vc4c
 {
     class Module;
@@ -42,11 +46,9 @@ namespace vc4c
 
         std::vector<uint32_t> readStreamOfWords(std::istream* in);
 
-        std::string demangleFunctionName(const std::string& name);
-
         void addFunctionAliases(Module& module);
+        std::string demangleFunctionName(const std::string& name);
 
     } // namespace spirv
 } // namespace vc4c
 
-#endif /* SPIRVHELPER_H */

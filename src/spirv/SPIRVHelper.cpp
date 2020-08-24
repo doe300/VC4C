@@ -711,29 +711,36 @@ std::vector<uint32_t> spirv::readStreamOfWords(std::istream* in)
     return words;
 }
 
-std::string spirv::demangleFunctionName(const std::string& name)
+void spirv::linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output)
 {
-    if(name.find("_Z") != 0)
-        return name;
-
-#ifdef __GNUC__
-    int status;
-    char* real_name = abi::__cxa_demangle(name.data(), nullptr, nullptr, &status);
-    std::string result = name;
-
-    if(status == 0)
-    {
-        // if demangling is successful, output the demangled function name
-        result = real_name;
-        // the demangled name contains the arguments, so we need ignore them
-        result = result.substr(0, result.find('('));
-        CPPLOG_LAZY(
-            logging::Level::DEBUG, log << "Demangled function name '" << name << "' to: " << result << logging::endl);
-    }
-    free(real_name);
-    return result;
+#ifndef SPIRV_FRONTEND
+    throw CompilationError(CompilationStep::LINKER, "SPIRV-Tools linker is not available!");
 #else
-    return name;
+    std::vector<std::vector<uint32_t>> binaries;
+    binaries.reserve(inputModules.size());
+    std::transform(inputModules.begin(), inputModules.end(), std::back_inserter(binaries), readStreamOfWords);
+
+    spvtools::LinkerOptions options;
+    options.SetCreateLibrary(false);
+    options.SetVerifyIds(true);
+    // the VC4CL intrinsics are not provided by any input module
+    options.SetAllowPartialLinkage(true);
+
+    spvtools::Context spvContext(SPV_ENV_OPENCL_EMBEDDED_1_2);
+
+    std::vector<uint32_t> linkedModules;
+    spv_result_t result = spvtools::Link(spvContext, binaries, &linkedModules, options);
+
+    if(result != SPV_SUCCESS)
+        throw CompilationError(CompilationStep::PARSER, getErrorMessage(result));
+
+    for(const uint32_t u : linkedModules)
+    {
+        output.write(reinterpret_cast<const char*>(&u), sizeof(uint32_t));
+    }
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Linked " << inputModules.size() << " modules into a single module with " << linkedModules.size()
+            << " words of data." << logging::endl);
 #endif
 }
 
@@ -761,3 +768,30 @@ void spirv::addFunctionAliases(Module& module)
     module.functionAliases.emplace("atomic_or", "atom_or");
     module.functionAliases.emplace("atomic_xor", "atom_xor");
 }
+
+std::string spirv::demangleFunctionName(const std::string& name)
+{
+    if(name.find("_Z") != 0)
+        return name;
+
+#ifdef __GNUC__
+    int status;
+    char* real_name = abi::__cxa_demangle(name.data(), nullptr, nullptr, &status);
+    std::string result = name;
+
+    if(status == 0)
+    {
+        // if demangling is successful, output the demangled function name
+        result = real_name;
+        // the demangled name contains the arguments, so we need ignore them
+        result = result.substr(0, result.find('('));
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Demangled function name '" << name << "' to: " << result << logging::endl);
+    }
+    free(real_name);
+    return result;
+#else
+    return name;
+#endif
+}
+
