@@ -10,8 +10,8 @@
 #include "../analysis/MemoryAnalysis.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/operators.h"
-#include "../periphery/VPM.h"
 #include "../optimization/ValueExpr.h"
+#include "../periphery/VPM.h"
 #include "../spirv/SPIRVHelper.h"
 #include "Eliminator.h"
 #include "log.h"
@@ -1264,21 +1264,22 @@ void optimizations::combineDMALoads(const Module& module, Method& method, const 
                 auto name = vc4c::spirv::demangleFunctionName(call->methodName);
 
                 std::smatch m;
-                if (std::regex_search(name, m, vloadReg)) {
+                if(std::regex_search(name, m, vloadReg))
+                {
                     int n = std::stoi(m.str(1));
 
                     // TODO: Check whether all second argument values are equal.
 
                     auto& vload = vloads[n];
-                    auto& loadInstrs   = get<0>(vload);
+                    auto& loadInstrs = get<0>(vload);
                     auto& offsetValues = get<1>(vload);
-                    auto& addrValue    = get<2>(vload);
+                    auto& addrValue = get<2>(vload);
 
-                    if (!addrValue.has_value())
+                    if(!addrValue.has_value())
                     {
                         addrValue = call->getArgument(1);
                     }
-                    else if (addrValue != call->getArgument(1))
+                    else if(addrValue != call->getArgument(1))
                     {
                         continue;
                     }
@@ -1289,12 +1290,13 @@ void optimizations::combineDMALoads(const Module& module, Method& method, const 
             }
         }
 
-        for (auto &p : vloads) {
+        for(auto& p : vloads)
+        {
             auto vectorLength = p.first;
             auto& vload = p.second;
-            auto& loadInstrs   = get<0>(vload);
+            auto& loadInstrs = get<0>(vload);
             auto& offsetValues = get<1>(vload);
-            auto& addrValue    = get<2>(vload);
+            auto& addrValue = get<2>(vload);
 
             if(offsetValues.size() <= 1)
                 continue;
@@ -1363,83 +1365,85 @@ void optimizations::combineDMALoads(const Module& module, Method& method, const 
                 }
             }
 
-            logging::debug() << addrExprs.size() << " loads are " << (eqDiff ? "" : "not ") << "equal difference" << logging::endl;
+            logging::debug() << addrExprs.size() << " loads are " << (eqDiff ? "" : "not ") << "equal difference"
+                             << logging::endl;
 
             if(eqDiff)
             {
                 // The form of diff should be "0 (+/-) expressions...", then remove the value 0 at most right.
                 ValueExpr::ExpandedExprs expanded;
                 diff->expand(expanded);
-                if (expanded.size() == 1) {
+                if(expanded.size() == 1)
+                {
                     diff = expanded[0].second;
 
                     // logging::debug() << "diff = " << diff->to_string()  << logging::endl;
 
-                    if (auto term = std::dynamic_pointer_cast<ValueTerm>(diff))
+                    auto term = std::dynamic_pointer_cast<ValueTerm>(diff);
+                    auto mpValue = (term != nullptr) ? term->value.getConstantValue() : Optional<Value>{};
+                    auto mpLiteral = mpValue.has_value() ? mpValue->getLiteralValue() : Optional<Literal>{};
+
+                    if(mpLiteral)
                     {
-                        // logging::debug() << "term = " << term->to_string()  << logging::endl;
-
-                        if (auto mpValue = term->value.getConstantValue())
+                        if(mpLiteral->unsignedInt() < (1u << 12))
                         {
-                            // logging::debug() << "mpValue = " << mpValue->to_string()  << logging::endl;
-
-                            if (auto mpLiteral = mpValue->getLiteralValue())
+                            auto it = bb.walk();
+                            bool firstCall = true;
+                            while(!it.isEndOfBlock())
                             {
-                                if (mpLiteral->unsignedInt() < (1u << 12))
+                                auto call = it.get<intermediate::MethodCall>();
+                                if(call && std::find(loadInstrs.begin(), loadInstrs.end(), call) != loadInstrs.end())
                                 {
-                                    auto it = bb.walk();
-                                    bool firstCall = true;
-                                    while(!it.isEndOfBlock())
+                                    it.erase();
+
+                                    auto output = *call->getOutput();
+                                    if(firstCall)
                                     {
-                                        auto call = it.get<intermediate::MethodCall>();
-                                        if(call && std::find(loadInstrs.begin(), loadInstrs.end(), call) != loadInstrs.end())
-                                        {
-                                            it.erase();
+                                        firstCall = false;
 
-                                            auto output = *call->getOutput();
-                                            if(firstCall)
-                                            {
-                                                firstCall = false;
+                                        auto addrArg = call->assertArgument(1);
 
-                                                auto addrArg = call->assertArgument(1);
+                                        auto elemType = addrArg.type.getElementType();
+                                        auto vectorSize = elemType.getInMemoryWidth() * vectorLength;
 
-                                                auto elemType = addrArg.type.getElementType();
-                                                auto vectorSize = elemType.getInMemoryWidth() * vectorLength;
+                                        // TODO: limit loadInstrs.size()
+                                        Value offset = assign(it, TYPE_INT32) = offsetValues[0] << 4_val;
+                                        // Value offset = assign(it, TYPE_INT32) = offsetValues[0] *
+                                        // Literal(vectorSize);
+                                        Value addr = assign(it, TYPE_INT32) = offset + addrArg;
 
-                                                // TODO: limit loadInstrs.size()
-                                                Value offset = assign(it, TYPE_INT32) = offsetValues[0] << 4_val;
-                                                // Value offset = assign(it, TYPE_INT32) = offsetValues[0] * Literal(vectorSize);
-                                                Value addr   = assign(it, TYPE_INT32) = offset + addrArg;
+                                        uint16_t memoryPitch =
+                                            static_cast<uint16_t>(mpLiteral->unsignedInt()) * vectorSize;
 
-                                                uint16_t memoryPitch = static_cast<uint16_t>(mpLiteral->unsignedInt()) * vectorSize;
+                                        DataType VectorType{
+                                            elemType.getInMemoryWidth() * DataType::BYTE, vectorLength, false};
 
-                                                DataType VectorType{elemType.getInMemoryWidth() * DataType::BYTE, vectorLength, false};
+                                        uint64_t rows = loadInstrs.size();
+                                        VPMArea area(VPMUsage::SCRATCH, 0, static_cast<uint8_t>(rows));
+                                        auto entries = Value(Literal(static_cast<uint32_t>(rows)), TYPE_INT32);
+                                        it =
+                                            method.vpm->insertReadRAM(method, it, addr, VectorType, /* &area */ nullptr,
+                                                true, INT_ZERO, entries, Optional<uint16_t>(memoryPitch));
 
-                                                uint64_t rows = loadInstrs.size();
-                                                VPMArea area(VPMUsage::SCRATCH, 0, static_cast<uint8_t>(rows));
-                                                auto entries = Value(Literal(static_cast<uint32_t>(rows)), TYPE_INT32);
-                                                it = method.vpm->insertReadRAM(method, it, addr, VectorType,/* &area */ nullptr,
-                                                        true, INT_ZERO, entries, Optional<uint16_t>(memoryPitch));
-
-                                                // const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
-                                                it = method.vpm->insertReadVPM(method, it, output, &area, true);
-                                            }
-                                            else {
-                                                // TODO: gather these instructions in one mutex lock
-                                                it = method.vpm->insertLockMutex(it, true);
-                                                assign(it, output) = VPM_IO_REGISTER;
-                                                it = method.vpm->insertUnlockMutex(it, true);
-                                            }
-                                        }
-                                        else
-                                        {
-                                            it.nextInBlock();
-                                        }
+                                        // const VPMArea* area = nullptr, bool useMutex = true, const Value&
+                                        // inAreaOffset = INT_ZERO);
+                                        it = method.vpm->insertReadVPM(method, it, output, &area, true);
                                     }
-
-                                    logging::debug() << loadInstrs.size() << " loads are combined" << logging::endl;
+                                    else
+                                    {
+                                        // TODO: gather these instructions in one mutex lock
+                                        it = method.vpm->insertLockMutex(it, true);
+                                        assign(it, output) = VPM_IO_REGISTER;
+                                        it = method.vpm->insertUnlockMutex(it, true);
+                                    }
+                                }
+                                else
+                                {
+                                    it.nextInBlock();
                                 }
                             }
+
+                            logging::debug() << loadInstrs.size() << " loads are combined" << logging::endl;
                         }
                     }
                 }
