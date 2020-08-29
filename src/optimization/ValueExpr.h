@@ -18,7 +18,7 @@ namespace vc4c
         class ValueExpr
         {
         public:
-            // (signed, value)
+            //                                         signed, value
             using ExpandedExprs = std::vector<std::pair<bool, std::shared_ptr<ValueExpr>>>;
 
             virtual ~ValueExpr() = default;

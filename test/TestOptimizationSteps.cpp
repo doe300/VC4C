@@ -17,6 +17,8 @@
 #include "optimization/Flags.h"
 #include "periphery/VPM.h"
 
+#include "optimization/ValueExpr.h"
+
 #include <cmath>
 
 #include "log.h"
@@ -2000,7 +2002,6 @@ void TestOptimizationSteps::testCombineDMALoads()
     using namespace vc4c::intermediate;
 
     auto testCombineDMALoadsSub = [&](Module& module, Method& inputMethod, Configuration& config, DataType vectorType) {
-        // TODO: Add a case that the first argument of vload16 is a variable.
 
         const int numOfLoads = 3;
         periphery::VPRDMASetup expectedDMASetup(0, vectorType.getVectorWidth() % 16, numOfLoads, 1, 0);
@@ -2084,7 +2085,7 @@ void TestOptimizationSteps::testCombineDMALoads()
     const std::string vload16f = "_Z7vload16jPU3AS1Kf";
     // vload8(size_t, const float*)
     const std::string vload8f = "_Z6vload8jPU3AS1Kf";
-    // vload16(size_t, const float*)
+    // vload16(size_t, const uchar*)
     const std::string vload16uc = "_Z7vload16jPU3AS1Kh";
 
     Configuration config{};
@@ -2135,5 +2136,43 @@ void TestOptimizationSteps::testCombineDMALoads()
         putMethodCall(inputMethod, inIt, Uchar16, vload16uc, {2_val, in});
 
         testCombineDMALoadsSub(module, inputMethod, config, Uchar16);
+    }
+
+    {
+        // vload16f * 3
+
+        Module module{config};
+        Method inputMethod(module);
+
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+        auto in = assign(inIt, TYPE_INT32, "%in") = UNIFORM_REGISTER;
+        auto offset1 = assign(inIt, TYPE_INT32, "%offset1") = 42_val;
+        auto offset2 = assign(inIt, TYPE_INT32, "%offset2") = offset1 + 1_val;
+        auto offset3 = assign(inIt, TYPE_INT32, "%offset3") = offset1 + 2_val;
+
+        putMethodCall(inputMethod, inIt, Float16, vload16f, {offset3, in});
+        putMethodCall(inputMethod, inIt, Float16, vload16f, {offset2, in});
+        putMethodCall(inputMethod, inIt, Float16, vload16f, {offset1, in});
+
+        testCombineDMALoadsSub(module, inputMethod, config, Float16);
+    }
+
+    {
+        // ValueExpr::expand
+
+        Literal l(2);
+        Value a(l, TYPE_INT32);
+        Value b = 3_val;
+        std::shared_ptr<ValueExpr> expr(new ValueBinaryOp(
+                    makeValueBinaryOpFromLocal(a, ValueBinaryOp::BinaryOp::Add, b),
+                    ValueBinaryOp::BinaryOp::Sub,
+                    std::make_shared<ValueTerm>(1_val)));
+        ValueExpr::ExpandedExprs expanded;
+        expr->expand(expanded);
+
+        TEST_ASSERT_EQUALS(1, expanded.size());
+
+        auto n = expanded[0].second->getInteger();
+        TEST_ASSERT_EQUALS(4, n.value_or(0));
     }
 }

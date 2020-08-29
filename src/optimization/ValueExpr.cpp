@@ -27,8 +27,24 @@ std::shared_ptr<ValueExpr> ValueBinaryOp::replaceLocal(const Value& value, std::
 
 void ValueBinaryOp::expand(ExpandedExprs& exprs)
 {
-    auto leftNum = left->getInteger();
-    auto rightNum = right->getInteger();
+    ExpandedExprs leftEE, rightEE;
+    left->expand(leftEE);
+    right->expand(rightEE);
+
+    auto getInteger = [](const std::pair<bool, std::shared_ptr<ValueExpr>> &v) {
+        std::function<Optional<int>(const int&)> addSign = [&](const int& num) {
+            return make_optional(v.first ? num : -num);
+        };
+        return v.second->getInteger() & addSign;
+    };
+
+    auto leftNum = (leftEE.size() == 1) ? getInteger(leftEE[0]) : Optional<int>();
+    auto rightNum = (rightEE.size() == 1) ? getInteger(rightEE[0]) : Optional<int>();
+
+    auto append = [](ExpandedExprs &ee1, ExpandedExprs &ee2) {
+        ee1.insert(ee1.end(), ee2.begin(), ee2.end());
+    };
+
     if(leftNum && rightNum)
     {
         int l = leftNum.value_or(0);
@@ -63,21 +79,19 @@ void ValueBinaryOp::expand(ExpandedExprs& exprs)
         {
         case BinaryOp::Add:
         {
-            left->expand(exprs);
-            right->expand(exprs);
+            append(exprs, leftEE);
+            append(exprs, rightEE);
             break;
         }
         case BinaryOp::Sub:
         {
-            left->expand(exprs);
+            append(exprs, leftEE);
 
-            ExpandedExprs temp;
-            right->expand(temp);
-            for(auto& e : temp)
+            for(auto& e : rightEE)
             {
                 e.first = !e.first;
             }
-            exprs.insert(exprs.end(), temp.begin(), temp.end());
+            append(exprs, rightEE);
             break;
         }
         case BinaryOp::Mul:
@@ -85,20 +99,20 @@ void ValueBinaryOp::expand(ExpandedExprs& exprs)
             if(leftNum || rightNum)
             {
                 int num = 0;
-                std::shared_ptr<ValueExpr> expr = nullptr;
+                ExpandedExprs *ee = nullptr;
                 if(leftNum)
                 {
                     num = leftNum.value_or(0);
-                    expr = right;
+                    ee = &rightEE;
                 }
                 else
                 {
                     num = rightNum.value_or(0);
-                    expr = left;
+                    ee = &leftEE;
                 }
                 for(int i = 0; i < num; i++)
                 {
-                    exprs.push_back(std::make_pair(true, expr));
+                    append(exprs, *ee);
                 }
             }
             else
@@ -148,10 +162,11 @@ std::string ValueBinaryOp::to_string() const
     return "(" + left->to_string() + " " + opStr + " " + right->to_string() + ")";
 }
 
-std::shared_ptr<ValueExpr> optimizations::makeValueBinaryOpFromLocal(Value& left, ValueBinaryOp::BinaryOp binOp, Value& right)
+std::shared_ptr<ValueExpr> optimizations::makeValueBinaryOpFromLocal(
+    Value& left, ValueBinaryOp::BinaryOp binOp, Value& right)
 {
     return std::make_shared<ValueBinaryOp>(
-            std::make_shared<ValueTerm>(left), binOp, std::make_shared<ValueTerm>(right));
+        std::make_shared<ValueTerm>(left), binOp, std::make_shared<ValueTerm>(right));
 }
 
 bool ValueTerm::operator==(const ValueExpr& other) const
@@ -198,4 +213,3 @@ std::string ValueTerm::to_string() const
 {
     return value.to_string();
 }
-
