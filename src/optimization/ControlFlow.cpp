@@ -1050,7 +1050,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     generateStopSegment(method);
 }
 
-bool optimizations::removeConstantLoadInLoops(const Module& module, Method& method, const Configuration& config)
+bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, const Configuration& config)
 {
     const int moveDepth = config.additionalOptions.moveConstantsDepth;
     bool hasChanged = false;
@@ -1110,13 +1110,13 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
         processedNodes.insert(root);
 
         // process tree nodes with BFS
-        std::queue<LoopInclusionTreeNode*> que;
-        que.push(root);
+        std::queue<LoopInclusionTreeNode*> queue;
+        queue.push(root);
 
-        while(!que.empty())
+        while(!queue.empty())
         {
-            auto currentNode = que.front();
-            que.pop();
+            auto currentNode = queue.front();
+            queue.pop();
 
             auto targetTreeNode =
                 castToTreeNode(currentNode->findRoot(moveDepth == -1 ? Optional<int>() : Optional<int>(moveDepth - 1)));
@@ -1124,7 +1124,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
 
             currentNode->forAllOutgoingEdges(
                 [&](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {
-                    que.push(const_cast<LoopInclusionTreeNode*>(&child));
+                    queue.push(const_cast<LoopInclusionTreeNode*>(&child));
                     return true;
                 });
 
@@ -1166,7 +1166,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                     processedInsts.insert(inst);
 
                     CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Moving constant load out of loop: " << it->to_string() << logging::endl);
+                        log << "Moving invariant code out of loop: " << it->to_string() << logging::endl);
                     targetInst.emplace(it.release());
                     // go to the next instruction to preserve the order of insertion, e.g. to manage dependencies
                     targetInst.nextInBlock();
@@ -1175,11 +1175,11 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
             }
             else
             {
-                logging::debug() << "Create a new basic block before the target block" << logging::endl;
+                logging::debug() << "Creating a new block to hoist loop invariant code into" << logging::endl;
 
                 auto headBlock = method.begin();
 
-                insertedBlock = &method.createAndInsertNewBlock(method.begin(), "%createdByRemoveConstantLoadInLoops");
+                insertedBlock = &method.createAndInsertNewBlock(method.begin(), "%createdByLoopInvariantCodeMotion");
                 for(auto it : insts->second)
                 {
                     auto inst = it.get();
@@ -1188,7 +1188,8 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
                     processedInsts.insert(inst);
 
                     CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Moving constant load out of loop: " << it->to_string() << logging::endl);
+                        log << "Moving invariant code out of loop: " << it->to_string() << logging::endl);
+                    // append always to the end to preserve the order, e.g. for dependencies
                     insertedBlock->walkEnd().emplace(it.release());
                     it.reset(nullptr);
                 }
@@ -1214,7 +1215,7 @@ bool optimizations::removeConstantLoadInLoops(const Module& module, Method& meth
     if(hasChanged)
     {
         method.cleanEmptyInstructions();
-        // combine the newly reordered (and at one place accumulated) loading instructions
+        // combine the newly reordered load instructions, since we might have grouped same loads together
         combineLoadingConstants(module, method, config);
     }
 

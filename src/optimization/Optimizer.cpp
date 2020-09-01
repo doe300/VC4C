@@ -295,7 +295,7 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "splits read-after-writes (except if the local is used only very locally), so the reordering and "
         "register-allocation have an easier job",
         OptimizationType::FINAL),
-    OptimizationPass("RemoveConstantLoadInLoops", "extract-loads-from-loops", removeConstantLoadInLoops,
+    OptimizationPass("LoopInvariantCodeMotion", "move-loop-invariant-code", moveLoopInvariantCode,
         "move constant loads in (nested) loops outside the loops", OptimizationType::FINAL),
     OptimizationPass("CacheAcrossWorkGroup", "work-group-cache", cacheWorkGroupDMAAccess,
         "finds memory access across the work-group which can be cached in VPM to combine the DMA operation (WIP)",
@@ -315,7 +315,6 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
     {
     case OptimizationLevel::FULL:
         passes.emplace("vectorize-loops");
-        passes.emplace("extract-loads-from-loops");
         passes.emplace("schedule-instructions");
         passes.emplace("work-group-cache");
         // XXX move CSE to medium? Need to profile performance and re-check all emulation tests with CSE enabled
@@ -331,6 +330,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("copy-propagation");
         passes.emplace("combine-loads");
         passes.emplace("remove-conditional-flags");
+        passes.emplace("move-loop-invariant-code");
         FALL_THROUGH
     case OptimizationLevel::BASIC:
         passes.emplace("reorder-blocks");

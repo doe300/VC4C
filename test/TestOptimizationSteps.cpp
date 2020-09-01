@@ -1931,7 +1931,7 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
 
     // run pass
     method.dumpInstructions();
-    removeConstantLoadInLoops(module, method, config);
+    moveLoopInvariantCode(module, method, config);
     method.dumpInstructions();
 
     // NOTE: We need to check the same method, since we cannot compare methods, since the loop creates unique labels
