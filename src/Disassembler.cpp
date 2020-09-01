@@ -220,7 +220,7 @@ static std::string readString(std::istream& binary, uint64_t stringLength)
     std::array<char, 1024> buffer = {0};
 
     binary.read(buffer.data(), static_cast<std::streamsize>(stringLength));
-    const std::string name(buffer.data(), stringLength);
+    const std::string name(buffer.data(), static_cast<std::size_t>(stringLength));
     uint64_t numPaddingBytes = Byte(stringLength).getPaddingTo(sizeof(uint64_t));
     // skip padding after kernel name
     binary.read(buffer.data(), static_cast<std::streamsize>(numPaddingBytes));
@@ -276,7 +276,7 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Stable
         // since we don't know the number, sizes and types of the original globals, we build a single global containing
         // all the data
         std::vector<uint32_t> tmp;
-        tmp.resize(moduleInfo.getGlobalDataSize().getValue() * 2);
+        tmp.resize(static_cast<std::size_t>(moduleInfo.getGlobalDataSize().getValue() * 2));
         binary.read(reinterpret_cast<char*>(tmp.data()),
             static_cast<std::streamsize>(moduleInfo.getGlobalDataSize().toBytes().getValue()));
 
@@ -300,7 +300,7 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Stable
 
     // the remainder is kernel-code
     // we don't need to associate it to any particular kernel
-    instructions.reserve(totalInstructions);
+    instructions.reserve(static_cast<std::size_t>(totalInstructions));
 
     for(uint64_t i = initialInstructionOffset; i < totalInstructions + initialInstructionOffset; ++i)
     {

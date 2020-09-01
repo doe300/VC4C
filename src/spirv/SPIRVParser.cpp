@@ -947,7 +947,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
             name = name.find('%') == 0 ? name : ("%" + name);
             auto pos = currentMethod->method->stackAllocations.emplace(StackAllocation(name, type, 0, alignment));
             // TODO set initial value!. Allowed for OpVariables with storage-class Function?
-            memoryAllocatedData.emplace(parsed_instruction->result_id, &const_cast<StackAllocation&>(*pos.first));
+            memoryAllocatedData.emplace(parsed_instruction->result_id, &(*pos.first));
         }
         else if(builtinId != spv::BuiltIn::Max)
         {

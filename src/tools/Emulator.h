@@ -15,8 +15,10 @@
 #include "tools.h"
 
 #include <array>
+#include <atomic>
 #include <bitset>
 #include <limits>
+#include <mutex>
 #include <queue>
 
 namespace vc4c
@@ -77,8 +79,8 @@ namespace vc4c
             void unlock(uint8_t qpu);
 
         private:
-            bool locked{false};
-            uint8_t lockOwner{255};
+            static constexpr uint8_t NO_OWNER = 255;
+            std::atomic_uint8_t lockedOwner{NO_OWNER};
         };
 
         class Registers : private NonCopyable
@@ -226,6 +228,7 @@ namespace vc4c
             void checkAllZero() const;
 
         private:
+            std::mutex counterLock;
             std::array<uint8_t, 16> counter;
             std::array<std::deque<uint8_t>, 16> blockedQPUs;
             std::array<std::deque<uint8_t>, 16> releasedQPUs;
@@ -257,6 +260,11 @@ namespace vc4c
                 std::vector<qpu_asm::Instruction>::const_iterator firstInstruction) const;
             uint32_t getCurrentInstructionIndex(
                 std::vector<qpu_asm::Instruction>::const_iterator firstInstruction) const;
+
+            inline bool operator<(const QPU& other) const noexcept
+            {
+                return ID < other.ID;
+            }
 
         private:
             Mutex& mutex;

@@ -31,6 +31,8 @@
 using namespace vc4c;
 using namespace vc4c::tools;
 
+static std::mutex instrumentationLock;
+
 extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, StableList<Global>& globals,
     std::vector<qpu_asm::Instruction>& instructions);
 
@@ -160,33 +162,35 @@ void Memory::setUniforms(const std::vector<Word>& uniforms, MemoryAddress addres
 
 bool Mutex::isLocked() const
 {
-    return locked;
+    return lockedOwner != NO_OWNER;
 }
 
 bool Mutex::lock(uint8_t qpu)
 {
-    if(locked && lockOwner == qpu)
-        // we need to check for duplicate read in same instruction (e.g. or -, mutex_acq, mutex_acq)
-        throw CompilationError(CompilationStep::GENERAL, "Double locked mutex!");
-    if(locked && lockOwner != qpu)
+    uint8_t currentOwner = NO_OWNER;
+    if(!lockedOwner.compare_exchange_strong(currentOwner, qpu))
     {
+        if(currentOwner == qpu)
+            // we need to check for duplicate read in same instruction (e.g. or -, mutex_acq, mutex_acq)
+            throw CompilationError(CompilationStep::GENERAL, "Double locked mutex!");
         // locked by another QPU
         PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 30, "waitOnMutex", 1);
         return false;
     }
-    locked = true;
-    lockOwner = qpu;
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 20, "lockMutex", 1);
     return true;
 }
 
 void Mutex::unlock(uint8_t qpu)
 {
-    if(!locked)
-        throw CompilationError(CompilationStep::GENERAL, "Freeing mutex not previously locked!");
-    if(lockOwner != qpu)
-        throw CompilationError(CompilationStep::GENERAL, "Cannot free mutex locked by another QPU!");
-    locked = false;
+    uint8_t currentOwner = qpu;
+    if(!lockedOwner.compare_exchange_strong(currentOwner, NO_OWNER))
+    {
+        if(currentOwner == NO_OWNER)
+            throw CompilationError(CompilationStep::GENERAL, "Freeing mutex not previously locked!");
+        throw CompilationError(CompilationStep::GENERAL, "Cannot free mutex locked by another QPU",
+            std::to_string(static_cast<unsigned>(currentOwner)));
+    }
 }
 
 LCOV_EXCL_START
@@ -719,6 +723,22 @@ void SFU::incrementCycle()
 template <typename T>
 static std::pair<uint32_t, uint32_t> toAddresses(T setup)
 {
+    if(!setup.getHorizontal())
+        throw CompilationError(
+            CompilationStep::GENERAL, "Vertical access to VPM is not yet supported", setup.to_string());
+    /*
+     * Identical for VPM read and write setup
+     * Horizontal 8-bit: ADDR[7:0] = {Y[5:0], B[1:0]}
+     * Horizontal 16-bit: ADDR[6:0] = {Y[5:0], H[0]}
+     * Horizontal 32-bit: ADDR[5:0] = Y[5:0]
+     * Vertical 8-bit: ADDR[7:0] = {Y[5:4], X[3:0], B[1:0]}
+     * Vertical 16-bit: ADDR[6:0] = {Y[5:4], X[3:0], H[0]}
+     * Vertical 32-bit: ADDR[5:0] = {Y[5:4], X[3:0]}
+     *
+     * - Broadcom VideoCore IV specification, table 32 and 33
+     *
+     * NOTE: That the Half-word/Byte offset is handled in the readVPM() writeVPM() methods separately!
+     */
     switch(setup.getSize())
     {
     case 0: // Byte
@@ -1121,6 +1141,7 @@ LCOV_EXCL_STOP
 
 std::pair<SIMDVector, bool> Semaphores::increment(uint8_t index, uint8_t qpu)
 {
+    std::lock_guard<std::mutex> guard(counterLock);
     auto& cnt = counter.at(index);
     auto& blocked = blockedQPUs.at(index);
     auto& released = releasedQPUs.at(index);
@@ -1164,6 +1185,7 @@ std::pair<SIMDVector, bool> Semaphores::increment(uint8_t index, uint8_t qpu)
 
 std::pair<SIMDVector, bool> Semaphores::decrement(uint8_t index, uint8_t qpu)
 {
+    std::lock_guard<std::mutex> guard(counterLock);
     auto& cnt = counter.at(index);
     auto& blocked = blockedQPUs.at(index);
     auto& released = releasedQPUs.at(index);
@@ -1270,7 +1292,10 @@ static VectorFlags generateImmediateFlags(const SIMDVector& vector)
 bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction)
 {
     const qpu_asm::Instruction* inst = &(*(firstInstruction + pc));
-    ++instrumentation[inst].numExecutions;
+    {
+        std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
+        ++instrumentation[inst].numExecutions;
+    }
     CPPLOG_LAZY(logging::Level::INFO,
         log << "QPU " << static_cast<unsigned>(ID) << " (0x" << std::hex << pc << std::dec
             << "): " << inst->toASMString() << logging::endl);
@@ -1290,7 +1315,10 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
         {
             if(isConditionMet(br->getBranchCondition()))
             {
-                ++instrumentation[inst].numBranchTaken;
+                {
+                    std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
+                    ++instrumentation[inst].numBranchTaken;
+                }
                 int32_t offset = 4 /* Branch starts at PC + 4 */ +
                     (br->getImmediate() / static_cast<int32_t>(sizeof(uint64_t))) /* immediate offset is in bytes */;
                 if(br->getAddRegister() == BranchReg::BRANCH_REG ||
@@ -1372,7 +1400,10 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
                 ++nextPC;
             }
             else
+            {
+                std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
                 ++instrumentation[inst].numStalls;
+            }
         }
         else
             throw CompilationError(CompilationStep::GENERAL, "Invalid assembler instruction", inst->toASMString());
@@ -1496,6 +1527,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         if(!addIn0NotStall || !addIn1NotStall)
         {
             // we stall on input, so do not calculate anything
+            std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
             ++instrumentation[aluInst].numStalls;
             return false;
         }
@@ -1523,6 +1555,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         if(!mulIn0NotStall || !mulIn1NotStall)
         {
             // we stall on input, so do not calculate anything
+            std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
             ++instrumentation[aluInst].numStalls;
             return false;
         }
@@ -1634,6 +1667,7 @@ void QPU::writeConditional(Register dest, const SIMDVector& in, ConditionCode co
     if(cond == COND_ALWAYS)
     {
         registers.writeRegister(dest, in, std::bitset<16>(0xFFFF), bitMask);
+        std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
         if(addInst)
             ++instrumentation[addInst].numAddALUExecuted;
         if(mulInst)
@@ -1642,6 +1676,7 @@ void QPU::writeConditional(Register dest, const SIMDVector& in, ConditionCode co
     }
     else if(cond == COND_NEVER)
     {
+        std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
         if(addInst)
             ++instrumentation[addInst].numAddALUSkipped;
         if(mulInst)
@@ -1673,6 +1708,7 @@ void QPU::writeConditional(Register dest, const SIMDVector& in, ConditionCode co
 
     if(addInst != nullptr)
     {
+        std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
         if(elementMask.any())
             ++instrumentation[addInst].numAddALUExecuted;
         else
@@ -1680,6 +1716,7 @@ void QPU::writeConditional(Register dest, const SIMDVector& in, ConditionCode co
     }
     if(mulInst != nullptr)
     {
+        std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
         if(elementMask.any())
             ++instrumentation[mulInst].numMulALUExecuted;
         else
@@ -1856,7 +1893,7 @@ std::vector<MemoryAddress> tools::buildUniforms(Memory& memory, MemoryAddress ba
 static void emulateStep(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction, std::vector<QPU>& qpus,
     std::bitset<NATIVE_VECTOR_SIZE>& activeQPUs)
 {
-    for(unsigned i = 0; i < qpus.size(); ++i)
+    for(std::size_t i = 0; i < qpus.size(); ++i)
     {
         if(!activeQPUs.test(i))
             continue;

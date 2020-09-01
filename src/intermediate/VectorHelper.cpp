@@ -126,7 +126,8 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
 
                     // FIXME forcing to file A causes too many register errors, need to limit some conversions
                     // 15 -> 3, 14 -> 2, 13 -> 1
-                    appliedOffset.immediate() = SmallImmediate::fromRotationOffset(3u - (15u - *origOffset));
+                    appliedOffset.immediate() =
+                        SmallImmediate::fromRotationOffset(static_cast<uint8_t>(3u - (15u - *origOffset)));
                     type = intermediate::RotationType::PER_QUAD;
                 }
                 else if(/* DISABLES CODE */ (false) && *origOffset < 4)
