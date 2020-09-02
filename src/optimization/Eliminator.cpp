@@ -734,6 +734,20 @@ static bool canReplaceBitOp(const intermediate::Operation& op)
     return !op.hasUnpackMode() && !has_flag(op.getSideEffects(), intermediate::SideEffectType::REGISTER_READ);
 }
 
+static bool hasByteExtractionMode(const intermediate::UnpackingInstruction& inst)
+{
+    return inst.getUnpackMode() == UNPACK_8A_32 | inst.getUnpackMode() == UNPACK_8B_32 ||
+        inst.getUnpackMode() == UNPACK_8C_32 || inst.getUnpackMode() == UNPACK_8D_32;
+}
+
+static bool hasSingleByteExtractionWriter(const Value& val)
+{
+    auto writer =
+        dynamic_cast<const intermediate::MoveOperation*>((check(val.checkLocal()) & &Local::getSingleWriter).get());
+    return writer && !dynamic_cast<const intermediate::VectorRotation*>(writer) && !writer->hasConditionalExecution() &&
+        !writer->hasPackMode() && hasByteExtractionMode(*writer);
+}
+
 bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method, const Configuration& config)
 {
     // See https://en.wikipedia.org/wiki/Boolean_algebra#Monotone_laws
@@ -784,6 +798,26 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                         foundAnd(out, loc, it);
                     if(auto loc = op->getSecondArg() & &Value::checkLocal)
                         foundAnd(out, loc, it);
+                }
+
+                // %b = %a (zextByteXTo32)
+                // %c = %b & 255 -> superfluous
+                auto hasByteMask = [](const Value& val) -> bool {
+                    auto constVal = val.getConstantValue();
+                    return constVal && constVal->hasLiteral(Literal(255));
+                };
+                auto argIt = std::find_if(op->getArguments().begin(), op->getArguments().end(), hasByteMask);
+                if(argIt != op->getArguments().end())
+                {
+                    auto otherArg = op->findOtherArgument(*argIt);
+                    if(otherArg & hasSingleByteExtractionWriter)
+                    {
+                        logging::debug() << "Replacing redundant byte masking for value already extracted from single "
+                                            "byte with move: "
+                                         << op->to_string() << logging::endl;
+                        replaced = true;
+                        it.reset((new intermediate::MoveOperation(*op->getOutput(), *otherArg))->copyExtrasFrom(op));
+                    }
                 }
             }
 

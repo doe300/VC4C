@@ -17,6 +17,7 @@
 #include <array>
 #include <atomic>
 #include <bitset>
+#include <cstdint>
 #include <limits>
 #include <mutex>
 #include <queue>
@@ -80,7 +81,7 @@ namespace vc4c
 
         private:
             static constexpr uint8_t NO_OWNER = 255;
-            std::atomic_uint8_t lockedOwner{NO_OWNER};
+            std::atomic<std::uint8_t> lockedOwner{NO_OWNER};
         };
 
         class Registers : private NonCopyable

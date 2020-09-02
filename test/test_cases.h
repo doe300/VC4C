@@ -70,8 +70,9 @@ namespace vc4c
 		template<typename T>
 		std::vector<T> toRange(T start, T end, T step = 1)
 		{
+			auto comp = start < end ? [](T a, T b) { return a < b;} : [](T a, T b) { return a > b; };
 			std::vector<T> out;
-			for(T val = start; val != end; val += step)
+			for(T val = start; comp(val, end); val += step)
 				out.push_back(val);
 			return out;
 		}
@@ -296,14 +297,6 @@ namespace vc4c
 					}, {}, maxExecutionCycles),
 					addVector({}, 2, std::vector<unsigned>{0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0, 10, 0, 11, 0, 12, 0, 13, 0, 14, 0, 15, 0})
 				),
-				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/boost-compute/test_merge.cl", "serial_merge",
-					{toScalarParameter(16u), toScalarParameter(16u),
-					toParameter(std::vector<unsigned>{1, 0, 3, 0, 5, 0, 7, 0, 9, 0, 11, 0, 13, 0, 15, 0, 17, 0, 19, 0, 21, 0, 23, 0, 25, 0, 27, 0, 29, 0, 31, 0}),
-					toParameter(std::vector<unsigned>{0, 0, 2, 0, 4, 0, 6, 0, 8, 0, 10, 0, 12, 0, 14, 0, 16, 0, 18, 0, 20, 0, 22, 0, 24, 0, 26, 0, 28, 0, 30, 0}),
-					toParameter(std::vector<unsigned>(64))
-					}, {}, maxExecutionCycles),
-					addVector({}, 4, std::vector<unsigned>{0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0, 10, 0, 11, 0, 12, 0, 13, 0, 14, 0, 15, 0, 16, 0, 17, 0, 18, 0, 19, 0, 20, 0, 21, 0, 22, 0, 23, 0, 24, 0, 25, 0, 26, 0, 27, 0, 28, 0, 29, 0, 30, 0, 31, 0})
-				),
 		};
 
 		//TODO NVIDIA/matrixMul, NVIDIA/transpose, OpenCLIPP/Arithmetic, OpenCLIPP/Logic, OpenCLIPP/Thresholding, test_signedness
@@ -401,6 +394,14 @@ namespace vc4c
                 std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/HandsOnOpenCL/matmul.cl", "mmul",
                     {toScalarParameter(4), toParameter(std::vector<float>(4 * 4, 3.0f)), toParameter(std::vector<float>(4 * 4, 5.0f)), toParameter(std::vector<float>(4 * 4, 0.0f))}, toConfig(2, 2, 1, 2, 2, 1), maxExecutionCycles),
                     addVector({}, 3, std::vector<float>(4 * 4, 4 * 3.0f * 5.0f))
+                ),
+                std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/BabelStream/OCLStream.cl", "add",
+                    {toParameter(std::vector<float>(16, 17.0f)), toParameter(toRange<float>(-4, 4, 0.5f)), toParameter(std::vector<float>(16))}, toConfig(4, 1, 1, 4, 1, 1), maxExecutionCycles),
+                    addVector({}, 2, toRange<float>(13, 21, 0.5f))
+                ),
+                std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/BabelStream/OCLStream.cl", "triad",
+                    {toParameter(std::vector<float>(16)), toParameter(toRange<float>(-4, 4, 0.5f)), toParameter(std::vector<float>(16, 17.0f))}, toConfig(4, 1, 1, 4, 1, 1), maxExecutionCycles),
+                    addVector({}, 0, toRange<float>(-4 + 0.4f * 17, 4 + 0.4f * 17, 0.5f))
                 )
 		};
 	} /* namespace test */

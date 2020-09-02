@@ -10,6 +10,16 @@ __kernel void test_vec_align_struct(__constant char2* source, __global uint* des
     dest[tid] = (uint)((__local uchar*) &(test.vec));
 }
 
+typedef struct myUnpackedStruct2 {
+    char2 vec;
+} testStruct2;
+__kernel void test_vec_align_struct2(__constant char2 *source, __global uint *dest)
+{
+    __local testStruct2 test;
+    int  tid = get_global_id(0);
+    dest[tid] = (uint)((__local uchar *)&(test.vec));
+}
+
 typedef struct __attribute__((packed)) myPackedStruct
 {
     char2 vec;

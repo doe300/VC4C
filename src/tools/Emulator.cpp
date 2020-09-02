@@ -2208,7 +2208,7 @@ EmulationResult tools::emulate(const EmulationData& data)
     auto it = instructions.begin() +
         static_cast<std::vector<qpu_asm::Instruction>::difference_type>(
             (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue());
-    result.instrumentation.reserve(kernelInfo->getLength().getValue());
+    result.instrumentation.reserve(static_cast<std::size_t>(kernelInfo->getLength().getValue()));
     while(true)
     {
         result.instrumentation.emplace_back(instrumentation[&(*it)]);

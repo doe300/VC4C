@@ -1067,13 +1067,25 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
     auto inclusionTree = createLoopInclusingTree(loops);
 
     // 4. Move constant load operations from root of trees
-
     std::map<LoopInclusionTreeNode*, std::vector<InstructionWalker>> instMapper;
+
+    // to facilitate moving loop invariant code, map all (for now only single) writer of locals to their basic block, so
+    // we have it easier checking whether the writer is in the currently processed loop or not
+    FastMap<const Local*, BasicBlock*> localSourceBlocks;
+    for(auto it = method.walkAllInstructions(); !it.isEndOfMethod(); it.nextInMethod())
+    {
+        if(!it.has())
+            continue;
+        auto loc = it->checkOutputLocal();
+        if(loc && loc->getSingleWriter() == it.get())
+            localSourceBlocks.emplace(loc, it.getBasicBlock());
+    }
 
     // find instructions to be moved
     for(auto& loop : inclusionTree->getNodes())
     {
         auto& node = inclusionTree->getOrCreateNode(loop.first);
+        auto& loopHeaderDominatorNode = dominatorTree->assertNode(loop.first->getHeader());
         for(auto& cfgNode : *node.key)
         {
             if(node.hasCFGNodeInChildren(cfgNode))
@@ -1082,13 +1094,70 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
                 continue;
             }
 
-            auto block = cfgNode->key;
-            for(auto it = block->walk(); it != block->walkEnd(); it.nextInBlock())
+            auto checkLoopInvariantSource = [&](const Value& arg) -> bool {
+                if(arg.checkRegister())
+                    // any constant register would already have been moved by the #isConstantInstruction() check
+                    return false;
+                if(arg.checkImmediate() || arg.checkLiteral() || arg.checkVector())
+                    // compile-time constants are always loop invariant
+                    return true;
+                if(auto loc = arg.checkLocal())
+                {
+                    auto writer = loc->getSingleWriter();
+                    if(!writer)
+                        return false;
+                    // local is loop invariant if:
+                    // - (single) writer is outside of loop and dominates the whole loop or
+                    auto sourceBlockIt = localSourceBlocks.find(loc);
+                    if(sourceBlockIt != localSourceBlocks.end())
+                    {
+                        // check whether the writing block is not in the current loop and actually dominates the loop
+                        // the dominator check is required to not hoist the instruction above its writer
+                        auto& blockDominatorNode = dominatorTree->assertNode(&cfg.assertNode(sourceBlockIt->second));
+                        if(loopHeaderDominatorNode.isDominatedBy(blockDominatorNode) &&
+                            std::none_of(loop.first->begin(), loop.first->end(), [&](const CFGNode* loopNode) -> bool {
+                                return loopNode->key == sourceBlockIt->second;
+                            }))
+                            return true;
+                    }
+                    // - (single) writer is in loop, but already marked for being hoisted (e.g. since loop invariant
+                    // itself)
+                    auto loopMapperIt = instMapper.find(&node);
+                    if(loopMapperIt != instMapper.end())
+                    {
+                        if(std::any_of(loopMapperIt->second.begin(), loopMapperIt->second.end(),
+                               [&](const InstructionWalker& it) -> bool { return it.get() == writer; }))
+                            return true;
+                    }
+                }
+                // should never happen, since we handled all value types
+                return false;
+            };
+
+            // skip label
+            auto it = cfgNode->key->walk().nextInBlock();
+            for(; !it.isEndOfBlock(); it.nextInBlock())
             {
-                if(it->isConstantInstruction() && (check(it->checkOutputLocal()) & &Local::getSingleWriter) == it.get())
+                if(!it.has())
+                    continue;
+                bool isSingleWriter = (check(it->checkOutputLocal()) & &Local::getSingleWriter) == it.get();
+                bool isHoistableInstruction = it.get<intermediate::Operation>() ||
+                    it.get<intermediate::MoveOperation>() || it.get<intermediate::LoadImmediate>();
+                if(!isSingleWriter || !isHoistableInstruction)
+                    continue;
+                if(it->isConstantInstruction())
                 {
                     // can only move constant writes of locals only written exactly here
-                    instMapper[&node].push_back(it);
+                    instMapper[&node].emplace_back(it);
+                    hasChanged = true;
+                }
+                const auto& args = it->getArguments();
+                if(!it->hasSideEffects() && !it->hasConditionalExecution() &&
+                    std::all_of(args.begin(), args.end(), checkLoopInvariantSource))
+                {
+                    // not a constant calculation, but does not depend on anything written in this loop, so we can move
+                    // it too
+                    instMapper[&node].emplace_back(it);
                     hasChanged = true;
                 }
             }
