@@ -23,12 +23,11 @@ const TMU periphery::TMU1{REG_TMU1_COORD_S_U_X, REG_TMU1_COORD_T_V_Y, REG_TMU1_C
 static NODISCARD InstructionWalker insertCalculateAddressOffsets(
     Method& method, InstructionWalker it, const Value& baseAddress, DataType type, Value& outputAddress)
 {
-    if(type.isScalarType())
+    if(type.isScalarType() || type.getPointerType())
     {
         // for scalar loads, we can save us all that effort, since we already have the address in element 0 and there is
         // no offset for element zero. So just set the address for all other elements to 0 to not load anything there.
-        outputAddress = assign(it, method.createPointerType(type.getElementType().toVectorType(type.getVectorWidth())),
-            "%tmu_address") = 0_val;
+        outputAddress = assign(it, method.createPointerType(type), "%tmu_address") = 0_val;
         auto cond = assignNop(it) = selectSIMDElement(0);
         assign(it, outputAddress) = (baseAddress, cond);
         return it;

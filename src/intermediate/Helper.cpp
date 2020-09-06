@@ -232,12 +232,13 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
         const_cast<Local*>(dest.local())->set(ReferenceData(*container.local(), refIndex));
 
     DataType finalType = subContainerType;
-    if(auto arrayType = subContainerType.getArrayType())
-        // convert x[num] to x*
-        // TODO shouldn't x[num] be converted to x[num]* ?? (e.g. for HandBrake/vscale_all_dither_opencl.cl)
-        // or distinguish between first and following indices?
+    if(subContainerType.getArrayType() && !dest.type.getElementType().getArrayType())
+    {
+        // decay x[num] to x* (unless we actually address the array itself)
+        auto arrayType = subContainerType.getArrayType();
         finalType = method.createPointerType(arrayType->elementType,
             container.type.getPointerType() ? container.type.getPointerType()->addressSpace : AddressSpace::PRIVATE);
+    }
     else if(!(firstIndexIsElement && indices.size() == 1))
         finalType = method.createPointerType(subContainerType, container.type.getPointerType()->addressSpace);
 

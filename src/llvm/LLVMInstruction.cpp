@@ -433,6 +433,8 @@ bool IndexOf::mapInstruction(Method& method)
     /*
      * LLVM explicitely states for "getelementptr": "The first index always indexes the pointer value given as the
      * second argument, the second index indexes a value of the type pointed to [...]"
+     *
+     * See also the FAQ on GetElementPtr: https://llvm.org/docs/GetElementPtr.html
      */
     ignoreReturnValue(
         intermediate::insertCalculateIndices(method.appendToEnd(), method, container, dest, indices, false));

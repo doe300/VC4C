@@ -120,9 +120,17 @@ const intermediate::IntermediateInstruction* analysis::getSingleWriter(
     const intermediate::IntermediateInstruction* writer = nullptr;
     for(const auto& w : val.local()->getUsers(LocalUse::Type::WRITER))
     {
-        if(dynamic_cast<const intermediate::MemoryInstruction*>(w))
-            // store memory instructions count as writers, so ignore them
-            continue;
+        if(auto memoryInstruction = dynamic_cast<const intermediate::MemoryInstruction*>(w))
+        {
+            // Store memory instructions count as writers, so ignore them. We explicitly check for "store" (including
+            // "fill" and "copy" into), since the pointer value we are searching the writer for might be written by
+            // loading a pointer-to-pointer value (as i.e. occurs a lot if the clang front-end is run without any
+            // optimization).
+            // Or in other words, if the local's memory location is written to, we skip it as writer. If the local
+            // itself is written to (i.e. its value is loaded from a memory location), this is a local writer.
+            if(memoryInstruction->op != intermediate::MemoryOperation::READ)
+                continue;
+        }
         if(writer)
         {
             writer = nullptr;

@@ -694,8 +694,8 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset,
-            !realArea.canBePackedIntoRow());
+        it = calculateElementOffsetInVPM(
+            method, it, type.getElementType(), inAreaOffset, elementOffset, !realArea.canBePackedIntoRow());
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // TODO is this correct? it fails memory-emulation tests. Is the element offset different for
         // master/remove_mutex branch?
@@ -780,8 +780,8 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, memoryAddress.type.getElementType(), inAreaOffset, elementOffset,
-            !realArea.canBePackedIntoRow());
+        it = calculateElementOffsetInVPM(
+            method, it, type.getElementType(), inAreaOffset, elementOffset, !realArea.canBePackedIntoRow());
         // 2) dynamically calculate new VPM address from base and offset (shift and add offset to setup-value)
         // TODO is this correct? See #insertReadRAM
         // if(!realArea.canBePackedIntoRow())

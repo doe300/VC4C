@@ -1393,39 +1393,36 @@ Value BitcodeReader::precalculateConstantExpression(
     if(expr->getOpcode() == llvm::Instruction::MemoryOps::GetElementPtr)
     {
         // e.g. in-line getelementptr in load or store instructions
-        if(llvm::dyn_cast<const llvm::GlobalVariable>(expr->getOperand(0)) != nullptr)
+        Value srcConstant = toConstant(module, expr->getOperand(0), method, instructions);
+        std::vector<Value> indices;
+        bool allIndicesAreZero = true;
+        indices.reserve(expr->getNumOperands());
+        for(unsigned i = 1; i < expr->getNumOperands(); ++i)
         {
-            Value srcGlobal = toConstant(module, expr->getOperand(0), method, instructions);
-            std::vector<Value> indices;
-            bool allIndicesAreZero = true;
-            indices.reserve(expr->getNumOperands());
-            for(unsigned i = 1; i < expr->getNumOperands(); ++i)
-            {
-                indices.emplace_back(toConstant(module, expr->getOperand(i), method, instructions));
-                if(!indices.back().isZeroInitializer())
-                    allIndicesAreZero = false;
-            }
+            indices.emplace_back(toConstant(module, expr->getOperand(i), method, instructions));
+            if(!indices.back().isZeroInitializer())
+                allIndicesAreZero = false;
+        }
 
-            if(allIndicesAreZero)
-            {
-                // indices of all zero -> reference to the global itself (or the first entry)
-                // we need to make the type of the value fit the return-type expected
-                srcGlobal.type = toDataType(module, expr->getType());
-                return srcGlobal;
-            }
-            else if(method && instructions)
-            {
-                // insert dynamic calculation of indices
-                auto elementOffset = method->addNewLocal(toDataType(module, expr->getType()), "%constant_offset");
-                instructions->emplace_back(new IndexOf(Value(elementOffset), std::move(srcGlobal), std::move(indices)));
-                return elementOffset;
-            }
-            else
-            {
-                dumpLLVM(expr);
-                throw CompilationError(CompilationStep::PARSER,
-                    "Only constant global getelementptr without offsets are supported for now", expr->getName());
-            }
+        if(allIndicesAreZero)
+        {
+            // indices of all zero -> reference to the global itself (or the first entry)
+            // we need to make the type of the value fit the return-type expected
+            srcConstant.type = toDataType(module, expr->getType());
+            return srcConstant;
+        }
+        else if(method && instructions)
+        {
+            // insert dynamic calculation of indices
+            auto elementOffset = method->addNewLocal(toDataType(module, expr->getType()), "%constant_offset");
+            instructions->emplace_back(new IndexOf(Value(elementOffset), std::move(srcConstant), std::move(indices)));
+            return elementOffset;
+        }
+        else
+        {
+            dumpLLVM(expr);
+            throw CompilationError(CompilationStep::PARSER,
+                "Only constant global getelementptr without offsets are supported for now", expr->getName());
         }
     }
     if(expr->getOpcode() == llvm::Instruction::CastOps::PtrToInt ||

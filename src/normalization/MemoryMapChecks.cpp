@@ -129,6 +129,9 @@ static Optional<DataType> convertSmallArrayToRegister(const Local* local)
         if(auto pointerType = baseType.getPointerType())
             // pointer to pointer (the content is a pointer) fits into register
             return baseType;
+        if(baseType.isSimpleType())
+            // any simple type fits into register
+            return baseType;
     }
     return {};
 }
@@ -280,6 +283,56 @@ namespace std
 
 } // namespace std
 
+static void mapConditionalOrPhiWrites(const FastSet<const IntermediateInstruction*>& conditonalWrites,
+    FastSet<const ConditionalMemoryAccess*>& localAccesses, FastSet<ConditionalMemoryAccess>& conditionalAddressWrites)
+{
+    for(auto writer : conditonalWrites)
+    {
+        if(const Local* loc = writer->assertArgument(0).local())
+        {
+            loc = loc->getBase(true);
+            if(loc->residesInMemory() || loc->is<Parameter>())
+            {
+                auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, loc});
+                localAccesses.emplace(&*tmp.first);
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "\tconditional write " << writer->to_string() << " of memory area: " << loc->to_string(true)
+                        << logging::endl);
+                continue;
+            }
+            if(loc->getSingleWriter() &&
+                (loc->getSingleWriter()->hasDecoration(InstructionDecorations::PHI_NODE) ||
+                    loc->getSingleWriter()->hasConditionalExecution()))
+            {
+                auto writer = loc->getSingleWriter();
+                auto sourceValue = dynamic_cast<const MoveOperation*>(writer) ? writer->assertArgument(0) :
+                                                                                writer->getOutput().value();
+                auto sourceWriter = check(sourceValue.getSingleWriter()) | check(writer);
+                auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
+                localAccesses.emplace(&*tmp.first);
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "\tconditional write " << writer->to_string()
+                        << " of address write: " << sourceWriter->to_string() << logging::endl);
+                continue;
+            }
+        }
+        if(writer->hasDecoration(InstructionDecorations::PHI_NODE) || writer->hasConditionalExecution())
+        {
+            auto sourceValue =
+                dynamic_cast<const MoveOperation*>(writer) ? writer->assertArgument(0) : writer->getOutput().value();
+            auto sourceWriter = check(sourceValue.getSingleWriter()) | check(writer);
+            auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
+            localAccesses.emplace(&*tmp.first);
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "\tconditional write " << writer->to_string()
+                    << " of address write: " << sourceWriter->to_string() << logging::endl);
+            continue;
+        }
+        throw CompilationError(CompilationStep::NORMALIZER,
+            "Unhandled case of conditional address write used as source for memory access", writer->to_string());
+    }
+}
+
 static MemoryAccessType getFallbackType(MemoryAccessType preferredType)
 {
     switch(preferredType)
@@ -420,51 +473,8 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping, I
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Conditionally accessed local '" << local->to_string()
                 << "' will not be mapped, these sources can be mapped instead: " << logging::endl);
-        for(auto writer : *conditonalWrites)
-        {
-            if(const Local* loc = writer->assertArgument(0).local())
-            {
-                loc = loc->getBase(true);
-                if(loc->residesInMemory() || loc->is<Parameter>())
-                {
-                    auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, loc});
-                    entry.second.emplace(&*tmp.first);
-                    CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "\tconditional write " << writer->to_string()
-                            << " of memory area: " << loc->to_string(true) << logging::endl);
-                    continue;
-                }
-                if(loc->getSingleWriter() &&
-                    (loc->getSingleWriter()->hasDecoration(InstructionDecorations::PHI_NODE) ||
-                        loc->getSingleWriter()->hasConditionalExecution()))
-                {
-                    auto writer = loc->getSingleWriter();
-                    auto sourceValue = dynamic_cast<const MoveOperation*>(writer) ? writer->assertArgument(0) :
-                                                                                    writer->getOutput().value();
-                    auto sourceWriter = check(sourceValue.getSingleWriter()) | check(writer);
-                    auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
-                    entry.second.emplace(&*tmp.first);
-                    CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "\tconditional write " << writer->to_string()
-                            << " of address write: " << sourceWriter->to_string() << logging::endl);
-                    continue;
-                }
-            }
-            if(writer->hasDecoration(InstructionDecorations::PHI_NODE) || writer->hasConditionalExecution())
-            {
-                auto sourceValue = dynamic_cast<const MoveOperation*>(writer) ? writer->assertArgument(0) :
-                                                                                writer->getOutput().value();
-                auto sourceWriter = check(sourceValue.getSingleWriter()) | check(writer);
-                auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
-                entry.second.emplace(&*tmp.first);
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "\tconditional write " << writer->to_string()
-                        << " of address write: " << sourceWriter->to_string() << logging::endl);
-                continue;
-            }
-            throw CompilationError(CompilationStep::NORMALIZER,
-                "Unhandled case of conditional address write used as source for memory access", writer->to_string());
-        }
+
+        mapConditionalOrPhiWrites(*conditonalWrites, entry.second, conditionalAddressWrites);
 
         // delete the original (wrong) mapping, since it is not a proper memory area
         mapping.erase(local);
@@ -516,8 +526,42 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping, I
                 break;
         }
 
-        sourceLocal = sourceLocal->getBase(true);
-        if(local != sourceLocal)
+        auto writer = dynamic_cast<const intermediate::MemoryInstruction*>(
+            analysis::getSingleWriter(sourceLocal->createReference()));
+        if(sourceLocal && writer && writer->op == intermediate::MemoryOperation::READ)
+        {
+            // Some addresses are loaded from stack-allocated pointer-to-pointer values (i.e. this is the default if all
+            // optimizations are disabled in the clang front-end). To handle this, we check if this is the case and if
+            // so, try to determine the (hopefully single) value actually written to that stack allocation.
+            // NOTE: There is no code (and no need for any code) that checks whether the memory is actually a stack
+            // allocation!
+            auto stackAllocation = writer->getSource().local();
+            FastSet<const intermediate::IntermediateInstruction*> stackAllocationWriters;
+            for(auto user : stackAllocation->getUsers(LocalUse::Type::WRITER))
+            {
+                if(auto stackWriter = dynamic_cast<const intermediate::MemoryInstruction*>(getSourceInstruction(user)))
+                    stackAllocationWriters.emplace(stackWriter);
+            }
+            if(stackAllocationWriters.size() == 1)
+            {
+                // this instruction writes the original pointer value to the stack allocated pointer-to-pointer, which
+                // is then read again to retrieve the pointer value we are currently trying to determine its origin for.
+                auto singleWriter = (*stackAllocationWriters.begin());
+                if(auto loc =
+                        dynamic_cast<const intermediate::MemoryInstruction*>(singleWriter)->getSource().checkLocal())
+                    sourceLocal = loc;
+                else
+                    // TODO we cannot actually access any memory not provided by a parameter/stack allocation/global
+                    // data, so this might very fast become UB. But we can still handle the "invalid" address itself, so
+                    // at this point there is no error yet!
+                    logging::warn() << "Found single stack-allocation writer, but source is not a local: "
+                                    << singleWriter->to_string() << logging::endl;
+            }
+        }
+
+        if(sourceLocal)
+            sourceLocal = sourceLocal->getBase(true);
+        if(sourceLocal && local != sourceLocal)
         {
             // try again to map the local to an (existing) memory area
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -544,7 +588,8 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping, I
         }
 
         // FIXME this is called e.g. for pointers dereferenced which are loaded from memory (from
-        // pointers-to-pointers), e.g. for ./testing/bullet/jointSolver.cl
+        // pointers-to-pointers), e.g. for ./testing/bullet/jointSolver.cl (or for basically all pointers if clang is
+        // run without optimizations)
         // FIXME this is also called for pointers converted from/to integers, e.g. for
         // TestMemoryAccess#CASTPOINTER
         CPPLOG_LAZY_BLOCK(logging::Level::ERROR, {
@@ -1085,8 +1130,7 @@ static MemoryInfo canLowerToRegisterReadWrite(Method& method, const Local* baseA
             method.addNewLocal(baseAddr->type, "%lowered_stack")};
     }
     // b) the private memory is small enough to be rewritten to fit into a single register (e.g. int[4])
-    auto convertedType = convertSmallArrayToRegister(baseAddr);
-    if(convertedType)
+    if(auto convertedType = convertSmallArrayToRegister(baseAddr))
     {
         if(auto stackAllocation = baseAddr->as<StackAllocation>())
             stackAllocation->isLowered = true;

@@ -830,8 +830,9 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
             log << "Mapping copy from VPM into RAM to DMA write: " << mem->to_string() << logging::endl);
         Value inAreaOffset = UNDEFINED_VALUE;
         it = insertToInVPMAreaOffset(method, it, inAreaOffset, srcInfo, mem, mem->getSource());
-        it = method.vpm->insertWriteRAM(method, it,
-            Value(mem->getDestination().local(), vpmRowType.value_or(mem->getDestinationElementType())),
+        auto destType = method.createPointerType(vpmRowType.value_or(mem->getDestinationElementType()),
+            mem->getDestination().type.getPointerType()->addressSpace);
+        it = method.vpm->insertWriteRAM(method, it, Value(mem->getDestination().local(), destType),
             vpmRowType.value_or(mem->getSourceElementType()), srcInfo.area, mem->guardAccess, inAreaOffset, numEntries);
         return it.erase();
     }
@@ -843,8 +844,9 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
             log << "Mapping copy from RAM into VPM to DMA read: " << mem->to_string() << logging::endl);
         Value inAreaOffset = UNDEFINED_VALUE;
         it = insertToInVPMAreaOffset(method, it, inAreaOffset, destInfo, mem, mem->getDestination());
-        it = method.vpm->insertReadRAM(method, it,
-            Value(mem->getSource().local(), vpmRowType.value_or(mem->getSourceElementType())),
+        auto srcType = method.createPointerType(
+            vpmRowType.value_or(mem->getSourceElementType()), mem->getSource().type.getPointerType()->addressSpace);
+        it = method.vpm->insertReadRAM(method, it, Value(mem->getSource().local(), srcType),
             vpmRowType.value_or(mem->getDestinationElementType()), destInfo.area, mem->guardAccess, inAreaOffset,
             numEntries);
         return it.erase();

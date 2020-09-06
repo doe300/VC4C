@@ -47,6 +47,7 @@ MemoryAccessType normalization::toMemoryAccessType(periphery::VPMUsage usage)
     {
     case periphery::VPMUsage::SCRATCH:
     case periphery::VPMUsage::LOCAL_MEMORY:
+    case periphery::VPMUsage::RAM_CACHE:
         return MemoryAccessType::VPM_SHARED_ACCESS;
     case periphery::VPMUsage::REGISTER_SPILLING:
     case periphery::VPMUsage::STACK:
@@ -202,8 +203,17 @@ InstructionWalker normalization::insertAddressToElementOffset(InstructionWalker 
             return it;
         });
     // the index (as per index calculation) is in bytes, but we need index in elements, so divide by element size
-    out = assign(it, TYPE_VOID_POINTER, "%element_offset") =
-        tmpIndex / Literal(containerType.getElementType().getInMemoryWidth());
+    unsigned elementTypeSize = 0;
+    if(containerType.isSimpleType() || containerType.getArrayType())
+        // default case for storing scalar values, vectors or arrays of scalar value
+        elementTypeSize = containerType.getElementType().getInMemoryWidth();
+    else if(containerType.getPointerType())
+        // special case for e.g. storing pointer values
+        elementTypeSize = TYPE_VOID_POINTER.getInMemoryWidth();
+    else
+        throw CompilationError(CompilationStep::NORMALIZER,
+            "Failed to calculate element type width for register-lowered allocation", containerType.to_string());
+    out = assign(it, TYPE_VOID_POINTER, "%element_offset") = tmpIndex / Literal(elementTypeSize);
     return it;
 }
 

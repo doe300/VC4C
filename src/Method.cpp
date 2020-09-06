@@ -560,16 +560,16 @@ std::size_t Method::calculateStackSize() const
 {
     if(stackAllocations.empty())
         return 0;
-    const StackAllocation* max = &(*stackAllocations.begin());
+    const StackAllocation* max = nullptr;
     for(const StackAllocation& s : stackAllocations)
     {
         if(s.isLowered)
             // is lowered into VPM or register, does not participate in actual in-memory-stack
             continue;
-        if(s.offset + s.size > max->offset + max->size)
+        if(!max || (s.offset + s.size > max->offset + max->size))
             max = &s;
     }
-    if(max->isLowered)
+    if(!max || max->isLowered)
         // stack allocation with highest offset is lowered to VPM or register
         // -> all stack allocations are lowered to VPM or register
         return 0;
