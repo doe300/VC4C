@@ -25,8 +25,8 @@ using namespace vc4c;
 using namespace vc4c::precompilation;
 
 static std::vector<std::string> buildClangCommand(const std::string& compiler, const std::string& defaultOptions,
-    const std::string& options, const std::string& emitter, const std::string& outputFile,
-    const std::string& inputFile = "-", bool usePCH = true)
+    const std::string& options, const std::string& emitter, const std::string& outputFile, const std::string& inputFile,
+    bool usePCH)
 {
     // check validity of options - we do not support all of them
     if(options.find("-create-library") != std::string::npos)
@@ -153,8 +153,8 @@ void runPrecompiler(const std::string& command, std::istream* inputStream, std::
 }
 
 static void compileOpenCLToLLVMIR0(std::istream* input, std::ostream* output, const std::string& options,
-    bool toText = true, const Optional<std::string>& inputFile = {}, const Optional<std::string>& outputFile = {},
-    bool withPCH = true)
+    const std::string& outputType, const Optional<std::string>& inputFile, const Optional<std::string>& outputFile,
+    bool withPCH)
 {
 #if not defined SPIRV_CLANG_PATH && not defined CLANG_PATH
     throw CompilationError(CompilationStep::PRECOMPILATION, "No CLang configured for pre-compilation!");
@@ -169,9 +169,9 @@ static void compileOpenCLToLLVMIR0(std::istream* input, std::ostream* output, co
     const std::string defaultOptions = "-cc1 -triple spir-unknown-unknown";
     // only run preprocessor and compilation, no linking and code-generation
     // emit LLVM IR
-    auto command = buildClangCommand(compiler, defaultOptions, options,
-        std::string("-S ").append(toText ? "-emit-llvm" : "-emit-llvm-bc"), outputFile.value_or("/dev/stdout"),
-        inputFile.value_or("-"), withPCH);
+    auto command =
+        buildClangCommand(compiler, defaultOptions, options, std::string("-S ").append("-emit-" + outputType),
+            outputFile.value_or("/dev/stdout"), inputFile.value_or("-"), withPCH);
 
     auto commandString = to_string<std::string>(command, " ");
     CPPLOG_LAZY(logging::Level::INFO, log << "Compiling OpenCL to LLVM-IR with: " << commandString << logging::endl);
@@ -226,16 +226,90 @@ void precompilation::compileOpenCLWithPCH(OpenCLSource&& source, const std::stri
 {
     PROFILE_START(CompileOpenCLWithPCH);
     OpenCLSource src(std::forward<OpenCLSource>(source));
-    compileOpenCLToLLVMIR0(src.stream, result.stream, userOptions, false, src.file, result.file);
+    compileOpenCLToLLVMIR0(src.stream, result.stream, userOptions, "llvm-bc", src.file, result.file, true);
     PROFILE_END(CompileOpenCLWithPCH);
+}
+
+/**
+ * For the llvm-link hack/workaround below (see #getEmptyModule()) always build at least a second time without
+ * any user options set. To avoid running this step at least twice, remove some user options which do not influence our
+ * OpenCL C header PCH build, e.g. include directories in a hope to have more matches
+ */
+static std::string cleanOptions(std::string userOptions)
+{
+    static const std::string includeFlag = "-I ";
+    auto pos = userOptions.find(includeFlag);
+    if(pos != std::string::npos)
+    {
+        // remove the -I and the actual include path while heeding quotes
+        auto endPos = pos + includeFlag.size();
+        if(userOptions[endPos] == '"' || userOptions[endPos] == '\'')
+            endPos = userOptions.find('"', endPos + 1);
+        else
+            endPos = userOptions.find(' ', endPos + 1);
+        userOptions.erase(pos, endPos - pos);
+    }
+
+    // trim leading and trailing zeroes
+    userOptions.erase(0, userOptions.find_first_not_of(' '));
+    if(!userOptions.empty())
+        userOptions.erase(userOptions.find_last_not_of(' ') + 1);
+    return userOptions;
+}
+
+/**
+ * Most of the time of a "normal" compilation for simple kernels is consumed by reading the clang provided OpenCL C
+ * header file (e.g. in /usr/lib/clang/<version>/opencl-c.h), as reported by the clang "-ftime-trace" flag.
+ * Since the file is always the same for all successive compilations, we precompile the header into a PCH (depending
+ * on the user-flags, to correctly handle extensions and optimizations) and include this PCH to speed up all but the
+ * first compilations.
+ *
+ * To precompile the default OpenCL C header to a PCH, we simply precompile an empty OpenCL C kernel into PCH while
+ * including the default header.
+ */
+static Optional<std::string> getDefaultHeadersPCHPath(const std::string& userOptions)
+{
+    static std::mutex pchsMutex;
+    static FastMap<std::string, TemporaryFile> cachedPCHs;
+
+    auto checkOptions = cleanOptions(userOptions);
+    std::lock_guard<std::mutex> guard(pchsMutex);
+    auto it = cachedPCHs.find(checkOptions);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_FRONTEND + 50, "OpenCL C header PCH builds", it == cachedPCHs.end());
+    if(it != cachedPCHs.end())
+        return it->second.fileName;
+
+    it = cachedPCHs.emplace(checkOptions, TemporaryFile{"/tmp/vc4c-openclc-pch-XXXXXX", true}).first;
+    try
+    {
+        std::stringstream emptyStream{};
+        LLVMIRResult result{it->second.fileName};
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Precompiling default OpenCL C header to PCH to speed up further clang front-end runs for "
+                   "compilation flags: "
+                << checkOptions << logging::endl);
+        compileOpenCLToLLVMIR0(&emptyStream, result.stream, checkOptions, "pch", {}, result.file, false);
+        return it->second.fileName;
+    }
+    catch(const std::exception&)
+    {
+        // if we fail, just try to do the "normal" compilation without the PCH
+        cachedPCHs.erase(it);
+        return {};
+    }
 }
 
 void precompilation::compileOpenCLWithDefaultHeader(
     OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result)
 {
+    PROFILE_START(PrecompileOpenCLCHeaderToPCH);
+    auto pchPath = getDefaultHeadersPCHPath(userOptions);
+    PROFILE_END(PrecompileOpenCLCHeaderToPCH);
+
     PROFILE_START(CompileOpenCLWithDefaultHeader);
     OpenCLSource src(std::forward<OpenCLSource>(source));
-    compileOpenCLToLLVMIR0(src.stream, result.stream, userOptions, false, src.file, result.file, false);
+    auto actualOptions = pchPath ? userOptions + " -include-pch " + *pchPath : userOptions;
+    compileOpenCLToLLVMIR0(src.stream, result.stream, actualOptions, "llvm-bc", src.file, result.file, false);
     PROFILE_END(CompileOpenCLWithDefaultHeader);
 }
 
@@ -262,7 +336,7 @@ void precompilation::compileOpenCLToLLVMText(
 {
     PROFILE_START(CompileOpenCLToLLVMText);
     OpenCLSource src(std::forward<OpenCLSource>(source));
-    compileOpenCLToLLVMIR0(src.stream, result.stream, userOptions, true, src.file, result.file);
+    compileOpenCLToLLVMIR0(src.stream, result.stream, userOptions, "llvm", src.file, result.file, true);
     PROFILE_END(CompileOpenCLToLLVMText);
 }
 
