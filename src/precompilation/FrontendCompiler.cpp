@@ -9,6 +9,7 @@
 #include "../ProcessUtil.h"
 #include "../Profiler.h"
 #include "../helper.h"
+#include "../performance.h"
 #include "LibClang.h"
 #include "log.h"
 
@@ -19,6 +20,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
+#include <mutex>
 #include <numeric>
 
 using namespace vc4c;

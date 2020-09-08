@@ -166,12 +166,12 @@ static std::pair<const Local*, uint8_t> reserveGroupSpace(
 {
     for(auto& group : groups)
     {
-        for(uint8_t i = 0; i < group.second.size(); ++i)
+        for(std::size_t i = 0; i < group.second.size(); ++i)
         {
             if(group.second[i] == nullptr)
             {
                 group.second[i] = loc;
-                return std::make_pair(group.first, i);
+                return std::make_pair(group.first, static_cast<uint8_t>(i));
             }
         }
     }
@@ -290,8 +290,8 @@ FixupResult qpu_asm::groupScalarLocals(
         {
             auto spillIt = entry.second.nextInBlock();
             auto tmpValue = assign(spillIt, entry.first->type) = entry.first->createReference();
-            spillIt = intermediate::insertVectorInsertion(entry.second.nextInBlock(), method,
-                pos.first->createReference(), Value(SmallImmediate(pos.second), TYPE_INT8), tmpValue);
+            spillIt = intermediate::insertVectorInsertion(
+                spillIt, method, pos.first->createReference(), Value(SmallImmediate(pos.second), TYPE_INT8), tmpValue);
             if(!spillIt.isEndOfBlock() && spillIt.get() && spillIt->readsLocal(pos.first))
                 // if we happen to insert a write just before a read of the same container, insert a NOP to prevent the
                 // container to be forced to an accumulator

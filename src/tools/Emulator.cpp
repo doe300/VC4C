@@ -404,7 +404,7 @@ SIMDVector Registers::readStorageRegister(Register reg, bool anyElementUsed)
     {
         if(anyElementUsed)
             throw CompilationError(
-                CompilationStep::GENERAL, "Reading from register not previously defined:", reg.to_string());
+                CompilationStep::GENERAL, "Reading from register not previously defined", reg.to_string());
         else
             // for ALU operations which are not actually executed (e.g. flags do not match), we can return a dummy value
             return SIMDVector{};
@@ -1587,8 +1587,9 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         auto tmp = addCode(addIn0, addIn1);
         PROFILE_END(EmulateOpcode);
         if(!tmp.first)
-            logging::error() << "Failed to emulate ALU operation: " << addCode.name << " with "
-                             << addIn0.to_string(true) << " and " << addIn1.to_string(true) << logging::endl;
+            throw CompilationError(CompilationStep::GENERAL,
+                "Failed to emulate ALU operation with " + addIn0.to_string(true) + " and " + addIn1.to_string(true),
+                addCode.name);
         // fall-through for errors above on purpose so the next instruction throws an exception
         auto result = std::move(tmp.first).value();
         auto mask = BITMASK_ALL;
@@ -1633,8 +1634,9 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         auto tmp = mulCode(mulIn0, mulIn1);
         PROFILE_END(EmulateOpcode);
         if(!tmp.first)
-            logging::error() << "Failed to emulate ALU operation: " << mulCode.name << " with "
-                             << mulIn0.to_string(true) << " and " << mulIn1.to_string(true) << logging::endl;
+            throw CompilationError(CompilationStep::GENERAL,
+                "Failed to emulate ALU operation with " + mulIn0.to_string(true) + " and " + mulIn1.to_string(true),
+                mulCode.name);
         auto result = std::move(tmp.first).value();
         auto mask = BITMASK_ALL;
         if(aluInst->getWriteSwap() == WriteSwap::SWAP && aluInst->getPack().hasEffect())

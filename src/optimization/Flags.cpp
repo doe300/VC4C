@@ -76,7 +76,7 @@ static bool rewriteSettingOfFlags(
                     branch->branchCondition = BRANCH_ALWAYS;
                     changedInstructions = true;
                     ++condIt;
-                    // TODO now, we could also remove the phi-node writes
+                    // TODO now we could also remove the phi-node writes
                 }
                 else if(flags.matchesCondition(cond))
                 {
@@ -438,7 +438,7 @@ InstructionWalker optimizations::simplifyFlag(
 }
 
 // Returns (if matching) the condition for the boolean true value
-Optional<ConditionCode> getConditionalBooleanWrites(const Value& val, InstructionWalker it)
+static Optional<ConditionCode> getConditionalBooleanWrites(const Value& val, InstructionWalker it)
 {
     // check source local
     auto loc = val.checkLocal();
@@ -548,6 +548,8 @@ bool optimizations::removeConditionalFlags(const Module& module, Method& method,
                         {
                             // at least after running some of the optimizations above, this can happen
                             if(br->branchCondition == BRANCH_ALL_Z_CLEAR)
+                                // TODO simplify this, so ALL_SET and ALL_CLEAR are both created from SET/CLEAR and true
+                                // flag?
                                 br->branchCondition = cond->toBranchCondition(true);
                             else if(br->branchCondition == BRANCH_ALL_Z_SET)
                                 br->branchCondition = cond->invert().toBranchCondition(true);

@@ -381,17 +381,55 @@ static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::uni
         {
             auto sizePrevious = predCacheIt->second.size();
             predCacheIt->second.insert(startLiveLocals.begin(), startLiveLocals.end());
-            if(predCacheIt->second.size() == sizePrevious)
-                // no new locals were added, can abort this node
+            if(predCacheIt->second.size() == sizePrevious && results[predecessor.key])
+                // no new locals were added and we already processed the node at least once, can abort this node
                 return true;
         }
         else
             predCacheIt = cachedEndLiveLocals.emplace(predecessor.key, startLiveLocals).first;
 
-        // we need to (re-)run the analysis on that basic blocks sine the live locals changed
+        // we need to (re-)run the analysis on that basic block since the live locals changed
         pendingNodes.emplace(&predecessor);
         return true;
     });
+}
+
+static FastSet<const Local*> initializeEndOfBlockLiveLocals(const BasicBlock& block)
+{
+    /*
+     * unnecessary writes (e.g. after the last read without any loop/or other writes are unconditional so they can be
+     * actually used at all) brake register association, since they are not regarded!
+     *
+     * Example:
+     * <16 x i32> %lowered_stack.26.upper = register r4
+     * [...]
+     * <16 x i32> %dec.lower = add <16 x i32> %lowered_stack.26.lower, <16 x i32> -1 (31) (setf group_uniform splat)
+     * [...]
+     * <16 x i32> %lowered_stack.26.upper = <16 x i32> %dec.upper
+     *
+     * => The calculated lifetime range is from the middle read to the first write, but the local is live
+     * additionally/inclusive from the second write to the end of the block!
+     *
+     * To fix this, we iterate once over the basic block forward and mark all live-times from write to the next read.
+     * This gives us (some non-complete version of) the live locals at the end of the block and guarantees that unread
+     * writes are considered live until the end of the block!
+     */
+    FastSet<const Local*> endLiveLocals;
+    for(const auto& it : block)
+    {
+        if(!it)
+            continue;
+        for(const auto& loc : it->getUsedLocals())
+        {
+            if(has_flag(LocalUse::Type::READER, loc.second))
+                // we don't care here about the real live-time, only some minimal version, so remove on any (even
+                // conditional) read
+                endLiveLocals.erase(loc.first);
+            if(has_flag(LocalUse::Type::WRITER, loc.second) && !loc.first->type.isLabelType())
+                endLiveLocals.emplace(loc.first);
+        }
+    }
+    return endLiveLocals;
 }
 
 void GlobalLivenessAnalysis::operator()(Method& method)
@@ -411,6 +449,10 @@ void GlobalLivenessAnalysis::operator()(Method& method)
     // The cache of the live locals at the end of a given basic blocks (e.g. consumed by any succeeding block)
     LiveLocalsCache cachedEndLiveLocals(cfg.getNodes().size());
     results.reserve(cfg.getNodes().size());
+    for(const auto& node : cfg.getNodes())
+        // initialize with basic set of locals guaranteed to be still live at the end of the block to avoid some
+        // register errors
+        cachedEndLiveLocals.emplace(node.first, initializeEndOfBlockLiveLocals(*node.first));
     // to avoid stack overflows, we rerun the pending blocks iteratively, not recursively. So keep track of the basic
     // blocks still to be processed (again).
     FastSet<const CFGNode*> pendingNodes;

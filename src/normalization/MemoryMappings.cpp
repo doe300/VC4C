@@ -377,6 +377,9 @@ static InstructionWalker lowerMemoryCopyToRegister(Method& method, InstructionWa
         log << "Lowering copy with register-mapped memory: " << mem->to_string() << logging::endl);
 
     Value tmpIndex = UNDEFINED_VALUE;
+    Value selectedContainer = UNDEFINED_VALUE;
+    it = insertAddressToElementOffset(
+        it, method, tmpIndex, getBaseAddressesAndContainers(srcInfos), selectedContainer, mem, mem->getSource());
     if(srcInfo.mappedRegisterOrConstant)
     {
         // TODO check whether index is guaranteed to be in range [0, 16[
