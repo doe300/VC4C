@@ -2003,8 +2003,27 @@ void TestOptimizationSteps::testCombineDMALoads()
 
     auto testCombineDMALoadsSub = [&](Module& module, Method& inputMethod, Configuration& config, DataType vectorType) {
 
+        uint8_t elementBitCount = vectorType.getElementType().getScalarBitCount();
+        uint8_t dmaSetupMode = 0;
+        uint8_t vpitch = 1;
+        switch(elementBitCount)
+        {
+            case 8:
+                dmaSetupMode = 4;
+                vpitch = 4;
+                break;
+            case 16:
+                dmaSetupMode = 2;
+                vpitch = 2;
+                break;
+            case 32:
+                dmaSetupMode = 0;
+                vpitch = 1;
+                break;
+        }
+
         const int numOfLoads = 3;
-        periphery::VPRDMASetup expectedDMASetup(0, vectorType.getVectorWidth() % 16, numOfLoads, 1, 0);
+        periphery::VPRDMASetup expectedDMASetup(dmaSetupMode, vectorType.getVectorWidth() % 16, numOfLoads, vpitch, 0);
 
         inputMethod.dumpInstructions();
 
@@ -2096,8 +2115,10 @@ void TestOptimizationSteps::testCombineDMALoads()
         Module module{config};
         Method inputMethod(module);
 
+        const DataType FloatPtr = inputMethod.createPointerType(TYPE_FLOAT);
+
         auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
-        auto in = assign(inIt, TYPE_INT32, "%in") = UNIFORM_REGISTER;
+        auto in = assign(inIt, FloatPtr, "%in") = UNIFORM_REGISTER;
 
         putMethodCall(inputMethod, inIt, Float16, vload16f, {0_val, in});
         putMethodCall(inputMethod, inIt, Float16, vload16f, {1_val, in});
@@ -2112,8 +2133,10 @@ void TestOptimizationSteps::testCombineDMALoads()
         Module module{config};
         Method inputMethod(module);
 
+        const DataType FloatPtr = inputMethod.createPointerType(TYPE_FLOAT);
+
         auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
-        auto in = assign(inIt, TYPE_INT32, "%in") = UNIFORM_REGISTER;
+        auto in = assign(inIt, FloatPtr, "%in") = UNIFORM_REGISTER;
 
         putMethodCall(inputMethod, inIt, Float8, vload8f, {0_val, in});
         putMethodCall(inputMethod, inIt, Float8, vload8f, {1_val, in});
@@ -2128,8 +2151,10 @@ void TestOptimizationSteps::testCombineDMALoads()
         Module module{config};
         Method inputMethod(module);
 
+        const DataType Int8Ptr = inputMethod.createPointerType(TYPE_INT8);
+
         auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
-        auto in = assign(inIt, TYPE_INT32, "%in") = UNIFORM_REGISTER;
+        auto in = assign(inIt, Int8Ptr, "%in") = UNIFORM_REGISTER;
 
         putMethodCall(inputMethod, inIt, Uchar16, vload16uc, {0_val, in});
         putMethodCall(inputMethod, inIt, Uchar16, vload16uc, {1_val, in});
@@ -2144,8 +2169,11 @@ void TestOptimizationSteps::testCombineDMALoads()
         Module module{config};
         Method inputMethod(module);
 
+        const DataType FloatPtr = inputMethod.createPointerType(TYPE_FLOAT);
+
         auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
-        auto in = assign(inIt, TYPE_INT32, "%in") = UNIFORM_REGISTER;
+        auto in = assign(inIt, FloatPtr, "%in") = UNIFORM_REGISTER;
+
         auto offset1 = assign(inIt, TYPE_INT32, "%offset1") = 42_val;
         auto offset2 = assign(inIt, TYPE_INT32, "%offset2") = offset1 + 1_val;
         auto offset3 = assign(inIt, TYPE_INT32, "%offset3") = offset1 + 2_val;
