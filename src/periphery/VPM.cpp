@@ -163,6 +163,25 @@ static constexpr T demodulo(T val, T limit)
     return val == 0 ? limit : val;
 }
 
+static std::string toVPitchString(uint8_t vpitch, uint8_t mode)
+{
+    vpitch = demodulo(vpitch, uint8_t{16});
+
+    if(mode >= 4) // 8-bit witdh
+    {
+        auto y = (vpitch >> 2) & 0x3;
+        auto b = vpitch & 0x3;
+        return "{" + std::to_string(y) + ", " + std::to_string(b) + "}";
+    }
+    if(mode >= 2) // 16-bit witdh
+    {
+        auto y = (vpitch >> 1) & 0x3;
+        auto h = vpitch & 0x1;
+        return "{" + std::to_string(y) + ", " + std::to_string(h) + "}";
+    }
+    return std::to_string(vpitch);
+}
+
 std::string VPWGenericSetup::to_string() const
 {
     return std::string("vpm_setup(size: ") + (getVPMSizeName(getSize()) + ", stride: ") +
@@ -207,7 +226,8 @@ std::string VPRDMASetup::to_string() const
     return "vdr_setup(" + std::string(getVertical() ? "columns: " : "rows: ") +
         std::to_string(demodulo(getNumberRows(), uint8_t{16})) + ", " + (getVertical() ? "rows: " : "columns: ") +
         std::to_string(demodulo(getRowLength(), uint8_t{16})) + (getVPMModeName(getMode()) + ", address: ") +
-        toDMAAddressAndModeString(getAddress(), !getVertical()) + ")";
+        toDMAAddressAndModeString(getAddress(), !getVertical()) +
+        ", vpitch: " + toVPitchString(getVPitch(), getMode()) + ")";
 }
 
 std::string VPRStrideSetup::to_string() const
