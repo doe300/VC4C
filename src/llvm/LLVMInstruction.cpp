@@ -283,6 +283,11 @@ bool CallSite::mapInstruction(Method& method)
                                ->addDecorations(decorations));
         return true;
     }
+    if(methodName.find("llvm.ctpop") == 0)
+    {
+        //"The ‘llvm.ctpop’ family of intrinsics counts the number of bits set in a value." -> popcount()
+        methodName = "vc4cl_popcount";
+    }
     if(methodName.find("shuffle2") == 0)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,

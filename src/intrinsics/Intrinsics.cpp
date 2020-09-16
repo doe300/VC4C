@@ -21,6 +21,7 @@
 #include "WorkItems.h"
 #include "log.h"
 
+#include <climits>
 #include <cmath>
 #include <cstdbool>
 #include <map>
@@ -356,6 +357,73 @@ static InstructionWalker intrinsifyFlagCondition(Method& method, InstructionWalk
     return it;
 }
 
+static InstructionWalker intrinsifyPopcount(Method& method, InstructionWalker it, const MethodCall* callSite)
+{
+    // This is a generalized implementation parameterized on the type size, adapted from
+    // https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
+    // Alternative implementation (esp. for 64-bit) can be found here:
+    // https://en.wikipedia.org/wiki/Hamming_weight#Efficient_implementation
+    // TODO Supports llvm.ctpop intrinsic, saves 1 to 40 instructions depending on type
+    auto& arg = callSite->assertArgument(0);
+    auto typeWidthMask = arg.type.getScalarWidthMask();
+    auto typeWidth = arg.type.getScalarBitCount();
+
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Intrinsifying " << static_cast<unsigned>(typeWidth) << "-bit popcount: " << callSite->to_string()
+            << logging::endl);
+
+    if(auto argParts = Local::getLocalData<MultiRegisterData>(arg.checkLocal()))
+    {
+        auto output = callSite->getOutput().value();
+        auto resultParts = Local::getLocalData<MultiRegisterData>(callSite->checkOutputLocal());
+        // insert dummy instruction to be replaced
+        auto lowerResult = method.addNewLocal(resultParts ? resultParts->lower->type : output.type, "%popcount");
+        it.emplace(new MethodCall(
+            Value(lowerResult), "vc4cl_popcount", std::vector<Value>{argParts->lower->createReference()}));
+        it = intrinsifyPopcount(method, it, it.get<MethodCall>());
+        it.nextInBlock();
+        if(resultParts && resultParts->upper)
+        {
+            it->setArgument(0, argParts->upper->createReference());
+            auto upperResult = method.addNewLocal(resultParts->upper->type, "%popcount");
+            it->setOutput(upperResult);
+            it = intrinsifyPopcount(method, it, callSite);
+            assign(it, resultParts->upper->createReference()) = INT_ZERO;
+            it.emplace(new Operation(OP_ADD, resultParts->lower->createReference(), lowerResult, upperResult));
+        }
+        else
+            it.emplace(new MoveOperation(output, lowerResult));
+        return it;
+    }
+
+    auto tmp0 = assign(it, arg.type, "%popcount") = as_unsigned{arg} >> 1_val;
+    tmp0 = assign(it, arg.type, "%popcount") = tmp0 & Value(Literal(0x55555555 & typeWidthMask), arg.type);
+    tmp0 = assign(it, arg.type, "%popcount") = arg - tmp0;
+
+    auto tmp1 = assign(it, arg.type, "%popcount") = tmp0 & Value(Literal(0x33333333 & typeWidthMask), arg.type);
+    auto tmp2 = assign(it, arg.type, "%popcount") = as_unsigned{tmp0} >> 2_val;
+    tmp2 = assign(it, arg.type, "%popcount") = tmp2 & Value(Literal(0x33333333 & typeWidthMask), arg.type);
+    auto tmp3 = assign(it, arg.type, "%popcount") = tmp1 + tmp2;
+
+    auto tmp4 = assign(it, arg.type, "%popcount") = as_unsigned{tmp3} >> 4_val;
+    tmp4 = assign(it, arg.type, "%popcount") = tmp3 + tmp4;
+    tmp4 = assign(it, arg.type, "%popcount") = tmp4 & Value(Literal(0x0F0F0F0F & typeWidthMask), arg.type);
+
+    // This mul is "harmless", since it should be converted to shift and adds anyway!
+    auto tmp5 = method.addNewLocal(arg.type, "%popcount");
+    it.emplace(new IntrinsicOperation(
+        "mul", Value(tmp5), std::move(tmp4), Value(Literal(0x01010101 & typeWidthMask), arg.type)));
+    it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+    it.nextInBlock();
+
+    auto tmp6 = assign(it, arg.type, "%popcount") = as_unsigned{tmp5} >> Value(Literal(typeWidth - CHAR_BIT), arg.type);
+    // This is not listed in the original version above, but required, since we do 32-bit calculation and not
+    // calculation limited to type width, i.e. we might have non-zero upper bytes for smaller types.
+    // Since we shift above all but the upper most byte out of the word, the result is never more than 1 byte wide
+    it.reset((new Operation(OP_AND, callSite->getOutput().value(), tmp6, 0xFF_val))->copyExtrasFrom(callSite));
+    return it;
+}
+
 struct Intrinsic
 {
     const IntrinsicFunction func;
@@ -427,6 +495,7 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> unaryIn
     /* simply set the event to something so it is initialized */
     {"vc4cl_set_event", Intrinsic{intrinsifyValueRead(INT_ZERO), [](const Value& val) -> Value { return INT_ZERO; }}},
     {"vc4cl_barrier", Intrinsic{intrinsifyBarrier}},
+    {"vc4cl_popcount", Intrinsic{intrinsifyPopcount}},
 };
 
 const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryIntrinsicMapping = {

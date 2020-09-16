@@ -1719,7 +1719,7 @@ spv_result_t SPIRVParser::parseInstruction(const spv_parsed_instruction_t* parse
         return SPV_SUCCESS;
     case spv::Op::OpBitCount:
         localTypes[parsed_instruction->result_id] = parsed_instruction->type_id;
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "popcount",
+        instructions.emplace_back(new SPIRVCallSite(parsed_instruction->result_id, *currentMethod, "vc4cl_popcount",
             parsed_instruction->type_id, parseArguments(parsed_instruction, 3)));
         return SPV_SUCCESS;
     case spv::Op::OpControlBarrier:

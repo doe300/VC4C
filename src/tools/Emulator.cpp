@@ -149,7 +149,7 @@ MemoryAddress Memory::getMaximumAddress() const
     if(auto direct = VariantNamespace::get_if<DirectBuffer>(&data))
         return static_cast<MemoryAddress>(direct->size() * sizeof(Word));
     return VariantNamespace::get<MappedBuffers>(data).rbegin()->first +
-        static_cast<Word>(VariantNamespace::get<MappedBuffers>(data).begin()->second.get().size());
+        static_cast<Word>(VariantNamespace::get<MappedBuffers>(data).rbegin()->second.get().size());
 }
 
 void Memory::setUniforms(const std::vector<Word>& uniforms, MemoryAddress address)
@@ -968,7 +968,7 @@ void VPM::setDMAWriteAddress(const SIMDVector& val)
     {
         for(uint32_t i = 0; i < sizes.first; ++i)
         {
-            if(address + typeSize * sizes.second >= memory.getMaximumAddress())
+            if(address + typeSize * sizes.second > memory.getMaximumAddress())
                 throw CompilationError(CompilationStep::GENERAL,
                     "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
             memcpy(reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
@@ -986,7 +986,7 @@ void VPM::setDMAWriteAddress(const SIMDVector& val)
     {
         for(uint32_t i = 0; i < sizes.second; ++i)
         {
-            if(address + typeSize * sizes.first >= memory.getMaximumAddress())
+            if(address + typeSize * sizes.first > memory.getMaximumAddress())
                 throw CompilationError(CompilationStep::GENERAL,
                     "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
             for(uint32_t k = 0; k < sizes.first; ++k)
@@ -1060,7 +1060,7 @@ void VPM::setDMAReadAddress(const SIMDVector& val)
     {
         for(uint32_t i = 0; i < sizes.second; ++i)
         {
-            if(address + typeSize * sizes.first >= memory.getMaximumAddress())
+            if(address + typeSize * sizes.first > memory.getMaximumAddress())
                 throw CompilationError(CompilationStep::GENERAL,
                     "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
             for(uint32_t k = 0; k < sizes.first; ++k)

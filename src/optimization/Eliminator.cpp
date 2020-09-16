@@ -822,8 +822,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                     }
                 }
             }
-
-            if(op->op == OP_OR)
+            else if(op->op == OP_OR)
             {
                 // or  v1, v2, v3 => or  v1, v2, v4
                 // and v4, v1, v2    mov v4, v2
@@ -865,8 +864,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                         foundOr(out, loc, it);
                 }
             }
-
-            if(op->op == OP_ASR && !op->doesSetFlag() && !op->hasPackMode())
+            else if(op->op == OP_ASR && !op->doesSetFlag() && !op->hasPackMode())
             {
                 /*
                  * %y = asr %x, const1
@@ -913,8 +911,10 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                     replaced = true;
                 }
             }
+            // we need to recheck the operation, since we might have reset it above
+            op = it.get<intermediate::Operation>();
             // fall-through on purpose, since we can improve on the above even further with the check below
-            if(op->op == OP_SHR && !op->hasUnpackMode() && !op->doesSetFlag())
+            if(op && op->op == OP_SHR && !op->hasUnpackMode() && !op->doesSetFlag())
             {
                 /*
                  * %b = shl %a, const1
