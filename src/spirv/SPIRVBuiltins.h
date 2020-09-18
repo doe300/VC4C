@@ -6,7 +6,6 @@
 
 #ifndef VC4C_SPIRV_BUILTINS
 #define VC4C_SPIRV_BUILTINS 1
-#ifdef SPIRV_FRONTEND
 
 #include "../Locals.h"
 
@@ -101,5 +100,4 @@ namespace vc4c
     } // namespace spirv
 } // namespace vc4c
 
-#endif
 #endif /* VC4C_SPIRV_BUILTINS */

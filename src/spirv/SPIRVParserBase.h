@@ -37,7 +37,6 @@ namespace vc4c
             virtual uint32_t getWord(std::size_t wordIndex) const = 0;
             virtual std::vector<uint32_t> parseArguments(std::size_t startIndex) const = 0;
 
-            virtual uint32_t getExtendedInstructionType() const noexcept = 0;
             virtual std::string readLiteralString(std::size_t operandIndex) const = 0;
         };
 

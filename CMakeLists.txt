@@ -14,7 +14,7 @@ option(MULTI_THREADED "Runs the optimization steps multi-threaded" ON)
 option(VERIFY_OUTPUT "uses the external library vc4asm to verify the output" ON)
 # Option to enable/disable cross compilation
 option(CROSS_COMPILE "Cross compile for Raspbian" OFF)
-# Option whether to include the SPIR-V front-end
+# Option whether to include the SPIR-V Tools front-end
 option(SPIRV_FRONTEND "Enables a second front-end for the SPIR-V intermediate language" OFF)
 # Option whether to include the LLVM library front-end. This requires the LLVM development-headers to be available for the (SPIRV-)LLVM used
 option(LLVMLIB_FRONTEND "Enables the front-end using the LLVM library to read LLVM modules" ON)
@@ -113,7 +113,8 @@ endif()
 # Determine Clang version and configure front-ends
 ###
 
-# Prefer Khronos OpenCL to LLVM IR (to SPIR-V) compiler
+# Prefer Khronos OpenCL to LLVM IR (to SPIR-V) compiler, always include SPIR-V headers
+include(cmake/spirv-headers.cmake)
 if(SPIRV_FRONTEND)
   include(cmake/spirv.cmake)
 endif()

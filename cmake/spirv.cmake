@@ -73,14 +73,6 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 		# CMake 3.14 introduces https://cmake.org/cmake/help/latest/module/FetchContent.html which allows us to run the configuration step
 		# of the downloaded dependencies at CMake configuration step and therefore, we have the proper targets available.
 		include(FetchContent)
-		FetchContent_Declare(SPIRV-Headers GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Headers.git)
-		FetchContent_MakeAvailable(SPIRV-Headers)
-		FetchContent_GetProperties(SPIRV-Headers SOURCE_DIR SPIRV_HEADERS_SOURCE_DIR)
-		# To be compatible with the old style, we cannot (in src/CMakeLists.txt) directly link against the targets,
-		# so define the variables that are expected.
-		add_library(SPIRV-Dependencies STATIC IMPORTED)
-		set(SPIRV_Headers_HEADERS ${SPIRV_HEADERS_SOURCE_DIR}/include)
-
 		FetchContent_Declare(spirv-tools-project GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Tools.git)
 		# CMake configuration flags for SPIRV-Tools project
 		set(SPIRV_SKIP_EXECUTABLES OFF)
@@ -94,22 +86,6 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 		# we need to export these targets, since they are required by VC4CC which we export
 		# export(TARGETS SPIRV-Headers SPIRV-Tools SPIRV-Tools-opt SPIRV-Tools-link FILE spirv-exports.cmake)
 	else()
-		#Add SPIR-V headers project
-		ExternalProject_Add(SPIRV-Headers-project
-			PREFIX 				${CMAKE_BINARY_DIR}/spirv-headers
-			GIT_REPOSITORY 		https://github.com/KhronosGroup/SPIRV-Headers.git
-			UPDATE_COMMAND 		git pull -f https://github.com/KhronosGroup/SPIRV-Headers.git
-			STEP_TARGETS 		build
-			EXCLUDE_FROM_ALL	TRUE
-			TIMEOUT 			30		#Timeout for downloads, in seconds
-			CMAKE_ARGS
-			  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-			  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-			  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
-		)
-		ExternalProject_Get_Property(SPIRV-Headers-project SOURCE_DIR)
-		set(SPIRV_Headers_HEADERS ${SOURCE_DIR}/include)
-
 		ExternalProject_Add(spirv-tools-project
 			DEPENDS 			SPIRV-Headers-project-build
 			PREFIX 				${CMAKE_BINARY_DIR}/spirv-tools
@@ -134,5 +110,5 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 		add_dependencies(SPIRV-Dependencies SPIRV-Headers-project-build)
 		add_dependencies(SPIRV-Dependencies spirv-tools-project-build)
 	endif()
-	set(VC4C_ENABLE_SPIRV_FRONTEND ON)
+	set(VC4C_ENABLE_SPIRV_TOOLS_FRONTEND ON)
 endif()

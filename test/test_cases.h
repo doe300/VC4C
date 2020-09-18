@@ -116,7 +116,7 @@ namespace vc4c
 					{toScalarParameter(2u), toScalarParameter(4u), toScalarParameter(2.0f), toScalarParameter(4.0f), toParameter(std::vector<uint32_t>(32)), toParameter(std::vector<uint32_t>(32))}, {}, maxExecutionCycles),
 					addVector({}, 4, std::vector<uint32_t>{6, bit_cast<int32_t, uint32_t>(-2), 8, 0, 2, 4, 2, 2, 32, 0, 0, 6, 6, bit_cast<int32_t, uint32_t>(-3), 30, 3, 3, 1, 1, 0, 0, 0, 1, 1, 1, 0, 4, 8})
 				),
-#ifndef SPIRV_FRONTEND
+#ifndef SPIRV_TOOLS_FRONTEND
 				// SEGFAULT in SPIRV-LLVM used in CI
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_struct.cl", "test_struct",
 					{toParameter(std::vector<uint32_t>(20)), toParameter(std::vector<uint32_t>(20))}, {}, maxExecutionCycles),
@@ -135,7 +135,7 @@ namespace vc4c
 					{toScalarParameter(1.0f), toScalarParameter(1.1f), toScalarParameter(1.5f), toScalarParameter(1.9f), toParameter(std::vector<int>(32))}, {}, maxExecutionCycles),
 					addVector({}, 4, std::vector<int>{1, 1, 1, 1, -1, -1, -1, -1, 1, -1, 2, -1, 1, -1, 1, -2, 1, -1, 2, -2, 1, 1, 2, 2, -1, -1, -2, -2, 1, -1})
 				),
-#ifndef SPIRV_FRONTEND
+#ifndef SPIRV_TOOLS_FRONTEND
 				// TODO fix register association error in CI, does not happen with local LLVM-SPIRV-Translator
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_other.cl", "test_global_data",
 					{toScalarParameter(1), toParameter(std::vector<int32_t>(2))}, {}, maxExecutionCycles),
@@ -205,7 +205,7 @@ namespace vc4c
 				//     {toParameter(std::vector<unsigned>{0x40, 0, 0, 0, 0x41, 0, 0, 0, 0x42, 0, 0, 0, 0x43, 0, 0, 0}), toParameter(std::vector<unsigned>{0x15, 0x16, 0x17, 0x18}), toParameter(std::vector<unsigned>(4))}, toConfig(1), maxExecutionCycles),
 				//     addVector({}, 2, std::vector<unsigned>{0x55, 0x57, 0x59, 0x61})
 				// )
-#ifndef SPIRV_FRONTEND
+#ifndef SPIRV_TOOLS_FRONTEND
 				// LLVM 3.6 used by LLVM-SPIRV compiler used in CI cannot compile "(event_t)0"
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/OpenCL-CTS/async_copy_global_to_local.cl", "test_async_copy_global_to_local",
 					{toParameter(toRange<unsigned>(0, 64)), toParameter(std::vector<unsigned>(64)), toParameter(std::vector<unsigned>(64)), toScalarParameter(64), toScalarParameter(8)}, toConfig(8), maxExecutionCycles),
@@ -273,7 +273,7 @@ namespace vc4c
 					{toParameter(std::vector<unsigned>{0xFFFFFFFFu}), toParameter(std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7, 7, 8, 9, 10, 11, 11, 12, 13})
 					}, toConfig(8, 1, 1, 2, 1, 1), maxExecutionCycles), addVector({}, 0, std::vector<unsigned>{7})
 				),
-#ifndef SPIRV_FRONTEND
+#ifndef SPIRV_TOOLS_FRONTEND
 // 64-bit constants (that have a high word of neither zero nor one) are not yet implemented for SPIR-V front-end
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/boost-compute/test_functional_popcount.cl", "copy",
 					{toParameter(std::vector<unsigned>(4)), toParameter(std::vector<unsigned>{1, 0, 17, 0, 1, 2, 15, 1}), toScalarParameter(4)
@@ -289,13 +289,11 @@ namespace vc4c
 					}, toConfig(11), maxExecutionCycles),
 					addVector({}, 3, std::vector<unsigned>{253})
 				),
-#ifndef SPIRV_FRONTEND
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/boost-compute/test_reduce.cl", "reduce",
 					{toParameter(std::vector<unsigned>{1, 5, 9, 13, 17}), toScalarParameter(0u), toScalarParameter(5u), toParameter(std::vector<unsigned>(1)), toScalarParameter(0u)
 					}, toConfig(12, 1, 1), maxExecutionCycles),
 					addVector({}, 3, std::vector<unsigned>{1 + 5 + 9 + 13 + 17})
 				),
-#endif
 				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/boost-compute/test_insertion_sort.cl", "serial_insertion_sort",
 					{toParameter(std::vector<unsigned>(32)), toScalarParameter(16u),
 					toParameter(std::vector<unsigned>{1, 0, 0, 0, 2, 0, 15, 0, 14, 0, 3, 0, 11, 0, 12, 0, 4, 0, 8, 0, 7, 0, 5, 0, 10, 0, 6, 0, 9, 0, 13, 0})

@@ -9,7 +9,7 @@
 #include "SPIRVHelper.h"
 #include "log.h"
 
-#ifdef SPIRV_FRONTEND
+#ifdef SPIRV_TOOLS_FRONTEND
 
 #if __has_include("spirv-tools/linker.hpp")
 #include "spirv-tools/linker.hpp"
@@ -56,11 +56,6 @@ std::vector<uint32_t> SPIRVToolsInstruction::parseArguments(std::size_t startInd
     for(std::size_t i = startIndex; i < inst->num_words; ++i)
         args.push_back(inst->words[i]);
     return args;
-}
-
-uint32_t SPIRVToolsInstruction::getExtendedInstructionType() const noexcept
-{
-    return inst->ext_inst_type;
 }
 
 std::string SPIRVToolsInstruction::readLiteralString(std::size_t operandIndex) const
@@ -169,8 +164,9 @@ static spv_result_t parsedHeaderCallback(void* user_data, spv_endianness_t endia
     uint32_t generator, uint32_t id_bound, uint32_t reserved)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "SPIR-V header parsed: magic-number 0x" << std::hex << magic << ", version 0x" << version
-            << ", generator " << generator << ", max-ID " << std::dec << id_bound << logging::endl);
+        log << "SPIR-V header parsed: " << (endian == SPV_ENDIANNESS_LITTLE ? "little" : "big")
+            << " endian, magic-number 0x" << std::hex << magic << ", version 0x" << version << ", generator "
+            << generator << ", max-ID " << std::dec << id_bound << logging::endl);
     SPIRVToolsParser* parser = static_cast<SPIRVToolsParser*>(user_data);
     return toSPIRVResult(parser->parseHeader(magic, version, generator, id_bound));
 }
@@ -227,7 +223,6 @@ void SPIRVToolsParser::doParse(const std::vector<uint32_t>& module)
         throw CompilationError(CompilationStep::PARSER, getErrorMessage(result),
             (diagnostics != nullptr ? diagnostics->error : errorExtra));
     }
-    CPPLOG_LAZY(logging::Level::DEBUG, log << "SPIR-V binary successfully parsed" << logging::endl);
     spvContextDestroy(context);
 }
 
@@ -260,4 +255,4 @@ void spirv::linkSPIRVModules(const std::vector<std::istream*>& inputModules, std
             << " words of data." << logging::endl);
 }
 
-#endif
+#endif /* SPIRV_TOOLS_FRONTEND */

@@ -7,8 +7,6 @@
 #ifndef SPIRVHELPER_H
 #define SPIRVHELPER_H
 
-#ifdef SPIRV_FRONTEND
-
 #include "spirv/unified1/OpenCL.std.h"
 #include "spirv/unified1/spirv.hpp11"
 
@@ -51,5 +49,4 @@ namespace vc4c
     } // namespace spirv
 } // namespace vc4c
 
-#endif
 #endif /* SPIRVHELPER_H */

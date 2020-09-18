@@ -13,7 +13,7 @@
 #include "LibClang.h"
 #include "log.h"
 
-#ifdef SPIRV_FRONTEND
+#ifdef SPIRV_TOOLS_FRONTEND
 #include "../spirv/SPIRVToolsParser.h"
 #endif
 
@@ -191,8 +191,6 @@ static void compileLLVMIRToSPIRV0(std::istream* input, std::ostream* output, con
 {
 #if not defined SPIRV_LLVM_SPIRV_PATH
     throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not configured, can't compile to SPIR-V!");
-#elif not defined SPIRV_FRONTEND
-    throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-Tools not configured, can't process SPIR-V!");
 #else
     std::string command = (std::string(SPIRV_LLVM_SPIRV_PATH) + (toText ? " -spirv-text" : "")) + " -o ";
     command.append(outputFile.value_or("/dev/stdout")).append(" ");
@@ -210,8 +208,6 @@ static void compileSPIRVToSPIRV(std::istream* input, std::ostream* output, const
 {
 #if not defined SPIRV_LLVM_SPIRV_PATH
     throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not configured, can't compile to SPIR-V!");
-#elif not defined SPIRV_FRONTEND
-    throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-Tools not configured, can't process SPIR-V!");
 #else
     std::string command = (std::string(SPIRV_LLVM_SPIRV_PATH) + (toText ? " -to-text" : " -to-binary")) + " -o ";
     command.append(outputFile.value_or("/dev/stdout")).append(" ");
@@ -489,8 +485,8 @@ void precompilation::linkSPIRVModules(
     std::vector<SPIRVSource>&& sources, const std::string& userOptions, SPIRVResult& result)
 {
     PROFILE_START(LinkSPIRVModules);
-#ifndef SPIRV_FRONTEND
-    throw CompilationError(CompilationStep::LINKER, "SPIR-V front-end is not provided!");
+#ifndef SPIRV_TOOLS_FRONTEND
+    throw CompilationError(CompilationStep::LINKER, "SPIR-V Tools front-end is not provided!");
 #else
     std::vector<std::istream*> convertedInputs;
     std::vector<std::unique_ptr<std::istream>> conversionBuffer;

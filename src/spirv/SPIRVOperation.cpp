@@ -6,7 +6,6 @@
 
 #include "SPIRVOperation.h"
 
-#ifdef SPIRV_FRONTEND
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
 #include "../intermediate/VectorHelper.h"
@@ -1326,5 +1325,3 @@ Optional<Value> SPIRVFoldInstruction::precalculate(
     // XXX could implement for all-constant operand
     return NO_VALUE;
 }
-
-#endif

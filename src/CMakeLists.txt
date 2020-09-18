@@ -83,6 +83,10 @@ target_link_libraries(${VC4C_LIBRARY_NAME} ${cpplog_LIBS})
 target_include_directories(${VC4C_LIBRARY_NAME} PUBLIC ${cpplog_HEADERS})
 target_compile_definitions(${VC4C_LIBRARY_NAME} PUBLIC ${cpplog_DEFINES})
 
+# SPIR-V Headers
+add_dependencies(${VC4C_LIBRARY_NAME} SPIRV-Dependencies)
+target_include_directories(${VC4C_LIBRARY_NAME} SYSTEM PRIVATE ${SPIRV_Headers_HEADERS})
+
 # threading library
 if(MULTI_THREADED)
 	target_link_libraries(${VC4C_LIBRARY_NAME} ${CMAKE_THREAD_LIBS_INIT})
@@ -91,15 +95,14 @@ if(MULTI_THREADED)
 endif(MULTI_THREADED)
 
 # SPIR-V Tools
-if(VC4C_ENABLE_SPIRV_FRONTEND)
+if(VC4C_ENABLE_SPIRV_TOOLS_FRONTEND)
 	add_dependencies(${VC4C_LIBRARY_NAME} SPIRV-Dependencies)
 	target_link_libraries(${VC4C_LIBRARY_NAME} ${SPIRV_Tools_LIBS})
-	target_include_directories(${VC4C_LIBRARY_NAME} SYSTEM PRIVATE ${SPIRV_Headers_HEADERS})
 	target_include_directories(${VC4C_LIBRARY_NAME} SYSTEM PRIVATE ${SPIRV_Tools_HEADERS})
 
-	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE SPIRV_LLVM_SPIRV_PATH="${SPIRV_LLVM_SPIR_FOUND}" SPIRV_FRONTEND=1)
-	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE SPIRV_LLVM_SPIRV_PATH="${SPIRV_LLVM_SPIR_FOUND}" SPIRV_FRONTEND=1)
-endif(VC4C_ENABLE_SPIRV_FRONTEND)
+	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE SPIRV_LLVM_SPIRV_PATH="${SPIRV_LLVM_SPIR_FOUND}" SPIRV_TOOLS_FRONTEND=1)
+	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE SPIRV_LLVM_SPIRV_PATH="${SPIRV_LLVM_SPIR_FOUND}" SPIRV_TOOLS_FRONTEND=1)
+endif(VC4C_ENABLE_SPIRV_TOOLS_FRONTEND)
 
 # LLVM library
 if(VC4C_ENABLE_LLVM_LIB_FRONTEND)

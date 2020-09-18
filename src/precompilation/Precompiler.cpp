@@ -58,7 +58,7 @@ void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>&
             options, outputFile);
     else
     {
-#if defined USE_LLVM_LIBRARY and defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_FRONTEND
+#if defined USE_LLVM_LIBRARY and defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH
         // we have both front-ends, select the front-end which can handle the input type
         if(isSupportedByFrontend(precompiler.inputType, Frontend::LLVM_IR))
             // prefer LLVM library front-end
@@ -67,7 +67,7 @@ void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>&
             precompiler.run(output, SourceType::SPIRV_BIN, options, outputFile);
 #elif defined USE_LLVM_LIBRARY
         precompiler.run(output, SourceType::LLVM_IR_BIN, options, outputFile);
-#elif defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_FRONTEND
+#elif defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH
         precompiler.run(output, SourceType::SPIRV_BIN, options, outputFile);
 #elif defined CLANG_PATH
         precompiler.run(output, SourceType::LLVM_IR_TEXT, options, outputFile);
@@ -140,7 +140,7 @@ static std::pair<bool, bool> determinePossibleLinkers(
 #else
     bool llvmLinkerPossible = false;
 #endif
-#ifdef SPIRV_FRONTEND
+#ifdef SPIRV_TOOLS_FRONTEND
     bool spirvLinkerPossible = true;
 #else
     bool spirvLinkerPossible = false;
@@ -306,7 +306,7 @@ bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Opti
         case SourceType::LLVM_IR_TEXT:
         case SourceType::SPIRV_BIN:
         case SourceType::SPIRV_TEXT:
-#ifdef SPIRV_FRONTEND
+#ifdef SPIRV_TOOLS_FRONTEND
             return true;
 #endif
         default:
@@ -317,7 +317,7 @@ bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Opti
 
 bool Precompiler::isLinkerAvailable()
 {
-#if defined(SPIRV_FRONTEND) || defined(LLVM_LINK_PATH)
+#if defined(SPIRV_TOOLS_FRONTEND) || defined(LLVM_LINK_PATH)
     return true;
 #else
     return false;

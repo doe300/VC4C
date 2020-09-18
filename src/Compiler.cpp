@@ -17,6 +17,7 @@
 #include "logger.h"
 #include "normalization/Normalizer.h"
 #include "optimization/Optimizer.h"
+#include "spirv/SPIRVLexer.h"
 #include "spirv/SPIRVToolsParser.h"
 #include "llvm/BitcodeReader.h"
 
@@ -63,10 +64,20 @@ static std::unique_ptr<Parser> getParser(std::istream& stream)
         throw CompilationError(CompilationStep::GENERAL, "No LLVM IR module front-end available!");
 #endif
     case SourceType::SPIRV_TEXT:
+#ifdef SPIRV_TOOLS_FRONTEND
+        logging::info() << "Using SPIR-V Tools frontend..." << logging::endl;
+        return std::unique_ptr<Parser>(new spirv::SPIRVToolsParser(stream, true));
+#else
         throw CompilationError(CompilationStep::GENERAL, "SPIR-V text needs to be first converted to SPIR-V binary!");
+#endif
     case SourceType::SPIRV_BIN:
-        logging::info() << "Using SPIR-V frontend..." << logging::endl;
+#ifdef SPIRV_TOOLS_FRONTEND
+        logging::info() << "Using SPIR-V Tools frontend..." << logging::endl;
         return std::unique_ptr<Parser>(new spirv::SPIRVToolsParser(stream, false));
+#else
+        logging::info() << "Using builtin SPIR-V frontend..." << logging::endl;
+        return std::unique_ptr<Parser>(new spirv::SPIRVLexer(stream));
+#endif
     case SourceType::OPENCL_C:
         throw CompilationError(CompilationStep::GENERAL, "OpenCL code needs to be first compiled with CLang!");
     case SourceType::QPUASM_BIN:

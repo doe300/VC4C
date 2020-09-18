@@ -6,7 +6,6 @@
 
 #ifndef SPIRVOPERATION_H
 #define SPIRVOPERATION_H
-#ifdef SPIRV_FRONTEND
 
 #include "../Module.h"
 #include "Optional.h"
@@ -431,5 +430,4 @@ namespace vc4c
     } // namespace spirv
 } // namespace vc4c
 
-#endif
 #endif /* SPIRVOPERATION_H */

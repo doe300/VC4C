@@ -119,8 +119,10 @@ static void printInfo()
 #endif
 #if defined SPIRV_CLANG_PATH
         "SPIRV-LLVM clang in " SPIRV_CLANG_PATH,
-#if defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_FRONTEND
-        "SPIR-V front-end",
+#if defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_TOOLS_FRONTEND
+        "SPIR-V Tools front-end",
+#else
+        "builtin SPIR-V front-end",
 #endif
 #elif defined CLANG_PATH
         "clang in " CLANG_PATH,
@@ -134,7 +136,7 @@ static void printInfo()
 #ifdef VC4CL_STDLIB_FOLDER
         "custom VC4CL standard-library path " VC4CL_STDLIB_FOLDER,
 #endif
-#ifdef SPIRV_FRONTEND
+#ifdef SPIRV_TOOLS_FRONTEND
         "SPIR-V linker",
 #endif
 #ifdef LLVM_LINK_PATH

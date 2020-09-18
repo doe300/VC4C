@@ -16,12 +16,6 @@
 #include <cstdint>
 #include <cstring>
 
-// TODO remove support for deprecated SPRIV-LLVM and with it PCH??
-// TODO get rid of SPIRV-Tools and directly read SPIR-V?? Similar to mesa:
-// https://gitlab.freedesktop.org/mesa/mesa/blob/master/src/compiler/spirv/spirv_to_nir.c
-// -> then add fuzz tests?!
-// TODO how to handle SPIR-V linking then??
-
 using namespace vc4c;
 using namespace vc4c::spirv;
 
@@ -53,10 +47,10 @@ void SPIRVParserBase::parse(Module& module)
             logging::Level::DEBUG, log << "Read SPIR-V binary with " << words.size() << " words" << logging::endl);
     }
 
-    CPPLOG_LAZY(logging::Level::DEBUG, log << "Starting parsing..." << logging::endl);
-
     // parse input
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Starting parsing..." << logging::endl);
     doParse(words);
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "SPIR-V binary successfully parsed" << logging::endl);
 
     // resolve method parameters
     // set names, e.g. for methods, parameters
@@ -463,7 +457,7 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         auto extensionIt = extensionConsumers.find(parsed_instruction.getWord(3));
         if(extensionIt == extensionConsumers.end())
             throw CompilationError(CompilationStep::PARSER, "Invalid extended instruction set",
-                std::to_string(parsed_instruction.getExtendedInstructionType()));
+                std::to_string(parsed_instruction.getWord(3)));
         return (this->*(extensionIt->second))(parsed_instruction);
     }
     case spv::Op::OpMemoryModel:

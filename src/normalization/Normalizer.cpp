@@ -167,10 +167,8 @@ static void checkNormalized(Module& module, Method& method, InstructionWalker it
 
 // NOTE: The order is on purpose and must not be changed!
 const static std::vector<std::pair<std::string, NormalizationStep>> initialNormalizationSteps = {
-#ifdef SPIRV_FRONTEND
     // fixes "loading" of OpenCL C work-item functions as SPIR-V built-ins. Needs to run before handling intrinsics
     {"LowerSPIRVBuiltins", spirv::lowerBuiltins},
-#endif
     // intrinsifies calls to built-ins and unsupported operations
     {"Intrinsics", intrinsics::intrinsify},
     // lowers operations taking or returning 64-bit values

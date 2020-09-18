@@ -12,11 +12,8 @@
 #include "asm/KernelInfo.h"
 #include "spirv/SPIRVHelper.h"
 #include "tools.h"
-#ifdef SPIRV_FRONTEND
-#include "spirv/SPIRVHelper.h"
 
 using namespace vc4c::spirv;
-#endif
 
 #include <fstream>
 #include <memory>
@@ -54,7 +51,6 @@ TestFrontends::~TestFrontends() = default;
 
 void TestFrontends::testSPIRVCapabilitiesSupport()
 {
-#ifdef SPIRV_FRONTEND
     /*
      * see  SPIR-V OpenCL environment specification, section 6.2:
      * "An OpenCL 1.2 Embedded Profile platform is guaranteed to support, at least, the following SPIR-V capabilities:
@@ -62,16 +58,15 @@ void TestFrontends::testSPIRVCapabilitiesSupport()
      *  Furthermore, the following capabilities may be supported:
      *   ImageBasic, Int64"
      */
-    TEST_ASSERT_EQUALS(SPV_SUCCESS, checkCapability(spv::Capability::Addresses));
-    TEST_ASSERT_EQUALS(SPV_SUCCESS, checkCapability(spv::Capability::Float16Buffer));
-    TEST_ASSERT_EQUALS(SPV_SUCCESS, checkCapability(spv::Capability::Groups));
-    TEST_ASSERT_EQUALS(SPV_SUCCESS, checkCapability(spv::Capability::Int16));
-    TEST_ASSERT_EQUALS(SPV_SUCCESS, checkCapability(spv::Capability::Int8));
-    TEST_ASSERT_EQUALS(SPV_SUCCESS, checkCapability(spv::Capability::Kernel));
-    TEST_ASSERT_EQUALS(SPV_SUCCESS, checkCapability(spv::Capability::Linkage));
-    TEST_ASSERT_EQUALS(SPV_SUCCESS, checkCapability(spv::Capability::LiteralSampler));
-    TEST_ASSERT_EQUALS(SPV_SUCCESS, checkCapability(spv::Capability::Vector16));
-#endif
+    TEST_ASSERT_EQUALS(ParseResultCode::SUCCESS, checkCapability(spv::Capability::Addresses));
+    TEST_ASSERT_EQUALS(ParseResultCode::SUCCESS, checkCapability(spv::Capability::Float16Buffer));
+    TEST_ASSERT_EQUALS(ParseResultCode::SUCCESS, checkCapability(spv::Capability::Groups));
+    TEST_ASSERT_EQUALS(ParseResultCode::SUCCESS, checkCapability(spv::Capability::Int16));
+    TEST_ASSERT_EQUALS(ParseResultCode::SUCCESS, checkCapability(spv::Capability::Int8));
+    TEST_ASSERT_EQUALS(ParseResultCode::SUCCESS, checkCapability(spv::Capability::Kernel));
+    TEST_ASSERT_EQUALS(ParseResultCode::SUCCESS, checkCapability(spv::Capability::Linkage));
+    TEST_ASSERT_EQUALS(ParseResultCode::SUCCESS, checkCapability(spv::Capability::LiteralSampler));
+    TEST_ASSERT_EQUALS(ParseResultCode::SUCCESS, checkCapability(spv::Capability::Vector16));
 }
 
 void TestFrontends::testLinking()

@@ -9,7 +9,7 @@
 
 #include "SPIRVParserBase.h"
 
-#ifdef SPIRV_FRONTEND // TODO rename to SPIRV tools availability
+#ifdef SPIRV_TOOLS_FRONTEND
 
 #include "spirv-tools/libspirv.hpp"
 
@@ -29,7 +29,6 @@ namespace vc4c
             uint32_t getWord(std::size_t wordIndex) const override;
             std::vector<uint32_t> parseArguments(std::size_t startIndex) const override;
 
-            uint32_t getExtendedInstructionType() const noexcept override;
             std::string readLiteralString(std::size_t operandIndex) const override;
 
             const spv_parsed_instruction_t* inst;
@@ -70,12 +69,12 @@ namespace vc4c
             }
         };
 
-        void linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output)
+        inline void linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output)
         {
             throw CompilationError(CompilationStep::LINKER, "SPIRV-Tools linker is not available!");
         }
 
     } // namespace spirv
 } // namespace vc4c
-#endif /* SPIRV_FRONTEND */
+#endif /* SPIRV_TOOLS_FRONTEND */
 #endif /* SPIRV_TOOLS_PARSER_H */
