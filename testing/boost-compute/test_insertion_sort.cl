@@ -22,3 +22,23 @@ for(uint i = 0; i < n; i++){
     _buf0[i] = data[i];
 }
 }
+
+__kernel void serial_insertion_sort_short(__local short* data, uint n, __global short* _buf0)
+{
+for(uint i = 0; i < n; i++){
+    data[i] = _buf0[i];
+}
+for(uint i = 1; i < n; i++){
+    const short value = data[i];
+    uint pos = i;
+    while(pos > 0 && ((value)<(data[pos-1]))){
+        data[pos] = data[pos-1];
+        pos--;
+    }
+    data[pos] = value;
+}
+for(uint i = 0; i < n; i++){
+    _buf0[i] = data[i];
+}
+
+}

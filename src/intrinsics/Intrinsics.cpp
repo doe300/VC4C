@@ -388,6 +388,7 @@ static InstructionWalker intrinsifyPopcount(Method& method, InstructionWalker it
             auto upperResult = method.addNewLocal(resultParts->upper->type, "%popcount");
             it->setOutput(upperResult);
             it = intrinsifyPopcount(method, it, callSite);
+            it.nextInBlock();
             assign(it, resultParts->upper->createReference()) = INT_ZERO;
             it.emplace(new Operation(OP_ADD, resultParts->lower->createReference(), lowerResult, upperResult));
         }

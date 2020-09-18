@@ -195,6 +195,11 @@ namespace vc4c
 				    addVector({}, 1, std::vector<unsigned>{0x08040607, 0x010d0c01, 0x0f0e0900, 0x06080304, 0x120b0701, 0x09080f15, 0x01021300, 0x08070d11, 0x10021b1a, 0x17061904, 0x131c0908, 0x0f0e0d1a, 0x10020111, 0x10020111, 0x10020111, 0x10020111,
 				                                           0x01000000, 0x10000011, 0x02011100, 0x00001002, 0x00000000, 0x04040404, 0x08080808, 0x0c0c0c0c, 0, 0, 0, 0, 0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c, 0x0d0c0b0a, 0x01000f0e, 0x05040302, 0x09080706, 0x0c0d0e0f, 0x08090a0b, 0x04050607, 0x00010203})
                 ),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_shuffle.cl", "test_shuffle_upcast",
+					{toParameter(std::vector<unsigned>{0x03020100, 0x07060504, 0x03020100, 0x07060504, 0x03020100, 0x07060504, 0x03020100, 0x07060504, 0x03020100, 0x07060504, 0x03020100, 0x07060504}),
+					toParameter(std::vector<unsigned>{0x07060504, 0x03020100, 0x07060504, 0x03020100, 0x07060504, 0x03020100, 0x07060504, 0x03020100, 0x07060504, 0x03020100, 0x07060504, 0x03020100}), toParameter(std::vector<unsigned>(6*8/sizeof(int32_t)))}, toConfig(1), maxExecutionCycles),
+					addVector({}, 2, std::vector<unsigned>{0x17171717, 0x17171702, 0x04424242, 0x01424242, 0x13021307, 0x13130313, 0x06FF05FF, 0x03FFFF01, 0x03010506, 0x71717171, 0x31313103, 0x31313131})
+				),
 				// TODO need to pass parameter as literal vectors, not buffers
 				// std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vector.cl", "test_param",
 				//     {toParameter(std::vector<unsigned>{0x40, 0, 0, 0, 0x41, 0, 0, 0, 0x42, 0, 0, 0, 0x43, 0, 0, 0}), toParameter(std::vector<unsigned>{0x15, 0x16, 0x17, 0x18}), toParameter(std::vector<unsigned>(4))}, toConfig(1), maxExecutionCycles),
@@ -296,6 +301,12 @@ namespace vc4c
 					toParameter(std::vector<unsigned>{1, 0, 0, 0, 2, 0, 15, 0, 14, 0, 3, 0, 11, 0, 12, 0, 4, 0, 8, 0, 7, 0, 5, 0, 10, 0, 6, 0, 9, 0, 13, 0})
 					}, {}, maxExecutionCycles),
 					addVector({}, 2, std::vector<unsigned>{0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0, 10, 0, 11, 0, 12, 0, 13, 0, 14, 0, 15, 0})
+				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/boost-compute/test_insertion_sort.cl", "serial_insertion_sort_short",
+					{toParameter(std::vector<unsigned>(8)), toScalarParameter(16u),
+					toParameter(std::vector<unsigned>{0x00000001, 0x000F0002, 0x000E0003, 0x000B000C, 0x00080004, 0x00050007, 0x0006000A, 0x000D0009})
+					}, {}, maxExecutionCycles),
+					addVector({}, 2, std::vector<unsigned>{0x00010000, 0x00030002, 0x00050004, 0x00070006, 0x00090008, 0x000B000A, 0x000D000C, 0x000F000E})
 				),
 		};
 

@@ -1187,9 +1187,18 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
             auto currentNode = queue.front();
             queue.pop();
 
-            auto targetTreeNode =
-                castToTreeNode(currentNode->findRoot(moveDepth == -1 ? Optional<int>() : Optional<int>(moveDepth - 1)));
-            auto targetLoop = targetTreeNode->key;
+            /*
+             * TODO for now don't hoist any code out of to the root loop, but only out of the current loop.
+             * This is required, since we now have non-constant instructions which might depend on code from the parent
+             * loops.
+             * TODO better yet, distinguish between actual constant instructions (hoist out of the outermost loop) and
+             * non-constant, but loop invariant instructions (hoist only outside of the current loop).
+             *
+             * auto targetTreeNode = castToTreeNode(currentNode->findRoot(moveDepth == -1 ? Optional<int>() :
+             * Optional<int>(moveDepth - 1)));
+             * auto targetLoop = targetTreeNode->key;
+             */
+            auto targetLoop = currentNode->key;
 
             currentNode->forAllOutgoingEdges(
                 [&](const LoopInclusionTreeNode& child, const LoopInclusionTreeEdge&) -> bool {

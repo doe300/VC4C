@@ -151,8 +151,8 @@ TestIntegerFunctions::TestIntegerFunctions(const vc4c::Configuration& config) : 
     TEST_ADD(TestIntegerFunctions::testPopcountUnsignedInt);
     TEST_ADD(TestIntegerFunctions::testPopcountUnsignedShort);
     TEST_ADD(TestIntegerFunctions::testPopcountUnsignedChar);
-    // TEST_ADD(TestIntegerFunctions::testPopcountSignedLong);
-    // TEST_ADD(TestIntegerFunctions::testPopcountUnsignedLong);
+    TEST_ADD(TestIntegerFunctions::testPopcountSignedLong);
+    TEST_ADD(TestIntegerFunctions::testPopcountUnsignedLong);
 
     TEST_ADD(TestIntegerFunctions::testMad24SignedInt);
     TEST_ADD(TestIntegerFunctions::testMad24UnsignedInt);

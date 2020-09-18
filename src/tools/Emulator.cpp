@@ -1027,8 +1027,9 @@ void VPM::setDMAReadAddress(const SIMDVector& val)
 
     std::pair<uint32_t, uint32_t> vpmBaseAddress =
         std::make_pair(setup.dmaSetup.getWordRow(), setup.dmaSetup.getWordColumn());
-    std::pair<uint32_t, uint32_t> sizes = std::make_pair(setup.dmaSetup.getNumberRows(),
-        setup.dmaSetup.getRowLength() == 0 ? 16 /* 0 => 16 */ : setup.dmaSetup.getRowLength());
+    std::pair<uint32_t, uint32_t> sizes =
+        std::make_pair(setup.dmaSetup.getNumberRows() == 0 ? 16 /* 0 => 16 */ : setup.dmaSetup.getNumberRows(),
+            setup.dmaSetup.getRowLength() == 0 ? 16 /* 0 => 16 */ : setup.dmaSetup.getRowLength());
     if(setup.dmaSetup.getVertical())
         // invert columns and rows
         std::swap(sizes.first, sizes.second);

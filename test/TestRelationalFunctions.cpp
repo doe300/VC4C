@@ -127,6 +127,14 @@ static void testUnaryFunction(vc4c::Configuration& config, const std::string& op
     compileBuffer(config, code, N == 1 ? UNARY_FUNCTION_SCALAR : UNARY_FUNCTION, options);
 
     auto in = generateInput<float, N * 12, float, Distribution>(true);
+    // some special values to check
+    in[5] = -0.0f;
+    in[6] = std::numeric_limits<float>::signaling_NaN();
+    in[7] = std::numeric_limits<float>::quiet_NaN();
+    in[8] = std::numeric_limits<float>::infinity();
+    in[9] = -std::numeric_limits<float>::infinity();
+    in[10] = std::numeric_limits<float>::min();
+    in[11] = std::numeric_limits<float>::max();
 
     auto out = runEmulation<float, int, N, 12>(code, {in});
     auto pos = options.find("-DFUNC=") + std::string("-DFUNC=").size();

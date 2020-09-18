@@ -36,3 +36,43 @@ __kernel void test_shuffle(const __global char16* in, __global char16* out)
     // (f, e, d, c, b, a, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
     out[9] = shuffle(tmp, (uchar16)(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0));
 }
+
+// Test a compiler bug writing arbitrary values for upper elements when upcasting a vector
+__kernel void test_shuffle_upcast(const __global char8* in, const __global uchar8* mask, __global char8* out)
+{
+    char8 result = (char8) 0x17;
+    // shuffle([0, 1, 2, 3, 4, 5, 6, 7], [4, 5, 6, 7, 0, 1, 2, 3]).s6 = [2]
+    result.s4 = shuffle(in[0], mask[0]).s6;
+    // [x, x, x, x, 2, x, x, x]
+    out[0] = result;
+
+    result = (char8) 0x42;
+    // shuffle([0, 1, 2, 3, 4, 5, 6, 7], [4, 5, 6, 7, 0, 1, 2, 3]).s05 = [4, 1]
+    result.s37 = shuffle(in[1], mask[1]).s05;
+    // [x, x, x, 4, x, x, x, 1]
+    out[1] = result;
+
+    result = (char8) 0x13;
+    // shuffle([0, 1, 2, 3, 4, 5, 6, 7], [4, 5, 6, 7, 0, 1, 2, 3]).s376 = [7, 3, 2]
+    result.s052 = shuffle(in[2], mask[2]).s376;
+    // [7, x, 2, x, x, 3, x, x]
+    out[2] = result;
+
+    result = (char8) 0xFF;
+    // shuffle([0, 1, 2, 3, 4, 5, 6, 7], [4, 5, 6, 7, 0, 1, 2, 3]).2157 = [6, 5, 1, 3]
+    result.s3147 = shuffle(in[3], mask[3]).s2157;
+    // [x, 5, x, 6, 1, x, x, 3]
+    out[3] = result;
+
+    result = (char8) 0x71;
+    // shuffle([0, 1, 2, 3, 4, 5, 6, 7], [4, 5, 6, 7, 0, 1, 2, 3]).2157 = [6, 5, 1, 3]
+    result.s0123 = shuffle(in[4], mask[4]).s2157;
+    // [6, 5, 1, 3, x, x, x, x]
+    out[4] = result;
+
+    result = (char8) 0x31;
+    // shuffle([0, 1, 2, 3, 4, 5, 6, 7], [4, 5, 6, 7, 0, 1, 2, 3]).2157 = [3]
+    result.s0 = shuffle(in[5], mask[5]).s7;
+    // [3, x, x, x, x, x, x, x]
+    out[5] = result;
+}
