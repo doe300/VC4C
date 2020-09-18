@@ -11,11 +11,6 @@
 #include "CompilationError.h"
 #include "log.h"
 
-#ifdef SPIRV_FRONTEND
-#if __has_include("spirv-tools/linker.hpp")
-#include "spirv-tools/linker.hpp"
-#endif
-
 #include <algorithm>
 
 #ifdef __GNUC__
@@ -341,53 +336,6 @@ std::string spirv::getOpenCLMethodName(const uint32_t instructionID)
     }
 }
 
-std::string spirv::getErrorMessage(spv_result_t error)
-{
-    switch(error)
-    {
-    case SPV_UNSUPPORTED:
-        return "Unsupported operation";
-    case SPV_END_OF_STREAM:
-        return "End of Stream";
-    case SPV_WARNING:
-        return "Warning";
-    case SPV_FAILED_MATCH:
-        return "Failed match";
-    case SPV_REQUESTED_TERMINATION:
-        return "Requested Termination";
-    case SPV_ERROR_INTERNAL:
-        return "Internal Error";
-    case SPV_ERROR_OUT_OF_MEMORY:
-        return "Out of memory";
-    case SPV_ERROR_INVALID_POINTER:
-        return "Invalid pointer";
-    case SPV_ERROR_INVALID_BINARY:
-        return "Invalid binary input";
-    case SPV_ERROR_INVALID_TEXT:
-        return "Invalid text input";
-    case SPV_ERROR_INVALID_TABLE:
-        return "Invalid table";
-    case SPV_ERROR_INVALID_VALUE:
-        return "Invalid value";
-    case SPV_ERROR_INVALID_DIAGNOSTIC:
-        return "Invalid diagnostic";
-    case SPV_ERROR_INVALID_LOOKUP:
-        return "Invalid lookup";
-    case SPV_ERROR_INVALID_ID:
-        return "Invalid ID";
-    case SPV_ERROR_INVALID_CFG:
-        return "Invalid configuration";
-    case SPV_ERROR_INVALID_LAYOUT:
-        return "Invalid layout";
-    case SPV_ERROR_INVALID_CAPABILITY:
-        return "Invalid capability";
-    case SPV_ERROR_INVALID_DATA:
-        return "Invalid data";
-    default:
-        return "General error";
-    }
-}
-
 static std::string getCapabilityName(const spv::Capability cap)
 {
     switch(cap)
@@ -603,7 +551,7 @@ static const std::set<spv::Capability> supportedCapabilites = {
     // support for half floating-point type only as pointer-type
     spv::Capability::Float16Buffer, spv::Capability::Int64, spv::Capability::Float64};
 
-spv_result_t spirv::checkCapability(const spv::Capability cap)
+ParseResultCode spirv::checkCapability(const spv::Capability cap)
 {
     // see https://www.khronos.org/registry/spir-v/specs/1.0/SPIRV.html#Capability
     /*
@@ -618,20 +566,20 @@ spv_result_t spirv::checkCapability(const spv::Capability cap)
     if(supportedCapabilites.find(cap) != supportedCapabilites.end())
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Using supported capability: " << name << logging::endl);
-        return SPV_SUCCESS;
+        return ParseResultCode::SUCCESS;
     }
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Using unsupported capability: " << name << logging::endl);
-    return SPV_UNSUPPORTED;
+    return ParseResultCode::UNSUPPORTED;
 }
 
-spv_result_t spirv::checkExtension(const std::string& extension)
+ParseResultCode spirv::checkExtension(const std::string& extension)
 {
     if(extension == "SPV_KHR_no_integer_wrap_decoration")
         // Adds support for integer wrap/nowrap decorations, similar to LLVM nsw/nuw flags
         // https://github.com/KhronosGroup/SPIRV-Registry/blob/master/extensions/KHR/SPV_KHR_no_integer_wrap_decoration.html
-        return SPV_SUCCESS;
+        return ParseResultCode::SUCCESS;
     // a list of all extension: https://www.khronos.org/registry/spir-v/
-    return SPV_UNSUPPORTED;
+    return ParseResultCode::UNSUPPORTED;
 }
 
 Optional<uint32_t> spirv::getDecoration(
@@ -750,36 +698,6 @@ AddressSpace spirv::toAddressSpace(const spv::StorageClass storageClass)
     return AddressSpace::PRIVATE;
 }
 
-void spirv::consumeSPIRVMessage(
-    spv_message_level_t level, const char* source, const spv_position_t& position, const char* message)
-{
-    std::string levelText;
-    switch(level)
-    {
-    case SPV_MSG_DEBUG:
-        levelText = "Debug";
-        break;
-    case SPV_MSG_ERROR:
-        levelText = "Error";
-        break;
-    case SPV_MSG_FATAL:
-        levelText = "Fatal";
-        break;
-    case SPV_MSG_INFO:
-        levelText = "Info";
-        break;
-    case SPV_MSG_INTERNAL_ERROR:
-        levelText = "Internal Error";
-        break;
-    case SPV_MSG_WARNING:
-        levelText = "Warning";
-        break;
-    }
-    CPPLOG_LAZY(logging::Level::INFO,
-        log << "SPIR-V Tools: " << levelText << " message in '" << source << "' at position " << position.line << ":"
-            << position.column << ": " << message << logging::endl);
-}
-
 std::vector<uint32_t> spirv::readStreamOfWords(std::istream* in)
 {
     std::vector<uint32_t> words;
@@ -791,39 +709,6 @@ std::vector<uint32_t> spirv::readStreamOfWords(std::istream* in)
     }
 
     return words;
-}
-
-void spirv::linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output)
-{
-#ifndef SPIRV_FRONTEND
-    throw CompilationError(CompilationStep::LINKER, "SPIRV-Tools linker is not available!");
-#else
-    std::vector<std::vector<uint32_t>> binaries;
-    binaries.reserve(inputModules.size());
-    std::transform(inputModules.begin(), inputModules.end(), std::back_inserter(binaries), readStreamOfWords);
-
-    spvtools::LinkerOptions options;
-    options.SetCreateLibrary(false);
-    options.SetVerifyIds(true);
-    // the VC4CL intrinsics are not provided by any input module
-    options.SetAllowPartialLinkage(true);
-
-    spvtools::Context spvContext(SPV_ENV_OPENCL_EMBEDDED_1_2);
-
-    std::vector<uint32_t> linkedModules;
-    spv_result_t result = spvtools::Link(spvContext, binaries, &linkedModules, options);
-
-    if(result != SPV_SUCCESS)
-        throw CompilationError(CompilationStep::PARSER, getErrorMessage(result));
-
-    for(const uint32_t u : linkedModules)
-    {
-        output.write(reinterpret_cast<const char*>(&u), sizeof(uint32_t));
-    }
-    CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Linked " << inputModules.size() << " modules into a single module with " << linkedModules.size()
-            << " words of data." << logging::endl);
-#endif
 }
 
 std::string spirv::demangleFunctionName(const std::string& name)
@@ -876,5 +761,3 @@ void spirv::addFunctionAliases(Module& module)
     module.functionAliases.emplace("atomic_or", "atom_or");
     module.functionAliases.emplace("atomic_xor", "atom_xor");
 }
-
-#endif /* SPIRV_FRONTEND */

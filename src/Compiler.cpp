@@ -17,7 +17,7 @@
 #include "logger.h"
 #include "normalization/Normalizer.h"
 #include "optimization/Optimizer.h"
-#include "spirv/SPIRVParser.h"
+#include "spirv/SPIRVToolsParser.h"
 #include "llvm/BitcodeReader.h"
 
 #include <algorithm>
@@ -66,7 +66,7 @@ static std::unique_ptr<Parser> getParser(std::istream& stream)
         throw CompilationError(CompilationStep::GENERAL, "SPIR-V text needs to be first converted to SPIR-V binary!");
     case SourceType::SPIRV_BIN:
         logging::info() << "Using SPIR-V frontend..." << logging::endl;
-        return std::unique_ptr<Parser>(new spirv::SPIRVParser(stream, false));
+        return std::unique_ptr<Parser>(new spirv::SPIRVToolsParser(stream, false));
     case SourceType::OPENCL_C:
         throw CompilationError(CompilationStep::GENERAL, "OpenCL code needs to be first compiled with CLang!");
     case SourceType::QPUASM_BIN:

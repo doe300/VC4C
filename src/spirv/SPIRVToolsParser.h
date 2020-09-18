@@ -1,0 +1,81 @@
+/*
+ * Author: doe300
+ *
+ * See the file "LICENSE" for the full license governing this code.
+ */
+
+#ifndef SPIRV_TOOLS_PARSER_H
+#define SPIRV_TOOLS_PARSER_H
+
+#include "SPIRVParserBase.h"
+
+#ifdef SPIRV_FRONTEND // TODO rename to SPIRV tools availability
+
+#include "spirv-tools/libspirv.hpp"
+
+namespace vc4c
+{
+    namespace spirv
+    {
+        struct SPIRVToolsInstruction final : ParsedInstruction
+        {
+            SPIRVToolsInstruction(const spv_parsed_instruction_t* inst) : inst(inst) {}
+            ~SPIRVToolsInstruction() noexcept override;
+
+            spv::Op getOpcode() const noexcept override;
+            uint32_t getResultId() const noexcept override;
+            uint32_t getTypeId() const noexcept override;
+            std::size_t getNumWords() const noexcept override;
+            uint32_t getWord(std::size_t wordIndex) const override;
+            std::vector<uint32_t> parseArguments(std::size_t startIndex) const override;
+
+            uint32_t getExtendedInstructionType() const noexcept override;
+            std::string readLiteralString(std::size_t operandIndex) const override;
+
+            const spv_parsed_instruction_t* inst;
+        };
+
+        class SPIRVToolsParser final : public SPIRVParserBase
+        {
+        public:
+            explicit SPIRVToolsParser(std::istream& input = std::cin, bool isSPIRVText = false) :
+                SPIRVParserBase(input, isSPIRVText)
+            {
+            }
+            ~SPIRVToolsParser() override;
+
+        protected:
+            std::vector<uint32_t> assembleTextToBinary(const std::vector<uint32_t>& module) override;
+            void doParse(const std::vector<uint32_t>& module) override;
+        };
+
+        void linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output);
+
+    } // namespace spirv
+} // namespace vc4c
+#else
+namespace vc4c
+{
+    namespace spirv
+    {
+        class SPIRVToolsParser final : public SPIRVParserBase
+        {
+        public:
+            ~SPIRVToolsParser() override;
+
+        protected:
+            ParseResultCode doParse() override
+            {
+                throw CompilationError(CompilationStep::GENERAL, "SPIR-V Tools is not available!");
+            }
+        };
+
+        void linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output)
+        {
+            throw CompilationError(CompilationStep::LINKER, "SPIRV-Tools linker is not available!");
+        }
+
+    } // namespace spirv
+} // namespace vc4c
+#endif /* SPIRV_FRONTEND */
+#endif /* SPIRV_TOOLS_PARSER_H */

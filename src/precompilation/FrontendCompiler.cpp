@@ -14,7 +14,7 @@
 #include "log.h"
 
 #ifdef SPIRV_FRONTEND
-#include "../spirv/SPIRVHelper.h"
+#include "../spirv/SPIRVToolsParser.h"
 #endif
 
 #include <cstdlib>

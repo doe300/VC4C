@@ -4,42 +4,56 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#ifndef SPIRV_PARSER_H
-#define SPIRV_PARSER_H
+#ifndef SPIRV_PARSER_BASE_H
+#define SPIRV_PARSER_BASE_H
 
 #include "../Parser.h"
+#include "../performance.h"
 #include "CompilationError.h"
+#include "SPIRVOperation.h"
+
+#include "spirv/unified1/spirv.hpp11"
 
 #include <array>
 #include <iostream>
-
-#ifdef SPIRV_FRONTEND
-
-#include "spirv-tools/libspirv.hpp"
-#include "spirv/unified1/spirv.hpp11"
-
-#include "../performance.h"
-#include "SPIRVOperation.h"
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace vc4c
 {
     namespace spirv
     {
-        class SPIRVParser final : public Parser
+        enum class ParseResultCode;
+
+        struct ParsedInstruction
+        {
+            virtual ~ParsedInstruction() noexcept;
+
+            virtual spv::Op getOpcode() const noexcept = 0;
+            virtual uint32_t getResultId() const noexcept = 0;
+            virtual uint32_t getTypeId() const noexcept = 0;
+            virtual std::size_t getNumWords() const noexcept = 0;
+            virtual uint32_t getWord(std::size_t wordIndex) const = 0;
+            virtual std::vector<uint32_t> parseArguments(std::size_t startIndex) const = 0;
+
+            virtual uint32_t getExtendedInstructionType() const noexcept = 0;
+            virtual std::string readLiteralString(std::size_t operandIndex) const = 0;
+        };
+
+        class SPIRVParserBase : public Parser
         {
         public:
-            explicit SPIRVParser(std::istream& input = std::cin, bool isSPIRVText = false);
-            ~SPIRVParser() override;
+            explicit SPIRVParserBase(std::istream& input = std::cin, bool isSPIRVText = false);
+            ~SPIRVParserBase() override;
 
             void parse(Module& module) override;
 
-            spv_result_t parseHeader(spv_endianness_t endian, uint32_t magic, uint32_t version, uint32_t generator,
-                uint32_t id_bound, uint32_t reserved);
-            spv_result_t parseInstruction(const spv_parsed_instruction_t* parsed_instruction);
-            spv_result_t parseDecoration(const spv_parsed_instruction_t* parsed_instruction, uint32_t value);
+            ParseResultCode parseHeader(uint32_t magic, uint32_t version, uint32_t generator, uint32_t id_bound);
+            ParseResultCode parseInstruction(const ParsedInstruction& parsed_instruction);
             intermediate::InstructionDecorations toInstructionDecorations(uint32_t id);
 
-        private:
+        protected:
             using Decoration = std::pair<spv::Decoration, uint32_t>;
 
             /*
@@ -87,42 +101,24 @@ namespace vc4c
             // the global mapping of ID -> name for this ID (e.g. type-, function-name)
             FastMap<uint32_t, std::string> names;
             // the global mapping of ID -> extended instruction set consumer
-            std::unordered_map<uint32_t, spv_result_t (SPIRVParser::*)(const spv_parsed_instruction_t*)>
+            std::unordered_map<uint32_t, ParseResultCode (SPIRVParserBase::*)(const ParsedInstruction&)>
                 extensionConsumers;
+            // to relay names of unsupported operations
+            std::string errorExtra;
 
             Module* module;
 
-            std::pair<spv_result_t, Optional<Value>> calculateConstantOperation(
-                const spv_parsed_instruction_t* instruction);
+            ParseResultCode parseDecoration(const ParsedInstruction& parsed_instruction, uint32_t value);
 
-            spv_result_t consumeOpenCLInstruction(const spv_parsed_instruction_t* instruction);
-            spv_result_t consumeDebugInfoInstruction(const spv_parsed_instruction_t* instruction);
-            spv_result_t consumeOpenCLDebugInfoInstruction(const spv_parsed_instruction_t* instruction);
-            spv_result_t consumeNonSemanticInstruction(const spv_parsed_instruction_t* instruction);
+            ParseResultCode consumeOpenCLInstruction(const ParsedInstruction& instruction);
+            ParseResultCode consumeDebugInfoInstruction(const ParsedInstruction& instruction);
+            ParseResultCode consumeOpenCLDebugInfoInstruction(const ParsedInstruction& instruction);
+            ParseResultCode consumeNonSemanticInstruction(const ParsedInstruction& instruction);
+
+            virtual std::vector<uint32_t> assembleTextToBinary(const std::vector<uint32_t>& module) = 0;
+            virtual void doParse(const std::vector<uint32_t>& module) = 0;
         };
     } // namespace spirv
 } // namespace vc4c
-#else
-namespace vc4c
-{
-    namespace spirv
-    {
-        class SPIRVParser final : public Parser
-        {
-        public:
-            explicit SPIRVParser(std::istream& input = std::cin, bool isSPIRVText = false)
-            {
-                throw CompilationError(CompilationStep::GENERAL, "SPIR-V frontend is not active!");
-            }
-            ~SPIRVParser() override;
 
-            void parse(Module& module) override
-            {
-                throw CompilationError(CompilationStep::GENERAL, "SPIR-V frontend is not active!");
-            }
-        };
-    } // namespace spirv
-} // namespace vc4c
-#endif
-
-#endif /* SPIRV_PARSER_H */
+#endif /* SPIRV_PARSER_BASE_H */
