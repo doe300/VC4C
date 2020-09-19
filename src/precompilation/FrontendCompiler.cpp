@@ -184,7 +184,7 @@ static void compileLLVMIRToSPIRV0(std::istream* input, std::ostream* output, con
     if(!llvm_spirv)
         throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not found, can't compile to SPIR-V!");
 
-    std::string command = (*llvm_spirv + " " + (toText ? " -spirv-text" : "")) + " -o ";
+    std::string command = (*llvm_spirv + (toText ? " -spirv-text" : "")) + " -o ";
     command.append(outputFile.value_or("/dev/stdout")).append(" ");
     command.append(inputFile.value_or("/dev/stdin"));
 
@@ -410,26 +410,12 @@ static std::string getEmptyModule()
     return emptyModule.fileName;
 }
 
-void precompilation::linkLLVMModules(
-    std::vector<LLVMIRSource>&& sources, const std::string& userOptions, LLVMIRResult& result)
+template <typename T>
+std::string convertSourcesToFiles(std::istream*& inputStream, std::vector<T>& sources,
+    std::vector<std::unique_ptr<TemporaryFile>>& tempFiles, bool addOverride)
 {
-    // TODO add call to llvm-lto??!
-    PROFILE_START(LinkLLVMModules);
-
-    auto llvm_link = findToolLocation("llvm-link", LLVM_LINK_PATH);
-    if(!llvm_link)
-        throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-link not found, can't link LLVM IR modules!");
-
-    if(sources.empty())
-        throw CompilationError(CompilationStep::PRECOMPILATION, "Cannot link without input files!");
-
-    // only one input can be from a stream
-    std::istream* inputStream = nullptr;
-    // this is needed, since we can use a maximum of 1 stream input
-    std::vector<std::unique_ptr<TemporaryFile>> tempFiles;
-    const std::string out = result.file ? std::string("-o=") + result.file.value() : "";
-    std::string inputs = std::accumulate(
-        sources.begin(), sources.end(), std::string{}, [&](const std::string& a, const LLVMIRSource& b) -> std::string {
+    return std::accumulate(
+        sources.begin(), sources.end(), std::string{}, [&](const std::string& a, const T& b) -> std::string {
             /*
              * If we have multiple input files compiled with the VC4CC compiler, then they might all contain the
              * definition/implementation of one or more VC4CL std-lib functions (e.g. get_global_id()).
@@ -437,7 +423,7 @@ void precompilation::linkLLVMModules(
              * defined symbols from the previous modules.
              * TODO is there a better solution?
              */
-            auto separator = a.empty() ? " " : " -override=";
+            auto separator = a.empty() || !addOverride ? " " : " -override=";
             if(b.file)
                 return a + separator + b.file.value();
             if(inputStream != nullptr)
@@ -456,6 +442,26 @@ void precompilation::linkLLVMModules(
                 return a + " -";
             }
         });
+}
+
+void precompilation::linkLLVMModules(
+    std::vector<LLVMIRSource>&& sources, const std::string& userOptions, LLVMIRResult& result)
+{
+    // TODO add call to llvm-lto??!
+    PROFILE_START(LinkLLVMModules);
+
+    auto llvm_link = findToolLocation("llvm-link", LLVM_LINK_PATH);
+    if(!llvm_link)
+        throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-link not found, can't link LLVM IR modules!");
+
+    if(sources.empty())
+        throw CompilationError(CompilationStep::PRECOMPILATION, "Cannot link without input files!");
+
+    // only one input can be from a stream
+    std::istream* inputStream = nullptr;
+    // this is needed, since we can use a maximum of 1 stream input
+    std::vector<std::unique_ptr<TemporaryFile>> tempFiles;
+    std::string inputs = convertSourcesToFiles(inputStream, sources, tempFiles, true);
 
     /*
      * There is a feature/bug in llvm-link which discards all flags (e.g. the "-only-needed" flag set for linking in the
@@ -474,6 +480,7 @@ void precompilation::linkLLVMModules(
      * NOTE: cannot use " -only-needed -internalize" in general case, since symbols used across module boundaries are
      * otherwise optimized away. " -only-needed -internalize" is now only used when linking in the standard-library.
      */
+    const std::string out = result.file ? std::string("-o=") + result.file.value() : "";
     std::string command = *llvm_link + " " + userOptions + " " + out + " " + emptyInput + " " + inputs;
 
     // llvm-link does not like multiple white-spaces in the list of files (assumes file with empty name)
@@ -493,25 +500,51 @@ void precompilation::linkSPIRVModules(
     std::vector<SPIRVSource>&& sources, const std::string& userOptions, SPIRVResult& result)
 {
     PROFILE_START(LinkSPIRVModules);
-#ifndef SPIRV_TOOLS_FRONTEND
-    throw CompilationError(CompilationStep::LINKER, "SPIR-V Tools front-end is not provided!");
-#else
-    std::vector<std::istream*> convertedInputs;
-    std::vector<std::unique_ptr<std::istream>> conversionBuffer;
-    for(auto& source : sources)
+    if(auto spirv_link = findToolLocation("spirv-link", SPIRV_LINK_PATH))
     {
-        if(source.file)
-        {
-            conversionBuffer.emplace_back(new std::ifstream(source.file.value()));
-            convertedInputs.emplace_back(conversionBuffer.back().get());
-        }
-        else
-            convertedInputs.emplace_back(source.stream);
-    }
+        // only one input can be from a stream
+        std::istream* inputStream = nullptr;
+        // this is needed, since we can use a maximum of 1 stream input
+        std::vector<std::unique_ptr<TemporaryFile>> tempFiles;
+        std::string inputs = convertSourcesToFiles(inputStream, sources, tempFiles, false);
 
-    CPPLOG_LAZY(logging::Level::DEBUG, log << "Linking " << sources.size() << " input modules..." << logging::endl);
-    spirv::linkSPIRVModules(convertedInputs, *result.stream);
+        auto out = result.file ? std::string("-o=") + result.file.value() : "";
+        // the VC4CL intrinsics are not provided by any input module
+        auto customOptions = "--allow-partial-linkage --verify-ids --target-env opencl1.2embedded";
+        std::string command = *spirv_link + " " + userOptions + " " + customOptions + " " + out + " " + inputs;
+
+        // spirv-link does not like multiple white-spaces in the list of files (assumes file with empty name)
+        std::size_t n = 0;
+        while((n = command.find("  ", n)) != std::string::npos)
+        {
+            command.replace(n, 2, " ");
+        }
+
+        CPPLOG_LAZY(logging::Level::INFO, log << "Linking SPIR-V modules with: " << command << logging::endl);
+        runPrecompiler(command, inputStream, result.file ? nullptr : result.stream);
+    }
+    else
+    {
+#ifndef SPIRV_TOOLS_FRONTEND
+        throw CompilationError(CompilationStep::LINKER, "SPIR-V Tools front-end is not provided!");
+#else
+        std::vector<std::istream*> convertedInputs;
+        std::vector<std::unique_ptr<std::istream>> conversionBuffer;
+        for(auto& source : sources)
+        {
+            if(source.file)
+            {
+                conversionBuffer.emplace_back(new std::ifstream(source.file.value()));
+                convertedInputs.emplace_back(conversionBuffer.back().get());
+            }
+            else
+                convertedInputs.emplace_back(source.stream);
+        }
+
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Linking " << sources.size() << " input modules..." << logging::endl);
+        spirv::linkSPIRVModules(convertedInputs, *result.stream);
 #endif
+    }
     PROFILE_END(LinkSPIRVModules);
 }
 

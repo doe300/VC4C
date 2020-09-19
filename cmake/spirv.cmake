@@ -74,7 +74,13 @@ endif()
 # If the complete tool collection is provided, compile the SPIR-V front-end
 if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 	message(STATUS "Compiling SPIR-V front-end...")
-	if(DEPENDENCIES_USE_FETCH_CONTENT)
+	# Try to find precompiled SPIR-V Tools, e.g. as provided by spirv-tools debian package
+	include(FindPkgConfig)
+	pkg_check_modules(SPIRV_TOOLS SPIRV-Tools)
+	if(SPIRV_TOOLS_FOUND)
+		set(SPIRV_Tools_HEADERS ${SPIRV_TOOLS_INCLUDEDIR})
+		set(SPIRV_Tools_LIBS ${SPIRV_TOOLS_LINK_LIBRARIES})
+	elseif(DEPENDENCIES_USE_FETCH_CONTENT)
 		# CMake 3.14 introduces https://cmake.org/cmake/help/latest/module/FetchContent.html which allows us to run the configuration step
 		# of the downloaded dependencies at CMake configuration step and therefore, we have the proper targets available.
 		include(FetchContent)
@@ -116,4 +122,14 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 		add_dependencies(SPIRV-Dependencies spirv-tools-project-build)
 	endif()
 	set(VC4C_ENABLE_SPIRV_TOOLS_FRONTEND ON)
+endif()
+
+####
+# Find additional SPIR-V tools
+####
+find_program(SPIRV_LINK_FOUND spirv-link)
+# XXX We could also look for spirv-as and spirv-dis here, but the SPIR-V text format they support is not compatible with llvm-spirv textual format.
+# Unless we decide to completely switch to this format, we don't have any use for these tools.
+if(SPIRV_LINK_FOUND)
+	message(STATUS "SPIRV-link found: ${SPIRV_LINK_FOUND}")
 endif()

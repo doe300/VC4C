@@ -144,9 +144,9 @@ static void printInfo()
     }
 
     std::cout << "Tool locations:" << std::endl;
-    for(auto tool :
-        std::vector<std::pair<std::string, std::string>>{{"clang", CLANG_PATH}, {"llvm-spirv", SPIRV_LLVM_SPIRV_PATH},
-            {"llvm-link", LLVM_LINK_PATH}, {"opt", OPT_PATH}, {"llvm-dis", LLVM_DIS_PATH}, {"llvm-as", LLVM_AS_PATH}})
+    for(auto tool : std::vector<std::pair<std::string, std::string>>{{"clang", CLANG_PATH},
+            {"llvm-spirv", SPIRV_LLVM_SPIRV_PATH}, {"llvm-link", LLVM_LINK_PATH}, {"opt", OPT_PATH},
+            {"llvm-dis", LLVM_DIS_PATH}, {"llvm-as", LLVM_AS_PATH}, {"spirv-link", SPIRV_LINK_PATH}})
     {
         if(auto tool_found = precompilation::findToolLocation(tool.first, tool.second))
         {

@@ -71,6 +71,14 @@ namespace vc4c
     static const std::string SPIRV_LLVM_SPIRV_PATH = "";
 #endif
 
+#cmakedefine SPIRV_LINK_FOUND "@SPIRV_LINK_FOUND@"
+#ifdef SPIRV_LINK_FOUND
+    static const std::string SPIRV_LINK_PATH = SPIRV_LINK_FOUND;
+#undef SPIRV_LINK_FOUND
+#else
+    static const std::string SPIRV_LINK_PATH = "";
+#endif
+
 #cmakedefine VC4C_ENABLE_SPIRV_TOOLS_FRONTEND
 #ifdef VC4C_ENABLE_SPIRV_TOOLS_FRONTEND
 #define SPIRV_TOOLS_FRONTEND

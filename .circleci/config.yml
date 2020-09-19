@@ -89,6 +89,9 @@ jobs:
     steps:
       - checkout
       - run:
+          name: install SPIRV-Tools
+          command: sudo apt update && sudo apt install -y spirv-tools
+      - run:
           name: download header
           command: git clone https://github.com/doe300/VC4CLStdLib.git VC4CLStdLib && cd VC4CLStdLib && cmake . -DBUILD_NUMBER=$CIRCLE_BUILD_NUM -DCROSS_COMPILE=OFF && sudo make install && cd ..
       - run:
@@ -149,7 +152,7 @@ jobs:
       - run: sudo dpkg -i build/vc4c-0.4-Linux.deb
       - run: sudo ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: sudo ldconfig
-      - run: build/src/vc4c --version
+      - run: sudo build/src/vc4c --version
       - run: sudo build/test/TestVC4C --output=plain --mode=verbose --test-instructions --test-operators --emulate-common --emulate-conversions --emulate-geometric --emulate-relational --emulate-vector --test-emulator --test-frontend --test-container
       - run: sudo dpkg -r vc4c
       - run: sudo dpkg -r vc4cl-stdlib
