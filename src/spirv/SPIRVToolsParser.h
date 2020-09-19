@@ -9,6 +9,8 @@
 
 #include "SPIRVParserBase.h"
 
+#include "tool_paths.h"
+
 #ifdef SPIRV_TOOLS_FRONTEND
 
 #include "spirv-tools/libspirv.hpp"
@@ -63,7 +65,7 @@ namespace vc4c
             ~SPIRVToolsParser() override;
 
         protected:
-            ParseResultCode doParse() override
+            void doParse(const std::vector<uint32_t>& module) override
             {
                 throw CompilationError(CompilationStep::GENERAL, "SPIR-V Tools is not available!");
             }

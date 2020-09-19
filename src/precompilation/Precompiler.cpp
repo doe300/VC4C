@@ -56,20 +56,16 @@ void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>&
             options, outputFile);
     else
     {
-#if defined USE_LLVM_LIBRARY and defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH
+#if defined USE_LLVM_LIBRARY
         // we have both front-ends, select the front-end which can handle the input type
         if(isSupportedByFrontend(precompiler.inputType, Frontend::LLVM_IR))
             // prefer LLVM library front-end
             precompiler.run(output, SourceType::LLVM_IR_BIN, options, outputFile);
-        else
+        else if(findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
             precompiler.run(output, SourceType::SPIRV_BIN, options, outputFile);
-#elif defined USE_LLVM_LIBRARY
-        precompiler.run(output, SourceType::LLVM_IR_BIN, options, outputFile);
-#elif defined SPIRV_CLANG_PATH and defined SPIRV_LLVM_SPIRV_PATH
-        precompiler.run(output, SourceType::SPIRV_BIN, options, outputFile);
-#elif defined CLANG_PATH
-        precompiler.run(output, SourceType::LLVM_IR_TEXT, options, outputFile);
 #else
+        if(findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
+            precompiler.run(output, SourceType::SPIRV_BIN, options, outputFile);
         throw CompilationError(CompilationStep::PRECOMPILATION, "No matching precompiler available!");
 #endif
     }
@@ -133,11 +129,7 @@ SourceType Precompiler::getSourceType(std::istream& stream)
 static std::pair<bool, bool> determinePossibleLinkers(
     const std::unordered_map<std::istream*, Optional<std::string>>& inputs)
 {
-#ifdef LLVM_LINK_PATH
-    bool llvmLinkerPossible = true;
-#else
-    bool llvmLinkerPossible = false;
-#endif
+    bool llvmLinkerPossible = findToolLocation("llvm-link", LLVM_LINK_PATH).has_value();
 #ifdef SPIRV_TOOLS_FRONTEND
     bool spirvLinkerPossible = true;
 #else
@@ -201,8 +193,7 @@ static NODISCARD Optional<TemporaryFile> compileToLLVM(const std::pair<std::istr
             source.second ? OpenCLSource(source.second.value()) : OpenCLSource(*source.first), "", res);
         return f;
     }
-#ifdef LLVM_AS_PATH
-    else if(type == SourceType::LLVM_IR_TEXT)
+    else if(type == SourceType::LLVM_IR_TEXT && findToolLocation("llvm-as", LLVM_AS_PATH))
     {
         TemporaryFile f;
         LLVMIRResult res(f.fileName);
@@ -210,7 +201,6 @@ static NODISCARD Optional<TemporaryFile> compileToLLVM(const std::pair<std::istr
             source.second ? LLVMIRTextSource(source.second.value()) : LLVMIRTextSource(*source.first), "", res);
         return f;
     }
-#endif
     else if(type == SourceType::LLVM_IR_BIN)
     {
         return {};
@@ -308,9 +298,7 @@ bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Opti
         {
         case SourceType::OPENCL_C:
         case SourceType::LLVM_IR_BIN:
-#ifdef LLVM_LINK_PATH
-            return true;
-#endif
+            return findToolLocation("llvm-link", LLVM_LINK_PATH).has_value();
         case SourceType::LLVM_IR_TEXT:
         case SourceType::SPIRV_BIN:
         case SourceType::SPIRV_TEXT:
@@ -325,11 +313,12 @@ bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Opti
 
 bool Precompiler::isLinkerAvailable()
 {
-#if defined(SPIRV_TOOLS_FRONTEND) || defined(LLVM_LINK_PATH)
+#if defined(SPIRV_TOOLS_FRONTEND)
     return true;
-#else
-    return false;
 #endif
+    if(findToolLocation("llvm-link", LLVM_LINK_PATH))
+        return true;
+    return false;
 }
 
 static std::string determineFilePath(const std::string& fileName, const std::vector<std::string>& folders)
@@ -356,9 +345,8 @@ const StdlibFiles& Precompiler::findStandardLibraryFiles(const std::vector<std::
 {
     static const StdlibFiles paths = [&]() {
         std::vector<std::string> allPaths(additionalFolders);
-#ifdef VC4CL_STDLIB_FOLDER
-        allPaths.emplace_back(VC4CL_STDLIB_FOLDER);
-#endif
+        if(!VC4CL_STDLIB_FOLDER.empty())
+            allPaths.emplace_back(VC4CL_STDLIB_FOLDER);
         allPaths.emplace_back("/usr/local/include/vc4cl-stdlib/");
         allPaths.emplace_back("/usr/include/vc4cl-stdlib/");
         if(auto homeDir = std::getenv("HOME"))
@@ -397,15 +385,8 @@ void Precompiler::precompileStandardLibraryFiles(const std::string& sourceFile, 
         "-Wno-unknown-attributes -x cl "
         "-emit-llvm-bc -o ";
 
-#ifdef SPIRV_CLANG_PATH
-    // just OpenCL C -> LLVM IR (but with Khronos CLang)
-    const std::string compiler = SPIRV_CLANG_PATH;
-#else
-    const std::string compiler = CLANG_PATH;
-#endif
-
-    auto pchCommand = compiler + pchArgs + destinationFolder + "/VC4CLStdLib.h.pch " + sourceFile;
-    auto moduleCommand = compiler + moduleArgs + destinationFolder + "/VC4CLStdLib.bc " + sourceFile;
+    auto pchCommand = CLANG_PATH + pchArgs + destinationFolder + "/VC4CLStdLib.h.pch " + sourceFile;
+    auto moduleCommand = CLANG_PATH + moduleArgs + destinationFolder + "/VC4CLStdLib.bc " + sourceFile;
 
     CPPLOG_LAZY(logging::Level::INFO, log << "Pre-compiling standard library with: " << pchCommand << logging::endl);
     runPrecompiler(pchCommand, nullptr, nullptr);
@@ -504,8 +485,7 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
     else if(inputType == SourceType::LLVM_IR_TEXT)
     {
         LLVMIRTextSource src = inputFile ? LLVMIRTextSource(inputFile.value()) : LLVMIRTextSource(input);
-#ifdef LLVM_AS_PATH
-        if(outputType == SourceType::SPIRV_BIN)
+        if(outputType == SourceType::SPIRV_BIN && findToolLocation("llvm-as", LLVM_AS_PATH))
         {
             TemporaryFile tmpFile;
             LLVMIRResult tmpResult(tmpFile.fileName);
@@ -514,12 +494,11 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
             LLVMIRSource tmpSource(tmpResult);
             compileLLVMToSPIRV(std::move(tmpSource), extendedOptions, res);
         }
-        else if(outputType == SourceType::LLVM_IR_BIN)
+        else if(outputType == SourceType::LLVM_IR_BIN && findToolLocation("llvm-as", LLVM_AS_PATH))
         {
             LLVMIRResult res = outputFile ? LLVMIRResult(outputFile.value()) : LLVMIRResult(&tempStream);
             assembleLLVM(std::move(src), extendedOptions, res);
         }
-#endif
     }
     else if(inputType == SourceType::LLVM_IR_BIN)
     {
@@ -534,13 +513,11 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
             SPIRVTextResult res = outputFile ? SPIRVTextResult(outputFile.value()) : SPIRVTextResult(&tempStream);
             compileLLVMToSPIRVText(std::move(src), extendedOptions, res);
         }
-#ifdef LLVM_DIS_PATH
-        else if(outputType == SourceType::LLVM_IR_TEXT)
+        else if(outputType == SourceType::LLVM_IR_TEXT && findToolLocation("llvm-dis", LLVM_DIS_PATH))
         {
             LLVMIRTextResult res = outputFile ? LLVMIRTextResult(outputFile.value()) : LLVMIRTextResult(&tempStream);
             disassembleLLVM(std::move(src), extendedOptions, res);
         }
-#endif
     }
     else if(inputType == SourceType::SPIRV_BIN && outputType == SourceType::SPIRV_TEXT)
     {

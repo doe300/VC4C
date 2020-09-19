@@ -63,8 +63,6 @@ static std::vector<std::string> buildClangCommand(const std::string& compiler, c
         // disable fused floationg-point operations, since we do not support them anyway
         command.emplace_back("-ffp-contract=off");
     }
-
-#if defined USE_CLANG_OPENCL || defined SPIRV_CLANG_PATH
     if(options.find("-cl-std") == std::string::npos)
     {
         // build OpenCL 1.2
@@ -80,7 +78,7 @@ static std::vector<std::string> buildClangCommand(const std::string& compiler, c
         // suppressed warnings about double constants
         command.emplace_back("-cl-single-precision-constant");
     }
-#endif
+
     /*
      * Problem:
      * "In C99, inline means that a function's definition is provided only for inlining, and that there is another
@@ -160,21 +158,12 @@ static void compileOpenCLToLLVMIR0(std::istream* input, std::ostream* output, co
     const std::string& outputType, const Optional<std::string>& inputFile, const Optional<std::string>& outputFile,
     bool withPCH)
 {
-#if not defined SPIRV_CLANG_PATH && not defined CLANG_PATH
-    throw CompilationError(CompilationStep::PRECOMPILATION, "No CLang configured for pre-compilation!");
-#endif
-#ifdef SPIRV_CLANG_PATH
-    // just OpenCL C -> LLVM IR (but with Khronos CLang)
-    const std::string compiler = SPIRV_CLANG_PATH;
-#else
-    const std::string compiler = CLANG_PATH;
-#endif
     // in both instances, compile to SPIR to match the "architecture" the PCH was compiled for
     const std::string defaultOptions = "-cc1 -triple spir-unknown-unknown";
     // only run preprocessor and compilation, no linking and code-generation
     // emit LLVM IR
     auto command =
-        buildClangCommand(compiler, defaultOptions, options, std::string("-S ").append("-emit-" + outputType),
+        buildClangCommand(CLANG_PATH, defaultOptions, options, std::string("-S ").append("-emit-" + outputType),
             outputFile.value_or("/dev/stdout"), inputFile.value_or("-"), withPCH);
 
     auto commandString = to_string<std::string>(command, " ");
@@ -191,11 +180,11 @@ static void compileLLVMIRToSPIRV0(std::istream* input, std::ostream* output, con
     const bool toText = false, const Optional<std::string>& inputFile = {},
     const Optional<std::string>& outputFile = {})
 {
-    auto llvm_spirv = findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH "");
+    auto llvm_spirv = findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH);
     if(!llvm_spirv)
         throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not found, can't compile to SPIR-V!");
 
-    std::string command = (*llvm_spirv + (toText ? " -spirv-text" : "")) + " -o ";
+    std::string command = (*llvm_spirv + " " + (toText ? " -spirv-text" : "")) + " -o ";
     command.append(outputFile.value_or("/dev/stdout")).append(" ");
     command.append(inputFile.value_or("/dev/stdin"));
 
@@ -208,11 +197,11 @@ static void compileSPIRVToSPIRV(std::istream* input, std::ostream* output, const
     const bool toText = false, const Optional<std::string>& inputFile = {},
     const Optional<std::string>& outputFile = {})
 {
-    auto llvm_spirv = findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH "");
+    auto llvm_spirv = findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH);
     if(!llvm_spirv)
         throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not found, can't compile to SPIR-V!");
 
-    std::string command = (*llvm_spirv + (toText ? " -to-text" : " -to-binary")) + " -o ";
+    std::string command = (*llvm_spirv + " " + (toText ? " -to-text" : " -to-binary")) + " -o ";
     command.append(outputFile.value_or("/dev/stdout")).append(" ");
     command.append(inputFile.value_or("/dev/stdin"));
 
@@ -376,7 +365,7 @@ void precompilation::disassembleSPIRV(SPIRVSource&& source, const std::string& u
 void precompilation::disassembleLLVM(LLVMIRSource&& source, const std::string& userOptions, LLVMIRTextResult& result)
 {
     PROFILE_START(DisassembleLLVM);
-    auto llvm_dis = findToolLocation("llvm-dis", LLVM_DIS_PATH "");
+    auto llvm_dis = findToolLocation("llvm-dis", LLVM_DIS_PATH);
     if(!llvm_dis)
         throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-dis not found, can't disassemble LLVM IR!");
 
@@ -392,7 +381,7 @@ void precompilation::disassembleLLVM(LLVMIRSource&& source, const std::string& u
 void precompilation::assembleLLVM(LLVMIRTextSource&& source, const std::string& userOptions, LLVMIRResult& result)
 {
     PROFILE_START(AssembleLLVM);
-    auto llvm_as = findToolLocation("llvm-as", LLVM_AS_PATH "");
+    auto llvm_as = findToolLocation("llvm-as", LLVM_AS_PATH);
     if(!llvm_as)
         throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-as not found, can't assemble LLVM IR!");
 
@@ -427,7 +416,7 @@ void precompilation::linkLLVMModules(
     // TODO add call to llvm-lto??!
     PROFILE_START(LinkLLVMModules);
 
-    auto llvm_link = findToolLocation("llvm-link", LLVM_LINK_PATH "");
+    auto llvm_link = findToolLocation("llvm-link", LLVM_LINK_PATH);
     if(!llvm_link)
         throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-link not found, can't link LLVM IR modules!");
 
@@ -485,7 +474,7 @@ void precompilation::linkLLVMModules(
      * NOTE: cannot use " -only-needed -internalize" in general case, since symbols used across module boundaries are
      * otherwise optimized away. " -only-needed -internalize" is now only used when linking in the standard-library.
      */
-    std::string command = *llvm_link + userOptions + " " + out + " " + emptyInput + " " + inputs;
+    std::string command = *llvm_link + " " + userOptions + " " + out + " " + emptyInput + " " + inputs;
 
     // llvm-link does not like multiple white-spaces in the list of files (assumes file with empty name)
     std::size_t n = 0;
@@ -530,7 +519,7 @@ void precompilation::optimizeLLVMIR(LLVMIRSource&& source, const std::string& us
 {
     PROFILE_START(OptimizeLLVMIR);
 
-    auto opt = findToolLocation("opt", OPT_PATH "");
+    auto opt = findToolLocation("opt", OPT_PATH);
     if(!opt)
         throw CompilationError(CompilationStep::PRECOMPILATION, "opt not found, can't optimize LLVM IR!");
 
@@ -564,7 +553,7 @@ void precompilation::optimizeLLVMText(
 {
     PROFILE_START(OptimizeLLVMText);
 
-    auto opt = findToolLocation("opt", OPT_PATH "");
+    auto opt = findToolLocation("opt", OPT_PATH);
     if(!opt)
         throw CompilationError(CompilationStep::PRECOMPILATION, "opt not found, can't optimize LLVM IR!");
 
@@ -597,7 +586,7 @@ void precompilation::compileOpenCLToLLVMIR(OpenCLSource&& source, const std::str
 {
     // This check has the positive side-effect that if the VC4CLStdLib LLVM module is missing but the PCH exists, then
     // the compilation with PCH (a bit slower but functional) will be used.
-    auto llvm_link = findToolLocation("llvm-link", LLVM_LINK_PATH "", true);
+    auto llvm_link = findToolLocation("llvm-link", LLVM_LINK_PATH, true);
     if(llvm_link && !Precompiler::findStandardLibraryFiles().llvmModule.empty())
         return compileOpenCLAndLinkModule(std::move(source), userOptions, result);
 

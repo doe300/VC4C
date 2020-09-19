@@ -10,6 +10,7 @@
 #include "../Parser.h"
 #include "LLVMInstruction.h"
 #include "Precompiler.h"
+#include "tool_paths.h"
 
 #include <iostream>
 #include <memory>

@@ -59,10 +59,10 @@ TestEmulator::TestEmulator(const vc4c::Configuration& config) :
     {
         TEST_ADD_TWO_ARGUMENTS(TestEmulator::testFloatEmulations, i, vc4c::test::floatTests.at(i).first.kernelName);
     }
-#ifndef SPIRV_LLVM_SPIRV_PATH
-    // TODO "Unexpected llvm intrinsic: llvm.fshl.i32" in llvm-spirv
-    TEST_ADD(TestEmulator::testPartialMD5);
-#endif
+    if(config.frontend != Frontend::SPIR_V)
+        // TODO "Unexpected llvm intrinsic: llvm.fshl.i32" in llvm-spirv
+        TEST_ADD(TestEmulator::testPartialMD5);
+
     TEST_ADD(TestEmulator::testCRC16);
     TEST_ADD(TestEmulator::testPearson16);
     TEST_ADD(TestEmulator::testPi);

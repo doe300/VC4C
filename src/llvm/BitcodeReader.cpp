@@ -129,7 +129,6 @@ BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : cont
             std::to_string(static_cast<unsigned>(sourceType)));
 }
 
-#if LLVM_LIBRARY_VERSION >= 39 /* Function meta-data was introduced in LLVM 3.9 */
 static void extractKernelMetadata(
     Method& kernel, const llvm::Function& func, const llvm::Module& llvmModule, const llvm::LLVMContext& context)
 {
@@ -273,181 +272,6 @@ static void extractKernelMetadata(
         }
     }
 }
-#else
-static void extractKernelMetadata(
-    Method& kernel, const llvm::Function& func, const llvm::Module& llvmModule, const llvm::LLVMContext& context)
-{
-    llvm::NamedMDNode* kernelsMetaData = llvmModule.getNamedMetadata("opencl.kernels");
-    if(kernelsMetaData != nullptr)
-    {
-        // each kernel is a single meta-data entry
-        for(const llvm::MDNode* entry : kernelsMetaData->operands())
-        {
-            // each kernel-entry has the the function as well as additional links to the kernel meta-data
-            const llvm::Metadata* function = entry->getOperand(0).get();
-            if(function->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind &&
-                llvm::cast<const llvm::ConstantAsMetadata>(function)->getValue() == &func)
-            {
-                for(unsigned i = 1; i < entry->getNumOperands(); ++i)
-                {
-                    const llvm::MDTuple* node = llvm::cast<const llvm::MDTuple>(entry->getOperand(i).get());
-                    if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind &&
-                        llvm::cast<const llvm::MDString>(node->getOperand(0).get())->getString() ==
-                            "kernel_arg_addr_space")
-                    {
-                        // address spaces for kernel pointer arguments, e.g. "!1 = !{!"kernel_arg_addr_space", i32 1,
-                        // i32 1}"
-                        for(unsigned i = 1; i < node->getNumOperands(); ++i)
-                        {
-                            if(auto ptrType = kernel.parameters.at(i - 1).type.getPointerType())
-                            {
-                                const llvm::Metadata* operand = node->getOperand(i).get();
-                                if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
-                                {
-                                    const llvm::ConstantAsMetadata* constant =
-                                        llvm::cast<const llvm::ConstantAsMetadata>(operand);
-                                    auto& addrSpace = ptrType->addressSpace;
-                                    if(addrSpace == AddressSpace::GENERIC)
-                                        const_cast<AddressSpace&>(addrSpace) = toAddressSpace(static_cast<int>(
-                                            llvm::cast<const llvm::ConstantInt>(constant->getValue())->getSExtValue()));
-                                }
-                                else
-                                {
-                                    dumpLLVM(operand);
-                                    throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind",
-                                        std::to_string(operand->getMetadataID()));
-                                }
-                            }
-                        }
-                    }
-                    else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind &&
-                        llvm::cast<const llvm::MDString>(node->getOperand(0).get())->getString() ==
-                            "kernel_arg_access_qual")
-                    {
-                        // access qualifiers for image arguments, e.g. "!2 = !{!"kernel_arg_access_qual", !"none",
-                        // !"none"}"
-                    }
-                    else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind &&
-                        llvm::cast<const llvm::MDString>(node->getOperand(0).get())->getString() == "kernel_arg_type")
-                    {
-                        // original type-names for kernel arguments, e.g. "!3 = !{!"kernel_arg_type", !"float*",
-                        // !"float*"}"
-                        for(unsigned i = 1; i < node->getNumOperands(); ++i)
-                        {
-                            const llvm::Metadata* operand = node->getOperand(i).get();
-                            if(operand->getMetadataID() == llvm::Metadata::MDStringKind)
-                            {
-                                const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
-                                kernel.parameters.at(i - 1).origTypeName = name->getString();
-                            }
-                            else
-                            {
-                                dumpLLVM(operand);
-                                throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind",
-                                    std::to_string(operand->getMetadataID()));
-                            }
-                        }
-                    }
-                    else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind &&
-                        llvm::cast<const llvm::MDString>(node->getOperand(0).get())->getString() ==
-                            "kernel_arg_type_qual")
-                    {
-                        // additional type qualifiers, e.g. "!5 = !{!"kernel_arg_type_qual", !"", !""}"
-                        for(unsigned i = 1; i < node->getNumOperands(); ++i)
-                        {
-                            const llvm::Metadata* operand = node->getOperand(i).get();
-                            if(operand->getMetadataID() == llvm::Metadata::MDStringKind)
-                            {
-                                const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
-                                Parameter& param = kernel.parameters.at(i - 1);
-                                if(name->getString().find("const") != std::string::npos)
-                                    param.decorations = add_flag(param.decorations, ParameterDecorations::READ_ONLY);
-                                if(name->getString().find("restrict") != std::string::npos)
-                                    param.decorations = add_flag(param.decorations, ParameterDecorations::RESTRICT);
-                                if(name->getString().find("volatile") != std::string::npos)
-                                    param.decorations = add_flag(param.decorations, ParameterDecorations::VOLATILE);
-                            }
-                            else
-                            {
-                                dumpLLVM(operand);
-                                throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind",
-                                    std::to_string(operand->getMetadataID()));
-                            }
-                        }
-                    }
-                    else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind &&
-                        llvm::cast<const llvm::MDString>(node->getOperand(0).get())->getString() == "kernel_arg_name")
-                    {
-                        // the original argument names, e.g. "!6 = !{!"kernel_arg_name", !"a", !"b"}"
-                        for(unsigned i = 1; i < node->getNumOperands(); ++i)
-                        {
-                            const llvm::Metadata* operand = node->getOperand(i).get();
-                            if(operand->getMetadataID() == llvm::Metadata::MDStringKind)
-                            {
-                                const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
-                                kernel.parameters.at(i - 1).parameterName = name->getString();
-                            }
-                            else
-                            {
-                                dumpLLVM(operand);
-                                throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind",
-                                    std::to_string(operand->getMetadataID()));
-                            }
-                        }
-                    }
-                    else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind &&
-                        llvm::cast<const llvm::MDString>(node->getOperand(0).get())->getString() ==
-                            "reqd_work_group_size")
-                    {
-                        // compile time work-group size, e.g. "!1 = !{!"reqd_work_group_size", i32 1, i32 1, i32 1}"
-                        for(unsigned i = 1; i < node->getNumOperands(); ++i)
-                        {
-                            const llvm::Metadata* operand = node->getOperand(i).get();
-                            if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
-                            {
-                                const llvm::ConstantAsMetadata* constant =
-                                    llvm::cast<const llvm::ConstantAsMetadata>(operand);
-                                kernel.metaData.workGroupSizes.at(i - 1) = static_cast<uint32_t>(
-                                    llvm::cast<const llvm::ConstantInt>(constant->getValue())->getZExtValue());
-                            }
-                            else
-                            {
-                                dumpLLVM(operand);
-                                throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind",
-                                    std::to_string(operand->getMetadataID()));
-                            }
-                        }
-                    }
-                    else if(node->getOperand(0)->getMetadataID() == llvm::Metadata::MDStringKind &&
-                        llvm::cast<const llvm::MDString>(node->getOperand(0).get())->getString() ==
-                            "work_group_size_hint")
-                    {
-                        // compile time work-group size hint, e.g. "!1 = !{!"reqd_work_group_size", i32 1, i32 1, i32
-                        // 1}"
-                        for(unsigned i = 1; i < node->getNumOperands(); ++i)
-                        {
-                            const llvm::Metadata* operand = node->getOperand(i).get();
-                            if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
-                            {
-                                const llvm::ConstantAsMetadata* constant =
-                                    llvm::cast<const llvm::ConstantAsMetadata>(operand);
-                                kernel.metaData.workGroupSizeHints.at(i - 1) = static_cast<uint32_t>(
-                                    llvm::cast<const llvm::ConstantInt>(constant->getValue())->getZExtValue());
-                            }
-                            else
-                            {
-                                dumpLLVM(operand);
-                                throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data kind",
-                                    std::to_string(operand->getMetadataID()));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-#endif
 
 void BitcodeReader::parse(Module& module)
 {
@@ -687,10 +511,8 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
             toParameterDecorations(arg, type, func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)));
         if(arg.getDereferenceableBytes() != 0)
             param.maxByteOffset = static_cast<std::size_t>(arg.getDereferenceableBytes());
-#if LLVM_LIBRARY_VERSION >= 39
         if(arg.getDereferenceableOrNullBytes() != 0)
             param.maxByteOffset = static_cast<std::size_t>(arg.getDereferenceableOrNullBytes());
-#endif
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading parameter " << param.to_string(true) << logging::endl);
         if(param.type.getImageType() && func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)
             intermediate::reserveImageConfiguration(module, param);
@@ -738,7 +560,6 @@ static intermediate::InstructionDecorations toInstructionDecorations(const llvm:
     if(llvm::isa<llvm::FPMathOperator>(&inst) && inst.hasUnsafeAlgebra())
 #endif
         deco = add_flag(deco, intermediate::InstructionDecorations::FAST_MATH);
-#if LLVM_LIBRARY_VERSION >= 39
     if(inst.hasNoSignedWrap())
         deco = add_flag(deco, intermediate::InstructionDecorations::SIGNED_OVERFLOW_IS_UB);
     if(inst.hasNoUnsignedWrap())
@@ -746,7 +567,6 @@ static intermediate::InstructionDecorations toInstructionDecorations(const llvm:
     // XXX this is sometimes added to add and getelementptr operations, but not present in the LLVM IR output!?
     if(inst.isExact())
         deco = add_flag(deco, intermediate::InstructionDecorations::EXACT_OPERATION);
-#endif
     return deco;
 }
 

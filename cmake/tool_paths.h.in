@@ -1,0 +1,95 @@
+/*
+ * Author: doe300
+ *
+ * See the file "LICENSE" for the full license governing this code.
+ */
+
+#ifndef VC4C_PRECOMPILATION_TOOLS_H
+#define VC4C_PRECOMPILATION_TOOLS_H
+
+#include <string>
+
+namespace vc4c
+{
+#cmakedefine VC4CL_STDLIB_DIR "@VC4CL_STDLIB_DIR@"
+#ifdef VC4CL_STDLIB_DIR
+    static const std::string VC4CL_STDLIB_FOLDER = VC4CL_STDLIB_DIR;
+#undef VC4CL_STDLIB_DIR
+#else
+    static const std::string VC4CL_STDLIB_FOLDER = "";
+#endif
+
+#cmakedefine CLANG_FOUND "@CLANG_FOUND@"
+#cmakedefine SPIRV_CLANG_FOUND "@SPIRV_CLANG_FOUND@"
+#ifdef SPIRV_CLANG_FOUND
+    static const std::string CLANG_PATH = SPIRV_CLANG_FOUND;
+#undef SPIRV_CLANG_FOUND
+#elif defined CLANG_FOUND
+    static const std::string CLANG_PATH = CLANG_FOUND;
+#undef CLANG_FOUND
+#endif
+
+#cmakedefine LLVM_LINK_FOUND "@LLVM_LINK_FOUND@"
+#ifdef LLVM_LINK_FOUND
+    static const std::string LLVM_LINK_PATH = LLVM_LINK_FOUND;
+#undef LLVM_LINK_FOUND
+#else
+    static const std::string LLVM_LINK_PATH = "";
+#endif
+
+#cmakedefine OPT_FOUND "@OPT_FOUND@"
+#ifdef OPT_FOUND
+    static const std::string OPT_PATH = OPT_FOUND;
+#undef OPT_FOUND
+#else
+    static const std::string OPT_PATH = "";
+#endif
+
+#cmakedefine LLVM_DIS_FOUND "@LLVM_DIS_FOUND@"
+#ifdef LLVM_DIS_FOUND
+    static const std::string LLVM_DIS_PATH = LLVM_DIS_FOUND;
+#undef LLVM_DIS_FOUND
+#else
+    static const std::string LLVM_DIS_PATH = "";
+#endif
+
+#cmakedefine LLVM_AS_FOUND "@LLVM_AS_FOUND@"
+#ifdef LLVM_AS_FOUND
+    static const std::string LLVM_AS_PATH = LLVM_AS_FOUND;
+#undef LLVM_AS_FOUND
+#else
+    static const std::string LLVM_AS_PATH = "";
+#endif
+
+#cmakedefine SPIRV_LINK_MODULES 1
+
+#cmakedefine SPIRV_LLVM_SPIR_FOUND "@SPIRV_LLVM_SPIR_FOUND@"
+#ifdef SPIRV_LLVM_SPIR_FOUND
+    static const std::string SPIRV_LLVM_SPIRV_PATH = SPIRV_LLVM_SPIR_FOUND;
+#undef SPIRV_LLVM_SPIR_FOUND
+#else
+    static const std::string SPIRV_LLVM_SPIRV_PATH = "";
+#endif
+
+#cmakedefine VC4C_ENABLE_SPIRV_TOOLS_FRONTEND
+#ifdef VC4C_ENABLE_SPIRV_TOOLS_FRONTEND
+#define SPIRV_TOOLS_FRONTEND
+#undef VC4C_ENABLE_SPIRV_TOOLS_FRONTEND
+#endif
+
+#cmakedefine VC4C_ENABLE_LLVM_LIB_FRONTEND
+#ifdef VC4C_ENABLE_LLVM_LIB_FRONTEND
+#define USE_LLVM_LIBRARY
+#cmakedefine LLVM_LIBRARY_VERSION @LLVM_LIBRARY_VERSION@
+#undef VC4C_ENABLE_LLVM_LIB_FRONTEND
+#endif
+
+#cmakedefine VC4C_ENABLE_LIBCLANG
+#ifdef VC4C_ENABLE_LIBCLANG
+#define USE_LIBCLANG
+#undef VC4C_ENABLE_LIBCLANG
+#endif
+
+} // namespace vc4c
+
+#endif /* VC4C_PRECOMPILATION_TOOLS_H */

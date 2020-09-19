@@ -13,6 +13,7 @@
 #include "git_commit.h"
 #include "log.h"
 #include "precompilation/FrontendCompiler.h"
+#include "tool_paths.h"
 #include "tools.h"
 
 #include <cstdio>
@@ -90,13 +91,6 @@ static void printHelp()
               << std::endl;
 }
 
-#ifndef LLVM_LIBRARY_VERSION
-#define LLVM_LIBRARY_VERSION 0
-#endif
-#ifndef VC4C_VERSION
-#define VC4C_VERSION ""
-#endif
-
 static std::string toVersionString(unsigned version)
 {
     std::stringstream s;
@@ -114,9 +108,6 @@ static void printInfo()
 #endif
 #ifdef MULTI_THREADED
         "multi-threaded optimization",
-#endif
-#ifdef USE_CLANG_OPENCL
-        "clang 3.9+ OpenCL features",
 #endif
 #ifdef SPIRV_TOOLS_FRONTEND
         "SPIR-V Tools front-end",
@@ -153,14 +144,9 @@ static void printInfo()
     }
 
     std::cout << "Tool locations:" << std::endl;
-#ifdef SPIRV_CLANG_PATH
-    auto clangPath = SPIRV_CLANG_PATH;
-#else
-    auto clangPath = CLANG_PATH;
-#endif
-    for(auto tool : std::vector<std::pair<std::string, std::string>>{{"clang", clangPath},
-            {"llvm-spirv", SPIRV_LLVM_SPIRV_PATH ""}, {"llvm-link", LLVM_LINK_PATH ""}, {"opt", OPT_PATH ""},
-            {"llvm-dis", LLVM_DIS_PATH ""}, {"llvm-as", LLVM_AS_PATH ""}})
+    for(auto tool :
+        std::vector<std::pair<std::string, std::string>>{{"clang", CLANG_PATH}, {"llvm-spirv", SPIRV_LLVM_SPIRV_PATH},
+            {"llvm-link", LLVM_LINK_PATH}, {"opt", OPT_PATH}, {"llvm-dis", LLVM_DIS_PATH}, {"llvm-as", LLVM_AS_PATH}})
     {
         if(auto tool_found = precompilation::findToolLocation(tool.first, tool.second))
         {
