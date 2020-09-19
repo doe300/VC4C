@@ -15,6 +15,7 @@ if(SPIRV_TRANSLATOR_ROOT)
 	find_program(SPIRV_CLANG_FOUND clang NAMES clang clang-3.9 clang-4.0 clang-5.0 clang-6.0 clang-7 clang-8 clang-9 clang-10)
 	find_program(OPT_FOUND opt NAMES opt opt-3.9 opt-4.0 opt-5.0 opt-6.0 opt-7 opt-8 opt-9 opt-10)
 	find_program(LLVM_DIS_FOUND llvm-dis NAMES llvm-dis llvm-dis-3.9 llvm-dis-4.0 llvm-dis-5.0 llvm-dis-6.0 llvm-dis-7 llvm-dis-8 llvm-dis-9 llvm-dis-10)
+	find_program(LLVM_AS_FOUND llvm-as NAMES llvm-as llvm-as-3.9 llvm-as-4.0 llvm-as-5.0 llvm-as-6.0 llvm-as-7 llvm-as-8 llvm-as-9 llvm-as-10)
 	find_program(LLVM_LINK_FOUND llvm-link NAMES llvm-link llvm-link-3.9 llvm-link-4.0 llvm-link-5.0 llvm-link-6.0 llvm-link-7 llvm-link-8 llvm-link-9 llvm-link-10)
 	find_file(SPIRV_LLVM_SPIR_FOUND llvm-spirv PATHS ${SPIRV_TRANSLATOR_ROOT} NO_DEFAULT_PATH)
 	if(SPIRV_CLANG_FOUND)
@@ -23,6 +24,10 @@ if(SPIRV_TRANSLATOR_ROOT)
 	if(LLVM_DIS_FOUND)
 		# Since the LLVM SPIR-V translator is based on the default clang, we can also use the default LLVM disassembler.
 		message(STATUS "LLVM-dis found: " ${LLVM_DIS_FOUND})
+	endif()
+	if(LLVM_AS_FOUND)
+		# Since the LLVM SPIR-V translator is based on the default clang, we can also use the default LLVM assembler.
+		message(STATUS "LLVM-as found: " ${LLVM_AS_FOUND})
 	endif()
 	if(LLVM_LINK_FOUND)
 		# Using the LLVM linker allows us to compile without PCH, but link in standard-library module which is much faster.

@@ -101,6 +101,9 @@ namespace vc4c
 #ifdef LLVM_DIS_PATH
         void disassembleLLVM(LLVMIRSource&& source, const std::string& userOptions, LLVMIRTextResult& result);
 #endif
+#ifdef LLVM_AS_PATH
+        void assembleLLVM(LLVMIRTextSource&& source, const std::string& userOptions, LLVMIRResult& result);
+#endif
         void linkLLVMModules(std::vector<LLVMIRSource>&& sources, const std::string& userOptions, LLVMIRResult& result);
         void linkSPIRVModules(std::vector<SPIRVSource>&& sources, const std::string& userOptions, SPIRVResult& result);
         void optimizeLLVMIR(LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult& result);
@@ -135,6 +138,21 @@ namespace vc4c
          * linked in.
          */
         void compileOpenCLToLLVMIR(OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result);
+
+        /**
+         * Tries to find the location of the tool executable with the given name.
+         *
+         * First looks up the preferredPath and if the tool does not exist at that path (or if the path is not set),
+         * tries to look up the tool in the $PATH environment variable.
+         */
+        Optional<std::string> findToolLocation(
+            const std::string& name, const std::string& preferredPath = "", bool skipPathLookup = false);
+
+        /**
+         * Runs the given precompilation command, automatically captures the error stream and logs any errors as well as
+         * aborts on execution failure.
+         */
+        void runPrecompiler(const std::string& command, std::istream* inputStream, std::ostream* outputStream);
     } /* namespace precompilation */
 } /* namespace vc4c */
 

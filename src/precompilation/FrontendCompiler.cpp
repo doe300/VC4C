@@ -22,6 +22,8 @@
 #include <iterator>
 #include <mutex>
 #include <numeric>
+#include <sstream>
+#include <unistd.h>
 
 using namespace vc4c;
 using namespace vc4c::precompilation;
@@ -129,7 +131,7 @@ static std::vector<std::string> buildClangCommand(const std::string& compiler, c
     return command;
 }
 
-void runPrecompiler(const std::string& command, std::istream* inputStream, std::ostream* outputStream)
+void precompilation::runPrecompiler(const std::string& command, std::istream* inputStream, std::ostream* outputStream)
 {
     std::ostringstream stderr;
     int status = runProcess(command, inputStream, outputStream, &stderr);
@@ -189,27 +191,28 @@ static void compileLLVMIRToSPIRV0(std::istream* input, std::ostream* output, con
     const bool toText = false, const Optional<std::string>& inputFile = {},
     const Optional<std::string>& outputFile = {})
 {
-#if not defined SPIRV_LLVM_SPIRV_PATH
-    throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not configured, can't compile to SPIR-V!");
-#else
-    std::string command = (std::string(SPIRV_LLVM_SPIRV_PATH) + (toText ? " -spirv-text" : "")) + " -o ";
+    auto llvm_spirv = findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH "");
+    if(!llvm_spirv)
+        throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not found, can't compile to SPIR-V!");
+
+    std::string command = (*llvm_spirv + (toText ? " -spirv-text" : "")) + " -o ";
     command.append(outputFile.value_or("/dev/stdout")).append(" ");
     command.append(inputFile.value_or("/dev/stdin"));
 
     CPPLOG_LAZY(logging::Level::INFO, log << "Converting LLVM-IR to SPIR-V with: " << command << logging::endl);
 
     runPrecompiler(command, inputFile ? nullptr : input, outputFile ? nullptr : output);
-#endif
 }
 
 static void compileSPIRVToSPIRV(std::istream* input, std::ostream* output, const std::string& options,
     const bool toText = false, const Optional<std::string>& inputFile = {},
     const Optional<std::string>& outputFile = {})
 {
-#if not defined SPIRV_LLVM_SPIRV_PATH
-    throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not configured, can't compile to SPIR-V!");
-#else
-    std::string command = (std::string(SPIRV_LLVM_SPIRV_PATH) + (toText ? " -to-text" : " -to-binary")) + " -o ";
+    auto llvm_spirv = findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH "");
+    if(!llvm_spirv)
+        throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not found, can't compile to SPIR-V!");
+
+    std::string command = (*llvm_spirv + (toText ? " -to-text" : " -to-binary")) + " -o ";
     command.append(outputFile.value_or("/dev/stdout")).append(" ");
     command.append(inputFile.value_or("/dev/stdin"));
 
@@ -217,7 +220,6 @@ static void compileSPIRVToSPIRV(std::istream* input, std::ostream* output, const
         log << "Converting between SPIR-V text and SPIR-V binary with: " << command << logging::endl);
 
     runPrecompiler(command, inputFile ? nullptr : input, outputFile ? nullptr : output);
-#endif
 }
 
 void precompilation::compileOpenCLWithPCH(OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result)
@@ -371,11 +373,14 @@ void precompilation::disassembleSPIRV(SPIRVSource&& source, const std::string& u
     PROFILE_END(DisassembleSPIRV);
 }
 
-#ifdef LLVM_DIS_PATH
 void precompilation::disassembleLLVM(LLVMIRSource&& source, const std::string& userOptions, LLVMIRTextResult& result)
 {
     PROFILE_START(DisassembleLLVM);
-    std::string command = LLVM_DIS_PATH;
+    auto llvm_dis = findToolLocation("llvm-dis", LLVM_DIS_PATH "");
+    if(!llvm_dis)
+        throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-dis not found, can't disassemble LLVM IR!");
+
+    std::string command = *llvm_dis;
     command.append(" -o ").append(result.file.value_or("/dev/stdout")).append(" ");
     command.append(source.file.value_or("/dev/stdin"));
     CPPLOG_LAZY(
@@ -383,7 +388,21 @@ void precompilation::disassembleLLVM(LLVMIRSource&& source, const std::string& u
     runPrecompiler(command, source.file ? nullptr : source.stream, result.file ? nullptr : result.stream);
     PROFILE_END(DisassembleLLVM);
 }
-#endif
+
+void precompilation::assembleLLVM(LLVMIRTextSource&& source, const std::string& userOptions, LLVMIRResult& result)
+{
+    PROFILE_START(AssembleLLVM);
+    auto llvm_as = findToolLocation("llvm-as", LLVM_AS_PATH "");
+    if(!llvm_as)
+        throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-as not found, can't assemble LLVM IR!");
+
+    std::string command = *llvm_as;
+    command.append(" -o ").append(result.file.value_or("/dev/stdout")).append(" ");
+    command.append(source.file.value_or("/dev/stdin"));
+    CPPLOG_LAZY(logging::Level::INFO, log << "Assembling LLVM IR text to LLVM IR with: " << command << logging::endl);
+    runPrecompiler(command, source.file ? nullptr : source.stream, result.file ? nullptr : result.stream);
+    PROFILE_END(AssembleLLVM);
+}
 
 static std::string getEmptyModule()
 {
@@ -407,9 +426,10 @@ void precompilation::linkLLVMModules(
 {
     // TODO add call to llvm-lto??!
     PROFILE_START(LinkLLVMModules);
-#ifndef LLVM_LINK_PATH
-    throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-link is not available!");
-#else
+
+    auto llvm_link = findToolLocation("llvm-link", LLVM_LINK_PATH "");
+    if(!llvm_link)
+        throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-link not found, can't link LLVM IR modules!");
 
     if(sources.empty())
         throw CompilationError(CompilationStep::PRECOMPILATION, "Cannot link without input files!");
@@ -465,7 +485,7 @@ void precompilation::linkLLVMModules(
      * NOTE: cannot use " -only-needed -internalize" in general case, since symbols used across module boundaries are
      * otherwise optimized away. " -only-needed -internalize" is now only used when linking in the standard-library.
      */
-    std::string command = std::string(LLVM_LINK_PATH " ") + userOptions + " " + out + " " + emptyInput + " " + inputs;
+    std::string command = *llvm_link + userOptions + " " + out + " " + emptyInput + " " + inputs;
 
     // llvm-link does not like multiple white-spaces in the list of files (assumes file with empty name)
     std::size_t n = 0;
@@ -477,7 +497,6 @@ void precompilation::linkLLVMModules(
     CPPLOG_LAZY(logging::Level::INFO, log << "Linking LLVM-IR modules with: " << command << logging::endl);
 
     runPrecompiler(command, inputStream, result.file ? nullptr : result.stream);
-#endif
     PROFILE_END(LinkLLVMModules);
 }
 
@@ -510,10 +529,12 @@ void precompilation::linkSPIRVModules(
 void precompilation::optimizeLLVMIR(LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult& result)
 {
     PROFILE_START(OptimizeLLVMIR);
-#ifndef OPT_PATH
-    throw CompilationError(CompilationStep::PRECOMPILATION, "use_opt is not configured!");
-#else
-    std::string commandOpt = OPT_PATH;
+
+    auto opt = findToolLocation("opt", OPT_PATH "");
+    if(!opt)
+        throw CompilationError(CompilationStep::PRECOMPILATION, "opt not found, can't optimize LLVM IR!");
+
+    std::string commandOpt = *opt;
     const std::string out = result.file ? std::string("-o=") + result.file.value() : "";
     const std::string in = source.file ? source.file.value() : "-";
 
@@ -535,7 +556,6 @@ void precompilation::optimizeLLVMIR(LLVMIRSource&& source, const std::string& us
 
     CPPLOG_LAZY(logging::Level::INFO, log << "Optimizing LLVM IR module with opt: " << commandOpt << logging::endl);
     runPrecompiler(commandOpt, source.stream, result.stream);
-#endif
     PROFILE_END(OptimizeLLVMIR);
 }
 
@@ -543,10 +563,12 @@ void precompilation::optimizeLLVMText(
     LLVMIRTextSource&& source, const std::string& userOptions, LLVMIRTextResult& result)
 {
     PROFILE_START(OptimizeLLVMText);
-#ifndef OPT_PATH
-    throw CompilationError(CompilationStep::PRECOMPILATION, "use_opt is not configured!");
-#else
-    std::string commandOpt = OPT_PATH;
+
+    auto opt = findToolLocation("opt", OPT_PATH "");
+    if(!opt)
+        throw CompilationError(CompilationStep::PRECOMPILATION, "opt not found, can't optimize LLVM IR!");
+
+    std::string commandOpt = *opt;
     const std::string out = result.file ? std::string("-o=") + result.file.value() : "";
     const std::string in = source.file ? source.file.value() : "-";
 
@@ -568,20 +590,67 @@ void precompilation::optimizeLLVMText(
 
     CPPLOG_LAZY(logging::Level::INFO, log << "Optimizing LLVM text with opt: " << commandOpt << logging::endl);
     runPrecompiler(commandOpt, source.stream, result.stream);
-#endif
     PROFILE_END(OptimizeLLVMText);
 }
 
 void precompilation::compileOpenCLToLLVMIR(OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result)
 {
-// This check has the positive side-effect that if the VC4CLStdLib LLVM module is missing but the PCH exists, then
-// the compilation with PCH (a bit slower but functional) will be used.
-#ifdef LLVM_LINK_PATH
-    if(!Precompiler::findStandardLibraryFiles().llvmModule.empty())
+    // This check has the positive side-effect that if the VC4CLStdLib LLVM module is missing but the PCH exists, then
+    // the compilation with PCH (a bit slower but functional) will be used.
+    auto llvm_link = findToolLocation("llvm-link", LLVM_LINK_PATH "", true);
+    if(llvm_link && !Precompiler::findStandardLibraryFiles().llvmModule.empty())
         return compileOpenCLAndLinkModule(std::move(source), userOptions, result);
-#endif
+
     if(!Precompiler::findStandardLibraryFiles().precompiledHeader.empty())
         return compileOpenCLWithPCH(std::move(source), userOptions, result);
     throw CompilationError(
         CompilationStep::PRECOMPILATION, "Cannot include VC4CL standard library with neither PCH nor module defined");
+}
+
+Optional<std::string> precompilation::findToolLocation(
+    const std::string& name, const std::string& preferredPath, bool skipPathLookup)
+{
+    static std::mutex cacheLock;
+    static FastMap<std::string, Optional<std::string>> cachedTools;
+
+    std::lock_guard<std::mutex> guard(cacheLock);
+    if(cachedTools.find(name) != cachedTools.end())
+        return cachedTools.at(name);
+
+    if(!preferredPath.empty() && access(preferredPath.data(), X_OK) == 0)
+    {
+        cachedTools.emplace(name, preferredPath);
+        return preferredPath;
+    }
+
+    if(!preferredPath.empty())
+        logging::warn() << "Failed to find executable file for tool '" << name
+                        << "' at configured location: " << preferredPath << logging::endl;
+
+    if(skipPathLookup)
+        // don't cache here, since we might want to lookup another time, this time with searching in PATH
+        return {};
+
+    std::ostringstream outputStream;
+    std::ostringstream errorStream;
+    int status = runProcess("which " + name, nullptr, &outputStream, &errorStream);
+    if(status == 0) // success
+    {
+        auto result = outputStream.str();
+        result = result.substr(0, result.find_first_of('\n'));
+        CPPLOG_LAZY(logging::Level::WARNING,
+            log << "Using detected executable for tool '" << name << "', might cause version conflicts: " << result
+                << logging::endl);
+        cachedTools.emplace(name, result);
+        return result;
+    }
+    if(!errorStream.str().empty())
+    {
+        logging::error() << "Errors trying to find executable path for: " << name << logging::endl;
+        logging::error() << errorStream.str() << logging::endl;
+    }
+
+    // so we also don't look up again on failure
+    cachedTools.emplace(name, Optional<std::string>{});
+    return {};
 }

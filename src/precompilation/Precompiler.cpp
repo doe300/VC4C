@@ -22,8 +22,6 @@
 using namespace vc4c;
 using namespace vc4c::precompilation;
 
-extern void runPrecompiler(const std::string& command, std::istream* inputStream, std::ostream* outputStream);
-
 bool vc4c::isSupportedByFrontend(SourceType inputType, Frontend frontend)
 {
     switch(inputType)
@@ -203,6 +201,16 @@ static NODISCARD Optional<TemporaryFile> compileToLLVM(const std::pair<std::istr
             source.second ? OpenCLSource(source.second.value()) : OpenCLSource(*source.first), "", res);
         return f;
     }
+#ifdef LLVM_AS_PATH
+    else if(type == SourceType::LLVM_IR_TEXT)
+    {
+        TemporaryFile f;
+        LLVMIRResult res(f.fileName);
+        assembleLLVM(
+            source.second ? LLVMIRTextSource(source.second.value()) : LLVMIRTextSource(*source.first), "", res);
+        return f;
+    }
+#endif
     else if(type == SourceType::LLVM_IR_BIN)
     {
         return {};
@@ -328,7 +336,7 @@ static std::string determineFilePath(const std::string& fileName, const std::vec
 {
     for(const auto& folder : folders)
     {
-        auto fullPath = (folder + "/").append(fileName);
+        auto fullPath = (!folder.empty() && folder.back() == '/' ? folder : (folder + "/")) + fileName;
         if(access(fullPath.data(), R_OK) == 0)
         {
             // the file exists (including resolving sym-links, etc.) and can be read
@@ -495,9 +503,23 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
     }
     else if(inputType == SourceType::LLVM_IR_TEXT)
     {
-        // the result of this does not have the correct output-format (but can be handled by the LLVM front-end)
-        tempStream << input.rdbuf();
-        // TODO currently, we cannot convert LLVM IR text -> SPIR-V (text), since the LLVM assembly is not implemented
+        LLVMIRTextSource src = inputFile ? LLVMIRTextSource(inputFile.value()) : LLVMIRTextSource(input);
+#ifdef LLVM_AS_PATH
+        if(outputType == SourceType::SPIRV_BIN)
+        {
+            TemporaryFile tmpFile;
+            LLVMIRResult tmpResult(tmpFile.fileName);
+            assembleLLVM(std::move(src), extendedOptions, tmpResult);
+            SPIRVResult res = outputFile ? SPIRVResult(outputFile.value()) : SPIRVResult(&tempStream);
+            LLVMIRSource tmpSource(tmpResult);
+            compileLLVMToSPIRV(std::move(tmpSource), extendedOptions, res);
+        }
+        else if(outputType == SourceType::LLVM_IR_BIN)
+        {
+            LLVMIRResult res = outputFile ? LLVMIRResult(outputFile.value()) : LLVMIRResult(&tempStream);
+            assembleLLVM(std::move(src), extendedOptions, res);
+        }
+#endif
     }
     else if(inputType == SourceType::LLVM_IR_BIN)
     {

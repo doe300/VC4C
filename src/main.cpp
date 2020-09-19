@@ -12,6 +12,7 @@
 #include "config.h"
 #include "git_commit.h"
 #include "log.h"
+#include "precompilation/FrontendCompiler.h"
 #include "tools.h"
 
 #include <cstdio>
@@ -106,7 +107,7 @@ static std::string toVersionString(unsigned version)
 static void printInfo()
 {
     std::cout << "Running VC4C in version: " << VC4C_VERSION << " (" << GIT_COMMIT << ')' << std::endl;
-    std::cout << "Build configuration:" << std::endl;
+    std::cout << "Build configuration: ";
     static const std::vector<std::string> infoString = {
 #ifdef DEBUG_MODE
         "debug mode",
@@ -117,30 +118,16 @@ static void printInfo()
 #ifdef USE_CLANG_OPENCL
         "clang 3.9+ OpenCL features",
 #endif
-#if defined SPIRV_CLANG_PATH
-        "SPIRV-LLVM clang in " SPIRV_CLANG_PATH,
-#if defined SPIRV_LLVM_SPIRV_PATH and defined SPIRV_TOOLS_FRONTEND
+#ifdef SPIRV_TOOLS_FRONTEND
         "SPIR-V Tools front-end",
 #else
         "builtin SPIR-V front-end",
 #endif
-#elif defined CLANG_PATH
-        "clang in " CLANG_PATH,
-#endif
 #ifdef USE_LLVM_LIBRARY
         std::string("LLVM library front-end with libLLVM ") + toVersionString(LLVM_LIBRARY_VERSION),
 #endif
-#ifdef SPIRV_LLVM_SPIRV_PATH
-        "SPIRV-LLVM converter in " SPIRV_LLVM_SPIRV_PATH,
-#endif
-#ifdef VC4CL_STDLIB_FOLDER
-        "custom VC4CL standard-library path " VC4CL_STDLIB_FOLDER,
-#endif
 #ifdef SPIRV_TOOLS_FRONTEND
         "SPIR-V linker",
-#endif
-#ifdef LLVM_LINK_PATH
-        "LLVM linker",
 #endif
 #ifdef VERIFIER_HEADER
         "vc4asm verification",
@@ -149,8 +136,41 @@ static void printInfo()
         "compilation with libClang"
 #endif
     };
+    std::cout << vc4c::to_string<std::string>(infoString, "; ") << '\n' << std::endl;
 
-    std::cout << vc4c::to_string<std::string>(infoString, "; ") << std::endl;
+    std::cout << "Standard library location:" << std::endl;
+    try
+    {
+        auto stdlib = Precompiler::findStandardLibraryFiles();
+        std::cout << "\theader in " << stdlib.configurationHeader << std::endl;
+        std::cout << "\tPCH in " << stdlib.precompiledHeader << std::endl;
+        std::cout << "\tLLVM module in " << stdlib.llvmModule << std::endl;
+    }
+    catch(const std::exception& err)
+    {
+        std::cout << "Failed to find standard library files!" << std::endl;
+        std::cout << err.what() << std::endl;
+    }
+
+    std::cout << "Tool locations:" << std::endl;
+#ifdef SPIRV_CLANG_PATH
+    auto clangPath = SPIRV_CLANG_PATH;
+#else
+    auto clangPath = CLANG_PATH;
+#endif
+    for(auto tool : std::vector<std::pair<std::string, std::string>>{{"clang", clangPath},
+            {"llvm-spirv", SPIRV_LLVM_SPIRV_PATH ""}, {"llvm-link", LLVM_LINK_PATH ""}, {"opt", OPT_PATH ""},
+            {"llvm-dis", LLVM_DIS_PATH ""}, {"llvm-as", LLVM_AS_PATH ""}})
+    {
+        if(auto tool_found = precompilation::findToolLocation(tool.first, tool.second))
+        {
+            std::cout << "\t" << tool.first << " in " << *tool_found << " (default"
+                      << (tool_found == tool.second ? ")" : (" '" + tool.second + "')")) << std::endl;
+        }
+        else
+            std::cout << "\t" << tool.first << " not in "
+                      << (!tool.second.empty() ? (tool.second + ", neither in ") : "") << "$PATH" << std::endl;
+    }
 }
 
 static auto availableOptimizations = vc4c::optimizations::Optimizer::getPasses(OptimizationLevel::FULL);
@@ -175,6 +195,7 @@ int main(int argc, char** argv)
     std::string options;
     bool runDisassembler = false;
     bool precompileStdlib = false;
+    std::wstringstream dummyLogOutput;
 
     if(argc == 1)
     {
@@ -198,6 +219,8 @@ int main(int argc, char** argv)
         }
         else if(strcmp("--version", argv[i]) == 0 || strcmp("-v", argv[i]) == 0)
         {
+            // disable all logging to not break our version output
+            setLogger(dummyLogOutput, false, LogLevel::SEVERE);
             printInfo();
             return 0;
         }
