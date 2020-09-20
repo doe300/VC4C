@@ -44,7 +44,7 @@ endif()
 ####
 # ... or find deprecated LLVM SPIR-V compiler
 ####
-if(NOT SPIRV_TRANSLATOR_ROOT)
+if(SPIRV_FRONTEND AND NOT SPIRV_TRANSLATOR_ROOT)
 	if(NOT SPIRV_COMPILER_ROOT)
 		# Try to detect the location of the SPIRV-LLVM binaries
 		find_program(LLVM_SPIRV_FOUND NAMES llvm-spirv HINTS "/opt/SPIRV-LLVM/build/bin/")
@@ -63,7 +63,7 @@ if(NOT SPIRV_TRANSLATOR_ROOT)
 	endif()
 endif()
 
-if(NOT SPIRV_COMPILER_ROOT AND NOT SPIRV_TRANSLATOR_ROOT)
+if(SPIRV_FRONTEND AND NOT SPIRV_COMPILER_ROOT AND NOT SPIRV_TRANSLATOR_ROOT)
 	message(WARNING "SPIR-V frontend configured, but no SPIR-V compiler found!")
 endif()
 
@@ -115,10 +115,6 @@ if(SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND)
 		ExternalProject_Get_Property(spirv-tools-project SOURCE_DIR)
 		set(SPIRV_Tools_LIBS "-Wl,--whole-archive ${BINARY_DIR}/source/libSPIRV-Tools.a ${BINARY_DIR}/source/opt/libSPIRV-Tools-opt.a ${BINARY_DIR}/source/link/libSPIRV-Tools-link.a -Wl,--no-whole-archive")
 		set(SPIRV_Tools_HEADERS ${SOURCE_DIR}/include)
-
-		# This target is used to collect the dependencies on all SPIR-V library build steps
-		add_library(SPIRV-Dependencies STATIC IMPORTED)
-		add_dependencies(SPIRV-Dependencies SPIRV-Headers-project-build)
 		add_dependencies(SPIRV-Dependencies spirv-tools-project-build)
 	endif()
 	set(VC4C_ENABLE_SPIRV_TOOLS_FRONTEND ON)

@@ -6,9 +6,9 @@ if(DEPENDENCIES_USE_FETCH_CONTENT)
 	FetchContent_Declare(SPIRV-Headers GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Headers.git)
 	FetchContent_MakeAvailable(SPIRV-Headers)
 	FetchContent_GetProperties(SPIRV-Headers SOURCE_DIR SPIRV_HEADERS_SOURCE_DIR)
-	
+
 	set(SPIRV_Headers_HEADERS ${SPIRV_HEADERS_SOURCE_DIR}/include)
-	
+
 	# Dummy library, so we can depend on it
 	add_library(SPIRV-Dependencies STATIC IMPORTED)
 else()
@@ -27,4 +27,8 @@ else()
 	)
 	ExternalProject_Get_Property(SPIRV-Headers-project SOURCE_DIR)
 	set(SPIRV_Headers_HEADERS ${SOURCE_DIR}/include)
+
+	# This target is used to collect the dependencies on all SPIR-V library build steps
+	add_library(SPIRV-Dependencies STATIC IMPORTED)
+	add_dependencies(SPIRV-Dependencies SPIRV-Headers-project-build)
 endif()

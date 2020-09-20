@@ -1886,7 +1886,8 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
     auto& outerLoop = insertLoop(method, it, BOOL_TRUE, "%outerLoop");
     it = outerLoop.walk().nextInBlock();
 
-    FastAccessList<const IntermediateInstruction*> hoistedInstructions;
+    FastAccessList<const IntermediateInstruction*> firstHoistedInstructions;
+    FastAccessList<const IntermediateInstruction*> secondHoistedInstructions;
     auto out0 = method.addNewLocal(TYPE_INT32, "%out0");
     auto out1 = method.addNewLocal(TYPE_INT32, "%out1");
     auto out2 = method.addNewLocal(TYPE_INT32, "%out2");
@@ -1895,14 +1896,14 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
     // loading of constants
     {
         it.emplace(new LoadImmediate(out0, Literal(12345)));
-        hoistedInstructions.emplace_back(it.get());
+        firstHoistedInstructions.emplace_back(it.get());
         it.nextInBlock();
     }
 
     // constant operation
     {
         it.emplace(new Operation(OP_ADD, out1, out0, INT_ONE));
-        hoistedInstructions.emplace_back(it.get());
+        firstHoistedInstructions.emplace_back(it.get());
         it.nextInBlock();
     }
 
@@ -1912,14 +1913,14 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
     // loading of constant in inner loop
     {
         it.emplace(new LoadImmediate(out2, Literal(42)));
-        hoistedInstructions.emplace_back(it.get());
+        secondHoistedInstructions.emplace_back(it.get());
         it.nextInBlock();
     }
 
     // calculation depending on value of outer loop
     {
         it.emplace(new Operation(OP_ADD, out3, out0, out2));
-        hoistedInstructions.emplace_back(it.get());
+        secondHoistedInstructions.emplace_back(it.get());
         it.nextInBlock();
     }
 
@@ -1944,8 +1945,8 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
     TEST_ASSERT_EQUALS("%dummy", it.get<BranchLabel>()->getLabel()->name);
     it.nextInMethod();
 
-    // here the instructions from both loops are hoisted into
-    for(auto inst : hoistedInstructions)
+    // here the instructions from the first loop are hoisted into
+    for(auto inst : firstHoistedInstructions)
     {
         if(it.get() != inst)
         {
@@ -1961,12 +1962,21 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
     it.nextInMethod();
 
     // outer loop content label
-    // the outer loop content is now empty
     it = outerLoop.walk();
-    TEST_ASSERT_EQUALS(1u, outerLoop.size());
     TEST_ASSERT(!!it.get<BranchLabel>());
     TEST_ASSERT(it.get<BranchLabel>()->getLabel()->name.find("outerLoop") != std::string::npos);
     TEST_ASSERT(it.get<BranchLabel>()->getLabel()->name.find("header") == std::string::npos);
+
+    it.nextInMethod();
+    // here the instructions from the second loop are hoisted into
+    for(auto inst : secondHoistedInstructions)
+    {
+        if(it.get() != inst)
+        {
+            TEST_ASSERT_EQUALS(inst->to_string(), it->to_string());
+        }
+        it.nextInMethod();
+    }
 
     // the inner loop has now only label, single non-moved instruction and unconditional branch to header
     TEST_ASSERT_EQUALS(3u, innerLoop.size());

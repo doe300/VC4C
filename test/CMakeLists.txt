@@ -16,8 +16,11 @@ target_include_directories (TestVC4C PRIVATE "${cpptest_HEADERS}")
 
 target_include_directories(TestVC4C PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/../src)
 
+# SPIR-V Headers
+add_dependencies(TestVC4C SPIRV-Dependencies)
+target_include_directories(TestVC4C SYSTEM PRIVATE ${SPIRV_Headers_HEADERS})
+
 if(VC4C_ENABLE_SPIRV_TOOLS_FRONTEND)
-	target_include_directories(TestVC4C SYSTEM PRIVATE ${SPIRV_Headers_HEADERS})
 	target_include_directories(TestVC4C SYSTEM PRIVATE ${SPIRV_Tools_HEADERS})
 endif()
 if(VC4C_ENABLE_LLVM_LIB_FRONTEND)

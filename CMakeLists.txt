@@ -115,9 +115,7 @@ endif()
 
 # Prefer Khronos OpenCL to LLVM IR (to SPIR-V) compiler, always include SPIR-V headers
 include(cmake/spirv-headers.cmake)
-if(SPIRV_FRONTEND)
-  include(cmake/spirv.cmake)
-endif()
+include(cmake/spirv.cmake)
 
 # Fall back to "standard" CLang
 include(cmake/clang.cmake)
