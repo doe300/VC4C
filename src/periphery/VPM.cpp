@@ -171,13 +171,13 @@ static std::string toVPitchString(uint8_t vpitch, uint8_t mode)
     {
         auto y = (vpitch >> 2) & 0x3;
         auto b = vpitch & 0x3;
-        return "{" + std::to_string(y) + ", " + std::to_string(b) + "}";
+        return "(" + std::to_string(y) + ", " + std::to_string(b) + ")";
     }
     if(mode >= 2) // 16-bit witdh
     {
         auto y = (vpitch >> 1) & 0x3;
         auto h = vpitch & 0x1;
-        return "{" + std::to_string(y) + ", " + std::to_string(h) + "}";
+        return "(" + std::to_string(y) + ", " + std::to_string(h) + ")";
     }
     return std::to_string(vpitch);
 }
