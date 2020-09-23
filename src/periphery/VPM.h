@@ -328,7 +328,8 @@ namespace vc4c
          *
          * see Broadcom spec, table 33
          */
-        class VPRGenericSetup : private Bitfield<uint32_t>
+        // class VPRGenericSetup : private Bitfield<uint32_t>
+        class VPRGenericSetup : public Bitfield<uint32_t>
         {
         public:
             VPRGenericSetup(uint8_t size, uint8_t stride, uint8_t numVectors = 1, uint8_t address = 0) : Bitfield(0)

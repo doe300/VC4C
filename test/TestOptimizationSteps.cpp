@@ -2006,24 +2006,33 @@ void TestOptimizationSteps::testCombineDMALoads()
         uint8_t elementBitCount = vectorType.getElementType().getScalarBitCount();
         uint8_t dmaSetupMode = 0;
         uint8_t vpitch = 1;
+        uint8_t vprSize = 0;
+        uint8_t vprStride = 0;
         switch(elementBitCount)
         {
-            case 8:
-                dmaSetupMode = 4;
-                vpitch = 4;
-                break;
-            case 16:
-                dmaSetupMode = 2;
-                vpitch = 2;
-                break;
-            case 32:
-                dmaSetupMode = 0;
-                vpitch = 1;
-                break;
+        case 8:
+            dmaSetupMode = 4;
+            vpitch = 4;
+            vprSize = 0;
+            vprStride = 4;
+            break;
+        case 16:
+            dmaSetupMode = 2;
+            vpitch = 2;
+            vprSize = 1;
+            vprStride = 2;
+            break;
+        case 32:
+            dmaSetupMode = 0;
+            vpitch = 1;
+            vprSize = 2;
+            vprStride = 1;
+            break;
         }
 
         const int numOfLoads = 3;
         periphery::VPRDMASetup expectedDMASetup(dmaSetupMode, vectorType.getVectorWidth() % 16, numOfLoads, vpitch, 0);
+        periphery::VPRGenericSetup expectedVPRSetup(vprSize, vprStride, numOfLoads, 0);
 
         inputMethod.dumpInstructions();
 
@@ -2035,7 +2044,7 @@ void TestOptimizationSteps::testCombineDMALoads()
         {
             int numOfDMASetup = 0;
             int numOfStrideSetup = 0;
-            int numOfVPMSetup = 0;
+            int numOfVPRSetup = 0;
             int numOfVPMRead = 0;
 
             for(auto& it : bb)
@@ -2076,9 +2085,8 @@ void TestOptimizationSteps::testCombineDMALoads()
                         }
                         if(vpr.isGenericSetup())
                         {
-                            auto vpmSetup = vpr.genericSetup;
-                            TEST_ASSERT_EQUALS(numOfLoads, vpmSetup.getNumber());
-                            numOfVPMSetup++;
+                            TEST_ASSERT_EQUALS(expectedVPRSetup, vpr.genericSetup);
+                            numOfVPRSetup++;
                         }
                     }
                 }
@@ -2086,18 +2094,19 @@ void TestOptimizationSteps::testCombineDMALoads()
 
             TEST_ASSERT_EQUALS(1, numOfDMASetup);
             TEST_ASSERT_EQUALS(1, numOfStrideSetup);
-            TEST_ASSERT_EQUALS(1, numOfVPMSetup);
+            TEST_ASSERT_EQUALS(1, numOfVPRSetup);
             TEST_ASSERT_EQUALS(numOfLoads, numOfVPMRead);
         }
     };
 
-    auto putMethodCall = [](Method& inputMethod, InstructionWalker& inIt, const DataType& vectorType, std::string funcName, std::vector<Value>&& args) {
+    auto putMethodCall = [](Method& inputMethod, InstructionWalker& inIt, const DataType& vectorType,
+                             std::string funcName, std::vector<Value>&& args) {
         auto res = inputMethod.addNewLocal(vectorType);
         inIt.emplace((new intermediate::MethodCall(std::move(res), std::move(funcName), std::move(args))));
     };
 
     const DataType Float16{DataType::WORD, 16, true};
-    const DataType Float8 {DataType::WORD, 8, true};
+    const DataType Float8{DataType::WORD, 8, true};
     const DataType Uchar16{DataType::BYTE, 16, false};
 
     // vload16(size_t, const float*)
@@ -2191,10 +2200,9 @@ void TestOptimizationSteps::testCombineDMALoads()
         Literal l(2);
         Value a(l, TYPE_INT32);
         Value b = 3_val;
-        std::shared_ptr<ValueExpr> expr(new ValueBinaryOp(
-                    makeValueBinaryOpFromLocal(a, ValueBinaryOp::BinaryOp::Add, b),
-                    ValueBinaryOp::BinaryOp::Sub,
-                    std::make_shared<ValueTerm>(1_val)));
+        std::shared_ptr<ValueExpr> expr(
+            new ValueBinaryOp(makeValueBinaryOpFromLocal(a, ValueBinaryOp::BinaryOp::Add, b),
+                ValueBinaryOp::BinaryOp::Sub, std::make_shared<ValueTerm>(1_val)));
         ValueExpr::ExpandedExprs expanded;
         expr->expand(expanded);
 
