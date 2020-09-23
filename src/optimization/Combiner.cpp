@@ -1407,9 +1407,8 @@ void optimizations::combineDMALoads(const Module& module, Method& method, const 
                                         auto vectorSize = elemType.getInMemoryWidth() * vectorLength;
 
                                         // TODO: limit loadInstrs.size()
-                                        Value offset = assign(it, TYPE_INT32) = offsetValues[0] << 4_val;
-                                        // Value offset = assign(it, TYPE_INT32) = offsetValues[0] *
-                                        // Literal(vectorSize);
+                                        Value offset = assign(it, TYPE_INT32) =
+                                            offsetValues[0] * Literal(vectorLength * elemType.getInMemoryWidth());
                                         Value addr = assign(it, TYPE_INT32) = offset + addrArg;
 
                                         uint16_t memoryPitch =
@@ -1425,8 +1424,6 @@ void optimizations::combineDMALoads(const Module& module, Method& method, const 
                                             method.vpm->insertReadRAM(method, it, addr, VectorType, /* &area */ nullptr,
                                                 true, INT_ZERO, entries, Optional<uint16_t>(memoryPitch));
 
-                                        // const VPMArea* area = nullptr, bool useMutex = true, const Value&
-                                        // inAreaOffset = INT_ZERO);
                                         it = method.vpm->insertReadVPM(method, it, output, &area, true);
                                     }
                                     else
