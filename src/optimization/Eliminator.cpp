@@ -422,6 +422,13 @@ InstructionWalker optimizations::foldConstants(
                 // allow for combination with the other case)
                 return it;
             }
+            if(op->hasDecoration(intermediate::InstructionDecorations::CONSTANT_LOAD))
+            {
+                // This instruction was inserted for the purpose of loading the constant value, don't revert that.
+                // Otherwise, we will probably revert this precalculation back to the same constant load instruction in
+                // the adjustment step.
+                return it;
+            }
             if(auto value = op->precalculate(3).first)
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,

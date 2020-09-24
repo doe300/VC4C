@@ -715,6 +715,7 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
                         it->addDecorations(intermediate::InstructionDecorations::VPM_READ_CONFIGURATION);
                     if(op.hasDecoration(intermediate::InstructionDecorations::VPM_WRITE_CONFIGURATION))
                         it->addDecorations(intermediate::InstructionDecorations::VPM_WRITE_CONFIGURATION);
+                    it->addDecorations(intermediate::InstructionDecorations::CONSTANT_LOAD);
                     it.nextInBlock();
                     op.setArgument(i, std::move(tmp));
                 }
@@ -731,6 +732,7 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
                     else
                         it.emplace(new intermediate::Operation(mapped.opCode, tmp, Value(mapped.immediate, type),
                             Value(mapped.immediate, type), op.getCondition()));
+                    it->addDecorations(intermediate::InstructionDecorations::CONSTANT_LOAD);
                     it.nextInBlock();
                     op.setArgument(i, std::move(tmp));
                 }
@@ -766,6 +768,7 @@ static NODISCARD InstructionWalker handleImmediateInMove(
                 CPPLOG_LAZY(
                     logging::Level::DEBUG, log << "Loading immediate value: " << lit->to_string() << logging::endl);
                 it.reset((new intermediate::LoadImmediate(move->getOutput().value(), *lit))->copyExtrasFrom(move));
+                it->addDecorations(intermediate::InstructionDecorations::CONSTANT_LOAD);
             }
             else if(mapped.opCode != OP_NOP)
             {
@@ -782,6 +785,7 @@ static NODISCARD InstructionWalker handleImmediateInMove(
                                   Value(mapped.immediate, move->getSource().type),
                                   Value(mapped.immediate, move->getSource().type)))
                                  ->copyExtrasFrom(move));
+                it->addDecorations(intermediate::InstructionDecorations::CONSTANT_LOAD);
             }
             else
             {
@@ -789,6 +793,7 @@ static NODISCARD InstructionWalker handleImmediateInMove(
                     log << "Mapping constant for immediate value " << lit->to_string()
                         << " to: " << mapped.immediate.to_string() << logging::endl);
                 move->setSource(Value(mapped.immediate, source.type));
+                move->addDecorations(intermediate::InstructionDecorations::CONSTANT_LOAD);
             }
         }
     }

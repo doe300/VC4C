@@ -370,7 +370,7 @@ std::pair<DataType, uint32_t> periphery::getBestVectorSize(uint32_t numBytes)
             }
         }
     }
-    throw CompilationError(CompilationStep::LLVM_2_IR,
+    throw CompilationError(CompilationStep::GENERAL,
         "Failed to find element- and vector-sizes matching the given amount of bytes", std::to_string(numBytes));
 }
 

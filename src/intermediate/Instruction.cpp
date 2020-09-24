@@ -68,6 +68,8 @@ std::string intermediate::toString(const InstructionDecorations decoration)
     if(has_flag(decoration, InstructionDecorations::IDENTICAL_ELEMENTS))
         // See https://llvm.org/docs/Lexicon.html for naming
         res.append("splat ");
+    if(has_flag(decoration, InstructionDecorations::CONSTANT_LOAD))
+        res.append("const_load ");
     return res.substr(0, res.empty() ? 0 : res.size() - 1);
 }
 LCOV_EXCL_STOP

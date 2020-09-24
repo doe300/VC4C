@@ -268,7 +268,7 @@ void Normalizer::normalize(Module& module) const
     }
     // 3. run other normalization steps on kernel functions
     const auto f = [&module, this](Method* kernelFunc) -> void { normalizeMethod(module, *kernelFunc); };
-    ThreadPool{"Normalization"}.scheduleAll<Method*>(kernels, f, THREAD_LOGGER.get());
+    ThreadPool::scheduleAll<Method*>("Normalization", kernels, f, THREAD_LOGGER.get());
 }
 
 void Normalizer::adjust(Module& module) const
@@ -276,7 +276,7 @@ void Normalizer::adjust(Module& module) const
     // run adjustment steps on kernel functions
     auto kernels = module.getKernels();
     const auto f = [&module, this](Method* kernelFunc) -> void { adjustMethod(module, *kernelFunc); };
-    ThreadPool{"Adjustment"}.scheduleAll<Method*>(kernels, f, THREAD_LOGGER.get());
+    ThreadPool::scheduleAll<Method*>("Adjustment", kernels, f, THREAD_LOGGER.get());
 }
 
 void Normalizer::normalizeMethod(Module& module, Method& method) const

@@ -84,7 +84,10 @@ namespace vc4c
             // The instruction is part of the work-group-loop and not of the actual kernel body
             WORK_GROUP_LOOP = 1u << 24u,
             // The instruction result contains the same bits in all 16 SIMD-elements (a "splat" value)
-            IDENTICAL_ELEMENTS = 1u << 25u
+            IDENTICAL_ELEMENTS = 1u << 25u,
+            // The instruction was inserted to "load"" a constant value and should not be precalculated back to that
+            // constant value
+            CONSTANT_LOAD = 1u << 26u
         };
 
         std::string toString(InstructionDecorations decoration);

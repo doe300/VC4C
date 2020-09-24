@@ -6,6 +6,7 @@
 #ifndef VC4C_THREDAPOOL_H
 #define VC4C_THREDAPOOL_H
 
+#include <algorithm>
 #include <atomic>
 #include <future>
 #include <list>
@@ -46,6 +47,14 @@ namespace vc4c
 
             for(auto& fut : futures)
                 fut.get();
+        }
+
+        template <typename T, typename Container = std::list<T>>
+        static void scheduleAll(const std::string& name, const Container& c, const std::function<void(const T&)>& func,
+            logging::Logger* logger = nullptr)
+        {
+            ThreadPool pool(name, std::min(static_cast<unsigned>(c.size()), std::thread::hardware_concurrency()));
+            return pool.scheduleAll(c, func, logger);
         }
 
     private:

@@ -122,7 +122,7 @@ std::size_t Compiler::convert()
 
     auto kernels = module.getKernels();
     const auto f = [&codeGen](Method* kernelFunc) -> void { codeGen.toMachineCode(*kernelFunc); };
-    ThreadPool{"CodeGenerator"}.scheduleAll<Method*>(kernels, f, THREAD_LOGGER.get());
+    ThreadPool::scheduleAll<Method*>("CodeGenerator", kernels, f, THREAD_LOGGER.get());
 
     // TODO could discard unused globals
     // since they are exported, they are still in the intermediate code, even if not used (e.g. optimized away)

@@ -44,17 +44,6 @@ namespace vc4c
             uint32_t typeId;
             uint32_t resultId;
             std::vector<uint32_t> words;
-
-            std::string readLiteralString(std::size_t startWord, std::size_t numWords) const
-            {
-                // TODO remove
-                if(words.size() <= startWord)
-                    throw CompilationError(
-                        CompilationStep::PARSER, "Word index out of bounds", std::to_string(startWord));
-                const size_t length =
-                    strnlen(reinterpret_cast<const char*>(words.data() + startWord), sizeof(uint32_t) * numWords);
-                return std::string(reinterpret_cast<const char*>(words.data() + startWord), length);
-            }
         };
 
         using OpConsumer = std::function<bool(const ModuleOperation& op)>;

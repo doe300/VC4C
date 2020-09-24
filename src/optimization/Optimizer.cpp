@@ -231,7 +231,7 @@ void Optimizer::optimize(Module& module) const
     const auto f = [&](Method* kernelFunc) {
         runOptimizationPasses(module, *kernelFunc, config, initialPasses, repeatingPasses, finalPasses);
     };
-    ThreadPool{"Optimizer"}.scheduleAll<Method*>(kernels, f, THREAD_LOGGER.get());
+    ThreadPool::scheduleAll<Method*>("Optimizer", kernels, f, THREAD_LOGGER.get());
 }
 
 const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
