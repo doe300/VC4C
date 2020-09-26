@@ -117,7 +117,13 @@ qpu_asm::DecoratedInstruction LoadImmediate::convertToAsm(const FastMap<const Lo
         getOutput()->checkRegister() ? getOutput()->reg() : registerMapping.at(getOutput()->local());
     const ConditionCode conditional0 =
         (outReg.num == REG_NOP.num && setFlags == SetFlag::DONT_SET) ? COND_NEVER : this->conditional;
-    qpu_asm::LoadInstruction res(PACK_NOP, conditional0, COND_NEVER, setFlags,
+
+    // according to tests we cannot directly pack into periphery registers
+    if(packMode.hasEffect() && (outReg.file != RegisterFile::PHYSICAL_A || !outReg.isGeneralPurpose()))
+        throw CompilationError(
+            CompilationStep::CODE_GENERATION, "Pack modes cannot write into periphery registers directly", to_string());
+
+    qpu_asm::LoadInstruction res(packMode, conditional0, COND_NEVER, setFlags,
         outReg.file == RegisterFile::PHYSICAL_A ? WriteSwap::DONT_SWAP : WriteSwap::SWAP, outReg.num, REG_NOP.num,
         assertArgument(0).literal().toImmediate());
     switch(type)

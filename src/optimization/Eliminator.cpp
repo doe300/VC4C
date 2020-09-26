@@ -671,7 +671,9 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 // TestVectorFunctions#testShuffle2Vector16 test
                 !it->writesRegister(REG_REPLICATE_ALL) && !it->writesRegister(REG_REPLICATE_QUAD) &&
                 // Registers with side-effects are peripheral and cannot be written conditionally
-                (!it->checkOutputRegister()->hasSideEffectsOnWrite() || !(*sourceWriter)->hasConditionalExecution()))
+                (!it->checkOutputRegister()->hasSideEffectsOnWrite() || !(*sourceWriter)->hasConditionalExecution()) &&
+                // Registers with side-effects are peripheral and cannot be packed into
+                (!it->checkOutputRegister()->hasSideEffectsOnWrite() || !(*sourceWriter)->hasPackMode()))
             {
                 // if the source is only used once (by this move) and the destination is a register, we can replace this
                 // move by the operation calculating the source  This optimization can save almost one instruction per

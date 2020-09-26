@@ -378,6 +378,9 @@ namespace vc4c
      * ALU instructions can also pack their results back into packed storage-formats.
      *
      * Pack modes work completely independent of whether writing of flags is enabled for the associated operation.
+     *
+     * NOTE: Tests have shown, that we cannot pack into periphery registers (at least not VPM) directly, even if we use
+     * the register-file A register-mapped periphery address to write the packed value!
      */
     struct Pack : public InstructionPart<Pack>
     {

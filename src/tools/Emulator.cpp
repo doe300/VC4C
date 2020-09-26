@@ -1290,6 +1290,23 @@ static VectorFlags generateImmediateFlags(const SIMDVector& vector)
     return flags;
 }
 
+static void checkValidPackTarget(Pack packMode, const qpu_asm::Instruction& inst)
+{
+    auto firstReg = toRegister(inst.getAddOut(), inst.getWriteSwap() == WriteSwap::SWAP);
+    auto secondReg = toRegister(inst.getMulOut(), inst.getWriteSwap() == WriteSwap::DONT_SWAP);
+
+    if(firstReg.file == RegisterFile::PHYSICAL_A && firstReg.isGeneralPurpose())
+        // valid pack target
+        return;
+
+    if(secondReg.file == RegisterFile::PHYSICAL_A && secondReg.isGeneralPurpose())
+        // valid pack target
+        return;
+
+    // no valid pack target
+    throw CompilationError(CompilationStep::GENERAL, "Cannot pack to invalid target", inst.toASMString());
+}
+
 bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction)
 {
     const qpu_asm::Instruction* inst = &(*(firstInstruction + pc));
@@ -1361,7 +1378,10 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
 
             auto flags = generateImmediateFlags(loadedValues);
             if(load->getPack().hasEffect())
+            {
+                checkValidPackTarget(load->getPack(), *load);
                 PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
+            }
             SIMDVector imm = load->getPack()(loadedValues, flags, false);
             auto mask = load->getPack().getMask();
             writeConditional(toRegister(load->getAddOut(), load->getWriteSwap() == WriteSwap::SWAP), imm,
@@ -1386,7 +1406,10 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
             if(dontStall)
             {
                 if(semaphore->getPack().hasEffect())
+                {
+                    checkValidPackTarget(semaphore->getPack(), *semaphore);
                     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
+                }
                 result = semaphore->getPack()(result, {}, false);
                 auto mask = semaphore->getPack().getMask();
                 writeConditional(toRegister(semaphore->getAddOut(), semaphore->getWriteSwap() == WriteSwap::SWAP),
@@ -1596,6 +1619,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         auto mask = BITMASK_ALL;
         if(aluInst->getWriteSwap() == WriteSwap::DONT_SWAP && aluInst->getPack().hasEffect())
         {
+            checkValidPackTarget(aluInst->getPack(), *aluInst);
             PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
             if(aluInst->getPack().supportsMulALU())
                 throw CompilationError(CompilationStep::GENERAL, "Cannot apply mul pack mode on add result!");
@@ -1642,6 +1666,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         auto mask = BITMASK_ALL;
         if(aluInst->getWriteSwap() == WriteSwap::SWAP && aluInst->getPack().hasEffect())
         {
+            checkValidPackTarget(aluInst->getPack(), *aluInst);
             PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
             if(!aluInst->getPack().supportsMulALU())
                 throw CompilationError(CompilationStep::GENERAL, "Cannot apply add pack mode on mul result!");

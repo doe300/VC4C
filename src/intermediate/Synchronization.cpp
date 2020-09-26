@@ -30,6 +30,9 @@ qpu_asm::DecoratedInstruction SemaphoreAdjustment::convertToAsm(const FastMap<co
     if(conditional != COND_ALWAYS)
         throw CompilationError(CompilationStep::CODE_GENERATION,
             "Condition codes have no effect on whether the semaphore is adjusted", to_string());
+    if(packMode.hasEffect())
+        throw CompilationError(CompilationStep::CODE_GENERATION,
+            "Pack modes on semaphore instructions are not yet supported", to_string());
 
     const Register outReg = getOutput() ?
         (getOutput()->checkLocal() ? registerMapping.at(getOutput()->local()) : getOutput()->reg()) :
