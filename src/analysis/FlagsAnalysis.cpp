@@ -107,7 +107,7 @@ Optional<VectorFlags> StaticFlagsAnalysis::analyzeStaticFlags(
     // default handling of constant calculation
     VectorFlags flags{};
     Optional<Value> precalc{};
-    std::tie(precalc, flags) = inst->precalculate();
+    std::tie(precalc, flags) = inst->precalculate(3);
     if(precalc)
         return flags;
 

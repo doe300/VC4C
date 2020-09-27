@@ -133,7 +133,7 @@ static std::pair<bool, bool> determinePossibleLinkers(
 #ifdef SPIRV_TOOLS_FRONTEND
     bool spirvLinkerPossible = true;
 #else
-    bool spirvLinkerPossible = false;
+    bool spirvLinkerPossible = findToolLocation("spirv-link", SPIRV_LINK_PATH).has_value();
 #endif
 
     for(const auto& input : inputs)
@@ -274,7 +274,6 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
 
         if(includeStandardLibrary)
         {
-            // FIXME this does not work, since the SPIRV-LLVM does not generate a correct VC4CL standard-library module
             tempFiles.emplace_back(std::make_unique<TemporaryFile>());
             SPIRVResult stdLib(tempFiles.back()->fileName);
             compileLLVMToSPIRV(LLVMIRSource(findStandardLibraryFiles().llvmModule), "", stdLib);
@@ -304,6 +303,8 @@ bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Opti
         case SourceType::SPIRV_TEXT:
 #ifdef SPIRV_TOOLS_FRONTEND
             return true;
+#else
+            return findToolLocation("spirv-link", SPIRV_LINK_PATH).has_value();
 #endif
         default:
             return false;
@@ -317,6 +318,8 @@ bool Precompiler::isLinkerAvailable()
     return true;
 #endif
     if(findToolLocation("llvm-link", LLVM_LINK_PATH))
+        return true;
+    if(findToolLocation("spirv-link", SPIRV_LINK_PATH))
         return true;
     return false;
 }

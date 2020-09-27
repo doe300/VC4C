@@ -815,6 +815,45 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
     return hasChanged;
 }
 
+static NODISCARD InstructionWalker loadScalarParameter(
+    Parameter& param, DataType type, Method& method, InstructionWalker it, bool isElement = false)
+{
+    if(type.isSimpleType() && type.getScalarBitCount() > 32 && param.get<MultiRegisterData>())
+    {
+        // 64-bit integer direct value load, need to insert two loads
+        auto parts = Local::getLocalData<MultiRegisterData>(&param);
+
+        // data is stored in little endian, so lower word first
+        assign(it, parts->lower->createReference()) = (Value(REG_UNIFORM, TYPE_INT32),
+            isElement ? COND_ZERO_SET : COND_ALWAYS, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
+            isElement ? InstructionDecorations::ELEMENT_INSERTION : InstructionDecorations::NONE);
+        assign(it, parts->upper->createReference()) = (Value(REG_UNIFORM, TYPE_INT32),
+            isElement ? COND_ZERO_SET : COND_ALWAYS, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
+            isElement ? InstructionDecorations::ELEMENT_INSERTION : InstructionDecorations::NONE);
+    }
+    else if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
+    {
+        it = insertSignExtension(it, method, Value(REG_UNIFORM, type), Value(&param, TYPE_INT32), false,
+            isElement ? COND_ZERO_SET : COND_ALWAYS);
+    }
+    else if(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND))
+    {
+        it = insertZeroExtension(it, method, Value(REG_UNIFORM, type), Value(&param, TYPE_INT32), false,
+            isElement ? COND_ZERO_SET : COND_ALWAYS);
+    }
+    else
+    {
+        assign(it, param.createReference()) = (Value(REG_UNIFORM, type), isElement ? COND_ZERO_SET : COND_ALWAYS,
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
+            // all pointers are unsigned
+            param.type.getPointerType() ? InstructionDecorations::UNSIGNED_RESULT : InstructionDecorations::NONE);
+    }
+    if(isElement)
+        it.copy().previousInBlock()->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
+
+    return it;
+}
+
 static NODISCARD InstructionWalker loadVectorParameter(Parameter& param, Method& method, InstructionWalker it)
 {
     // we need to load a UNIFORM per vector element into the particular vector element
@@ -826,23 +865,7 @@ static NODISCARD InstructionWalker loadVectorParameter(Parameter& param, Method&
             assign(it, NOP_REGISTER) =
                 (ELEMENT_NUMBER_REGISTER ^ Value(SmallImmediate(i), TYPE_INT8), SetFlag::SET_FLAGS);
         }
-        if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
-        {
-            it = intermediate::insertSignExtension(it, method, Value(REG_UNIFORM, param.type),
-                Value(&param, TYPE_INT32), false, i == 0 ? COND_ALWAYS : COND_ZERO_SET);
-            it.copy().previousInBlock()->addDecorations(intermediate::InstructionDecorations::ELEMENT_INSERTION);
-        }
-        else if(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND))
-        {
-            it = intermediate::insertZeroExtension(it, method, Value(REG_UNIFORM, param.type),
-                Value(&param, TYPE_INT32), false, i == 0 ? COND_ALWAYS : COND_ZERO_SET);
-            it.copy().previousInBlock()->addDecorations(intermediate::InstructionDecorations::ELEMENT_INSERTION);
-        }
-        else
-        {
-            assign(it, param.createReference()) =
-                (UNIFORM_REGISTER, i == 0 ? COND_ALWAYS : COND_ZERO_SET, InstructionDecorations::ELEMENT_INSERTION);
-        }
+        it = loadScalarParameter(param, param.type.getElementType(), method, it, i != 0);
         // TODO improve performance by first putting together the vector, then zero/sign extending all elements?
     }
     return it;
@@ -1014,16 +1037,6 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
         {
             it = loadVectorParameter(param, method, it);
         }
-        else if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
-        {
-            it = intermediate::insertSignExtension(
-                it, method, Value(REG_UNIFORM, param.type), Value(&param, TYPE_INT32), false);
-        }
-        else if(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND))
-        {
-            it = intermediate::insertZeroExtension(
-                it, method, Value(REG_UNIFORM, param.type), Value(&param, TYPE_INT32), false);
-        }
         else
         {
             /*
@@ -1040,10 +1053,7 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
              * - Load the single parts separately via UNIFORMs like any other vector/scalar, replace index-chain and
              * access functions.
              */
-            assign(it, param.createReference()) = (Value(REG_UNIFORM, param.type),
-                InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
-                // all pointers are unsigned
-                param.type.getPointerType() ? InstructionDecorations::UNSIGNED_RESULT : InstructionDecorations::NONE);
+            it = loadScalarParameter(param, param.type, method, it);
         }
     }
 

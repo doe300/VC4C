@@ -231,9 +231,10 @@ InstructionWalker intermediate::insertVectorInsertion(
  * indices are actually undefined and therefore don't need to be copied from the second vector (e.g. by moving 3-element
  * vector into 4-element vector).
  */
-static bool checkIndicesNotUndefined(const SIMDVector& container, const unsigned int startIndex)
+static bool checkIndicesNotUndefined(const SIMDVector& container, unsigned int startIndex, unsigned int numIndices)
 {
-    for(auto i = startIndex; i < container.size(); ++i)
+    auto endIndex = std::min(startIndex + numIndices, static_cast<unsigned>(container.size()));
+    for(auto i = startIndex; i < endIndex; ++i)
         if(container[i].isUndefined())
             return false;
     return true;
@@ -374,7 +375,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     {
         // the vector is copied in-order
         if(!isSingleSource && mask.type.getVectorWidth() > source0.type.getVectorWidth() &&
-            checkIndicesNotUndefined(maskContainer, source0.type.getVectorWidth()))
+            checkIndicesNotUndefined(maskContainer, source0.type.getVectorWidth(), source1.type.getVectorWidth()))
         {
             // The second vector participates in the shuffling
             return insertVectorConcatenation(it, method, source0, source1, destination);
