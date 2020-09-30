@@ -711,31 +711,6 @@ std::vector<uint32_t> spirv::readStreamOfWords(std::istream* in)
     return words;
 }
 
-void spirv::addFunctionAliases(Module& module)
-{
-    /*
-     * Add function aliases
-     *
-     * This is required, since SPIR-V maps e.g. OpenCL 1.2 standard function atomic_inc(x) as well as OpenCL 1.0
-     * extension function atom_inc(x) to an OpAtomicIIncrement instruction. Since we can only map this instruction
-     * to one call-site, we need to alias the other one.
-     *
-     * So we map e.g. OpAtomicIIncrement to a call to "atomic_inc". But in case this does not exist (i.e. originally,
-     * "atom_inc" was called), we add an alias back to the old OpenCL 1.0 extension function.
-     */
-    module.functionAliases.emplace("atomic_add", "atom_add");
-    module.functionAliases.emplace("atomic_sub", "atom_sub");
-    module.functionAliases.emplace("atomic_xchg", "atom_xchg");
-    module.functionAliases.emplace("atomic_inc", "atom_inc");
-    module.functionAliases.emplace("atomic_dec", "atom_dec");
-    module.functionAliases.emplace("atomic_cmpxchg", "atom_cmpxchg");
-    module.functionAliases.emplace("atomic_min", "atom_min");
-    module.functionAliases.emplace("atomic_max", "atom_max");
-    module.functionAliases.emplace("atomic_and", "atom_and");
-    module.functionAliases.emplace("atomic_or", "atom_or");
-    module.functionAliases.emplace("atomic_xor", "atom_xor");
-}
-
 std::string spirv::demangleFunctionName(const std::string& name)
 {
     if(name.find("_Z") != 0)
@@ -762,3 +737,27 @@ std::string spirv::demangleFunctionName(const std::string& name)
 #endif
 }
 
+void spirv::addFunctionAliases(Module& module)
+{
+    /*
+     * Add function aliases
+     *
+     * This is required, since SPIR-V maps e.g. OpenCL 1.2 standard function atomic_inc(x) as well as OpenCL 1.0
+     * extension function atom_inc(x) to an OpAtomicIIncrement instruction. Since we can only map this instruction
+     * to one call-site, we need to alias the other one.
+     *
+     * So we map e.g. OpAtomicIIncrement to a call to "atomic_inc". But in case this does not exist (i.e. originally,
+     * "atom_inc" was called), we add an alias back to the old OpenCL 1.0 extension function.
+     */
+    module.functionAliases.emplace("atomic_add", "atom_add");
+    module.functionAliases.emplace("atomic_sub", "atom_sub");
+    module.functionAliases.emplace("atomic_xchg", "atom_xchg");
+    module.functionAliases.emplace("atomic_inc", "atom_inc");
+    module.functionAliases.emplace("atomic_dec", "atom_dec");
+    module.functionAliases.emplace("atomic_cmpxchg", "atom_cmpxchg");
+    module.functionAliases.emplace("atomic_min", "atom_min");
+    module.functionAliases.emplace("atomic_max", "atom_max");
+    module.functionAliases.emplace("atomic_and", "atom_and");
+    module.functionAliases.emplace("atomic_or", "atom_or");
+    module.functionAliases.emplace("atomic_xor", "atom_xor");
+}
