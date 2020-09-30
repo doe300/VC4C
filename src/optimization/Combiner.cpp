@@ -10,7 +10,7 @@
 #include "../analysis/MemoryAnalysis.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/operators.h"
-#include "../optimization/ValueExpr.h"
+#include "../Expression.h"
 #include "../periphery/VPM.h"
 #include "../spirv/SPIRVHelper.h"
 #include "Eliminator.h"
@@ -1125,8 +1125,13 @@ InstructionWalker optimizations::combineArithmeticOperations(
     return it;
 }
 
+SubExpression makeValueBinaryOpFromLocal(Value& left, const OpCode& binOp, Value& right)
+{
+    return SubExpression(std::make_shared<Expression>(binOp, SubExpression(left), SubExpression(right)));
+}
+
 // try to convert shl to mul and return it as ValueExpr
-std::shared_ptr<ValueExpr> shlToMul(Value& value, const intermediate::Operation* op)
+SubExpression shlToMul(const Value& value, const intermediate::Operation* op)
 {
     auto left = op->getFirstArg();
     auto right = *op->getSecondArg();
@@ -1143,29 +1148,24 @@ std::shared_ptr<ValueExpr> shlToMul(Value& value, const intermediate::Operation*
     if(shiftValue > 0)
     {
         auto right = Value(Literal(1 << shiftValue), TYPE_INT32);
-        return makeValueBinaryOpFromLocal(left, ValueBinaryOp::BinaryOp::Mul, right);
+        return makeValueBinaryOpFromLocal(left, OP_FMUL, right);
     }
     else
     {
-        return std::make_shared<ValueTerm>(value);
+        return SubExpression(value);
     }
 }
 
-std::shared_ptr<ValueExpr> iiToExpr(Value& value, const LocalUser* inst)
+SubExpression iiToExpr(const Value& value, const LocalUser* inst)
 {
-    using BO = ValueBinaryOp::BinaryOp;
-    BO binOp = BO::Other;
-
     // add, sub, shr, shl, asr
     if(auto op = dynamic_cast<const intermediate::Operation*>(inst))
     {
-        if(op->op == OP_ADD)
+        if(op->op == OP_ADD || op->op == OP_SUB)
         {
-            binOp = BO::Add;
-        }
-        else if(op->op == OP_SUB)
-        {
-            binOp = BO::Sub;
+            auto left = op->getFirstArg();
+            auto right = *op->getSecondArg();
+            return makeValueBinaryOpFromLocal(left, op->op, right);
         }
         else if(op->op == OP_SHL)
         {
@@ -1176,28 +1176,25 @@ std::shared_ptr<ValueExpr> iiToExpr(Value& value, const LocalUser* inst)
         else
         {
             // If op is neither add nor sub, return value as-is.
-            return std::make_shared<ValueTerm>(value);
+            return SubExpression(value);
         }
-
-        auto left = op->getFirstArg();
-        auto right = *op->getSecondArg();
-        return makeValueBinaryOpFromLocal(left, binOp, right);
     }
     // mul, div
     else if(auto op = dynamic_cast<const intermediate::IntrinsicOperation*>(inst))
     {
+        OpCode binOp = OP_NOP;
         if(op->opCode == "mul")
         {
-            binOp = BO::Mul;
+            binOp = Expression::FAKEOP_MUL;
         }
         else if(op->opCode == "div")
         {
-            binOp = BO::Div;
+            binOp = Expression::FAKEOP_DIV;
         }
         else
         {
             // If op is neither add nor sub, return value as-is.
-            return std::make_shared<ValueTerm>(value);
+            return SubExpression(value);
         }
 
         auto left = op->getFirstArg();
@@ -1205,15 +1202,150 @@ std::shared_ptr<ValueExpr> iiToExpr(Value& value, const LocalUser* inst)
         return makeValueBinaryOpFromLocal(left, binOp, right);
     }
 
-    return std::make_shared<ValueTerm>(value);
+    return SubExpression(value);
 }
 
-std::shared_ptr<ValueExpr> calcValueExpr(std::shared_ptr<ValueExpr> expr)
+Optional<int> getIntegerFromExpression(const SubExpression& expr)
 {
-    using BO = ValueBinaryOp::BinaryOp;
+    if(auto value = expr.checkValue())
+    {
+        if(auto lit = value->checkLiteral())
+        {
+            return Optional<int>(lit->signedInt());
+        }
+        else if(auto imm = value->checkImmediate())
+        {
+            return imm->getIntegerValue();
+        }
+    }
+    return Optional<int>();
+}
 
-    ValueExpr::ExpandedExprs expanded;
-    expr->expand(expanded);
+//                                         signed, value
+using ExpandedExprs = std::vector<std::pair<bool, SubExpression>>;
+
+void expandExpression(const SubExpression& subExpr, ExpandedExprs& expanded)
+{
+    if(auto expr = subExpr.checkExpression())
+    {
+        ExpandedExprs leftEE, rightEE;
+        auto& left = expr->arg0;
+        auto& right = expr->arg1;
+        auto& op = expr->code;
+
+        expandExpression(left, leftEE);
+        expandExpression(right, rightEE);
+
+        auto getInteger = [](const std::pair<bool, SubExpression>& v) {
+            std::function<Optional<int>(const int&)> addSign = [&](const int& num) {
+                return make_optional(v.first ? num : -num);
+            };
+            return getIntegerFromExpression(v.second) & addSign;
+        };
+
+        auto leftNum = (leftEE.size() == 1) ? getInteger(leftEE[0]) : Optional<int>();
+        auto rightNum = (rightEE.size() == 1) ? getInteger(rightEE[0]) : Optional<int>();
+
+        auto append = [](ExpandedExprs& ee1, ExpandedExprs& ee2) { ee1.insert(ee1.end(), ee2.begin(), ee2.end()); };
+
+        if(leftNum && rightNum)
+        {
+            int l = leftNum.value_or(0);
+            int r = rightNum.value_or(0);
+            int num = 0;
+
+            if(op == OP_ADD)
+            {
+                num = l + r;
+            }
+            else if(op == OP_SUB)
+            {
+                num = l - r;
+            }
+            else if(op == Expression::FAKEOP_MUL)
+            {
+                num = l * r;
+            }
+            else if(op == Expression::FAKEOP_DIV)
+            {
+                num = l / r;
+            }
+            else
+            {
+                throw CompilationError(CompilationStep::OPTIMIZER, "Unknown operation", op.name);
+            }
+
+            // TODO: Care other types
+            auto value = Value(Literal(std::abs(num)), TYPE_INT32);
+            SubExpression foldedExpr(value);
+            expanded.push_back(std::make_pair(true, foldedExpr));
+        }
+        else
+        {
+            if(op == OP_ADD)
+            {
+                append(expanded, leftEE);
+                append(expanded, rightEE);
+            }
+            else if(op == OP_SUB)
+            {
+                append(expanded, leftEE);
+
+                for(auto& e : rightEE)
+                {
+                    e.first = !e.first;
+                }
+                append(expanded, rightEE);
+            }
+            else if(op == Expression::FAKEOP_MUL)
+            {
+                if(leftNum || rightNum)
+                {
+                    int num = 0;
+                    ExpandedExprs* ee = nullptr;
+                    if(leftNum)
+                    {
+                        num = leftNum.value_or(0);
+                        ee = &rightEE;
+                    }
+                    else
+                    {
+                        num = rightNum.value_or(0);
+                        ee = &leftEE;
+                    }
+                    for(int i = 0; i < num; i++)
+                    {
+                        append(expanded, *ee);
+                    }
+                }
+                else
+                {
+                    expanded.push_back(std::make_pair(true, SubExpression(std::make_shared<Expression>(op, left, right))));
+                }
+            }
+            else if(op == Expression::FAKEOP_DIV)
+            {
+                expanded.push_back(std::make_pair(true, SubExpression(std::make_shared<Expression>(op, left, right))));
+            }
+            else
+            {
+                throw CompilationError(CompilationStep::OPTIMIZER, "Unknown operation", op.name);
+            }
+        }
+    }
+    else if(auto value = subExpr.checkValue())
+    {
+        expanded.push_back(std::make_pair(true, subExpr));
+    }
+    else {
+        throw CompilationError(CompilationStep::OPTIMIZER, "Cannot expand expression", subExpr.to_string());
+    }
+}
+
+SubExpression calcValueExpr(const SubExpression& expr)
+{
+    ExpandedExprs expanded;
+    expandExpression(expr, expanded);
 
     // for(auto& p : expanded)
     //     logging::debug() << (p.first ? "+" : "-") << p.second->to_string() << " ";
@@ -1221,10 +1353,9 @@ std::shared_ptr<ValueExpr> calcValueExpr(std::shared_ptr<ValueExpr> expr)
 
     for(auto p = expanded.begin(); p != expanded.end();)
     {
-        auto comp = std::find_if(
-            expanded.begin(), expanded.end(), [&p](const std::pair<bool, std::shared_ptr<ValueExpr>>& other) {
-                return p->first != other.first && *p->second == *other.second;
-            });
+        auto comp = std::find_if(expanded.begin(), expanded.end(), [&p](const std::pair<bool, SubExpression>& other) {
+            return p->first != other.first && p->second == other.second;
+        });
         if(comp != expanded.end())
         {
             expanded.erase(comp);
@@ -1236,18 +1367,24 @@ std::shared_ptr<ValueExpr> calcValueExpr(std::shared_ptr<ValueExpr> expr)
         }
     }
 
-    std::shared_ptr<ValueExpr> result = std::make_shared<ValueTerm>(INT_ZERO);
+    SubExpression result(INT_ZERO);
     for(auto& p : expanded)
     {
-        result = std::make_shared<ValueBinaryOp>(result, p.first ? BO::Add : BO::Sub, p.second);
+        result = SubExpression(std::make_shared<Expression>(p.first ? OP_ADD : OP_SUB, result, p.second));
     }
 
     return result;
 }
 
+SubExpression replaceLocalToExpr(const SubExpression& expr, const Value& local, SubExpression newExpr)
+{
+    return expr;
+}
+
 void optimizations::combineDMALoads(const Module& module, Method& method, const Configuration& config)
 {
     using namespace std;
+    using namespace VariantNamespace;
 
     const std::regex vloadReg("vload(2|3|4|8|16)");
 
@@ -1306,7 +1443,7 @@ void optimizations::combineDMALoads(const Module& module, Method& method, const 
                 logging::debug() << inst->to_string() << logging::endl;
             }
 
-            std::vector<std::pair<Value, std::shared_ptr<ValueExpr>>> addrExprs;
+            std::vector<std::pair<Value, SubExpression>> addrExprs;
 
             for(auto& addrValue : offsetValues)
             {
@@ -1318,13 +1455,13 @@ void optimizations::combineDMALoads(const Module& module, Method& method, const 
                     }
                     else
                     {
-                        addrExprs.push_back(std::make_pair(addrValue, std::make_shared<ValueTerm>(addrValue)));
+                        addrExprs.push_back(std::make_pair(addrValue, SubExpression(addrValue)));
                     }
                 }
                 else
                 {
                     // TODO: is it ok?
-                    addrExprs.push_back(std::make_pair(addrValue, std::make_shared<ValueTerm>(addrValue)));
+                    addrExprs.push_back(std::make_pair(addrValue, SubExpression(addrValue)));
                 }
             }
 
@@ -1332,33 +1469,32 @@ void optimizations::combineDMALoads(const Module& module, Method& method, const 
             {
                 for(auto& other : addrExprs)
                 {
-                    auto replaced = current.second->replaceLocal(other.first, other.second);
-                    current.second = replaced;
+                    current.second = replaceLocalToExpr(current.second, other.first, other.second);
                 }
             }
 
             for(auto& pair : addrExprs)
             {
-                logging::debug() << pair.first.to_string() << " = " << pair.second->to_string() << logging::endl;
+                logging::debug() << pair.first.to_string() << " = " << pair.second.to_string() << logging::endl;
             }
 
-            std::shared_ptr<ValueExpr> diff = nullptr;
+            SubExpression diff;
             bool eqDiff = true;
             for(size_t i = 1; i < addrExprs.size(); i++)
             {
                 auto x = addrExprs[i - 1].second;
                 auto y = addrExprs[i].second;
-                auto diffExpr = std::make_shared<ValueBinaryOp>(y, ValueBinaryOp::BinaryOp::Sub, x);
+                auto diffExpr = SubExpression(std::make_shared<Expression>(OP_SUB, y, x));
 
                 auto currentDiff = calcValueExpr(diffExpr);
                 // Apply calcValueExpr again for integer literals.
                 currentDiff = calcValueExpr(currentDiff);
 
-                if(diff == nullptr)
+                if(!diff)
                 {
                     diff = currentDiff;
                 }
-                if(*currentDiff != *diff)
+                if(currentDiff != diff)
                 {
                     eqDiff = false;
                     break;
@@ -1371,16 +1507,16 @@ void optimizations::combineDMALoads(const Module& module, Method& method, const 
             if(eqDiff)
             {
                 // The form of diff should be "0 (+/-) expressions...", then remove the value 0 at most right.
-                ValueExpr::ExpandedExprs expanded;
-                diff->expand(expanded);
+                ExpandedExprs expanded;
+                expandExpression(diff, expanded);
                 if(expanded.size() == 1)
                 {
                     diff = expanded[0].second;
 
                     // logging::debug() << "diff = " << diff->to_string()  << logging::endl;
 
-                    auto term = std::dynamic_pointer_cast<ValueTerm>(diff);
-                    auto mpValue = (term != nullptr) ? term->value.getConstantValue() : Optional<Value>{};
+                    auto term = diff.getConstantExpression();
+                    auto mpValue = term.has_value() ? term->getConstantValue() : Optional<Value>{};
                     auto mpLiteral = mpValue.has_value() ? mpValue->getLiteralValue() : Optional<Literal>{};
 
                     if(mpLiteral)

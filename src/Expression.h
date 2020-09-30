@@ -109,6 +109,9 @@ namespace vc4c
         // A fake operation to indicate an unsigned multiplication
         static constexpr OpCode FAKEOP_UMUL{"umul", 132, 132, 2, false, false, FlagBehavior::NONE};
 
+        static constexpr OpCode FAKEOP_MUL{"mul", 132, 132, 2, false, false, FlagBehavior::NONE};
+        static constexpr OpCode FAKEOP_DIV{"div", 132, 132, 2, false, false, FlagBehavior::NONE};
+
         OpCode code;
         SubExpression arg0;
         SubExpression arg1{};
