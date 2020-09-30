@@ -744,12 +744,15 @@ void precompilation::precompileStandardLibraryFiles(const std::string& sourceFil
         "-Wno-undefined-inline "
         "-Wno-unknown-attributes -x cl "
         "-emit-llvm-bc -o ";
-    auto spirvArgs = " --spirv-allow-unknown-intrinsics -o ";
+    auto spirvArgs = " --spirv-lower-const-expr --spirv-mem2reg --expensive-combines -o ";
 
     auto pchCommand = CLANG_PATH + pchArgs + destinationFolder + "/VC4CLStdLib.h.pch " + sourceFile;
     auto moduleCommand = CLANG_PATH + moduleArgs + destinationFolder + "/VC4CLStdLib.bc " + sourceFile;
-    auto spirvCommand = SPIRV_LLVM_SPIRV_PATH + spirvArgs + destinationFolder + "/VC4CLStdLib.spv " +
-        destinationFolder + "/VC4CLStdLib.bc";
+    auto spirvCommand = CLANG_PATH + moduleArgs + "/dev/stdout " + sourceFile + " | " + SPIRV_LLVM_SPIRV_PATH +
+        spirvArgs + destinationFolder + "/VC4CLStdLib.spv -";
+    // SPIRV-LLVM-Translator does not support (all) LLVM intrinsic functions, so we need to create the temporary LLVM
+    // module without any optimization enabled. Instead we at least run some optimizations in the SPIRV-LLVM-Translator.
+    spirvCommand.replace(spirvCommand.find("-O3"), 3, "-O0");
 
     CPPLOG_LAZY(logging::Level::INFO, log << "Pre-compiling standard library with: " << pchCommand << logging::endl);
     runPrecompiler(pchCommand, nullptr, nullptr);

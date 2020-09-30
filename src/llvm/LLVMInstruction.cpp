@@ -313,12 +313,6 @@ bool CallSite::mapInstruction(Method& method)
         methodName.find("write_mem_fence") == 0 || std::regex_match(methodName, readFencePattern) ||
         std::regex_match(methodName, writeFencePattern))
     {
-        /*
-         * NOTE: vc4cl-stdlib implements read_mem_fence() and write_mem_fence() as calls to mem_fence().
-         * Since this is a function call passing the parameter as local, the memory scope is not a constant value.
-         * Directly mapping the function call to read_mem_fence() and write_mem_fence() to a memory fence instruction
-         * still created the methods for these calls, but they will never be executed.
-         */
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Intrinsifying '" << methodName << "' with memory barrier" << logging::endl);
         method.appendToEnd(new intermediate::MemoryBarrier(

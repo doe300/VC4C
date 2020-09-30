@@ -315,6 +315,22 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
         }
         calledFunction = "vstore" + std::to_string(num);
     }
+    else if(calledFunction.find("mem_fence") == 0 || calledFunction.find("read_mem_fence") == 0 ||
+        calledFunction.find("write_mem_fence") == 0)
+    {
+        /**
+         * We handle these OpenCL C functions here explicitly, since we do not define them in the VC4CL std-lib headers,
+         * since some older versions of the SPIRV-LLVM-Translator do not support our previous implementation.
+         *
+         * But this implementation would also just generate an OpMemoryBarrier, which is then converted into the same
+         * intermediate::MemoryBarrier object.
+         */
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating memory barrier for: " << calledFunction << logging::endl);
+        method.method->appendToEnd(new intermediate::MemoryBarrier(
+            static_cast<intermediate::MemoryScope>(args.at(0).getLiteralValue()->unsignedInt()),
+            intermediate::MemorySemantics::ACQUIRE_RELEASE));
+        return;
+    }
     if(dest.isUndefined())
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
