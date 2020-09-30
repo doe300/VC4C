@@ -711,39 +711,6 @@ std::vector<uint32_t> spirv::readStreamOfWords(std::istream* in)
     return words;
 }
 
-void spirv::linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output)
-{
-#ifndef SPIRV_FRONTEND
-    throw CompilationError(CompilationStep::LINKER, "SPIRV-Tools linker is not available!");
-#else
-    std::vector<std::vector<uint32_t>> binaries;
-    binaries.reserve(inputModules.size());
-    std::transform(inputModules.begin(), inputModules.end(), std::back_inserter(binaries), readStreamOfWords);
-
-    spvtools::LinkerOptions options;
-    options.SetCreateLibrary(false);
-    options.SetVerifyIds(true);
-    // the VC4CL intrinsics are not provided by any input module
-    options.SetAllowPartialLinkage(true);
-
-    spvtools::Context spvContext(SPV_ENV_OPENCL_EMBEDDED_1_2);
-
-    std::vector<uint32_t> linkedModules;
-    spv_result_t result = spvtools::Link(spvContext, binaries, &linkedModules, options);
-
-    if(result != SPV_SUCCESS)
-        throw CompilationError(CompilationStep::PARSER, getErrorMessage(result));
-
-    for(const uint32_t u : linkedModules)
-    {
-        output.write(reinterpret_cast<const char*>(&u), sizeof(uint32_t));
-    }
-    CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Linked " << inputModules.size() << " modules into a single module with " << linkedModules.size()
-            << " words of data." << logging::endl);
-#endif
-}
-
 void spirv::addFunctionAliases(Module& module)
 {
     /*
