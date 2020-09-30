@@ -19,6 +19,13 @@ namespace vc4c
     static const std::string VC4CL_STDLIB_FOLDER = "";
 #endif
 
+#cmakedefine CMAKE_INSTALL_PREFIX "@CMAKE_INSTALL_PREFIX@"
+#ifndef CMAKE_INSTALL_PREFIX
+#define CMAKE_INSTALL_PREFIX "/usr/local"
+#endif
+    static const std::string VC4CL_STDLIB_CACHE_DIR = CMAKE_INSTALL_PREFIX "/share/vc4cc/";
+#undef CMAKE_INSTALL_PREFIX
+
 #cmakedefine CLANG_FOUND "@CLANG_FOUND@"
 #cmakedefine SPIRV_CLANG_FOUND "@SPIRV_CLANG_FOUND@"
 #ifdef SPIRV_CLANG_FOUND

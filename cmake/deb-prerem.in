@@ -2,5 +2,4 @@
 set -e
 rm -f /etc/ld.so.conf.d/99-vc4c.conf
 ldconfig
-rm -f @CMAKE_INSTALL_PREFIX@/include/vc4cl-stdlib/VC4CLStdLib.bc
-rm -f @CMAKE_INSTALL_PREFIX@/include/vc4cl-stdlib/VC4CLStdLib.h.pch
+rm -rf @CMAKE_INSTALL_PREFIX@/share/vc4cc/

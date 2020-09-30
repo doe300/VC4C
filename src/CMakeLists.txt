@@ -150,7 +150,9 @@ install(DIRECTORY "${PROJECT_SOURCE_DIR}/include/" DESTINATION include/vc4cc FIL
 # Precompiles the headers
 # TODO replace with usage of generator expression once CMake 3.14 is in Raspbian buster repository
 get_property(VC4C_PROGRAM_LOCATION TARGET ${VC4C_PROGRAM_NAME} PROPERTY LOCATION)
-install(CODE "execute_process(COMMAND ${VC4C_PROGRAM_LOCATION} --quiet --precompile-stdlib -o $DESTDIR/${CMAKE_INSTALL_PREFIX}/include/vc4cl-stdlib/ ${VC4CL_STDLIB_DIR}/VC4CLStdLib.h)")
+# NOTE: Building the precompiled modules into a packaged directory will include them in the package.
+# This is not applied for the cross build (the one where the Debian package actually matters), since the pre-compilation fails there (because of architecture mismatch)
+install(CODE "execute_process(COMMAND ${VC4C_PROGRAM_LOCATION} --quiet --precompile-stdlib -o $DESTDIR/${CMAKE_INSTALL_PREFIX}/share/vc4cc/ ${VC4CL_STDLIB_DIR}/VC4CLStdLib.h)")
 # Exports the target (to be used by CMake to find the SOURCE library)
 export(TARGETS ${VC4C_LIBRARY_NAME} FILE vc4cc-exports.cmake)
 # Adds custom uninstall command

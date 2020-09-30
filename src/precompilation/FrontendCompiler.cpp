@@ -18,6 +18,7 @@
 #endif
 
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iterator>
 #include <mutex>
@@ -703,12 +704,14 @@ const StdlibFiles& precompilation::findStandardLibraryFiles(const std::vector<st
         std::vector<std::string> allPaths(additionalFolders);
         if(!VC4CL_STDLIB_FOLDER.empty())
             allPaths.emplace_back(VC4CL_STDLIB_FOLDER);
-        allPaths.emplace_back("/usr/local/include/vc4cl-stdlib/");
-        allPaths.emplace_back("/usr/include/vc4cl-stdlib/");
         if(auto homeDir = std::getenv("HOME"))
         {
             allPaths.emplace_back(std::string(homeDir) + "/.cache/vc4c");
         }
+        allPaths.emplace_back(VC4CL_STDLIB_CACHE_DIR);
+        // for backwards compatibility as well as to find the header
+        allPaths.emplace_back("/usr/local/include/vc4cl-stdlib/");
+        allPaths.emplace_back("/usr/include/vc4cl-stdlib/");
         StdlibFiles tmp;
         tmp.configurationHeader = determineFilePath("defines.h", allPaths);
         tmp.llvmModule = determineFilePath("VC4CLStdLib.bc", allPaths);
