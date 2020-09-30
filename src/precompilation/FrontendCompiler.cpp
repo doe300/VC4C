@@ -100,7 +100,7 @@ static std::vector<std::string> buildClangCommand(const std::string& compiler, c
     if(usePCH)
     {
         command.emplace_back("-include-pch");
-        command.emplace_back(Precompiler::findStandardLibraryFiles().precompiledHeader);
+        command.emplace_back(findStandardLibraryFiles().precompiledHeader);
     }
     else
     {
@@ -108,7 +108,7 @@ static std::vector<std::string> buildClangCommand(const std::string& compiler, c
         // The #defines (esp. for extensions) from the default headers differ from the supported #defines,
         // so we need to include our #defines/undefines
         command.emplace_back("-include");
-        command.emplace_back(Precompiler::findStandardLibraryFiles().configurationHeader);
+        command.emplace_back(findStandardLibraryFiles().configurationHeader);
     }
     if(options.find("-x cl") == std::string::npos)
     {
@@ -304,11 +304,11 @@ void precompilation::compileOpenCLWithDefaultHeader(
 
 void precompilation::linkInStdlibModule(LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult& result)
 {
-    if(Precompiler::findStandardLibraryFiles().llvmModule.empty())
+    if(findStandardLibraryFiles().llvmModule.empty())
         throw CompilationError(CompilationStep::LINKER, "LLVM IR module for VC4CL std-lib is not defined!");
     std::vector<LLVMIRSource> sources;
     sources.emplace_back(std::forward<LLVMIRSource>(source));
-    sources.emplace_back(Precompiler::findStandardLibraryFiles().llvmModule);
+    sources.emplace_back(findStandardLibraryFiles().llvmModule);
     auto options = userOptions;
     // set options to reduce output module size by only linking in required std-lib symbols
     /*
@@ -620,10 +620,10 @@ void precompilation::compileOpenCLToLLVMIR(OpenCLSource&& source, const std::str
     // This check has the positive side-effect that if the VC4CLStdLib LLVM module is missing but the PCH exists, then
     // the compilation with PCH (a bit slower but functional) will be used.
     auto llvm_link = findToolLocation("llvm-link", LLVM_LINK_PATH, true);
-    if(llvm_link && !Precompiler::findStandardLibraryFiles().llvmModule.empty())
+    if(llvm_link && !findStandardLibraryFiles().llvmModule.empty())
         return compileOpenCLAndLinkModule(std::move(source), userOptions, result);
 
-    if(!Precompiler::findStandardLibraryFiles().precompiledHeader.empty())
+    if(!findStandardLibraryFiles().precompiledHeader.empty())
         return compileOpenCLWithPCH(std::move(source), userOptions, result);
     throw CompilationError(
         CompilationStep::PRECOMPILATION, "Cannot include VC4CL standard library with neither PCH nor module defined");
@@ -675,4 +675,91 @@ Optional<std::string> precompilation::findToolLocation(
     // so we also don't look up again on failure
     cachedTools.emplace(name, Optional<std::string>{});
     return {};
+}
+
+static std::string determineFilePath(const std::string& fileName, const std::vector<std::string>& folders)
+{
+    for(const auto& folder : folders)
+    {
+        auto fullPath = (!folder.empty() && folder.back() == '/' ? folder : (folder + "/")) + fileName;
+        if(access(fullPath.data(), R_OK) == 0)
+        {
+            // the file exists (including resolving sym-links, etc.) and can be read
+            return fullPath;
+        }
+        else
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Could not access VC4CL standard-library file: " << fullPath << " (" << strerror(errno) << ')'
+                    << logging::endl);
+        }
+    }
+    return "";
+}
+
+const StdlibFiles& precompilation::findStandardLibraryFiles(const std::vector<std::string>& additionalFolders)
+{
+    static const StdlibFiles paths = [&]() {
+        std::vector<std::string> allPaths(additionalFolders);
+        if(!VC4CL_STDLIB_FOLDER.empty())
+            allPaths.emplace_back(VC4CL_STDLIB_FOLDER);
+        allPaths.emplace_back("/usr/local/include/vc4cl-stdlib/");
+        allPaths.emplace_back("/usr/include/vc4cl-stdlib/");
+        if(auto homeDir = std::getenv("HOME"))
+        {
+            allPaths.emplace_back(std::string(homeDir) + "/.cache/vc4c");
+        }
+        StdlibFiles tmp;
+        tmp.configurationHeader = determineFilePath("defines.h", allPaths);
+        tmp.llvmModule = determineFilePath("VC4CLStdLib.bc", allPaths);
+        tmp.precompiledHeader = determineFilePath("VC4CLStdLib.h.pch", allPaths);
+        tmp.spirvModule = determineFilePath("VC4CLStdLib.spv", allPaths);
+        if(tmp.configurationHeader.empty() || (tmp.llvmModule.empty() && tmp.precompiledHeader.empty()))
+        {
+            throw CompilationError(CompilationStep::PRECOMPILATION,
+                "Required VC4CL standard library file not found in any of the provided paths",
+                to_string<std::string>(allPaths));
+        }
+        return tmp;
+    }();
+    return paths;
+}
+
+void precompilation::precompileStandardLibraryFiles(const std::string& sourceFile, const std::string& destinationFolder)
+{
+    PROFILE_START(PrecompileStandardLibraryFiles);
+    // TODO merge with creating of parameters in FrontendCompiler#buildClangCommand
+    auto pchArgs =
+        " -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info "
+        "-cl-single-precision-constant -fgnu89-inline -Wno-all -Wno-gcc-compat -Wdouble-promotion "
+        "-Wno-undefined-inline "
+        "-Wno-unknown-attributes -x cl "
+        "-emit-pch -o ";
+    auto moduleArgs =
+        " -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info "
+        "-cl-single-precision-constant -fgnu89-inline -Wno-all -Wno-gcc-compat -Wdouble-promotion "
+        "-Wno-undefined-inline "
+        "-Wno-unknown-attributes -x cl "
+        "-emit-llvm-bc -o ";
+    auto spirvArgs = " --spirv-allow-unknown-intrinsics -o ";
+
+    auto pchCommand = CLANG_PATH + pchArgs + destinationFolder + "/VC4CLStdLib.h.pch " + sourceFile;
+    auto moduleCommand = CLANG_PATH + moduleArgs + destinationFolder + "/VC4CLStdLib.bc " + sourceFile;
+    auto spirvCommand = SPIRV_LLVM_SPIRV_PATH + spirvArgs + destinationFolder + "/VC4CLStdLib.spv " +
+        destinationFolder + "/VC4CLStdLib.bc";
+
+    CPPLOG_LAZY(logging::Level::INFO, log << "Pre-compiling standard library with: " << pchCommand << logging::endl);
+    runPrecompiler(pchCommand, nullptr, nullptr);
+
+    CPPLOG_LAZY(logging::Level::INFO, log << "Pre-compiling standard library with: " << moduleCommand << logging::endl);
+    runPrecompiler(moduleCommand, nullptr, nullptr);
+
+    if(!SPIRV_LLVM_SPIRV_PATH.empty())
+    {
+        CPPLOG_LAZY(
+            logging::Level::INFO, log << "Pre-compiling standard library with: " << spirvCommand << logging::endl);
+        runPrecompiler(spirvCommand, nullptr, nullptr);
+    }
+
+    PROFILE_END(PrecompileStandardLibraryFiles);
 }

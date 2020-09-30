@@ -132,10 +132,11 @@ static void printInfo()
     std::cout << "Standard library location:" << std::endl;
     try
     {
-        auto stdlib = Precompiler::findStandardLibraryFiles();
+        auto stdlib = precompilation::findStandardLibraryFiles();
         std::cout << "\theader in " << stdlib.configurationHeader << std::endl;
         std::cout << "\tPCH in " << stdlib.precompiledHeader << std::endl;
         std::cout << "\tLLVM module in " << stdlib.llvmModule << std::endl;
+        std::cout << "\tSPIR-V module in " << stdlib.spirvModule << std::endl;
     }
     catch(const std::exception& err)
     {
@@ -314,7 +315,7 @@ int main(int argc, char** argv)
         }
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Pre-compiling '" << inputFiles[0] << "' into '" << outputFile << "'..." << logging::endl);
-        Precompiler::precompileStandardLibraryFiles(inputFiles[0], outputFile);
+        precompilation::precompileStandardLibraryFiles(inputFiles[0], outputFile);
         return 0;
     }
 

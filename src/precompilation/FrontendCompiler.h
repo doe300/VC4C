@@ -150,6 +150,38 @@ namespace vc4c
          * aborts on execution failure.
          */
         void runPrecompiler(const std::string& command, std::istream* inputStream, std::ostream* outputStream);
+
+        /*
+         * Container for the paths used to look up the VC4CL OpenCL C standard-library implementation files
+         */
+        struct StdlibFiles
+        {
+            // The path to the defines.h header file, empty if not found. This is always required
+            std::string configurationHeader;
+            // The path to the pre-compiled header (PCH), empty if not found. Only required for SPIR-V front-end
+            std::string precompiledHeader;
+            // The path to the pre-compiled LLVM module, empty if not found. Only required for LLVM module front-end
+            std::string llvmModule;
+            // The path to the pre-compiled SPIR-V module, empty if not found. Only required for SPIR-V front-end
+            std::string spirvModule;
+        };
+
+        /*
+         * Determines and returns the paths to the VC4CL OpenCL C standard library files to be used for compilations
+         *
+         * The optional parameter specifies additional folder to look up the required files. If it is not given, only
+         * the default locations will be searched.
+         *
+         * NOTE: The locations of the files are cached, therefore only the first call has any effect of specifying the
+         * locations.
+         */
+        const StdlibFiles& findStandardLibraryFiles(const std::vector<std::string>& additionalFolders = {});
+
+        /*
+         * Pre-compiles the given VC4CL OpenCL C standard-library file (the VC4CLStdLib.h header) into a PCH and an LLVM
+         * module and stores them in the given output folder.
+         */
+        void precompileStandardLibraryFiles(const std::string& sourceFile, const std::string& destinationFolder);
     } /* namespace precompilation */
 } /* namespace vc4c */
 

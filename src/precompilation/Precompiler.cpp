@@ -274,10 +274,18 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
 
         if(includeStandardLibrary)
         {
-            tempFiles.emplace_back(std::make_unique<TemporaryFile>());
-            SPIRVResult stdLib(tempFiles.back()->fileName);
-            compileLLVMToSPIRV(LLVMIRSource(findStandardLibraryFiles().llvmModule), "", stdLib);
-            sources.emplace_back(stdLib);
+            if(!findStandardLibraryFiles().spirvModule.empty())
+                sources.emplace_back(SPIRVSource(findStandardLibraryFiles().spirvModule));
+            else if(auto llvm_spirv = findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
+            {
+                tempFiles.emplace_back(std::make_unique<TemporaryFile>());
+                SPIRVResult stdLib(tempFiles.back()->fileName);
+                compileLLVMToSPIRV(LLVMIRSource(findStandardLibraryFiles().llvmModule), "", stdLib);
+                sources.emplace_back(stdLib);
+            }
+            else
+                throw CompilationError(
+                    CompilationStep::LINKER, "Neither SPIR-V module nor llvm-spirv executable found!");
         }
 
         SPIRVResult result(&output);
@@ -322,82 +330,6 @@ bool Precompiler::isLinkerAvailable()
     if(findToolLocation("spirv-link", SPIRV_LINK_PATH))
         return true;
     return false;
-}
-
-static std::string determineFilePath(const std::string& fileName, const std::vector<std::string>& folders)
-{
-    for(const auto& folder : folders)
-    {
-        auto fullPath = (!folder.empty() && folder.back() == '/' ? folder : (folder + "/")) + fileName;
-        if(access(fullPath.data(), R_OK) == 0)
-        {
-            // the file exists (including resolving sym-links, etc.) and can be read
-            return fullPath;
-        }
-        else
-        {
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Could not access VC4CL standard-library file: " << fullPath << " (" << strerror(errno) << ')'
-                    << logging::endl);
-        }
-    }
-    return "";
-}
-
-const StdlibFiles& Precompiler::findStandardLibraryFiles(const std::vector<std::string>& additionalFolders)
-{
-    static const StdlibFiles paths = [&]() {
-        std::vector<std::string> allPaths(additionalFolders);
-        if(!VC4CL_STDLIB_FOLDER.empty())
-            allPaths.emplace_back(VC4CL_STDLIB_FOLDER);
-        allPaths.emplace_back("/usr/local/include/vc4cl-stdlib/");
-        allPaths.emplace_back("/usr/include/vc4cl-stdlib/");
-        if(auto homeDir = std::getenv("HOME"))
-        {
-            allPaths.emplace_back(std::string(homeDir) + "/.cache/vc4c");
-        }
-        StdlibFiles tmp;
-        tmp.configurationHeader = determineFilePath("defines.h", allPaths);
-        tmp.llvmModule = determineFilePath("VC4CLStdLib.bc", allPaths);
-        tmp.precompiledHeader = determineFilePath("VC4CLStdLib.h.pch", allPaths);
-        if(tmp.configurationHeader.empty() || (tmp.llvmModule.empty() && tmp.precompiledHeader.empty()))
-        {
-            throw CompilationError(CompilationStep::PRECOMPILATION,
-                "Required VC4CL standard library file not found in any of the provided paths",
-                to_string<std::string>(allPaths));
-        }
-        return tmp;
-    }();
-    return paths;
-}
-
-void Precompiler::precompileStandardLibraryFiles(const std::string& sourceFile, const std::string& destinationFolder)
-{
-    PROFILE_START(PrecompileStandardLibraryFiles);
-    // TODO merge with creating of parameters in FrontendCompiler#buildClangCommand
-    auto pchArgs =
-        " -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info "
-        "-cl-single-precision-constant -fgnu89-inline -Wno-all -Wno-gcc-compat -Wdouble-promotion "
-        "-Wno-undefined-inline "
-        "-Wno-unknown-attributes -x cl "
-        "-emit-pch -o ";
-    auto moduleArgs =
-        " -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info "
-        "-cl-single-precision-constant -fgnu89-inline -Wno-all -Wno-gcc-compat -Wdouble-promotion "
-        "-Wno-undefined-inline "
-        "-Wno-unknown-attributes -x cl "
-        "-emit-llvm-bc -o ";
-
-    auto pchCommand = CLANG_PATH + pchArgs + destinationFolder + "/VC4CLStdLib.h.pch " + sourceFile;
-    auto moduleCommand = CLANG_PATH + moduleArgs + destinationFolder + "/VC4CLStdLib.bc " + sourceFile;
-
-    CPPLOG_LAZY(logging::Level::INFO, log << "Pre-compiling standard library with: " << pchCommand << logging::endl);
-    runPrecompiler(pchCommand, nullptr, nullptr);
-
-    CPPLOG_LAZY(logging::Level::INFO, log << "Pre-compiling standard library with: " << moduleCommand << logging::endl);
-    runPrecompiler(moduleCommand, nullptr, nullptr);
-
-    PROFILE_END(PrecompileStandardLibraryFiles);
 }
 
 Precompiler::Precompiler(
