@@ -814,9 +814,9 @@ InstructionWalker normalization::handleImmediate(
     }
     if(auto comb = it.get<intermediate::CombinedOperation>())
     {
-        if(auto firstOp = dynamic_cast<intermediate::Operation*>(comb->op1.get()))
+        if(auto firstOp = comb->getFirstOp())
             it = handleImmediateInOperation(method, it, *firstOp);
-        if(auto secondOp = dynamic_cast<intermediate::Operation*>(comb->op2.get()))
+        if(auto secondOp = comb->getSecondOp())
             it = handleImmediateInOperation(method, it, *secondOp);
     }
     return it;
@@ -936,9 +936,9 @@ InstructionWalker normalization::handleUseWithImmediate(
         it = handleOperationWithImmediate(module, method, it, *op, config);
     else if(auto op = it.get<intermediate::CombinedOperation>())
     {
-        if(auto op1 = dynamic_cast<intermediate::Operation*>(op->op1.get()))
+        if(auto op1 = op->getFirstOp())
             it = handleOperationWithImmediate(module, method, it, *op1, config);
-        if(auto op2 = dynamic_cast<intermediate::Operation*>(op->op2.get()))
+        if(auto op2 = op->getSecondOp())
             it = handleOperationWithImmediate(module, method, it, *op2, config);
     }
 

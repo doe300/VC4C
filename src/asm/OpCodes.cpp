@@ -16,6 +16,7 @@
 #include <cmath>
 #include <functional>
 #include <map>
+#include <random>
 
 using namespace vc4c;
 
@@ -1276,6 +1277,23 @@ PrecalculatedValue OpCode::operator()(Literal firstOperand, Literal secondOperan
     return std::make_pair(Value(*tmp.first, resultType), tmp.second);
 }
 
+// Since e.g. for emulation we always calculate the whole SIMD-vector even so we might only care about some of the
+// elements, we will have a lot of calculations with undefined operands. To still be able to run the emulations
+// while at the same time not to truncate the undefined literal to zero (which could be an expected value), replace
+// all undefined operands with a random value. For the pre-calculation we propagate the undefined operands correctly
+// in the OpCode::operator() taking Literal arguments.
+static Literal resolveUndefined(Literal operand, bool isFloat)
+{
+    static std::default_random_engine engine{};
+    static std::uniform_int_distribution<uint32_t> distribution{};
+    if(operand.isUndefined())
+    {
+        operand = Literal(distribution(engine));
+        operand.type = LiteralType::REAL;
+    }
+    return operand;
+}
+
 PrecalculatedVector OpCode::operator()(const SIMDVector& firstOperand, const SIMDVector& secondOperand) const
 {
     if(numOperands >= 1 && firstOperand.isUndefined())
@@ -1290,9 +1308,10 @@ PrecalculatedVector OpCode::operator()(const SIMDVector& firstOperand, const SIM
     {
         PrecalculatedLiteral tmp{Optional<Literal>{}, {}};
         if(numOperands == 1)
-            tmp = calcLiteral(*this, firstOperand[i], UNDEFINED_LITERAL);
+            tmp = calcLiteral(*this, resolveUndefined(firstOperand[i], acceptsFloat), UNDEFINED_LITERAL);
         else
-            tmp = calcLiteral(*this, firstOperand[i], secondOperand[i]);
+            tmp = calcLiteral(*this, resolveUndefined(firstOperand[i], acceptsFloat),
+                resolveUndefined(secondOperand[i], acceptsFloat));
         if(!tmp.first)
             // result could not be calculated for a single component of the vector, abort
             return std::make_pair(Optional<SIMDVector>{}, VectorFlags{});

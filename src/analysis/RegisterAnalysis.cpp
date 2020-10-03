@@ -32,10 +32,11 @@ UsedElements UsedElementsAnalysis::analyzeUsedSIMDElements(
     {
         if(auto combined = dynamic_cast<const intermediate::CombinedOperation*>(inst))
         {
-            auto first =
-                combined->op1 ? analyzeUsedSIMDElements(combined->op1.get(), nextValues, cache) : UsedElements{};
-            auto second =
-                combined->op2 ? analyzeUsedSIMDElements(combined->op2.get(), nextValues, cache) : UsedElements{};
+            auto first = combined->getFirstOp() ? analyzeUsedSIMDElements(combined->getFirstOp(), nextValues, cache) :
+                                                  UsedElements{};
+            auto second = combined->getSecondOp() ?
+                analyzeUsedSIMDElements(combined->getSecondOp(), nextValues, cache) :
+                UsedElements{};
             // since both instructions can add and erase elements, we need to create the intersection
             auto it = first.begin();
             while(it != first.end())

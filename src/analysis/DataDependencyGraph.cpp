@@ -71,10 +71,10 @@ static InstructionMapping mapInstructionsToPosition(Method& method)
         mapping.emplace(it.get(), it);
         if(auto combInstr = it.get<intermediate::CombinedOperation>())
         {
-            if(combInstr->op1)
-                mapping.emplace(combInstr->op1.get(), it);
-            if(combInstr->op2)
-                mapping.emplace(combInstr->op2.get(), it);
+            if(auto op1 = combInstr->getFirstOp())
+                mapping.emplace(op1, it);
+            if(auto op2 = combInstr->getSecondOp())
+                mapping.emplace(op2, it);
         }
         it.nextInMethod();
     }

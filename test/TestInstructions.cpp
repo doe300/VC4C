@@ -2082,7 +2082,7 @@ void TestInstructions::testInstructionEquality()
             new intermediate::Operation(OP_ITOF, NOP_REGISTER, UNIFORM_REGISTER));
         op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)
-        dynamic_cast<intermediate::Operation&>(*inst.op1).op = OP_FTOI;
+        inst.getFirstOp()->op = OP_FTOI;
         TEST_ASSERT(inst != *op2)
     }
 }
@@ -2150,7 +2150,7 @@ void TestInstructions::testSpecialInstructionMembers()
         TEST_ASSERT(op.isNormalized());
 
         TEST_ASSERT_EQUALS(intermediate::SideEffectType::NONE, op.getSideEffects());
-        dynamic_cast<intermediate::Operation&>(*op.op1).setSignaling(SIGNAL_LOAD_ALPHA);
+        op.getFirstOp()->setSignaling(SIGNAL_LOAD_ALPHA);
         TEST_ASSERT_EQUALS(intermediate::SideEffectType::SIGNAL, op.getSideEffects());
     }
 }

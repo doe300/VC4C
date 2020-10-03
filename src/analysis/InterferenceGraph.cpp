@@ -61,10 +61,10 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(
         {
             // combined operations can write multiple locals
             const auto combInstr = dynamic_cast<const intermediate::CombinedOperation*>(it->get());
-            if(combInstr && combInstr->op1 && combInstr->op2)
+            if(combInstr && combInstr->getFirstOp() && combInstr->getSecondOp())
             {
-                auto firstOut = combInstr->op1->checkOutputLocal();
-                auto secondOut = combInstr->op2->checkOutputLocal();
+                auto firstOut = combInstr->getFirstOp()->checkOutputLocal();
+                auto secondOut = combInstr->getSecondOp()->checkOutputLocal();
                 if(firstOut && secondOut && firstOut != secondOut)
                 {
                     graph.getOrCreateNode(firstOut)

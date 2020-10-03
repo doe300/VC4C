@@ -184,7 +184,7 @@ static LivenessChanges analyzeLivenessChangesInner(
         {
             if(auto first = combined->getFirstOp())
                 usageConsumer(*first);
-            if(auto second = combined->getSecondOP())
+            if(auto second = combined->getSecondOp())
                 usageConsumer(*second);
         }
         else
@@ -519,10 +519,10 @@ std::pair<FastSet<const Local*>, FastSet<const Local*>> LocalUsageAnalysis::anal
     {
         if(auto combInst = dynamic_cast<const intermediate::CombinedOperation*>(inst.get()))
         {
-            if(combInst->op1)
-                func(combInst->op1.get());
-            if(combInst->op2)
-                func(combInst->op2.get());
+            if(auto op1 = combInst->getFirstOp())
+                func(op1);
+            if(auto op2 = combInst->getSecondOp())
+                func(op2);
         }
         else
             func(inst.get());

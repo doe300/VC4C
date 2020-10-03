@@ -200,6 +200,11 @@ namespace vc4c
 					toParameter(std::vector<unsigned>{0x07060504, 0x03020100, 0x07060504, 0x03020100, 0x07060504, 0x03020100, 0x07060504, 0x03020100, 0x07060504, 0x03020100, 0x07060504, 0x03020100}), toParameter(std::vector<unsigned>(6*8/sizeof(int32_t)))}, toConfig(1), maxExecutionCycles),
 					addVector({}, 2, std::vector<unsigned>{0x17171717, 0x17171702, 0x04424242, 0x01424242, 0x13021307, 0x13130313, 0x06FF05FF, 0x03FFFF01, 0x03010506, 0x71717171, 0x31313103, 0x31313131})
 				),
+				std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_shuffle.cl", "sample_test",
+					{toParameter(std::vector<unsigned>{0x03020100, 0x07060504, 0x0B0A0908, 0x0F0E0D0C, 0x13121110, 0x17161514, 0x1B1A1918, 0x1F1E1D1C}),
+					toParameter(std::vector<unsigned>(3 * 32 / sizeof(int32_t)))}, toConfig(1), maxExecutionCycles),
+					addVector({}, 1, std::vector<unsigned>{0x01000000, 0x00020000, 0x03000000, 0x00040000, 0x00000005, 0x07000006, 0x00080000, 0x00000009, 0x000B000A, 0x0000000C, 0x0E00000D, 0x000F0000, 0x11001000, 0x00000000, 0x13000012, 0x15001400, 0x00160000, 0x17000000, 0x00000018, 0x001A0019, 0x001B0000, 0x001C0000, 0x0000001D, 0x00001F1E})
+				),
 				// TODO need to pass parameter as literal vectors, not buffers
 				// std::make_pair(EmulationData(VC4C_ROOT_PATH "testing/test_vector.cl", "test_param",
 				//     {toParameter(std::vector<unsigned>{0x40, 0, 0, 0, 0x41, 0, 0, 0, 0x42, 0, 0, 0, 0x43, 0, 0, 0}), toParameter(std::vector<unsigned>{0x15, 0x16, 0x17, 0x18}), toParameter(std::vector<unsigned>(4))}, toConfig(1), maxExecutionCycles),

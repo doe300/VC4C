@@ -224,7 +224,7 @@ namespace vc4c
             {
                 if(auto first = combined->getFirstOp())
                     func(*first);
-                if(auto second = combined->getSecondOP())
+                if(auto second = combined->getSecondOp())
                     func(*second);
             }
             else if(auto ins = get())
@@ -242,7 +242,7 @@ namespace vc4c
             auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
             {
-                return func(combined->getFirstOp()) && func(combined->getSecondOP());
+                return func(combined->getFirstOp()) && func(combined->getSecondOp());
             }
             return func(get());
         }
@@ -258,7 +258,7 @@ namespace vc4c
             auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
             {
-                return func(combined->getFirstOp()) || func(combined->getSecondOP());
+                return func(combined->getFirstOp()) || func(combined->getSecondOp());
             }
             return func(get());
         }
@@ -415,7 +415,7 @@ namespace vc4c
             {
                 if(auto first = combined->getFirstOp())
                     func(*first);
-                if(auto second = combined->getSecondOP())
+                if(auto second = combined->getSecondOp())
                     func(*second);
             }
             else if(auto ins = get())
@@ -433,7 +433,7 @@ namespace vc4c
             auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
             {
-                return func(combined->getFirstOp()) && func(combined->getSecondOP());
+                return func(combined->getFirstOp()) && func(combined->getSecondOp());
             }
             return func(get());
         }
@@ -449,7 +449,7 @@ namespace vc4c
             auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
             {
-                return func(combined->getFirstOp()) || func(combined->getSecondOP());
+                return func(combined->getFirstOp()) || func(combined->getSecondOp());
             }
             return func(get());
         }

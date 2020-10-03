@@ -374,28 +374,33 @@ static void fixLocals(const InstructionWalker it, FastMap<const Local*, LocalUsa
                     blockedFiles = add_flag(blockedFiles, RegisterFile::PHYSICAL_B);
             }
         });
-        if(comp->op1)
+        if(auto op1 = comp->getFirstOp())
         {
             PROFILE_START(updateFixedLocals);
-            updateFixedLocals(*comp->op1, lastWrittenLocal0, lastWrittenLocal1, blockedFiles, localUses);
+            updateFixedLocals(*op1, lastWrittenLocal0, lastWrittenLocal1, blockedFiles, localUses);
             PROFILE_END(updateFixedLocals);
         }
-        if(comp->op2)
+        if(auto op2 = comp->getSecondOp())
         {
             PROFILE_START(updateFixedLocals);
-            updateFixedLocals(*comp->op2, lastWrittenLocal0, lastWrittenLocal1, blockedFiles, localUses);
+            updateFixedLocals(*op2, lastWrittenLocal0, lastWrittenLocal1, blockedFiles, localUses);
             PROFILE_END(updateFixedLocals);
         }
         // if both instructions for a combined instruction write to the same output, the output MUST be on an
         // accumulator
-        if(comp->op1 && comp->op1->checkOutputLocal() && comp->op2 && comp->op2->checkOutputLocal() &&
-            comp->op1->getOutput()->local() == comp->op2->getOutput()->local())
+        if(comp->getFirstOp() && comp->getFirstOp()->checkOutputLocal() && comp->getSecondOp() &&
+            comp->getSecondOp()->checkOutputLocal() &&
+            comp->getFirstOp()->getOutput()->local() == comp->getSecondOp()->getOutput()->local())
         {
-            fixToRegisterFile(RegisterFile::ACCUMULATOR, comp->op1->getOutput()->local(), localUses);
+            fixToRegisterFile(RegisterFile::ACCUMULATOR, comp->getFirstOp()->getOutput()->local(), localUses);
         }
         // FIXME handling of forcing local to register-file A because of unpack-mode (unpack + combined even possible??)
-        lastWrittenLocal0 = comp->op1 && comp->op1->checkOutputLocal() ? comp->op1->getOutput()->local() : nullptr;
-        lastWrittenLocal1 = comp->op2 && comp->op2->checkOutputLocal() ? comp->op2->getOutput()->local() : nullptr;
+        lastWrittenLocal0 = comp->getFirstOp() && comp->getFirstOp()->checkOutputLocal() ?
+            comp->getFirstOp()->getOutput()->local() :
+            nullptr;
+        lastWrittenLocal1 = comp->getSecondOp() && comp->getSecondOp()->checkOutputLocal() ?
+            comp->getSecondOp()->getOutput()->local() :
+            nullptr;
     }
     else
     {
@@ -941,8 +946,32 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
         // the register-files which can be used after the fix by this local
         RegisterFile freeFiles = remove_flag(RegisterFile::ANY, use.blockedFiles);
 
-        for(InstructionWalker it : localUse.associatedInstructions)
+        // we need to copy the list, since we might edit the original list inside the loop
+        auto oldInstructions = localUse.associatedInstructions;
+        for(InstructionWalker it : oldInstructions)
         {
+            if(auto comb = it.get<intermediate::CombinedOperation>())
+            {
+                if(comb->getFirstOp()->writesLocal(node.key) && comb->getSecondOp()->writesLocal(node.key))
+                {
+                    // If a combined instruction writes the same local in both options, the local needs to be on an
+                    // accumulator, independent whether the next instruction reads it. To fix this, new need to split up
+                    // the combined instructions into two separate ones.
+                    auto parts = comb->splitUp();
+                    auto firstIt = it.copy();
+                    firstIt.emplace(parts.first.release());
+                    localUse.associatedInstructions.emplace(firstIt);
+                    it.reset(parts.second.release());
+                    // the "original" InstructionWalker is already in the associatedInstructions set, since we only
+                    // change its content
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Split up combined instruction into '" << firstIt->to_string() << "' and '"
+                            << it->to_string() << '\'' << logging::endl);
+                    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 11, "Combined split up", 1);
+                }
+                // fall-through on purpose in any case (even if rewritten), since there still could be a
+                // read-after-write to be handled below
+            }
             // 1) check if usage is a write
             if(assertUser(users, it).writesLocal())
             {
@@ -966,7 +995,7 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
                         log << "Fixing register-conflict by inserting NOP before: " << it->to_string()
                             << logging::endl);
                     it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER));
-                    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 11, "NOP insertions", 1);
+                    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 12, "NOP insertions", 1);
                 }
             }
             else if(assertUser(users, it).readsLocal())

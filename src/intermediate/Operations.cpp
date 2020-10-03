@@ -18,7 +18,7 @@ using namespace vc4c::intermediate;
 Operation::Operation(
     const OpCode& opCode, const Value& dest, const Value& arg0, const ConditionCode cond, const SetFlag setFlags) :
     UnpackingInstruction(SIGNAL_NONE, cond, setFlags, PACK_NOP, UNPACK_NOP, dest),
-    op(opCode), parent(nullptr)
+    op(opCode)
 {
     if(opCode.numOperands != 1)
         throw CompilationError(
@@ -27,8 +27,7 @@ Operation::Operation(
 }
 
 Operation::Operation(OpCode opCode, Value&& dest, Value&& arg0, ConditionCode cond, SetFlag setFlags) :
-    UnpackingInstruction(SIGNAL_NONE, cond, setFlags, PACK_NOP, UNPACK_NOP, std::move(dest)), op(std::move(opCode)),
-    parent(nullptr)
+    UnpackingInstruction(SIGNAL_NONE, cond, setFlags, PACK_NOP, UNPACK_NOP, std::move(dest)), op(std::move(opCode))
 {
     if(opCode.numOperands != 1)
         throw CompilationError(
@@ -39,7 +38,7 @@ Operation::Operation(OpCode opCode, Value&& dest, Value&& arg0, ConditionCode co
 Operation::Operation(const OpCode& opCode, const Value& dest, const Value& arg0, const Value& arg1,
     const ConditionCode cond, const SetFlag setFlags) :
     UnpackingInstruction(SIGNAL_NONE, cond, setFlags, PACK_NOP, UNPACK_NOP, dest),
-    op(opCode), parent(nullptr)
+    op(opCode)
 {
     if(opCode.numOperands != 2)
         throw CompilationError(
@@ -49,8 +48,7 @@ Operation::Operation(const OpCode& opCode, const Value& dest, const Value& arg0,
 }
 
 Operation::Operation(OpCode opCode, Value&& dest, Value&& arg0, Value&& arg1, ConditionCode cond, SetFlag setFlags) :
-    UnpackingInstruction(SIGNAL_NONE, cond, setFlags, PACK_NOP, UNPACK_NOP, std::move(dest)), op(opCode),
-    parent(nullptr)
+    UnpackingInstruction(SIGNAL_NONE, cond, setFlags, PACK_NOP, UNPACK_NOP, std::move(dest)), op(opCode)
 {
     if(opCode.numOperands != 2)
         throw CompilationError(
@@ -824,8 +822,6 @@ CombinedOperation::CombinedOperation(Operation* op1, Operation* op2) :
 {
     if(!op1 || !op2)
         throw CompilationError(CompilationStep::GENERAL, "Cannot combine NULL operation!");
-    op1->parent = this;
-    op2->parent = this;
 }
 
 FastMap<const Local*, LocalUse::Type> CombinedOperation::getUsedLocals() const
@@ -875,7 +871,7 @@ qpu_asm::DecoratedInstruction CombinedOperation::convertToAsm(const FastMap<cons
     const FastMap<const Local*, std::size_t>& labelMapping, const std::size_t instructionIndex) const
 {
     if((getFirstOp()->op.runsOnAddALU() && getFirstOp()->op.runsOnMulALU()) ||
-        (getSecondOP()->op.runsOnAddALU() && getSecondOP()->op.runsOnMulALU()))
+        (getSecondOp()->op.runsOnAddALU() && getSecondOp()->op.runsOnMulALU()))
         throw CompilationError(
             CompilationStep::CODE_GENERATION, "Cannot combine operations, where one can run on both ALUs", to_string());
     const IntermediateInstruction* addOp = getFirstOp()->op.runsOnAddALU() ? op1.get() : op2.get();
@@ -962,14 +958,29 @@ bool CombinedOperation::mapsToASMInstruction() const
     return (op1 && op1->mapsToASMInstruction()) || (op2 && op2->mapsToASMInstruction());
 }
 
-const Operation* CombinedOperation::getFirstOp() const
+Operation* CombinedOperation::getFirstOp()
 {
-    return dynamic_cast<const Operation*>(op1.get());
+    return op1.get();
 }
 
-const Operation* CombinedOperation::getSecondOP() const
+const Operation* CombinedOperation::getFirstOp() const
 {
-    return dynamic_cast<const Operation*>(op2.get());
+    return op1.get();
+}
+
+Operation* CombinedOperation::getSecondOp()
+{
+    return op2.get();
+}
+
+const Operation* CombinedOperation::getSecondOp() const
+{
+    return op2.get();
+}
+
+std::pair<std::unique_ptr<Operation>, std::unique_ptr<Operation>> CombinedOperation::splitUp()
+{
+    return std::make_pair(std::move(op1), std::move(op2));
 }
 
 bool CombinedOperation::innerEquals(const IntermediateInstruction& other) const

@@ -70,10 +70,10 @@ bool BasicBlock::isLocallyLimited(InstructionWalker curIt, const Local* locale, 
         auto numUsers = remainingUsers.erase(user);
         if(auto comb = dynamic_cast<const intermediate::CombinedOperation*>(user))
         {
-            if(comb->op1)
-                numUsers += remainingUsers.erase(comb->op1.get());
-            if(comb->op2)
-                numUsers += remainingUsers.erase(comb->op2.get());
+            if(auto op1 = comb->getFirstOp())
+                numUsers += remainingUsers.erase(op1);
+            if(auto op2 = comb->getSecondOp())
+                numUsers += remainingUsers.erase(op2);
         }
         return numUsers;
     };
@@ -269,9 +269,9 @@ Optional<InstructionWalker> BasicBlock::findLastSettingOfFlags(const Instruction
             return it;
         if(auto comb = it.get<intermediate::CombinedOperation>())
         {
-            if(comb->op1 && comb->op1->doesSetFlag())
+            if(comb->getFirstOp() && comb->getFirstOp()->doesSetFlag())
                 return it;
-            if(comb->op2 && comb->op2->doesSetFlag())
+            if(comb->getSecondOp() && comb->getSecondOp()->doesSetFlag())
                 return it;
         }
         it.previousInBlock();
@@ -288,9 +288,9 @@ Optional<ConstInstructionWalker> BasicBlock::findLastSettingOfFlags(const ConstI
             return it;
         if(auto comb = it.get<const intermediate::CombinedOperation>())
         {
-            if(comb->op1 && comb->op1->doesSetFlag())
+            if(comb->getFirstOp() && comb->getFirstOp()->doesSetFlag())
                 return it;
-            if(comb->op2 && comb->op2->doesSetFlag())
+            if(comb->getSecondOp() && comb->getSecondOp()->doesSetFlag())
                 return it;
         }
         it.previousInBlock();
@@ -307,9 +307,9 @@ Optional<InstructionWalker> BasicBlock::findLastWritingOfRegister(InstructionWal
             return it;
         if(auto comb = it.get<intermediate::CombinedOperation>())
         {
-            if(comb->op1 && comb->op1->writesRegister(reg))
+            if(comb->getFirstOp() && comb->getFirstOp()->writesRegister(reg))
                 return it;
-            if(comb->op2 && comb->op2->writesRegister(reg))
+            if(comb->getSecondOp() && comb->getSecondOp()->writesRegister(reg))
                 return it;
         }
         it.previousInBlock();

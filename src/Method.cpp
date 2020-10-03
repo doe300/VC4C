@@ -160,10 +160,10 @@ static std::size_t removeUser(
     auto numUsers = remainingUsers.erase(user);
     if(auto comb = dynamic_cast<const intermediate::CombinedOperation*>(user))
     {
-        if(comb->op1)
-            numUsers += remainingUsers.erase(comb->op1.get());
-        if(comb->op2)
-            numUsers += remainingUsers.erase(comb->op2.get());
+        if(auto op1 = comb->getFirstOp())
+            numUsers += remainingUsers.erase(op1);
+        if(auto op2 = comb->getSecondOp())
+            numUsers += remainingUsers.erase(op2);
     }
     return numUsers;
 }

@@ -622,33 +622,33 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                             if(comb->getFirstOp()->op.runsOnAddALU() && comb->getFirstOp()->op.runsOnMulALU())
                             {
                                 OpCode code = comb->getFirstOp()->op;
-                                if(comb->getSecondOP()->op.runsOnAddALU())
+                                if(comb->getSecondOp()->op.runsOnAddALU())
                                     code.opAdd = 0;
                                 else // by default (e.g. both run on both ALUs), map to ADD ALU
                                     code.opMul = 0;
-                                dynamic_cast<Operation*>(comb->op1.get())->op = code;
+                                comb->getFirstOp()->op = code;
                                 CPPLOG_LAZY(logging::Level::DEBUG,
                                     log << "Fixing operation available on both ALUs to "
-                                        << (code.opAdd == 0 ? "MUL" : "ADD") << " ALU: " << comb->op1->to_string()
-                                        << logging::endl);
+                                        << (code.opAdd == 0 ? "MUL" : "ADD")
+                                        << " ALU: " << comb->getFirstOp()->to_string() << logging::endl);
                             }
-                            if(comb->getSecondOP()->op.runsOnAddALU() && comb->getSecondOP()->op.runsOnMulALU())
+                            if(comb->getSecondOp()->op.runsOnAddALU() && comb->getSecondOp()->op.runsOnMulALU())
                             {
-                                OpCode code = comb->getSecondOP()->op;
+                                OpCode code = comb->getSecondOp()->op;
                                 if(comb->getFirstOp()->op.runsOnMulALU())
                                     code.opMul = 0;
                                 else // by default (e.g. both run on both ALUs), map to MUL ALU
                                     code.opAdd = 0;
-                                dynamic_cast<Operation*>(comb->op2.get())->op = code;
+                                comb->getSecondOp()->op = code;
                                 CPPLOG_LAZY(logging::Level::DEBUG,
                                     log << "Fixing operation available on both ALUs to "
-                                        << (code.opAdd == 0 ? "MUL" : "ADD") << " ALU: " << comb->op2->to_string()
-                                        << logging::endl);
+                                        << (code.opAdd == 0 ? "MUL" : "ADD")
+                                        << " ALU: " << comb->getSecondOp()->to_string() << logging::endl);
                             }
 
                             // mark combined instruction as delay, if one of the combined instructions is
-                            if(comb->op1->hasDecoration(InstructionDecorations::MANDATORY_DELAY) ||
-                                comb->op2->hasDecoration(InstructionDecorations::MANDATORY_DELAY))
+                            if(comb->getFirstOp()->hasDecoration(InstructionDecorations::MANDATORY_DELAY) ||
+                                comb->getSecondOp()->hasDecoration(InstructionDecorations::MANDATORY_DELAY))
                                 comb->addDecorations(InstructionDecorations::MANDATORY_DELAY);
                         }
                     }
@@ -733,8 +733,8 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
                     if(immIt != lastConstantWriter.end() && !it->hasSideEffects() &&
                         canReplaceConstantLoad(it, block.walk(), immIt->second, threshold))
                     {
-                        Local* oldLocal = it->getOutput()->local();
-                        Local* newLocal = immIt->second->getOutput()->local();
+                        auto oldLocal = it->getOutput()->local();
+                        auto newLocal = immIt->second->getOutput()->local();
                         CPPLOG_LAZY(logging::Level::DEBUG,
                             log << "Removing duplicate loading of literal: " << it->to_string() << logging::endl);
                         // Local#forUsers can't be used here, since we modify the list of users via
@@ -755,8 +755,8 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
                     if(regIt != lastLoadRegister.end() && !it->hasSideEffects() &&
                         canReplaceConstantLoad(it, block.walk(), regIt->second, threshold))
                     {
-                        Local* oldLocal = it->getOutput()->local();
-                        Local* newLocal = regIt->second->getOutput()->local();
+                        auto oldLocal = it->getOutput()->local();
+                        auto newLocal = regIt->second->getOutput()->local();
                         CPPLOG_LAZY(logging::Level::DEBUG,
                             log << "Removing duplicate loading of register: " << it->to_string() << logging::endl);
                         // Local#forUsers can't be used here, since we modify the list of users via

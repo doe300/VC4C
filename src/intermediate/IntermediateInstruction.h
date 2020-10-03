@@ -433,7 +433,6 @@ namespace vc4c
             bool isSimpleOperation() const;
 
             OpCode op;
-            CombinedOperation* parent;
 
         protected:
             bool innerEquals(const IntermediateInstruction& other) const override;
@@ -764,14 +763,23 @@ namespace vc4c
             bool isNormalized() const override;
             SideEffectType getSideEffects() const override;
 
+            Operation* getFirstOp();
             const Operation* getFirstOp() const;
-            const Operation* getSecondOP() const;
+            Operation* getSecondOp();
+            const Operation* getSecondOp() const;
 
-            const std::unique_ptr<IntermediateInstruction> op1;
-            const std::unique_ptr<IntermediateInstruction> op2;
+            /**
+             * Splits this combined instruction and returns the part instructions
+             *
+             * NOTE: After this function, this CombinedOperation is garbage and MUST NOT be used any further!
+             */
+            std::pair<std::unique_ptr<Operation>, std::unique_ptr<Operation>> splitUp();
 
         protected:
             bool innerEquals(const IntermediateInstruction& other) const override;
+
+            std::unique_ptr<Operation> op1;
+            std::unique_ptr<Operation> op2;
         };
 
         /**
