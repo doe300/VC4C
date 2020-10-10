@@ -421,7 +421,8 @@ GraphColoring::GraphColoring(Method& method, InstructionWalker it) :
     const Local* lastWrittenLocal1 = nullptr;
     while(!it.isEndOfMethod())
     {
-        if(it.get() != nullptr && !it.get<intermediate::BranchLabel>() && !it.get<intermediate::MemoryBarrier>())
+        if(it.has() && !it.get<intermediate::BranchLabel>() && !it.get<intermediate::MemoryBarrier>() &&
+            it->mapsToASMInstruction())
         {
             // 1) create entry per local
             it->forUsedLocals([this, it](const Local* l, const LocalUse::Type type,
@@ -713,30 +714,26 @@ bool GraphColoring::colorGraph()
 
     while(!openSet.empty())
     {
-        // for every node in the open-set, assign to accumulator if possible, assign to the first available
-        // register-file otherwise  and update all neighbors
-        auto node = graph.findNode(*openSet.begin());
-        if(node == nullptr)
-        {
-            throw CompilationError(
-                CompilationStep::LABEL_REGISTER_MAPPING, "Error getting local from graph", (*openSet.begin())->name);
-        }
+        // for every node in the open-set, assign to register-file B if possible (since this is where most locals can
+        // not be assigned due to read-after-write and use-with-literal), then fall back to register-file A and finally
+        // accumulator and update all neighbors
+        auto& node = graph.assertNode(*openSet.begin());
         RegisterFile currentFile = RegisterFile::NONE;
-        if(has_flag(node->possibleFiles, RegisterFile::ACCUMULATOR))
-            currentFile = RegisterFile::ACCUMULATOR;
-        else if(has_flag(node->possibleFiles, RegisterFile::PHYSICAL_A))
-            currentFile = RegisterFile::PHYSICAL_A;
-        else if(has_flag(node->possibleFiles, RegisterFile::PHYSICAL_B))
+        if(has_flag(node.possibleFiles, RegisterFile::PHYSICAL_B))
             currentFile = RegisterFile::PHYSICAL_B;
+        else if(has_flag(node.possibleFiles, RegisterFile::PHYSICAL_A))
+            currentFile = RegisterFile::PHYSICAL_A;
+        else if(has_flag(node.possibleFiles, RegisterFile::ACCUMULATOR))
+            currentFile = RegisterFile::ACCUMULATOR;
         else
         {
-            errorSet.insert(node->key);
-            openSet.erase(node->key);
+            errorSet.insert(node.key);
+            openSet.erase(node.key);
             continue;
         }
-        node->possibleFiles = currentFile;
-        closedSet.insert(node->key);
-        openSet.erase(node->key);
+        node.possibleFiles = currentFile;
+        closedSet.insert(node.key);
+        openSet.erase(node.key);
         processClosedSet(graph, closedSet, openSet, errorSet);
     }
 

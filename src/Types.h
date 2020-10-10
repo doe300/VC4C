@@ -148,6 +148,10 @@ namespace vc4c
          */
         bool isLabelType() const noexcept;
         /*
+         * Whether this type is a code address
+         */
+        bool isCodeAddressType() const noexcept;
+        /*
          * Whether this type is void
          */
         bool isVoidType() const noexcept;
@@ -240,6 +244,7 @@ namespace vc4c
             HALF_WORD = 16,
             WORD = 32,
             LONG_WORD = 64,
+            CODE_ADDRESS = 253,
             LABEL = 254,
             UNKNOWN = 255
         };
@@ -320,6 +325,10 @@ namespace vc4c
      * Data-type for labels as destination for branches
      */
     static constexpr DataType TYPE_LABEL{DataType::LABEL, 1, false};
+    /*
+     * Data-type for pointers to code positions, e.g. for dynamic branch targets or branch-with-link functionality
+     */
+    static constexpr DataType TYPE_CODE_ADDRESS{DataType::CODE_ADDRESS, 1, false};
     /*
      * Data-type for OpenCL samplers, is equivalent to 32-bit integers
      */

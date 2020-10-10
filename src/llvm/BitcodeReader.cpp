@@ -635,6 +635,9 @@ void BitcodeReader::parseInstruction(
     Module& module, Method& method, LLVMInstructionList& instructions, const llvm::Instruction& inst)
 {
     using TermOps = llvm::Instruction::TermOps;
+#if LLVM_LIBRARY_VERSION >= 80
+    using UnaryOps = llvm::Instruction::UnaryOps;
+#endif
     using BinaryOps = llvm::Instruction::BinaryOps;
     using MemoryOps = llvm::Instruction::MemoryOps;
     using CastOps = llvm::Instruction::CastOps;
@@ -796,6 +799,9 @@ void BitcodeReader::parseInstruction(
         instructions.back()->setDecorations(deco);
         break;
     }
+#if LLVM_LIBRARY_VERSION >= 80
+    case UnaryOps::FNeg:
+#endif
     case CastOps::FPExt:
         FALL_THROUGH
     case CastOps::FPToSI:

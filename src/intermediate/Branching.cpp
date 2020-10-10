@@ -76,6 +76,9 @@ Branch::Branch(const Value& linkAddressOut, const Local* target, BranchCond bran
     SignalingInstruction(SIGNAL_BRANCH, linkAddressOut), branchCondition(branchCond)
 {
     setArgument(0, target->createReference());
+    if(linkAddressOut.type != TYPE_CODE_ADDRESS)
+        throw CompilationError(CompilationStep::GENERAL, "Can only store code addresses in value of proper type",
+            linkAddressOut.to_string(true));
 }
 
 LCOV_EXCL_START

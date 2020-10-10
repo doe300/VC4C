@@ -83,6 +83,8 @@ static std::string toSimpleTypeName(unsigned char bitWidth, bool isFloat)
         return "void";
     if(bitWidth == DataType::LABEL)
         return "label";
+    if(bitWidth == DataType::CODE_ADDRESS)
+        return "code-address";
     if(bitWidth == DataType::UNKNOWN)
         return "?";
     if(bitWidth == DataType::BIT)
@@ -233,6 +235,11 @@ bool DataType::isUnknown() const noexcept
 bool DataType::isLabelType() const noexcept
 {
     return getSimpleFlag() && getBitWidth() == DataType::LABEL;
+}
+
+bool DataType::isCodeAddressType() const noexcept
+{
+    return getSimpleFlag() && getBitWidth() == DataType::CODE_ADDRESS;
 }
 
 bool DataType::isVoidType() const noexcept

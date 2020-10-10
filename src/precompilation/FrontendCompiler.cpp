@@ -440,7 +440,8 @@ std::string convertSourcesToFiles(std::istream*& inputStream, std::vector<T>& so
             else
             {
                 inputStream = b.stream;
-                return a + " -";
+                // can't use "-" for stdin, since spirv-link does not recognize it
+                return a + " /dev/stdin";
             }
         });
 }

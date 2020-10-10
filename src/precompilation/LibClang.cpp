@@ -4,8 +4,6 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#ifdef USE_LIBCLANG
-
 #include "LibClang.h"
 
 #include "../Profiler.h"
@@ -13,11 +11,15 @@
 #include "CompilationError.h"
 #include "Precompiler.h"
 #include "log.h"
+#include "tool_paths.h"
 
+#ifdef USE_LIBCLANG
 #include "clang/CodeGen/CodeGenAction.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/CompilerInvocation.h"
+#include "clang/Frontend/FrontendActions.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
+#include "clang/Serialization/ASTWriter.h"
 #include "llvm/IR/Module.h"
 
 #include <memory>
@@ -29,6 +31,12 @@
 
 using namespace vc4c;
 using namespace vc4c::precompilation;
+
+#if LLVM_LIBRARY_VERSION >= 100
+static constexpr auto INPUT_LANGUAGE = clang::Language::OpenCL;
+#else
+static constexpr auto INPUT_LANGUAGE = clang::InputKind::Language::OpenCL;
+#endif
 
 extern std::unique_ptr<llvm::MemoryBuffer> fromInputStream(std::istream& stream, std::string& buffer);
 
@@ -83,7 +91,12 @@ static void dumpCompilationOptions(const clang::CompilerInvocation& invocation)
         logging::debug() << "\tLoop unrolling: " << invocation.getCodeGenOpts().UnrollLoops << logging::endl;
         logging::debug() << "\tLoop vectorization: " << invocation.getCodeGenOpts().VectorizeLoop << logging::endl;
         logging::debug() << "\tFloat ABI: " << invocation.getCodeGenOpts().FloatABI << logging::endl;
+#if LLVM_LIBRARY_VERSION >= 100
+        logging::debug() << "\tDenormal mode: " << llvm::denormalModeName(invocation.getCodeGenOpts().FPDenormalMode)
+                         << logging::endl;
+#else
         logging::debug() << "\tDenormal mode: " << invocation.getCodeGenOpts().FPDenormalMode << logging::endl;
+#endif
         // TODO explicitly set this?
         logging::debug() << "\tPreferred vector width: " << invocation.getCodeGenOpts().PreferVectorWidth
                          << logging::endl;
@@ -95,9 +108,15 @@ static void dumpCompilationOptions(const clang::CompilerInvocation& invocation)
         logging::debug() << "\tOutput file: " << invocation.getFrontendOpts().OutputFile << logging::endl;
         logging::debug() << "\tInput files:" << logging::endl;
         for(const auto& file : invocation.getFrontendOpts().Inputs)
-            logging::debug() << "\t\t" << file.getFile() << (file.isSystem() ? "(system)" : "")
-                             << (file.isPreprocessed() ? "(preprocessed)" : "") << (file.isBuffer() ? "(buffer)" : "")
-                             << (file.isEmpty() ? "(empty)" : "") << logging::endl;
+            if(file.isFile())
+                logging::debug() << "\t\t" << file.getFile() << (file.isSystem() ? "(system)" : "")
+                                 << (file.isPreprocessed() ? "(preprocessed)" : "") << (file.isEmpty() ? "(empty)" : "")
+                                 << logging::endl;
+            else
+                logging::debug() << "\t\t"
+                                 << "(buffer)" << (file.isSystem() ? "(system)" : "")
+                                 << (file.isPreprocessed() ? "(preprocessed)" : "") << (file.isEmpty() ? "(empty)" : "")
+                                 << logging::endl;
     });
 
     logging::logLazy(logging::Level::DEBUG, [&]() {
@@ -160,11 +179,15 @@ void precompilation::compileLibClang(const std::vector<std::string>& command, st
     std::shared_ptr<clang::CompilerInvocation> invocation(new clang::CompilerInvocation());
 
     // set default options
-    clang::CompilerInvocation::setLangDefaults(*invocation->getLangOpts(), clang::InputKind::OpenCL, llvm::Triple{},
+    clang::CompilerInvocation::setLangDefaults(*invocation->getLangOpts(), INPUT_LANGUAGE, llvm::Triple{},
         invocation->getPreprocessorOpts(), clang::LangStandard::lang_opencl12);
 
-    // read options from command line
+// read options from command line
+#if LLVM_LIBRARY_VERSION >= 100
+    if(!clang::CompilerInvocation::CreateFromArgs(*invocation.get(), args, diagnostics))
+#else
     if(!clang::CompilerInvocation::CreateFromArgs(*invocation.get(), &args.front(), &args.back(), diagnostics))
+#endif
     {
         // TODO here (and everywhere else) extract and log diagnostics
         throw CompilationError(CompilationStep::PRECOMPILATION,
@@ -197,25 +220,27 @@ void precompilation::compileLibClang(const std::vector<std::string>& command, st
         // rewrite from expecting input at stdin to using buffer
         for(auto& input : invocation->getFrontendOpts().Inputs)
         {
-            if(input.getFile() == "-")
+            if(input.isBuffer() || input.getFile() == "-")
             {
                 inputBuffer.second = fromInputStream(*inputStream, inputBuffer.first);
                 // XXX input kind always correct??
-                input = clang::FrontendInputFile(inputBuffer.second.get(), clang::InputKind::OpenCL);
+                input = clang::FrontendInputFile(inputBuffer.second.get(), INPUT_LANGUAGE);
                 break;
             }
         }
     }
     else if(std::none_of(invocation->getFrontendOpts().Inputs.begin(), invocation->getFrontendOpts().Inputs.end(),
-                [&](const clang::FrontendInputFile& file) -> bool { return file.getFile() == *inputFile; }))
+                [&](const clang::FrontendInputFile& file) -> bool {
+                    return file.isFile() && file.getFile() == *inputFile;
+                }))
     {
         // TODO why is this in the first place? The command clearly states the input file (and no stdin)??
         for(auto& input : invocation->getFrontendOpts().Inputs)
         {
-            if(input.getFile() == "-")
+            if(input.isBuffer() || input.getFile() == "-")
             {
                 // XXX input kind always correct??
-                input = clang::FrontendInputFile(*inputFile, clang::InputKind::OpenCL);
+                input = clang::FrontendInputFile(*inputFile, INPUT_LANGUAGE);
             }
         }
     }
@@ -241,14 +266,32 @@ void precompilation::compileLibClang(const std::vector<std::string>& command, st
     if(!instance.hasDiagnostics())
         throw CompilationError(CompilationStep::PRECOMPILATION, "compiler instance has no diagnostics set");
 
-    PROFILE_START(EmitBCAction);
-    clang::EmitBCAction action;
-    if(!instance.ExecuteAction(action))
+    auto commandIt = command.end();
+    if((commandIt = std::find(command.begin(), command.end(), "-emit-pch")) != command.end())
     {
-        // TODO print diagnostics
-        throw CompilationError(CompilationStep::PRECOMPILATION, "Error in precompilation - BETTER ERROR MESSAGE!");
+        ++commandIt;
+        std::shared_ptr<clang::PCHBuffer> pchBuffer(new clang::PCHBuffer());
+        std::vector<std::shared_ptr<clang::ModuleFileExtension>> extensions;
+        auto consumer = std::make_unique<clang::PCHGenerator>(instance.getPreprocessor(), instance.getModuleCache(),
+            *commandIt, /*isysroot=*/"", pchBuffer, extensions, /*AllowASTWithErrors=*/true);
+        instance.getASTContext().setASTMutationListener(consumer->GetASTMutationListener());
+        instance.setASTConsumer(std::move(consumer));
+        clang::PreprocessOnlyAction action;
+        PROFILE_START(EmitPCHAction);
+        instance.ExecuteAction(action);
+        PROFILE_END(EmitPCHAction);
     }
-    PROFILE_END(EmitBCAction);
+    else
+    {
+        PROFILE_START(EmitBCAction);
+        clang::EmitBCAction action;
+        if(!instance.ExecuteAction(action))
+        {
+            // TODO print diagnostics
+            throw CompilationError(CompilationStep::PRECOMPILATION, "Error in precompilation - BETTER ERROR MESSAGE!");
+        }
+        PROFILE_END(EmitBCAction);
+    }
 
     // TODO use module directly: action.takeModule()
 }

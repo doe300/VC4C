@@ -191,7 +191,7 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
         }
         else if(stdout != nullptr)
         {
-            return runReadOnlySubprocess(command, stderr);
+            return runReadOnlySubprocess(command, stdout);
         }
         return runWriteOnlySubprocess(command, stdin);
     }

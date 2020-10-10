@@ -48,6 +48,9 @@ if(CLANG_LIBRARY)
 
 		if(LIBCLANG_LIBRARY_FRONTEND AND LIBCLANG_LIBRARY_CODEGEN)
 			set(LIBCLANG_LIBRARIES ${LIBCLANG_LIBRARY_FRONTEND} ${LIBCLANG_LIBRARY_CODEGEN})
+		else()
+			# Try shared libclang-cpp.so
+			find_library(LIBCLANG_LIBRARIES NAMES clang-cpp libclang-cpp)
 		endif()
 	endif()
 	if(NOT LIBCLANG_INCLUDE_PATH)
