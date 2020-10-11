@@ -6,11 +6,11 @@
 
 #include "Combiner.h"
 
+#include "../Expression.h"
 #include "../InstructionWalker.h"
 #include "../analysis/MemoryAnalysis.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/operators.h"
-#include "../Expression.h"
 #include "../periphery/VPM.h"
 #include "../spirv/SPIRVHelper.h"
 #include "Eliminator.h"
@@ -1221,8 +1221,20 @@ Optional<int> getIntegerFromExpression(const SubExpression& expr)
     return Optional<int>();
 }
 
-//                                         signed, value
-using ExpandedExprs = std::vector<std::pair<bool, SubExpression>>;
+//                                                 signed, value
+class ExpandedExprs : public std::vector<std::pair<bool, SubExpression>>
+{
+public:
+    std::string to_string() const
+    {
+        std::stringstream ss;
+        for(auto& p : *this)
+        {
+            ss << (p.first ? "+" : "-") << p.second.to_string();
+        }
+        return ss.str();
+    }
+};
 
 void expandExpression(const SubExpression& subExpr, ExpandedExprs& expanded)
 {
@@ -1320,7 +1332,8 @@ void expandExpression(const SubExpression& subExpr, ExpandedExprs& expanded)
                 }
                 else
                 {
-                    expanded.push_back(std::make_pair(true, SubExpression(std::make_shared<Expression>(op, left, right))));
+                    expanded.push_back(
+                        std::make_pair(true, SubExpression(std::make_shared<Expression>(op, left, right))));
                 }
             }
             else if(op == Expression::FAKEOP_DIV)
@@ -1337,15 +1350,16 @@ void expandExpression(const SubExpression& subExpr, ExpandedExprs& expanded)
     {
         expanded.push_back(std::make_pair(true, subExpr));
     }
-    else {
+    else
+    {
         throw CompilationError(CompilationStep::OPTIMIZER, "Cannot expand expression", subExpr.to_string());
     }
 }
 
-SubExpression calcValueExpr(const SubExpression& expr)
+void calcValueExpr(ExpandedExprs& expanded)
 {
-    ExpandedExprs expanded;
-    expandExpression(expr, expanded);
+    // ExpandedExprs expanded;
+    // expandExpression(expr, expanded);
 
     // for(auto& p : expanded)
     //     logging::debug() << (p.first ? "+" : "-") << p.second->to_string() << " ";
@@ -1367,13 +1381,13 @@ SubExpression calcValueExpr(const SubExpression& expr)
         }
     }
 
-    SubExpression result(INT_ZERO);
-    for(auto& p : expanded)
-    {
-        result = SubExpression(std::make_shared<Expression>(p.first ? OP_ADD : OP_SUB, result, p.second));
-    }
-
-    return result;
+    // SubExpression result(INT_ZERO);
+    // for(auto& p : expanded)
+    // {
+    //     result = SubExpression(std::make_shared<Expression>(p.first ? OP_ADD : OP_SUB, result, p.second));
+    // }
+    //
+    // return result;
 }
 
 SubExpression replaceLocalToExpr(const SubExpression& expr, const Value& local, SubExpression newExpr)
@@ -1478,7 +1492,7 @@ void optimizations::combineDMALoads(const Module& module, Method& method, const 
                 logging::debug() << pair.first.to_string() << " = " << pair.second.to_string() << logging::endl;
             }
 
-            SubExpression diff;
+            ExpandedExprs diff;
             bool eqDiff = true;
             for(size_t i = 1; i < addrExprs.size(); i++)
             {
@@ -1486,36 +1500,53 @@ void optimizations::combineDMALoads(const Module& module, Method& method, const 
                 auto y = addrExprs[i].second;
                 auto diffExpr = SubExpression(std::make_shared<Expression>(OP_SUB, y, x));
 
-                auto currentDiff = calcValueExpr(diffExpr);
-                // Apply calcValueExpr again for integer literals.
-                currentDiff = calcValueExpr(currentDiff);
+                ExpandedExprs currentDiff;
+                expandExpression(diffExpr, currentDiff);
 
-                if(!diff)
+                calcValueExpr(currentDiff);
+
+                // Apply calcValueExpr again for integer literals.
+                SubExpression currentExpr(INT_ZERO);
+                for(auto& p : currentDifft)
                 {
-                    diff = currentDiff;
+                    currentExpr =
+                        SubExpression(std::make_shared<Expression>(p.first ? OP_ADD : OP_SUB, currentExpr, p.second));
                 }
-                if(currentDiff != diff)
+                currentDiff.clear();
+                expandExpression(currentExpr, currentDiff);
+                calcValueExpr(currentDiff);
+
+                // logging::debug() << currentDiff.to_string() << ", " << diff.to_string() << logging::endl;
+
+                if(i == 1)
+                {
+                    diff = std::move(currentDiff);
+                }
+                else if(currentDiff != diff)
                 {
                     eqDiff = false;
                     break;
                 }
             }
 
-            logging::debug() << addrExprs.size() << " loads are " << (eqDiff ? "" : "not ") << "equal difference"
-                             << logging::endl;
+            logging::debug() << addrExprs.size() << " loads are " << (eqDiff ? "" : "not ")
+                             << "equal difference: " << diff.to_string() << logging::endl;
 
             if(eqDiff)
             {
                 // The form of diff should be "0 (+/-) expressions...", then remove the value 0 at most right.
-                ExpandedExprs expanded;
-                expandExpression(diff, expanded);
-                if(expanded.size() == 1)
+                // ExpandedExprs expanded;
+                // expandExpression(diff, expanded);
+                // for (auto& ex : expanded) {
+                //     logging::debug() << "ex = " << ex.second.to_string()  << logging::endl;
+                // }
+                if(diff.size() == 1)
                 {
-                    diff = expanded[0].second;
+                    auto diffExpr = diff[0].second;
 
-                    // logging::debug() << "diff = " << diff->to_string()  << logging::endl;
+                    // logging::debug() << "diff = " << diff.to_string()  << logging::endl;
 
-                    auto term = diff.getConstantExpression();
+                    auto term = diffExpr.getConstantExpression();
                     auto mpValue = term.has_value() ? term->getConstantValue() : Optional<Value>{};
                     auto mpLiteral = mpValue.has_value() ? mpValue->getLiteralValue() : Optional<Literal>{};
 
@@ -1554,12 +1585,11 @@ void optimizations::combineDMALoads(const Module& module, Method& method, const 
                                             elemType.getInMemoryWidth() * DataType::BYTE, vectorLength, false};
 
                                         uint64_t rows = loadInstrs.size();
-                                        VPMArea area(VPMUsage::SCRATCH, 0, static_cast<uint8_t>(rows));
                                         auto entries = Value(Literal(static_cast<uint32_t>(rows)), TYPE_INT32);
-                                        it =
-                                            method.vpm->insertReadRAM(method, it, addr, VectorType, /* &area */ nullptr,
-                                                true, INT_ZERO, entries, Optional<uint16_t>(memoryPitch));
+                                        it = method.vpm->insertReadRAM(method, it, addr, VectorType, nullptr, true,
+                                            INT_ZERO, entries, Optional<uint16_t>(memoryPitch));
 
+                                        VPMArea area(VPMUsage::SCRATCH, 0, static_cast<uint8_t>(rows));
                                         it = method.vpm->insertReadVPM(method, it, output, &area, true);
                                     }
                                     else
