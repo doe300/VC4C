@@ -154,7 +154,34 @@ namespace vc4c
         InstructionWalker combineArithmeticOperations(
             const Module& module, Method& method, InstructionWalker it, const Configuration& config);
 
-        // TODO documentation
+        /*
+         * Combines vloadn with one DMA/VPM load. This available only for constant value offset.
+         *
+         * Example:
+         *   %call  = _Z7vload16jPU3AS1Kf(i32 2, (g) f32* %in) ; vload16
+         *   %call2 = _Z7vload16jPU3AS1Kf(i32 3, (g) f32* %in)
+         *   %call3 = _Z7vload16jPU3AS1Kf(i32 4, (g) f32* %in)
+         *
+         * becomes:
+         *   %tmp.405 = add i32 128, (p) f32* %in
+         *   mutex_acq
+         *   register vpr_setup = vdr_setup(rows: 3, columns: 16 words, address: h32(0,0), vpitch: 1)
+         *   register vpr_setup = loadi vdr_setup(memory pitch: 64 bytes)
+         *   register vpr_addr = i32 %tmp.405
+         *   register - = register vpr_wait
+         *   mutex_rel
+         *   mutex_acq
+         *   register vpr_setup = loadi vpm_setup(num: 3, size: 16 words, stride: 1 rows, address: h32(0))
+         *   %tmp.404 = register vpm
+         *   mutex_rel
+         *   mutex_acq
+         *   %tmp.403 = register vpm
+         *   mutex_rel
+         *   mutex_acq
+         *   %tmp.402 = register vpm
+         *   mutex_rel
+         *
+         */
         void combineDMALoads(const Module& module, Method& method, const Configuration& config);
 
         // TODO documentation, TODO move somewhere else?!
