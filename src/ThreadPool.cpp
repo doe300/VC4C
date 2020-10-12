@@ -35,13 +35,7 @@ ThreadPool::~ThreadPool()
 
 std::future<void> ThreadPool::schedule(std::function<void()>&& func, logging::Logger* logger)
 {
-    // XXX test-wise replace move capture (func{std::move(func)}) with copy-capture like it was before the thread-logger
-    // introducing change (d48b965fdef33f0aec14e55e7c11306793483873) to see if this fixes our crashes on
-    // OpenCL-CTS/test_compiler with the cross-compiled CI packaged compiled with GCC 6.3 that we have since the linked
-    // change.
-    // If this does not help: It crashes in ThreadPool::workerTask() -> "task();" -> trying to execute the functor
-    // inside the packaged_task (https://gcc.gnu.org/onlinedocs/gcc-6.3.0/libstdc++/api/a01300_source.html, line 1553)
-    std::packaged_task<void()> task{[func, logger]() {
+    std::packaged_task<void()> task{[func{std::move(func)}, logger]() {
         // Since this is unconditionally called for every task, the logger is only used for the tasks where is
         // explicitly set. In other words, the next task overwrites the logger to be used (possibly with a NULL pointer,
         // to use the global logger).
