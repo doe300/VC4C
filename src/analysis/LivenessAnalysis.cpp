@@ -530,7 +530,7 @@ std::pair<FastSet<const Local*>, FastSet<const Local*>> LocalUsageAnalysis::anal
 
     for(const auto& pair : localsReadAfterWriting)
     {
-        if(pair.first->getUsers(LocalUse::Type::READER).size() == pair.second)
+        if(pair.first->countUsers(LocalUse::Type::READER) == pair.second)
             localsWritten.erase(pair.first);
     }
 

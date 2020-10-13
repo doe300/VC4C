@@ -237,7 +237,7 @@ namespace vc4c
 
         using ProgramCounter = uint32_t;
 
-        using InstrumentationResults = FastMap<const qpu_asm::Instruction*, InstrumentationResult>;
+        using InstrumentationResults = FastAccessList<InstrumentationResult>;
 
         class QPU : private NonCopyable
         {

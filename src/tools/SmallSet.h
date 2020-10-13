@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <set>
+#include <stdexcept>
 #include <type_traits>
 
 namespace vc4c

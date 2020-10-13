@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <memory>
 #include <set>
 #include <sys/resource.h>
 #include <sys/time.h>
@@ -64,19 +65,78 @@ struct Counter
     }
 };
 
-static std::unordered_map<std::string, Entry> times;
+static std::unordered_map<profiler::HashKey, Entry> times;
 static std::map<std::size_t, Counter> counters;
 #ifdef MULTI_THREADED
 static std::mutex lockTimes;
 static std::mutex lockCounters;
+
+/**
+ * Utility class to cache the profile result thread-locally to be written back at once at thread exit.
+ *
+ * This reduces the amount of profile result mutex locks required.
+ */
+struct ThreadResultCache
+{
+    ~ThreadResultCache()
+    {
+        // flush all thread-local data to the global data
+        if(!localTimes.empty())
+        {
+            std::lock_guard<std::mutex> guard(lockTimes);
+            for(auto& entry : localTimes)
+            {
+                auto it = times.find(entry.first);
+                if(it != times.end())
+                {
+                    it->second.duration += entry.second.duration;
+                    it->second.invocations += entry.second.invocations;
+                }
+                else
+                    times.emplace(entry.first, std::move(entry.second));
+            }
+        }
+
+        if(!localCounters.empty())
+        {
+            std::lock_guard<std::mutex> guard(lockCounters);
+            for(auto& entry : localCounters)
+            {
+                auto it = counters.find(entry.first);
+                if(it != counters.end())
+                {
+                    it->second.count += entry.second.count;
+                    it->second.invocations += entry.second.invocations;
+                }
+                else
+                    counters.emplace(entry.first, std::move(entry.second));
+            }
+        }
+    }
+
+    std::unordered_map<profiler::HashKey, Entry> localTimes;
+    std::map<std::size_t, Counter> localCounters;
+};
+
+static thread_local std::unique_ptr<ThreadResultCache> threadCache;
 #endif
 
 void profiler::endFunctionCall(ProfilingResult&& result)
 {
 #ifdef MULTI_THREADED
+    if(threadCache)
+    {
+        auto& entry = threadCache->localTimes[result.hashKey];
+        entry.name = std::move(result.name);
+        entry.duration += std::chrono::duration_cast<Duration>(Clock::now() - result.startTime);
+        entry.invocations += 1;
+        entry.fileName = std::move(result.fileName);
+        entry.lineNumber = result.lineNumber;
+        return;
+    }
     std::lock_guard<std::mutex> guard(lockTimes);
 #endif
-    auto& entry = times[result.name];
+    auto& entry = times[result.hashKey];
     entry.name = std::move(result.name);
     entry.duration += std::chrono::duration_cast<Duration>(Clock::now() - result.startTime);
     entry.invocations += 1;
@@ -150,7 +210,7 @@ void profiler::dumpProfileResults(bool writeAsWarning)
         std::set<Counter> counts;
         for(auto& entry : times)
         {
-            entry.second.name = entry.first;
+            entry.second.name = entry.second.name;
             entries.emplace(entry.second);
         }
         for(const auto& count : counters)
@@ -197,10 +257,22 @@ void profiler::dumpProfileResults(bool writeAsWarning)
     printResourceUsage(writeAsWarning);
 }
 
-void profiler::increaseCounter(const std::size_t index, std::string name, const std::size_t value, std::string file,
-    const std::size_t line, const std::size_t prevIndex)
+void profiler::increaseCounter(const std::size_t index, std::string name, std::size_t value, std::string file,
+    std::size_t line, std::size_t prevIndex)
 {
 #ifdef MULTI_THREADED
+    if(threadCache)
+    {
+        auto& entry = threadCache->localCounters[index];
+        entry.index = index;
+        entry.name = std::move(name);
+        entry.count += value;
+        entry.invocations += 1;
+        entry.prevCounter = prevIndex;
+        entry.fileName = std::move(file);
+        entry.lineNumber = line;
+        return;
+    }
     std::lock_guard<std::mutex> guard(lockCounters);
 #endif
     auto& entry = counters[index];
@@ -212,4 +284,21 @@ void profiler::increaseCounter(const std::size_t index, std::string name, const 
     entry.fileName = std::move(file);
     entry.lineNumber = line;
 }
+
+void profiler::startThreadCache()
+{
+#ifdef MULTI_THREADED
+    threadCache.reset(new ThreadResultCache());
+#endif
+}
+
+void profiler::flushThreadCache()
+{
+#ifdef MULTI_THREADED
+    PROFILE_START(FlushProfileThreadCache);
+    threadCache.reset();
+    PROFILE_END(FlushProfileThreadCache);
+#endif
+}
+
 // LCOV_EXCL_STOP

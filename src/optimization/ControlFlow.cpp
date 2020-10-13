@@ -420,7 +420,7 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
         // address + element offset
         auto firstArg = inst->getArgument(0);
         if(dynamic_cast<MoveOperation*>(inst) == nullptr || !firstArg || firstArg->checkLocal() == nullptr ||
-            firstArg->local()->getUsers(LocalUse::Type::WRITER).size() != 2)
+            firstArg->local()->countUsers(LocalUse::Type::WRITER) != 2)
             // TODO make more robust!
             throw CompilationError(
                 CompilationStep::OPTIMIZER, "Unhandled instruction setting TMU address elements", inst->to_string());
@@ -891,7 +891,7 @@ static const Local* isLocalUsed(Method& method, BuiltinLocal::Type type, bool fo
     if(forceUse)
         return method.findOrCreateBuiltin(type);
     auto loc = method.findBuiltin(type);
-    if(loc != nullptr && !loc->getUsers(LocalUse::Type::READER).empty())
+    if(loc != nullptr && loc->hasUsers(LocalUse::Type::READER))
         return loc;
     return nullptr;
 }

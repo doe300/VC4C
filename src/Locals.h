@@ -125,6 +125,20 @@ namespace vc4c
          * Executes the consumer for all users of the type specified
          */
         void forUsers(LocalUse::Type type, const std::function<void(const LocalUser*)>& consumer) const;
+        /**
+         * Executes the consumer for all users of the type specified
+         *
+         * In addition, this function aborts any further processing if the consumer returns false
+         */
+        bool allUsers(LocalUse::Type type, const std::function<bool(const LocalUser*)>& consumer) const;
+        /**
+         * Returns the number of users of the given type for this local
+         */
+        std::size_t countUsers(LocalUse::Type type) const;
+        inline bool hasUsers(LocalUse::Type type) const
+        {
+            return countUsers(type) != 0;
+        }
         /*
          * Removes an instance of use for the given user and usage-type.
          *

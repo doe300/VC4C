@@ -6,6 +6,7 @@
 
 #include "ThreadPool.h"
 
+#include "Profiler.h"
 #include "log.h"
 
 #include <sys/prctl.h>
@@ -58,7 +59,8 @@ std::future<void> ThreadPool::schedule(std::function<void()>&& func, logging::Lo
 void ThreadPool::workerTask(const std::string& poolName)
 {
     prctl(PR_SET_NAME, poolName.data(), 0, 0, 0);
-    while(true)
+    PROFILE_CREATE_THREAD_CACHE();
+    while(keepRunning)
     {
         std::packaged_task<void()> task;
         {
@@ -66,7 +68,7 @@ void ThreadPool::workerTask(const std::string& poolName)
             queueCondition.wait_for(
                 lock, std::chrono::milliseconds{100}, [&] { return !keepRunning || !taskQueue.empty(); });
             if(!keepRunning)
-                return;
+                break;
             if(taskQueue.empty())
                 continue;
             task = std::move(taskQueue.front());
@@ -76,4 +78,5 @@ void ThreadPool::workerTask(const std::string& poolName)
         // execute task outside of lock
         task();
     }
+    PROFILE_FLUSH_THREAD_CACHE();
 }

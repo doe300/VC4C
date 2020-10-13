@@ -39,9 +39,8 @@ static bool checkWorkGroupUniform(const Value& arg)
         return true;
     if(auto local = arg.checkLocal())
     {
-        auto writes = local->getUsers(LocalUse::Type::WRITER);
         return local->is<Parameter>() || local->is<Global>() ||
-            std::all_of(writes.begin(), writes.end(), [](const intermediate::IntermediateInstruction* instr) -> bool {
+            local->allUsers(LocalUse::Type::WRITER, [](const intermediate::IntermediateInstruction* instr) -> bool {
                 return instr->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
             });
     }
@@ -54,11 +53,9 @@ static bool checkSplatValue(const Value& arg)
         return true;
     if(auto local = arg.checkLocal())
     {
-        auto writes = local->getUsers(LocalUse::Type::WRITER);
-        return std::all_of(
-            writes.begin(), writes.end(), [](const intermediate::IntermediateInstruction* instr) -> bool {
-                return instr->hasDecoration(intermediate::InstructionDecorations::IDENTICAL_ELEMENTS);
-            });
+        return local->allUsers(LocalUse::Type::WRITER, [](const intermediate::IntermediateInstruction* instr) -> bool {
+            return instr->hasDecoration(intermediate::InstructionDecorations::IDENTICAL_ELEMENTS);
+        });
     }
     return false;
 }
@@ -69,10 +66,12 @@ static bool checkSplatValue(const Value& arg)
 static void propagateDecorations(Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     // XXX does not propagate decoration via phi-nodes of back jumps
-    std::vector<std::pair<intermediate::InstructionDecorations, bool (*)(const Value&)>> checks = {
-        {intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, checkWorkGroupUniform},
-        {intermediate::InstructionDecorations::IDENTICAL_ELEMENTS, checkSplatValue},
-    };
+    // This is thread_local, since otherwise we get strange race conditions on initializing this structure
+    static thread_local const std::vector<std::pair<intermediate::InstructionDecorations, bool (*)(const Value&)>>
+        checks = {
+            {intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, checkWorkGroupUniform},
+            {intermediate::InstructionDecorations::IDENTICAL_ELEMENTS, checkSplatValue},
+        };
 
     if(it.get<intermediate::Nop>() || it.get<intermediate::BranchLabel>() || it.get<intermediate::MutexLock>() ||
         it.get<intermediate::SemaphoreAdjustment>() || it.get<intermediate::MemoryBarrier>())

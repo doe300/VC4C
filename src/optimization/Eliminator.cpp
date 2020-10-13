@@ -50,8 +50,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                     // b) never read at all
                     // must check from the start, because in SPIR-V, locals can be read before they are written to (e.g.
                     // in phi-node and branch backwards)
-                    bool isRead = !dest->getUsers(LocalUse::Type::READER).empty();
-                    if(!isRead)
+                    if(!dest->hasUsers(LocalUse::Type::READER))
                     {
                         CPPLOG_LAZY(logging::Level::DEBUG,
                             log << "Removing instruction " << instr->to_string() << ", since its output is never read"
@@ -76,8 +75,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                     auto outLoc = move->getOutput()->local();
                     // for instruction added by phi-elimination, the result could have been written to (with a different
                     // source) previously, so check
-                    bool isWrittenTo = !outLoc->getUsers(LocalUse::Type::WRITER).empty();
-                    if(!isWrittenTo && inLoc->type == outLoc->type)
+                    if(!outLoc->hasUsers(LocalUse::Type::WRITER) && inLoc->type == outLoc->type)
                     {
                         // TODO what if both locals are written before (and used differently), possible??
                         CPPLOG_LAZY(logging::Level::DEBUG,
@@ -112,7 +110,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                 {
                     // if the added work-group info UNIFORMs are never read, we can remove them (and their flag)
                     auto dest = instr->getOutput()->local()->as<BuiltinLocal>();
-                    if(dest && dest->getUsers(LocalUse::Type::READER).empty())
+                    if(dest && !dest->hasUsers(LocalUse::Type::READER))
                     {
                         using Type = BuiltinLocal::Type;
                         using FuncType = decltype(&KernelUniforms::setGlobalDataAddressUsed);
@@ -603,11 +601,11 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
 
             // the source is written and read only once
             bool sourceUsedOnce = move->getSource().getSingleWriter() != nullptr &&
-                move->getSource().local()->getUsers(LocalUse::Type::READER).size() == 1;
+                move->getSource().local()->countUsers(LocalUse::Type::READER) == 1;
             // the destination is written and read only once (and not in combination with a literal value, to not
             // introduce register conflicts)
             bool destUsedOnce = move->checkOutputLocal() && move->getOutput()->getSingleWriter() == move &&
-                move->getOutput()->local()->getUsers(LocalUse::Type::READER).size() == 1;
+                move->getOutput()->local()->countUsers(LocalUse::Type::READER) == 1;
             bool destUsedOnceWithoutLiteral = destUsedOnce &&
                 !(*move->getOutput()->local()->getUsers(LocalUse::Type::READER).begin())->readsLiteral();
 
@@ -615,7 +613,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 it.getBasicBlock()->findWalkerForInstruction(move->getSource().getSingleWriter(), it) :
                 Optional<InstructionWalker>{};
             auto destinationReader =
-                (move->checkOutputLocal() && move->getOutput()->local()->getUsers(LocalUse::Type::READER).size() == 1) ?
+                (move->checkOutputLocal() && move->getOutput()->local()->countUsers(LocalUse::Type::READER) == 1) ?
                 it.getBasicBlock()->findWalkerForInstruction(
                     *move->getOutput()->local()->getUsers(LocalUse::Type::READER).begin(),
                     it.getBasicBlock()->walkEnd()) :

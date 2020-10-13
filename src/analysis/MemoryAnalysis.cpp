@@ -53,8 +53,7 @@ bool LocalUsageOrdering::operator()(const Local* l1, const Local* l2) const
 
 static bool isGroupUniform(const Local* local)
 {
-    auto writers = local->getUsers(LocalUse::Type::WRITER);
-    return std::all_of(writers.begin(), writers.end(), [](const LocalUser* instr) -> bool {
+    return local->allUsers(LocalUse::Type::WRITER, [](const LocalUser* instr) -> bool {
         return instr->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
     });
 }

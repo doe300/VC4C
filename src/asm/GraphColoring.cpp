@@ -514,7 +514,7 @@ void GraphColoring::createGraph()
             CPPLOG_LAZY(
                 logging::Level::DEBUG, log << "Local " << pair.first->name << " is never read!" << logging::endl);
             // sanity check
-            if(!pair.first->getUsers(LocalUse::Type::READER).empty())
+            if(pair.first->hasUsers(LocalUse::Type::READER))
             {
                 for(const auto& user : pair.first->getUsers())
                     logging::error() << user.first->to_string() << logging::endl;
@@ -695,6 +695,13 @@ static void processClosedSet(ColoredGraph& graph, FastSet<const Local*>& closedS
 
                 return true;
             });
+
+            if(node->possibleFiles == RegisterFile::ACCUMULATOR)
+                PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 5, "Accumulator assigned", 1);
+            else if(node->possibleFiles == RegisterFile::PHYSICAL_A)
+                PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 6, "Register-file A assigned", 1);
+            else if(node->possibleFiles == RegisterFile::PHYSICAL_B)
+                PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 7, "Register-file B assigned", 1);
         }
         closedSet.erase(node->key);
     }

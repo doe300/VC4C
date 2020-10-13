@@ -155,7 +155,7 @@ static int calculateSchedulingPriority(analysis::DependencyEdge& dependency, Bas
             instr->readsRegister(REG_MUTEX))
             latencyLeft += 2;
         if(std::any_of(instr->getArguments().begin(), instr->getArguments().end(), [&](const Value& arg) -> bool {
-               return arg.checkLocal() && arg.local()->getUsers(LocalUse::Type::READER).size() == 1;
+               return arg.checkLocal() && arg.local()->countUsers(LocalUse::Type::READER) == 1;
            }))
             --latencyLeft;
         if(instr->checkOutputLocal() && instr->getOutput()->getSingleWriter() == instr)

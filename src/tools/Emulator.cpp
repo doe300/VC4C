@@ -1312,7 +1312,7 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
     const qpu_asm::Instruction* inst = &(*(firstInstruction + pc));
     {
         std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
-        ++instrumentation[inst].numExecutions;
+        ++instrumentation.at(pc).numExecutions;
     }
     CPPLOG_LAZY(logging::Level::INFO,
         log << "QPU " << static_cast<unsigned>(ID) << " (0x" << std::hex << pc << std::dec
@@ -1335,7 +1335,7 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
             {
                 {
                     std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
-                    ++instrumentation[inst].numBranchTaken;
+                    ++instrumentation.at(pc).numBranchTaken;
                 }
                 int32_t offset = 4 /* Branch starts at PC + 4 */ +
                     (br->getImmediate() / static_cast<int32_t>(sizeof(uint64_t))) /* immediate offset is in bytes */;
@@ -1426,7 +1426,7 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
             else
             {
                 std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
-                ++instrumentation[inst].numStalls;
+                ++instrumentation.at(pc).numStalls;
             }
         }
         else
@@ -1552,7 +1552,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         {
             // we stall on input, so do not calculate anything
             std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
-            ++instrumentation[aluInst].numStalls;
+            ++instrumentation.at(pc).numStalls;
             return false;
         }
     }
@@ -1580,7 +1580,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
         {
             // we stall on input, so do not calculate anything
             std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
-            ++instrumentation[aluInst].numStalls;
+            ++instrumentation.at(pc).numStalls;
             return false;
         }
     }
@@ -1697,18 +1697,18 @@ void QPU::writeConditional(Register dest, const SIMDVector& in, ConditionCode co
         registers.writeRegister(dest, in, std::bitset<16>(0xFFFF), bitMask);
         std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
         if(addInst)
-            ++instrumentation[addInst].numAddALUExecuted;
+            ++instrumentation.at(pc).numAddALUExecuted;
         if(mulInst)
-            ++instrumentation[mulInst].numMulALUExecuted;
+            ++instrumentation.at(pc).numMulALUExecuted;
         return;
     }
     else if(cond == COND_NEVER)
     {
         std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
         if(addInst)
-            ++instrumentation[addInst].numAddALUSkipped;
+            ++instrumentation.at(pc).numAddALUSkipped;
         if(mulInst)
-            ++instrumentation[mulInst].numMulALUSkipped;
+            ++instrumentation.at(pc).numMulALUSkipped;
         return;
     }
 
@@ -1738,17 +1738,17 @@ void QPU::writeConditional(Register dest, const SIMDVector& in, ConditionCode co
     {
         std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
         if(elementMask.any())
-            ++instrumentation[addInst].numAddALUExecuted;
+            ++instrumentation.at(pc).numAddALUExecuted;
         else
-            ++instrumentation[addInst].numAddALUSkipped;
+            ++instrumentation.at(pc).numAddALUSkipped;
     }
     if(mulInst != nullptr)
     {
         std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
         if(elementMask.any())
-            ++instrumentation[mulInst].numMulALUExecuted;
+            ++instrumentation.at(pc).numMulALUExecuted;
         else
-            ++instrumentation[mulInst].numMulALUSkipped;
+            ++instrumentation.at(pc).numMulALUSkipped;
     }
 }
 
@@ -2204,7 +2204,7 @@ EmulationResult tools::emulate(const EmulationData& data)
     if(!data.memoryDump.empty())
         dumpMemory(mem, data.memoryDump, uniformAddress, true);
 
-    InstrumentationResults instrumentation;
+    InstrumentationResults instrumentation(kernelInfo->getLength().getValue());
     bool status = emulate(instructions.begin() +
             static_cast<std::vector<qpu_asm::Instruction>::difference_type>(
                 (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue()),
@@ -2233,19 +2233,17 @@ EmulationResult tools::emulate(const EmulationData& data)
     std::unique_ptr<std::ofstream> dumpInstrumentation;
     if(!data.instrumentationDump.empty())
         dumpInstrumentation.reset(new std::ofstream(data.instrumentationDump));
-    auto it = instructions.begin() +
-        static_cast<std::vector<qpu_asm::Instruction>::difference_type>(
-            (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue());
+    std::size_t i = (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue();
     result.instrumentation.reserve(static_cast<std::size_t>(kernelInfo->getLength().getValue()));
-    while(true)
+    for(; i < instructions.size(); ++i)
     {
-        result.instrumentation.emplace_back(instrumentation[&(*it)]);
+        auto& it = instructions[i];
+        result.instrumentation.emplace_back(instrumentation[i]);
         if(dumpInstrumentation)
-            *dumpInstrumentation << std::left << std::setw(80) << it->toASMString() << "//"
-                                 << instrumentation[&(*it)].to_string() << std::endl;
-        if(it->getSig() == SIGNAL_END_PROGRAM)
+            *dumpInstrumentation << std::left << std::setw(80) << it.toASMString() << "//"
+                                 << instrumentation[i].to_string() << std::endl;
+        if(it.getSig() == SIGNAL_END_PROGRAM)
             break;
-        ++it;
     }
 
     return result;
@@ -2275,7 +2273,7 @@ LowLevelEmulationResult tools::emulate(const LowLevelEmulationData& data)
     auto instructions = extractInstructions(data.kernelAddress, data.numInstructions);
     Memory mem(data.buffers);
 
-    InstrumentationResults instrumentation;
+    InstrumentationResults instrumentation(instructions.size());
     bool status = emulate(instructions.begin(), mem, data.uniformAddresses, instrumentation, data.maxEmulationCycles);
 
     LowLevelEmulationResult result{data};
@@ -2285,17 +2283,16 @@ LowLevelEmulationResult tools::emulate(const LowLevelEmulationData& data)
     std::unique_ptr<std::ofstream> dumpInstrumentation;
     if(!data.instrumentationDump.empty())
         dumpInstrumentation.reset(new std::ofstream(data.instrumentationDump));
-    auto it = instructions.begin();
     result.instrumentation.reserve(data.numInstructions);
-    while(true)
+    for(std::size_t i = 0; i < data.numInstructions; ++i)
     {
-        result.instrumentation.emplace_back(instrumentation[&(*it)]);
+        auto& it = instructions[i];
+        result.instrumentation.emplace_back(instrumentation[i]);
         if(dumpInstrumentation)
-            *dumpInstrumentation << std::left << std::setw(80) << it->toASMString() << "//"
-                                 << instrumentation[&(*it)].to_string() << std::endl;
-        if(it->getSig() == SIGNAL_END_PROGRAM)
+            *dumpInstrumentation << std::left << std::setw(80) << it.toASMString() << "//"
+                                 << instrumentation[i].to_string() << std::endl;
+        if(it.getSig() == SIGNAL_END_PROGRAM)
             break;
-        ++it;
     }
 
     return result;

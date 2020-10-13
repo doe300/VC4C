@@ -14,21 +14,22 @@ namespace vc4c
 {
 #if DEBUG_MODE
 #define PROFILE(func, ...)                                                                                             \
-    profiler::ProfilingResult profile##func{#func, __FILE__, __LINE__, profiler::Clock::now()};                        \
+    profiler::ProfilingResult profile##func{reinterpret_cast<std::uintptr_t>(std::addressof(#func[0])), #func,         \
+        __FILE__, __LINE__, profiler::Clock::now()};                                                                   \
     func(__VA_ARGS__);                                                                                                 \
     profiler::endFunctionCall(std::move(profile##func))
 
 #define PROFILE_START(name)                                                                                            \
     profiler::ProfilingResult profile##name                                                                            \
     {                                                                                                                  \
-#name, __FILE__, __LINE__, profiler::Clock::now()                                                              \
+        reinterpret_cast<std::uintptr_t>(std::addressof(#name[0])), #name, __FILE__, __LINE__, profiler::Clock::now()  \
     }
 #define PROFILE_END(name) profiler::endFunctionCall(std::move(profile##name))
 
 #define PROFILE_START_DYNAMIC(name)                                                                                    \
     profiler::ProfilingResult profile                                                                                  \
     {                                                                                                                  \
-        name, __FILE__, __LINE__, profiler::Clock::now()                                                               \
+        std::hash<std::string>{}(name), name, __FILE__, __LINE__, profiler::Clock::now()                               \
     }
 #define PROFILE_END_DYNAMIC(name) profiler::endFunctionCall(std::move(profile))
 
@@ -37,6 +38,9 @@ namespace vc4c
     profiler::increaseCounter(index, name, value, __FILE__, __LINE__, prevIndex)
 
 #define PROFILE_RESULTS() profiler::dumpProfileResults()
+
+#define PROFILE_CREATE_THREAD_CACHE() profiler::startThreadCache()
+#define PROFILE_FLUSH_THREAD_CACHE() profiler::flushThreadCache()
 #else
 #define PROFILE(func, ...) func(__VA_ARGS__)
 
@@ -50,15 +54,20 @@ namespace vc4c
 #define PROFILE_COUNTER_WITH_PREV(index, name, value, prevIndex)
 
 #define PROFILE_RESULTS()
+
+#define PROFILE_CREATE_THREAD_CACHE()
+#define PROFILE_FLUSH_THREAD_CACHE()
 #endif
 
     namespace profiler
     {
         using Clock = std::chrono::system_clock;
         using Duration = std::chrono::microseconds;
+        using HashKey = std::common_type<std::size_t, std::uintptr_t>::type;
 
         struct ProfilingResult
         {
+            HashKey hashKey;
             std::string name;
             std::string fileName;
             std::size_t lineNumber;
@@ -83,6 +92,13 @@ namespace vc4c
         static constexpr std::size_t COUNTER_OPTIMIZATION = 30000;
         static constexpr std::size_t COUNTER_BACKEND = 40000;
         static constexpr std::size_t COUNTER_EMULATOR = 100000;
+
+        /**
+         * Enables the in-thread cache of profile data
+         */
+        void startThreadCache();
+        void flushThreadCache();
+
     } // namespace profiler
 } // namespace vc4c
 

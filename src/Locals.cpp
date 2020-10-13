@@ -63,6 +63,28 @@ void Local::forUsers(const LocalUse::Type type, const std::function<void(const L
     }
 }
 
+bool Local::allUsers(LocalUse::Type type, const std::function<bool(const LocalUser*)>& consumer) const
+{
+    auto lock = getUsersLock();
+    for(const auto& pair : this->users)
+    {
+        if((has_flag(type, LocalUse::Type::READER) && pair.second.readsLocal()) ||
+            (has_flag(type, LocalUse::Type::WRITER) && pair.second.writesLocal()))
+        {
+            if(!consumer(pair.first))
+                return false;
+        }
+    }
+    return true;
+}
+
+std::size_t Local::countUsers(LocalUse::Type type) const
+{
+    std::size_t count = 0;
+    forUsers(type, [&](const LocalUser*) { ++count; });
+    return count;
+}
+
 void Local::removeUser(const LocalUser& user, const LocalUse::Type type)
 {
     auto lock = getUsersLock();

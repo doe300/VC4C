@@ -681,9 +681,8 @@ bool Value::isUnsignedInteger() const
         return lit->signedInt() > 0;
     if(auto local = checkLocal())
     {
-        auto writes = local->getUsers(LocalUse::Type::WRITER);
         return local->is<Parameter>() || local->residesInMemory() ||
-            std::all_of(writes.begin(), writes.end(), [](const intermediate::IntermediateInstruction* instr) -> bool {
+            local->allUsers(LocalUse::Type::WRITER, [](const intermediate::IntermediateInstruction* instr) -> bool {
                 return instr->hasDecoration(vc4c::intermediate::InstructionDecorations::UNSIGNED_RESULT) ||
                     intermediate::isGroupBuiltin(instr->decoration, true);
             });

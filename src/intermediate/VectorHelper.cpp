@@ -414,7 +414,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     // this allows us to skip extracting and inserting values from/to same index
     // also required so register allocator finds unconditional write to destination
     uint8_t numCorrespondingIndices = 0;
-    if(destination.checkLocal() && destination.local()->getUsers(LocalUse::Type::WRITER).empty())
+    if(destination.checkLocal() && !destination.local()->hasUsers(LocalUse::Type::WRITER))
     {
         if(isSingleSource || source0.type.getVectorWidth() + source1.type.getVectorWidth() > NATIVE_VECTOR_SIZE)
         {

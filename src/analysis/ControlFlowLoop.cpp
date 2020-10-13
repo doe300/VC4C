@@ -188,11 +188,10 @@ static void addForwardCandidates(SortedSet<const intermediate::IntermediateInstr
             return;
         if(auto loc = move->getOutput()->checkLocal())
         {
-            for(auto reader : loc->getUsers(LocalUse::Type::READER))
-            {
+            loc->forUsers(LocalUse::Type::READER, [&](const LocalUser* reader) {
                 if(loop.findInLoop(reader))
                     addForwardCandidates(candidates, *reader, loop, false);
-            }
+            });
         }
     }
     // if the instruction calculates something, it is a candidate
@@ -210,11 +209,10 @@ static void addBackwardCandidates(SortedSet<const intermediate::IntermediateInst
             return;
         if(auto loc = move->getSource().checkLocal())
         {
-            for(auto writer : loc->getUsers(LocalUse::Type::WRITER))
-            {
+            loc->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) {
                 if(loop.findInLoop(writer))
                     addBackwardCandidates(candidates, *writer, loop);
-            }
+            });
         }
     }
     // if the instruction calculates something, it is a candidate
@@ -239,11 +237,10 @@ static void addForwardFlagCandidates(FastSet<const intermediate::IntermediateIns
             return;
         if(auto loc = move->getOutput()->checkLocal())
         {
-            for(auto reader : loc->getUsers(LocalUse::Type::READER))
-            {
+            loc->forUsers(LocalUse::Type::READER, [&](const LocalUser* reader) {
                 if(loop.findInLoop(reader))
                     addForwardFlagCandidates(candidates, *reader, loop);
-            }
+            });
         }
     }
 }
@@ -729,8 +726,7 @@ FastSet<InstructionWalker> ControlFlowLoop::findLoopInvariants()
             return true;
         if(auto local = arg.checkLocal())
         {
-            auto writers = local->getUsers(LocalUse::Type::WRITER);
-            return std::all_of(writers.begin(), writers.end(), writerIsInvariant);
+            return local->allUsers(LocalUse::Type::WRITER, writerIsInvariant);
         }
         return false;
     };

@@ -669,8 +669,8 @@ void normalization::spillLocals(const Module& module, Method& method, const Conf
         for(const auto& pair : spillingCandidates)
         {
             logging::debug() << "Spilling candidate: " << pair.first->to_string() << " ("
-                             << pair.first->getUsers(LocalUse::Type::WRITER).size() << " writes, "
-                             << pair.first->getUsers(LocalUse::Type::READER).size() << " reads)" << logging::endl;
+                             << pair.first->countUsers(LocalUse::Type::WRITER) << " writes, "
+                             << pair.first->countUsers(LocalUse::Type::READER) << " reads)" << logging::endl;
         }
     });
     LCOV_EXCL_STOP

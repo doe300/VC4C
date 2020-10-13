@@ -722,7 +722,7 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
         while(!it.isEndOfBlock())
         {
             if(it.get() && it->checkOutputLocal() && !it->hasConditionalExecution() &&
-                it->getOutput()->local()->getUsers(LocalUse::Type::WRITER).size() == 1 &&
+                it->getOutput()->local()->countUsers(LocalUse::Type::WRITER) == 1 &&
                 // TODO also combine is both ranges are not locally limited and overlap for the most part
                 // (or at least if one range completely contains the other range)
                 block.isLocallyLimited(it, it->getOutput()->local(), config.additionalOptions.accumulatorThreshold))
@@ -981,7 +981,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                     it->copyExtrasFrom(firstRot);
 
                                     if(!(*firstIt)->hasSideEffects() &&
-                                        firstRot->getOutput()->local()->getUsers(LocalUse::Type::READER).empty())
+                                        !firstRot->getOutput()->local()->hasUsers(LocalUse::Type::READER))
                                         // only remove first rotation if it does not have a second user
                                         firstIt->erase();
                                 }
@@ -997,7 +997,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                                  ->copyExtrasFrom(rot));
                                     it->copyExtrasFrom(firstRot);
                                     if(!(*firstIt)->hasSideEffects() &&
-                                        firstRot->getOutput()->local()->getUsers(LocalUse::Type::READER).empty())
+                                        !firstRot->getOutput()->local()->hasUsers(LocalUse::Type::READER))
                                         // only remove first rotation if it does not have a second user
                                         firstIt->erase();
                                 }
@@ -1054,7 +1054,7 @@ InstructionWalker optimizations::combineArithmeticOperations(
     if(!writerOp->isSimpleOperation() || singleWriter->hasConditionalExecution())
         return it;
 
-    if(singleWriter->getOutput()->local()->getUsers(LocalUse::Type::READER).size() != 1)
+    if(singleWriter->getOutput()->local()->countUsers(LocalUse::Type::READER) != 1)
         // we cannot remove or modify the writer, so abort here
         return it;
 

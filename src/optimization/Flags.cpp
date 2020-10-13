@@ -304,8 +304,7 @@ static bool checkAllInputElementsAreSame(const Value& input, InstructionWalker i
     bool allElementsSame = input.isAllSame();
     if(!allElementsSame && input.checkLocal())
     {
-        auto writers = input.local()->getUsers(LocalUse::Type::WRITER);
-        allElementsSame = std::all_of(writers.begin(), writers.end(), [&](const LocalUser* writer) -> bool {
+        allElementsSame = input.local()->allUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) -> bool {
             return checkAllResultElementsAreSame(*writer, it.getBasicBlock()->findWalkerForInstruction(writer, it));
         });
     }

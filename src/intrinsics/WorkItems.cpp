@@ -322,8 +322,8 @@ static void insertSingleSecondaryBlockCode(Method& method, BasicBlock& block, ui
         auto branchIt = it.copy().previousInBlock();
 
         // we need to create the other block first to be able to correctly update the CFG
-        auto block = method.addNewLocal(TYPE_LABEL, "%barrier_next_release").local();
-        auto blockIt = method.emplaceLabel(it, new BranchLabel(*block));
+        auto releaseBlock = method.addNewLocal(TYPE_LABEL, "%barrier_next_release").local();
+        auto blockIt = method.emplaceLabel(it, new BranchLabel(*releaseBlock));
         {
             blockIt.nextInBlock();
             blockIt.emplace(new SemaphoreAdjustment(static_cast<Semaphore>(index + 1), true));
@@ -334,7 +334,7 @@ static void insertSingleSecondaryBlockCode(Method& method, BasicBlock& block, ui
         branchIt.nextInBlock();
         BranchCond branchCond = BRANCH_ALWAYS;
         std::tie(branchIt, branchCond) = insertBranchCondition(method, branchIt, tmp);
-        branchIt.emplace(new Branch(block, branchCond));
+        branchIt.emplace(new Branch(releaseBlock, branchCond));
         branchIt.nextInBlock();
         branchIt.emplace(new Branch(afterLabel, branchCond.invert()));
     }

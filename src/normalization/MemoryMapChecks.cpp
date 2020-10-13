@@ -537,11 +537,10 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping, I
             // allocation!
             auto stackAllocation = writer->getSource().local();
             FastSet<const intermediate::IntermediateInstruction*> stackAllocationWriters;
-            for(auto user : stackAllocation->getUsers(LocalUse::Type::WRITER))
-            {
+            stackAllocation->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* user) {
                 if(auto stackWriter = dynamic_cast<const intermediate::MemoryInstruction*>(getSourceInstruction(user)))
                     stackAllocationWriters.emplace(stackWriter);
-            }
+            });
             if(stackAllocationWriters.size() == 1)
             {
                 // this instruction writes the original pointer value to the stack allocated pointer-to-pointer, which
@@ -594,10 +593,10 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping, I
         // TestMemoryAccess#CASTPOINTER
         CPPLOG_LAZY_BLOCK(logging::Level::ERROR, {
             logging::error() << "Failed to find memory area for local: " << local->to_string(true) << logging::endl;
-            for(const auto& writer : local->getUsers(LocalUse::Type::WRITER))
-                logging::error() << "\tWriter: " << writer->to_string() << logging::endl;
-            for(const auto& reader : local->getUsers(LocalUse::Type::READER))
-                logging::error() << "\tReader: " << reader->to_string() << logging::endl;
+            local->forUsers(LocalUse::Type::WRITER,
+                [](const auto* writer) { logging::error() << "\tWriter: " << writer->to_string() << logging::endl; });
+            local->forUsers(LocalUse::Type::READER,
+                [](const auto* reader) { logging::error() << "\tReader: " << reader->to_string() << logging::endl; });
         });
 
         throw CompilationError(
@@ -720,7 +719,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                 }
             }
             else if(memInstr->op == MemoryOperation::READ && !memInstr->hasConditionalExecution() &&
-                memInstr->getDestination().local()->getUsers(LocalUse::Type::READER).size() == 1)
+                memInstr->getDestination().local()->countUsers(LocalUse::Type::READER) == 1)
             {
                 // convert read-then-write to copy
                 auto nextIt = findNextValueStore(
