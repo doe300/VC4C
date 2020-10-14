@@ -659,7 +659,7 @@ void TestEmulator::testPi()
     {
         get_group_id = [=](unsigned) { return group; };
         // iterate in descending order, since we have special handling for local ID 0
-        for(int localId = static_cast<int>(workGroupSize); localId >= 0; --localId)
+        for(int localId = static_cast<int>(workGroupSize) - 1; localId >= 0; --localId)
         {
             get_local_id = [=](unsigned) { return localId; };
             pi(numIterations, stepSize, hostLocal.data(), hostPartial.data());

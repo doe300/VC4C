@@ -278,13 +278,18 @@ static T checkClz(T in)
 template <typename T>
 static T checkMulHi(T in1, T in2)
 {
-    return static_cast<T>((static_cast<int64_t>(in1) * static_cast<int64_t>(in2)) >> (sizeof(T) * 8));
+    // signed integer overflow is UB, unsigned overflow is not
+    auto op1 = vc4c::bit_cast<int64_t, uint64_t>(static_cast<int64_t>(in1));
+    auto op2 = vc4c::bit_cast<int64_t, uint64_t>(static_cast<int64_t>(in2));
+    return static_cast<T>((op1 * op2) >> (sizeof(T) * 8));
 }
 
 template <typename T>
 static T checkMadHi(T in1, T in2, T in3)
 {
-    return checkMulHi(in1, in2) + in3;
+    auto op1 = vc4c::bit_cast<T, std::make_unsigned_t<T>>(checkMulHi(in1, in2));
+    // add with unsigned types to not cause UB on overflow
+    return vc4c::bit_cast<std::make_unsigned_t<T>, T>(op1 + vc4c::bit_cast<T, std::make_unsigned_t<T>>(in3));
 }
 
 template <typename T>
@@ -314,7 +319,8 @@ static T checkRotate(T v, T shift)
     // auto s = shift >= 0 ? shift % (sizeof(T) * 8) : -((-shift) % (sizeof(T) * 8));
     auto s = static_cast<uint64_t>(static_cast<int64_t>(shift) + (int64_t{1} << 32)) % (sizeof(T) * 8);
     auto tmp = vc4c::bit_cast<T, typename std::make_unsigned<T>::type>(v);
-    tmp = static_cast<decltype(tmp)>((tmp << s) | (tmp >> ((sizeof(T) * 8) - s)));
+    if(s != 0 && s != (sizeof(T) * 8))
+        tmp = static_cast<decltype(tmp)>((tmp << s) | (tmp >> ((sizeof(T) * 8) - s)));
     return vc4c::bit_cast<typename std::make_unsigned<T>::type, T>(tmp);
 }
 
@@ -329,7 +335,9 @@ static T checkSubSat(T in1, T in2)
 template <typename R, typename T, typename U = typename std::make_unsigned<T>::type>
 static R checkUpsample(T in1, U in2)
 {
-    return static_cast<R>((static_cast<R>(in1) << (sizeof(T) * 8)) | static_cast<R>(in2));
+    // left shift of negative values is UB, so bit-cast to unsigned type
+    auto op1 = vc4c::bit_cast<R, std::make_unsigned_t<R>>(static_cast<R>(in1));
+    return static_cast<R>((op1 << (sizeof(T) * 8)) | static_cast<R>(in2));
 }
 
 template <typename T>
@@ -350,7 +358,9 @@ static T checkMul24(T in1, T in2)
 template <typename T>
 static T checkMad24(T in1, T in2, T in3)
 {
-    return checkMul24(in1, in2) + in3;
+    auto op1 = vc4c::bit_cast<T, std::make_unsigned_t<T>>(checkMul24(in1, in2));
+    // add with unsigned types to not cause UB on overflow
+    return vc4c::bit_cast<std::make_unsigned_t<T>, T>(op1 + vc4c::bit_cast<T, std::make_unsigned_t<T>>(in3));
 }
 
 void TestIntegerFunctions::testAbsSignedInt()

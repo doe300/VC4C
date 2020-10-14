@@ -350,7 +350,12 @@ unsigned char DataType::getScalarBitCount() const
 
 uint32_t DataType::getScalarWidthMask() const
 {
-    return static_cast<uint32_t>((static_cast<uint64_t>(1) << getScalarBitCount()) - 1);
+    uint32_t bitCount = getScalarBitCount();
+    if(bitCount > 32)
+        throw CompilationError(CompilationStep::GENERAL, "Scalar width mask out of bounds", to_string());
+    if(bitCount == 32)
+        return uint32_t{0xFFFFFFFF};
+    return (1u << bitCount) - 1u;
 }
 
 unsigned int DataType::getLogicalWidth() const

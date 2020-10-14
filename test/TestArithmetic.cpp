@@ -445,7 +445,9 @@ static R checkNot(T arg)
 template <typename T, typename R = typename std::common_type<T, int>::type>
 static R checkShiftLeft(T arg1, T arg2)
 {
-    return static_cast<R>(arg1 << (vc4c::bit_cast<T, std::make_unsigned_t<T>>(arg2) % (sizeof(T) * CHAR_BIT)));
+    auto op1 = vc4c::bit_cast<T, std::make_unsigned_t<T>>(arg1);
+    auto op2 = vc4c::bit_cast<T, std::make_unsigned_t<T>>(arg2);
+    return static_cast<R>(vc4c::bit_cast<std::make_unsigned_t<T>, T>(op1 << (op2 % (sizeof(T) * CHAR_BIT))));
 }
 
 template <typename T, typename R = typename std::common_type<T, int>::type>
@@ -478,10 +480,10 @@ static T checkTrinaryVector(T a, T b)
 {
     // OpenCL 1.2, 6.3.i: "exp1 ? exp2 : exp3 [...] If the result is a vector value, then this is equivalent to calling
     // select(exp3, exp2, exp1)"
-    std::make_signed_t<T> signedVal =
-        vc4c::bit_cast<T, std::make_signed_t<T>>(a) - vc4c::bit_cast<T, std::make_signed_t<T>>(b);
+    std::make_unsigned_t<T> signedVal =
+        vc4c::bit_cast<T, std::make_unsigned_t<T>>(a) - vc4c::bit_cast<T, std::make_unsigned_t<T>>(b);
     // a - b ? a : b -> select(b, a, a - b) -> MSB(a - b) ? a : b
-    return signedVal < 0 ? a : b;
+    return vc4c::bit_cast<std::make_unsigned_t<T>, std::make_signed_t<T>>(signedVal) < 0 ? a : b;
 };
 
 void TestArithmetic::testSignedIntUnaryPlus()

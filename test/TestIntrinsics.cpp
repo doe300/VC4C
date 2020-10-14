@@ -1437,7 +1437,9 @@ void TestIntrinsicFunctions::testAnd()
 }
 void TestIntrinsicFunctions::testMul24()
 {
-    auto func = [](int a, int b) -> int { return (a & 0x00FFFFFF) * (b & 0x00FFFFFF); };
+    auto func = [](int a, int b) -> int {
+        return static_cast<int32_t>(static_cast<uint32_t>(a & 0x00FFFFFF) * static_cast<uint32_t>(b & 0x00FFFFFF));
+    };
 
     std::string options = "-DFUNC=vc4cl_mul24 -DIN=int -DOUT=int -DDEFINE_PROTOTYPE";
     std::stringstream code;

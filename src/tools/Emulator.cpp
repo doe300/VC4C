@@ -2233,12 +2233,12 @@ EmulationResult tools::emulate(const EmulationData& data)
     std::unique_ptr<std::ofstream> dumpInstrumentation;
     if(!data.instrumentationDump.empty())
         dumpInstrumentation.reset(new std::ofstream(data.instrumentationDump));
-    std::size_t i = (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue();
+    std::size_t baseIndex = (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue();
     result.instrumentation.reserve(static_cast<std::size_t>(kernelInfo->getLength().getValue()));
-    for(; i < instructions.size(); ++i)
+    for(std::size_t i = 0; i < kernelInfo->getLength().getValue(); ++i)
     {
-        auto& it = instructions[i];
-        result.instrumentation.emplace_back(instrumentation[i]);
+        auto& it = instructions.at(baseIndex + i);
+        result.instrumentation.emplace_back(instrumentation.at(i));
         if(dumpInstrumentation)
             *dumpInstrumentation << std::left << std::setw(80) << it.toASMString() << "//"
                                  << instrumentation[i].to_string() << std::endl;
@@ -2287,7 +2287,7 @@ LowLevelEmulationResult tools::emulate(const LowLevelEmulationData& data)
     for(std::size_t i = 0; i < data.numInstructions; ++i)
     {
         auto& it = instructions[i];
-        result.instrumentation.emplace_back(instrumentation[i]);
+        result.instrumentation.emplace_back(instrumentation.at(i));
         if(dumpInstrumentation)
             *dumpInstrumentation << std::left << std::setw(80) << it.toASMString() << "//"
                                  << instrumentation[i].to_string() << std::endl;

@@ -306,6 +306,14 @@ static Literal toLiteral(uint32_t mask, int32_t j)
     return Literal(mask);
 }
 
+static Literal toLiteral(uint32_t mask, uint32_t j)
+{
+    if((static_cast<int64_t>(j) & 0xFFFFFFFF) != (static_cast<int64_t>(mask) & 0xFFFFFFFF))
+        throw CompilationError(CompilationStep::GENERAL,
+            std::string("Small immediate values do not match for ") + std::to_string(mask) + " and", std::to_string(j));
+    return Literal(mask);
+}
+
 // source: http://maazl.de/project/vc4asm/doc/smallimmediate.html
 static const std::map<Literal, ImmediateSupplier> immediateMappings = {
     {toLiteral(0x00000000, 0), ImmediateSupplier(SmallImmediate(0))},
@@ -498,27 +506,27 @@ static const std::map<Literal, ImmediateSupplier> immediateMappings = {
     {Literal(0x7eff0000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(32))},
     {toLiteral(0x7f000000, bit_cast<float, int32_t>(1.0f) + bit_cast<float, int32_t>(1.0f)),
         ImmediateSupplier(OP_ADD, SmallImmediate(32))},
-    {toLiteral(0x80000000, bit_cast<float, int32_t>(2.0f) + bit_cast<float, int32_t>(2.0f)),
+    {toLiteral(0x80000000u, bit_cast<float, uint32_t>(2.0f) + bit_cast<float, uint32_t>(2.0f)),
         ImmediateSupplier(OP_V8ADDS, SmallImmediate(33))},
     //-2^-126 (a denormal number), pow results in -0.0
     //{Literal(0x80000000u), ImmediateSupplier(OP_ADD, SmallImmediate(33))},
     {Literal(0x80ff0000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(34))},
     //-2^-125, pow results in -0.0
-    {toLiteral(0x81000000, bit_cast<float, int32_t>(4.0f) + bit_cast<float, int32_t>(4.0f)),
+    {toLiteral(0x81000000u, bit_cast<float, uint32_t>(4.0f) + bit_cast<float, uint32_t>(4.0f)),
         ImmediateSupplier(OP_ADD, SmallImmediate(34))},
     {Literal(0x82000000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(35))},
     //-2^-123, pow results in -0.0
     //{Literal(0x82000000u), ImmediateSupplier(OP_ADD, SmallImmediate(35))},
     {Literal(0x82ff0000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(36))},
     //-2^-121, pow results in -0.0
-    {toLiteral(0x83000000, bit_cast<float, int32_t>(16.0f) + bit_cast<float, int32_t>(16.0f)),
+    {toLiteral(0x83000000, bit_cast<float, uint32_t>(16.0f) + bit_cast<float, uint32_t>(16.0f)),
         ImmediateSupplier(OP_ADD, SmallImmediate(36))},
     {Literal(0x84000000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(37))},
     //-2^-119, pow results in -0.0
     //{Literal(0x84000000u), ImmediateSupplier(OP_ADD, SmallImmediate(37))},
     {Literal(0x84ff0000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(38))},
     //-2^-117, pow results in -0.0
-    {toLiteral(0x85000000, bit_cast<float, int32_t>(64.0f) + bit_cast<float, int32_t>(64.0f)),
+    {toLiteral(0x85000000, bit_cast<float, uint32_t>(64.0f) + bit_cast<float, uint32_t>(64.0f)),
         ImmediateSupplier(OP_ADD, SmallImmediate(38))},
     {Literal(0x86000000u), ImmediateSupplier(OP_V8ADDS, SmallImmediate(39))},
     //-2^-115, pow results in -0.0

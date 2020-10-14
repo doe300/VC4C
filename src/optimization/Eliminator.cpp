@@ -939,7 +939,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                     // only last bits are actually used by ALU, see OP_SHR documentation
                     auto offset = lit->unsignedInt() & 0x1F;
                     offset = 32 - offset;
-                    mask = (1u << offset) - 1u;
+                    mask = offset == 32 ? 0xFFFFFFFF : (1u << offset) - 1u;
                 }
                 if(mask != uint32_t{0xFFFFFFFF} && writer && writer->op == OP_SHL && !writer->hasPackMode() &&
                     writer->getSecondArg() &&

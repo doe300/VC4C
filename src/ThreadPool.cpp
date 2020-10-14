@@ -65,8 +65,18 @@ void ThreadPool::workerTask(const std::string& poolName)
         std::packaged_task<void()> task;
         {
             std::unique_lock<std::mutex> lock(queueMutex);
-            queueCondition.wait_for(
-                lock, std::chrono::milliseconds{100}, [&] { return !keepRunning || !taskQueue.empty(); });
+            /*
+             * There is a bug in TSAN which throws "double lock of a mutex" for the queueMutex.
+             *
+             * The actual desired queueCondition.wait_for(...) triggers the bug, while explicitly using
+             * queueCondition.wait_until(...) with a std::chrono::system_clock::time_points avoids it.
+             * Since this is also the identical (previous) behavior, we explicitly use this for now until
+             * TSAN is fixed.
+             *
+             * TSAN bug: https://github.com/google/sanitizers/issues/1259
+             */
+            queueCondition.wait_until(lock, std::chrono::system_clock::now() + std::chrono::milliseconds{100},
+                [&] { return !keepRunning || !taskQueue.empty(); });
             if(!keepRunning)
                 break;
             if(taskQueue.empty())

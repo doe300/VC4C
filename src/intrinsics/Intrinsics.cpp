@@ -365,7 +365,6 @@ static InstructionWalker intrinsifyPopcount(Method& method, InstructionWalker it
     // https://en.wikipedia.org/wiki/Hamming_weight#Efficient_implementation
     // TODO Supports llvm.ctpop intrinsic, saves 1 to 40 instructions depending on type
     auto& arg = callSite->assertArgument(0);
-    auto typeWidthMask = arg.type.getScalarWidthMask();
     auto typeWidth = arg.type.getScalarBitCount();
 
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -396,6 +395,8 @@ static InstructionWalker intrinsifyPopcount(Method& method, InstructionWalker it
             it.emplace(new MoveOperation(output, lowerResult));
         return it;
     }
+
+    auto typeWidthMask = arg.type.getScalarWidthMask();
 
     auto tmp0 = assign(it, arg.type, "%popcount") = as_unsigned{arg} >> 1_val;
     tmp0 = assign(it, arg.type, "%popcount") = tmp0 & Value(Literal(0x55555555 & typeWidthMask), arg.type);
