@@ -390,7 +390,7 @@ namespace vc4c
         /*
          * The name of the struct
          */
-        std::string name;
+        const std::string name;
         /*
          * The data-types of the single elements
          */
@@ -510,15 +510,14 @@ namespace vc4c
     struct TypeHolder
     {
     public:
-        // These pointers are non-const on purpose, so a creator can modify the complex types
-        // All access via DataType is then constant
-
-        PointerType* createPointerType(
+        const PointerType* createPointerType(
             DataType elementType, AddressSpace addressSpace = AddressSpace::PRIVATE, unsigned alignment = 0);
+        // Since struct types can be recursive, we need to first define the type and then add the element types.
+        // Therefore, we need to return a mutable pointer here
         StructType* createStructType(
             const std::string& name, const std::vector<DataType>& elementTypes, bool isPacked = false);
-        ArrayType* createArrayType(DataType elementType, unsigned int size);
-        ImageType* createImageType(
+        const ArrayType* createArrayType(DataType elementType, unsigned int size);
+        const ImageType* createImageType(
             uint8_t dimensions, bool isImageArray = false, bool isImageBuffer = false, bool isSampled = false);
 
         static std::unique_ptr<ComplexType> voidPtr;

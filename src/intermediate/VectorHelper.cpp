@@ -968,6 +968,17 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
     if(foldingOp.numOperands != 2 || foldingOp.acceptsFloat != foldingOp.returnsFloat)
         throw CompilationError(CompilationStep::GENERAL, "Invalid operation to fold vectors", foldingOp.name);
 
+    // fix-up 3-element vector input to use the 4-element input fold expression
+    if(src.type.getVectorWidth() == 3 && OpCode::getLeftIdentity(foldingOp) &&
+        OpCode::getLeftIdentity(foldingOp) == OpCode::getRightIdentity(foldingOp))
+    {
+        // XXX could write own custom implementation for better performance
+        auto tmp = assign(it, src.type.toVectorType(4), "%vector_fold") = *OpCode::getLeftIdentity(foldingOp);
+        auto cond = assignNop(it) = selectSIMDElements(std::bitset<NATIVE_VECTOR_SIZE>{0x7});
+        assign(it, tmp) = (src, cond);
+        return insertFoldVector(it, method, dest, tmp, foldingOp, decorations);
+    }
+
     if(!isPowerTwo(dest.type.getVectorWidth()))
         throw CompilationError(
             CompilationStep::GENERAL, "Folding with vectors non-power of two is not yet implemented", dest.to_string());

@@ -85,9 +85,9 @@ std::string spirv::getOpenCLMethodName(const uint32_t instructionID)
     case OpenCLLIB::Entrypoints::FClamp:
         return "clamp";
     case OpenCLLIB::Entrypoints::FMax_common:
-        return "max";
+        return "fmax";
     case OpenCLLIB::Entrypoints::FMin_common:
-        return "min";
+        return "fmin";
     case OpenCLLIB::Entrypoints::Fabs:
         return "fabs";
     case OpenCLLIB::Entrypoints::Fast_distance:
@@ -103,9 +103,9 @@ std::string spirv::getOpenCLMethodName(const uint32_t instructionID)
     case OpenCLLIB::Entrypoints::Fma:
         return "fma";
     case OpenCLLIB::Entrypoints::Fmax:
-        return "max";
+        return "fmax";
     case OpenCLLIB::Entrypoints::Fmin:
-        return "min";
+        return "fmin";
     case OpenCLLIB::Entrypoints::Fmod:
         return "fmod";
     case OpenCLLIB::Entrypoints::Fract:
@@ -195,7 +195,7 @@ std::string spirv::getOpenCLMethodName(const uint32_t instructionID)
     case OpenCLLIB::Entrypoints::Native_recip:
         return "native_recip";
     case OpenCLLIB::Entrypoints::Native_rsqrt:
-        return "rsqrt";
+        return "native_rsqrt";
     case OpenCLLIB::Entrypoints::Native_sin:
         return "native_sin";
     case OpenCLLIB::Entrypoints::Native_sqrt:

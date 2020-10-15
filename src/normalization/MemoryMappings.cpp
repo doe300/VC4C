@@ -219,7 +219,21 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
                 throw CompilationError(CompilationStep::NORMALIZER,
                     "Lowering copy with more than 1 entry is not yet implemented", mem->to_string());
             }
-            it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal)));
+            if(wholeRegister && srcInfo.mappedRegisterOrConstant->isAllSame() &&
+                srcInfo.mappedRegisterOrConstant->type.getArrayType())
+            {
+                // XXX This is a work-around for when we manage to "lower" e.g. an i8[128] zeroinitializer into a
+                // read-only regster, which at least happens for SPIR-V. Since we cannot actually write the array to
+                // VPM/etc., we write every single entry, which will then be rewritten to a larger data type as needed
+                // (e.g. 2 uint16 writes for the i8[128] example).
+                auto arrayType = srcInfo.mappedRegisterOrConstant->type.getArrayType();
+                tmpVal.type = arrayType->elementType;
+                it.reset(new MemoryInstruction(MemoryOperation::FILL, Value(mem->getDestination()), std::move(tmpVal),
+                    Value(Literal(arrayType->size), TYPE_INT32)));
+            }
+            else
+                it.reset(
+                    new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal)));
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Replaced memory copy from constant memory to memory write of constant value: "
                     << it->to_string() << logging::endl);

@@ -1759,7 +1759,9 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         return ParseResultCode::SUCCESS;
     }
     case spv::Op::OpLoopMerge:
-        return UNSUPPORTED_INSTRUCTION("OpLoopMerge");
+        // XXX As far as I can see it this instruction contains information useful for loop detection and optimization,
+        // but has no semantic meaning -> so we can ignore this for now
+        return ParseResultCode::SUCCESS;
     case spv::Op::OpSelectionMerge:
         return UNSUPPORTED_INSTRUCTION("OpSelectionMerge");
     case spv::Op::OpLabel:
@@ -1857,10 +1859,32 @@ ParseResultCode SPIRVParserBase::consumeOpenCLInstruction(const ParsedInstructio
             instruction.getWord(5), UNDEFINED_ID, instruction.getWord(6)));
         return ParseResultCode::SUCCESS;
     }
-    // the OpenCL built-in operations are not supported directly, but there might be a function definition for them
-    // here, we simply map them to function calls and resolve the possible matching definitions later
-    instructions.emplace_back(new SPIRVCallSite(instruction.getResultId(), *currentMethod,
-        getOpenCLMethodName(instruction.getWord(4)), instruction.getTypeId(), instruction.parseArguments(5)));
+    auto resultTypeIt = typeMappings.find(instruction.getTypeId());
+    if((instruction.getWord(4) == OpenCLLIB::Entrypoints::Fmax ||
+           instruction.getWord(4) == OpenCLLIB::Entrypoints::FMax_common) &&
+        resultTypeIt != typeMappings.end() && resultTypeIt->second.getScalarBitCount() == 32)
+    {
+        // map directly to opcode to avoid fmax()/max() function naming issues
+        instructions.emplace_back(
+            new SPIRVInstruction(instruction.getResultId(), *currentMethod, "fmax", instruction.getTypeId(),
+                instruction.parseArguments(5), toInstructionDecorations(instruction.getResultId())));
+    }
+    else if((instruction.getWord(4) == OpenCLLIB::Entrypoints::Fmin ||
+                instruction.getWord(4) == OpenCLLIB::Entrypoints::FMin_common) &&
+        resultTypeIt != typeMappings.end() && resultTypeIt->second.getScalarBitCount() == 32)
+    {
+        // map directly to opcode to avoid fmin()/min() function naming issues
+        instructions.emplace_back(
+            new SPIRVInstruction(instruction.getResultId(), *currentMethod, "fmin", instruction.getTypeId(),
+                instruction.parseArguments(5), toInstructionDecorations(instruction.getResultId())));
+    }
+    else
+    {
+        // the OpenCL built-in operations are not supported directly, but there might be a function definition for them
+        // here, we simply map them to function calls and resolve the possible matching definitions later
+        instructions.emplace_back(new SPIRVCallSite(instruction.getResultId(), *currentMethod,
+            getOpenCLMethodName(instruction.getWord(4)), instruction.getTypeId(), instruction.parseArguments(5)));
+    }
     return ParseResultCode::SUCCESS;
 }
 

@@ -1,3 +1,9 @@
+#define K_BITS 4
+#define T uchar
+#define BLOCK_SIZE 12
+#define IS_SIGNED
+#define ASC
+
 __kernel void serial_adjacent_find(const uint size, __global uint* output, __global char* _buf0)
 {
 uint result = size;
@@ -119,4 +125,34 @@ const uint values_output_offset)
     values_output[values_output_offset+offset + local_offset] =
         values_input[values_input_offset+gid];
 #endif
+}
+
+__kernel void local_scan(__global uint16* block_sums, __local uint16* scratch, const uint block_size, const uint count, const uint16 init, __global uint16* _buf0, __global uint16* _buf1)
+{
+const uint gid = get_global_id(0);
+const uint lid = get_local_id(0);
+if(gid < count){
+const uint16 local_init= (gid == 0) ? init : 0;
+if(lid == 0){ scratch[lid] = local_init; }
+else { scratch[lid] = _buf0[gid-1]; }
+}
+else {
+    scratch[lid] = 0;
+}
+barrier(CLK_LOCAL_MEM_FENCE);
+for(uint i = 1; i < block_size; i <<= 1){
+    const uint16 x = lid >= i ? scratch[lid-i] : 0;
+    barrier(CLK_LOCAL_MEM_FENCE);
+    if(lid >= i){
+        scratch[lid] = ((scratch[lid])+(x));
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+}
+if(gid < count){
+_buf1[gid] = scratch[lid];
+}
+if(lid == block_size - 1 && gid < count) {
+    block_sums[get_group_id(0)] = ((_buf0[gid])+(scratch[lid]));
+}
+
 }

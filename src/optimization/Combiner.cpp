@@ -875,6 +875,12 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                             log << "Replacing vector rotation by offset of zero with move: " << it->to_string()
                                 << logging::endl);
                         it.reset((new MoveOperation(rot->getOutput().value(), rot->getSource()))->copyExtrasFrom(rot));
+                        if(it->getSignal() == SIGNAL_ALU_IMMEDIATE && !it->assertArgument(0).checkVector() &&
+                            !it->assertArgument(0).getLiteralValue())
+                            // need to remove the "ALU immediate" signal which might be added from the vector rotation
+                            // offset, unless we move a literal value, otherwise the register-file B gets mapped to a
+                            // literal instead
+                            it.get<MoveOperation>()->setSignaling(SIGNAL_NONE);
                         hasChanged = true;
                         continue;
                     }
@@ -941,6 +947,11 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                             << logging::endl);
                     it.reset(
                         (new MoveOperation(it->getOutput().value(), writer->getOutput().value()))->copyExtrasFrom(rot));
+                    if(it->getSignal() == SIGNAL_ALU_IMMEDIATE)
+                        // need to remove the "ALU immediate" signal which might be added from the vector rotation
+                        // offset, unless we move a literal value, otherwise the register-file B gets mapped to a
+                        // literal instead
+                        it.get<MoveOperation>()->setSignaling(SIGNAL_NONE);
                     hasChanged = true;
                     continue;
                 }
@@ -979,6 +990,13 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                     it.reset((new MoveOperation(rot->getOutput().value(), firstRot->getSource()))
                                                  ->copyExtrasFrom(rot));
                                     it->copyExtrasFrom(firstRot);
+                                    if(it->getSignal() == SIGNAL_ALU_IMMEDIATE &&
+                                        !it->assertArgument(0).checkVector() &&
+                                        !it->assertArgument(0).getLiteralValue())
+                                        // need to remove the "ALU immediate" signal which might be added from the
+                                        // vector rotation offset, unless we move a literal value, otherwise the
+                                        // register-file B gets mapped to a literal instead
+                                        it.get<MoveOperation>()->setSignaling(SIGNAL_NONE);
 
                                     if(!(*firstIt)->hasSideEffects() &&
                                         !firstRot->getOutput()->local()->hasUsers(LocalUse::Type::READER))

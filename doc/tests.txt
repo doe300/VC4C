@@ -43,12 +43,12 @@ test_context_error				PASSED
 test_copy						PASSED
 test_copy_if					PASSED
 test_copy_type_mismatch			PASSED
-test_count						result mismatch ("count_if_odd", "count_if_with_reduce")
+test_count						result mismatch ("count_if_odd", "count_if_with_reduce", both based on initial_reduce kernel, passes on emulator)
 test_counting_iterator			PASSED
 test_device						PASSED (skips some OpenCL 2.0+ tests)
 test_discard_iterator			PASSED
-test_discrete_distribution		result mismatch (PASSES on emulator)
-test_dynamic_bitset				result mismatch
+test_discrete_distribution		result mismatch (failing kernels based on initial_reduce kernel)
+test_dynamic_bitset				result mismatch (failing kernels based on initial_reduce kernel), passes on emulator
 test_equal						PASSED
 test_equal_range				PASSED
 test_event						PASSED
@@ -66,35 +66,35 @@ test_functional_as				PASSED
 test_functional_bind			result mismatch ("transform_pow_two")
 test_functional_convert			PASSED
 test_functional_get				PASSED
-test_functional_hash			PASSED, SEGFAULT (after test finishes, race when cleaning up V3D instance?)
+test_functional_hash			PASSED
 test_functional_identity		PASSED
-test_functional_popcount		result mismatch (PASSES on emulator)
+test_functional_popcount		result mismatch (popcount<unsigned long long>, returns all zeroes from 2nd element; PASSES on emulator)
 test_functional_unpack			PASSED
 test_gather						PASSED
 test_generate					PASSED
 test_image1d					SKIPPED
 test_image2d					FAILED ("Invalid Operation")
 test_image3d					SKIPPED
-test_image_sampler				FAILED (nullptr access)
+test_image_sampler				FAILED (nullptr access, probably ICD dispatch of clCreateSamplerWithProperties functions)
 test_includes					PASSED
-test_inner_product				FAILED (result mismatch)
+test_inner_product				result mismatch
 test_inplace_merge				PASSED
-test_inplace_reduce				result mismatch ("reduce_iota", uses kernel sum_int)
-test_insertion_sort				result mismatch ("sort_long_vector", "sort_ulong_vector")
+test_inplace_reduce				result mismatch ("reduce_iota", reads 1-past-end of buffer)
+test_insertion_sort				result mismatch ("sort_long_vector", "sort_ulong_vector"), PASSES on emulator
 test_invoke						result mismatch (ULP, "invoke_builtin": result: inf expected: 256.f for function pow(2, 8))
 test_iota						PASSED
-test_is_permutation				PASSED (reads 1-after-bounds of allocated buffer)
+test_is_permutation				PASSED
 test_is_sorted					PASSED
-test_kernel						FAILED ("Invalid Argument Size")
+test_kernel						PASSED
 test_lambda						PASSED
 test_lexicographical_compare	PASSED
 test_linear_congruential_engine	PASSED
 test_literal_conversion			PASSED
 test_local_buffer				SKIPPED ("device does not support local memory")
 test_malloc						PASSED
-test_mapped_view				result mismatch ("mapped_view_reduce_doctest")
+test_mapped_view				result mismatch ("mapped_view_reduce_doctest"), race condition accessing the host buffer vs. copying from host to device buffer
 test_merge						PASSED
-test_merge_sort_gpu				Invalid Value error (get_object_info.hpp:104), compilation error (register association), double test skipped
+test_merge_sort_gpu				Invalid Value error (get_object_info.hpp:104, trying to read CL_DEVICE_PARENT_DEVICE? does not happen on host emulation), double test skipped
 test_mersenne_twister_engine	PASSED
 test_mismatch					PASSED
 test_multiple_objects			PASSED
@@ -114,12 +114,12 @@ test_platform					PASSED/SKIPPED
 test_prev_permutation			PASSED
 test_program					PASSED
 test_program_cache				PASSED/SKIPPED
-test_radix_sort					result mismatches, reads 1-after-bounds of allocated buffer
+test_radix_sort					result mismatches, writes outside of allocated buffers, crashes Jenkins slave process!
 test_radix_sort_by_key			result mismatches, reads 1-after-bounds of allocated buffer
 test_random_fill				PASSED
 test_random_shuffle				PASSED
-test_reduce						result mismatches, reads 1-after-bounds of allocated buffer
-test_reduce_by_key				result mismatches
+test_reduce						result mismatches
+test_reduce_by_key				PASSED
 test_remove						PASSED
 test_replace					PASSED
 test_result_of					PASSED
@@ -133,13 +133,13 @@ test_search						PASSED
 test_search_n					PASSED
 test_set_difference				PASSED
 test_set_intersection			PASSED
-test_set_symmetric_difference   compilation error ("Can't emplace at the start of a basic block: nop (register) (delay)")
-test_set_union					PASSED (SEGFAULTS on emulator)
+test_set_symmetric_difference   PASSED
+test_set_union					PASSED
 test_sort						result mismatch (long vectors); compilation error (register allocation)
 test_sort_by_key				result mismatch, compilation error (register allocation)
-test_sort_by_transform			PASSED (writes out-of-bounds of allocated buffer)
+test_sort_by_transform			PASSED
 test_stable_partition			PASSED (reads 1-after-bounds of allocated buffer)
-test_stable_sort				result mismatch ("sort_int_vector")
+test_stable_sort				result mismatch ("sort_int_vector"), passes on emulator
 test_stable_sort_by_key			PASSED
 test_stack						PASSED
 test_strided_iterator			PASSED
@@ -148,7 +148,7 @@ test_struct						PASSED
 test_svm_ptr					PASSED
 test_system						PASSED
 test_tabulate					PASSED
-test_threefry_engine			PASSED
+test_threefry_engine			result mismatch (TODO fix + retest)
 test_transform					result mismatch (ULP pow and 0 != x)
 test_transform_if				PASSED
 test_transform_iterator			PASSED
@@ -158,7 +158,7 @@ test_type_traits				PASSED
 test_types						PASSED
 test_uniform_int_distribution	result mismatch
 test_uniform_real_distribution	result mismatch
-test_unique						FAILED
+test_unique						PASSED
 test_unique_copy				PASSED
 test_unsupported_extension		PASSED
 test_user_defined_types			PASSED
@@ -171,7 +171,7 @@ test_zip_iterator				PASSED
 pocl:
 kernel/
   image_query_funcs                                       "CL_INVALID_OPERATION in clCreateSampler on line 70"
-  kernel                                                  compilation errors
+  kernel                                                  compilation errors ("printf()")
   sampler_address_clamp                                   "image creation failed"
   test_shuffle char                                       result mismatch
   test_shuffle uchar                                      result mismatch
@@ -181,24 +181,24 @@ kernel/
   test_shuffle uint                                       result mismatch
   test_shuffle float                                      result mismatch
 regression/
-  test_alignment_with_dynamic_wg 4 3 1                    FAILED
+  test_alignment_with_dynamic_wg 4 3 1                    FAILED (compilation error)
   test_alignment_with_dynamic_wg2                         PASSED
   test_alignment_with_dynamic_wg3                         PASSED
   test_assign_loop_variable_to_privvar_makes_it_local     FAILED (NULL kernel passed to clReleaseKernel() function)
   test_assign_loop_variable_to_privvar_makes_it_local_2   FAILED (NULL kernel passed to clReleaseKernel() function)
-  test_autolocals_in_constexprs                           compilation error (long in kernel code)
+  test_autolocals_in_constexprs                           PASSED
   test_barrier_before_return                              PASSED
   test_barrier_between_for_loops                          PASSED
   test_constant_array                                     compilation error (converts float to double for printf format)
   test_early_return                                       PASSED
-  test_flatten_barrier_subs                               result mismatch (all zeroes)
+  test_flatten_barrier_subs                               compilation error (semaphore index out of range!)
   test_fors_with_var_iteration_counts                     PASSED (out-of-bounds access in emulator)
   test_for_with_var_iteration_count                       PASSED
   test_id_dependent_computation                           PASSED
   test_infinite_loop                                      compilation error (converts float to double for printf format)
-  test_issue_231                                          compilation error ("Unhandled element-type to cache in VPM")
-  test_issue_445                                          result mismatch
-  test_issue_553                                          compilation error ("Invalid numbers of method arguments"), hangs on failure
+  test_issue_231                                          FAILED (invalid work-group size)
+  test_issue_445                                          compilation error ("Lowering copy with more than 1 entry is not yet implemented")
+  test_issue_553                                          compilation error (printf() in code)
   test_issue_577                                          PASSED
   test_locals                                             PASSED
   test_loop_phi_replication                               PASSED
@@ -219,7 +219,7 @@ runtime/
   test_clCreateSubDevices                                 FAILED (no multiple devices supported)
   test_clEnqueueNativeKernel                              FAILED (no native kernels supported)
   test_clFinish                                           compilation error ("Invalid number of method arguments")
-  test_clGetDeviceInfo                                    FAILED (assertion error, out-of-resources on emulator)
+  test_clGetDeviceInfo                                    PASSED
   test_clGetEventInfo                                     PASSED
   test_clGetKernelArgInfo                                 compilation error (image kernel functions required)
   test_clGetSupportedImageFormats                         FAILED
@@ -228,7 +228,7 @@ runtime/
   test_enqueue_kernel_from_binary                         FAILED ("Local work-sizes exceed maximum")
   test_event_cycle                                        FAILED (out-of-resources)
   test_event_free                                         FAILED ("Image support is not enabled!")
-  test_kernel_cache_includes                              compilation error (include file not found)
+  test_kernel_cache_includes                              PASSED
   test_link_error                                         PASSED
   test_read-copy-write-buffer                             result mismatch
   test_user_event                                         PASSED
@@ -441,28 +441,28 @@ clblast_sample_sgemm_c
 clblast_sample_sgemm_netlib_c
 
 sycl-gtx:
-access_sycl_cl_types          ?? (runs but no output whether failed/passed)
+access_sycl_cl_types          PASSED
 anatomy_sycl_app_single_task  PASSED
-anatomy_sycl_app_parallel_for ?? (runs but no output whether failed/passed)
+anatomy_sycl_app_parallel_for PASSED
 example_sycl_app              PASSED
-functors_nd_range_kernels     ?? (runs but no output whether failed/passed)
-naive_square_matrix_rotation  ?? (runs but no output whether failed/passed)
+functors_nd_range_kernels     PASSED
+naive_square_matrix_rotation  PASSED
 random_number_generation      result mismatch
 reduction_sum                 result mismatch
 reduction_sum_local           compilation error in precompilation
 simple_vector_addition        PASSED
 vectors_in_kernel             cl::sycl::exception thrown
 work_efficient_prefix_sum     result mismatch
-smallpt
 
 opencv:
-(only lists relevant tests)
+(only lists relevant tests, e.g. via --gtest_filter=*CL*)
 opencv_test_core
   OCL_MeanStdDev_.ZeroMask    PASSED
   OCL_Gemm.small              FAILED (invalid work group size, test_gemm.cpp:160)
   OpenCL.support_binary_programs FAILED (test_opencl.cpp:22, invalid work group size)
   OpenCL.support_SPIR_programs FAILED ("Can't find required data file")
-SEGFAULTS
+  UMat.setOpenCL              PASSED
+  OCL_Arithm/Lut.Mat/...      result mismatch (sub-tests 1-124), passes sub-test 125-158, hangs at sub-test 158
 
 ... (TODO)
 

@@ -4,8 +4,10 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include "../GlobalValues.h"
 #include "IntermediateInstruction.h"
+
+#include "../GlobalValues.h"
+#include "../spirv/SPIRVBuiltins.h"
 #include "log.h"
 
 using namespace vc4c;
@@ -351,7 +353,7 @@ Value IntermediateInstruction::renameValue(
     if(!orig.checkLocal())
         return orig;
     auto origLocal = orig.local();
-    if(origLocal->is<Global>())
+    if(origLocal->is<Global>() || origLocal->is<spirv::SPIRVBuiltin>())
         return orig;
     if(auto alloc = origLocal->as<StackAllocation>())
     {

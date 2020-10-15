@@ -539,6 +539,13 @@ qpu_asm::DecoratedInstruction MoveOperation::convertToAsm(const FastMap<const Lo
     op.setPackMode(packMode);
     op.setSignaling(signal);
     op.setUnpackMode(unpackMode);
+    if(signal == SIGNAL_ALU_IMMEDIATE && !getSource().getLiteralValue())
+    {
+        // This should not happen and indicates that on some rewrite this is missed
+        logging::warn() << "Removing 'ALU immediate' signal from move not consuming an immediate value: " << to_string()
+                        << logging::endl;
+        op.setSignaling(SIGNAL_NONE);
+    }
     return op.convertToAsm(registerMapping, labelMapping, instructionIndex);
 }
 

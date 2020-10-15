@@ -166,9 +166,8 @@ Value SIMDVectorHolder::storeVector(SIMDVector&& vec, DataType type)
         // store a SIMDVector entry.
         return Value(vec[0], type);
     }
-    // TODO does this mutex lock too often??
-    std::lock_guard<std::mutex> guard(accessMutex);
     vec.storage = this;
+    std::lock_guard<std::mutex> guard(accessMutex);
     auto it = constantVectors.emplace(std::move(vec)).first;
     return Value(&*it, type);
 }

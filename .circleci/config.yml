@@ -17,7 +17,7 @@ jobs:
       - run:
           name: configure
           # Use the libLLVM of the default LLVM/CLang, disable search for SPIRV-LLVM
-          command: mkdir build && cd build && sudo LDFLAGS=-Wl,--warn-unresolved-symbols cmake ../ -DBUILD_NUMBER=$CIRCLE_BUILD_NUM -DCROSS_COMPILE=ON -DBUILD_TESTING=ON -DLLVMLIB_FRONTEND=ON -DSPIRV_FRONTEND=OFF -DSPIRV_COMPILER_ROOT=/tmp/skip-searching -DVC4CL_STDLIB_PRECOMPILE=OFF -DSYSROOT_CROSS=/home/idein/cross -DCROSS_COMPILER_PATH=${HOME}/x-tools/armv6-rpi-linux-gnueabihf/bin -DCROSS_COMPILER_PREFIX="armv6-rpi-linux-gnueabihf-"
+          command: mkdir build && cd build && sudo LDFLAGS=-Wl,--warn-unresolved-symbols cmake ../ -DBUILD_NUMBER=$CIRCLE_BUILD_NUM -DCROSS_COMPILE=ON -DBUILD_TESTING=OFF -DLLVMLIB_FRONTEND=ON -DSPIRV_FRONTEND=OFF -DSPIRV_COMPILER_ROOT=/tmp/skip-searching -DVC4CL_STDLIB_PRECOMPILE=OFF -DSYSROOT_CROSS=/home/idein/cross -DCROSS_COMPILER_PATH=${HOME}/x-tools/armv6-rpi-linux-gnueabihf/bin -DCROSS_COMPILER_PREFIX="armv6-rpi-linux-gnueabihf-"
       - run:
           name: make
           # TODO CicleCI runs out of memory
@@ -31,9 +31,6 @@ jobs:
       - store_artifacts:
           path: build/src/VC4C
           distination: VC4C
-      - store_artifacts:
-          path: build/test/TestVC4C
-          distination: TestVC4C
       - store_artifacts:
           path: build/vc4c-0.4-Linux.deb
           distination: vc4c-0.4-Linux.deb
@@ -84,7 +81,7 @@ jobs:
             - example
             - build/vc4c-0.4-Linux.deb
             - build/vc4cl-stdlib-0.4-Linux.deb
-  test:
+  test-llvm:
     docker:
       - image: doe300/native
     steps:
@@ -94,8 +91,20 @@ jobs:
       - run: dpkg -i build/vc4c-0.4-Linux.deb
       - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: ldconfig
-      - run: build/test/TestVC4C --output=plain --llvm  --mode=verbose --test-instructions --test-operators --emulate-common --emulate-conversions --emulate-geometric --emulate-integer --emulate-memory --emulate-relational --emulate-vector --test-emulator --test-graph --test-patterns --test-frontend --test-expressions --test-optimization-steps --test-intrinsics --test-container
-      - run: build/test/TestVC4C --output=plain --spirv --mode=verbose --test-instructions --test-operators --emulate-common --emulate-conversions --emulate-geometric --emulate-relational --emulate-vector --test-emulator --test-frontend --test-container
+      - run: build/test/TestVC4C --output=plain --llvm  --mode=verbose --test-instructions --test-operators --emulate-common --emulate-conversions --emulate-geometric --emulate-integer --emulate-memory --emulate-relational --emulate-vector --test-emulator --test-graph --test-patterns --test-frontend --test-expressions --test-optimization-steps --test-intrinsics --test-container --regressions
+      - run: dpkg -r vc4c
+      - run: dpkg -r vc4cl-stdlib
+  test-spirv:
+    docker:
+      - image: doe300/native
+    steps:
+      - attach_workspace:
+          at: /root/project
+      - run: dpkg -i build/vc4cl-stdlib-0.4-Linux.deb
+      - run: dpkg -i build/vc4c-0.4-Linux.deb
+      - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
+      - run: ldconfig
+      - run: build/test/TestVC4C --output=plain --spirv --mode=verbose --test-instructions --test-operators --emulate-common --emulate-conversions --emulate-geometric                   --emulate-memory --emulate-relational --emulate-vector --test-emulator --test-graph --test-patterns --test-frontend --test-expressions --test-optimization-steps                   --test-container --regressions
       - run: dpkg -r vc4c
       - run: dpkg -r vc4cl-stdlib
 workflows:
@@ -105,6 +114,9 @@ workflows:
       - check-code-style
       - build
       - cross
-      - test:
+      - test-llvm:
+          requires:
+            - build
+      - test-spirv:
           requires:
             - build

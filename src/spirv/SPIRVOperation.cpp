@@ -1331,6 +1331,9 @@ void SPIRVFoldInstruction::mapInstruction(TypeMapping& types, ConstantMapping& c
     Value dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
     Value src = getValue(sourceID, *method.method, types, constants, localTypes, localMapping);
     auto code = OpCode::toOpCode(foldOperation);
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating vector fold over '" << foldOperation << "' on " << src.to_string() << " into "
+            << dest.to_string(true) << logging::endl);
     ignoreReturnValue(
         intermediate::insertFoldVector(method.method->appendToEnd(), *method.method, dest, src, code, decorations));
 }

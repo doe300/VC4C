@@ -615,7 +615,7 @@ std::string ImageType::toImageConfigurationName(const std::string& localName)
     return localName + ".image_config";
 }
 
-PointerType* TypeHolder::createPointerType(DataType elementType, AddressSpace addressSpace, unsigned alignment)
+const PointerType* TypeHolder::createPointerType(DataType elementType, AddressSpace addressSpace, unsigned alignment)
 {
     std::lock_guard<std::mutex> guard(accessMutex);
     std::unique_ptr<ComplexType> tmp(new PointerType(elementType, addressSpace, alignment));
@@ -645,7 +645,7 @@ StructType* TypeHolder::createStructType(
     return dynamic_cast<StructType*>(complexTypes.back().get());
 }
 
-ArrayType* TypeHolder::createArrayType(DataType elementType, unsigned int size)
+const ArrayType* TypeHolder::createArrayType(DataType elementType, unsigned int size)
 {
     std::lock_guard<std::mutex> guard(accessMutex);
     std::unique_ptr<ComplexType> tmp(new ArrayType(elementType, size));
@@ -659,7 +659,7 @@ ArrayType* TypeHolder::createArrayType(DataType elementType, unsigned int size)
     return dynamic_cast<ArrayType*>(complexTypes.back().get());
 }
 
-ImageType* TypeHolder::createImageType(uint8_t dimensions, bool isImageArray, bool isImageBuffer, bool isSampled)
+const ImageType* TypeHolder::createImageType(uint8_t dimensions, bool isImageArray, bool isImageBuffer, bool isSampled)
 {
     std::lock_guard<std::mutex> guard(accessMutex);
     std::unique_ptr<ComplexType> tmp(new ImageType(dimensions, isImageArray, isImageBuffer, isSampled));
