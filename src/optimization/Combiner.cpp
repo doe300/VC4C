@@ -1390,9 +1390,25 @@ void calcValueExpr(ExpandedExprs& expanded)
     // return result;
 }
 
-SubExpression replaceLocalToExpr(const SubExpression& expr, const Value& local, SubExpression newExpr)
+SubExpression replaceLocalToExpr(const SubExpression& subExpr, const Value& local, SubExpression newExpr)
 {
-    return expr;
+    if(auto expr = subExpr.checkExpression())
+    {
+        return SubExpression(std::make_shared<Expression>(expr->code,
+                    replaceLocalToExpr(expr->arg0, local, newExpr),
+                    replaceLocalToExpr(expr->arg1, local, newExpr)));
+
+    }
+    else if(auto replacee = subExpr.checkLocal())
+    {
+        if (auto replacer = local.checkLocal()) {
+            if (*replacee == *replacer) {
+                return newExpr;
+            }
+        }
+    }
+
+    return subExpr;
 }
 
 void optimizations::combineDMALoads(const Module& module, Method& method, const Configuration& config)
@@ -1507,7 +1523,7 @@ void optimizations::combineDMALoads(const Module& module, Method& method, const 
 
                 // Apply calcValueExpr again for integer literals.
                 SubExpression currentExpr(INT_ZERO);
-                for(auto& p : currentDifft)
+                for(auto& p : currentDiff)
                 {
                     currentExpr =
                         SubExpression(std::make_shared<Expression>(p.first ? OP_ADD : OP_SUB, currentExpr, p.second));
