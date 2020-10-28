@@ -64,6 +64,7 @@ namespace vc4c
             MemoryAddress incrementAddress(MemoryAddress address, DataType typeSize) const;
 
             MemoryAddress getMaximumAddress() const;
+            void assertAddressInMemory(MemoryAddress address, std::size_t numBytes) const;
             void setUniforms(const std::vector<Word>& uniforms, MemoryAddress address);
 
         private:
@@ -146,10 +147,11 @@ namespace vc4c
             bool tmuNoSwap;
             uint32_t lastTMUNoSwap;
             Memory& memory;
-            std::queue<std::pair<SIMDVector, uint32_t>> tmu0RequestQueue;
-            std::queue<std::pair<SIMDVector, uint32_t>> tmu0ResponseQueue;
-            std::queue<std::pair<SIMDVector, uint32_t>> tmu1RequestQueue;
-            std::queue<std::pair<SIMDVector, uint32_t>> tmu1ResponseQueue;
+            // Technically there are 2 FIFOs per TMU (request and response), but from a functional view, this makes no
+            // difference, since we provide the response for a request immediately in the emulator
+            std::queue<std::pair<SIMDVector, uint32_t>> tmu0Queue;
+            std::queue<std::pair<SIMDVector, uint32_t>> tmu1Queue;
+            Optional<SIMDVector> outputValue;
 
             void checkTMUWriteCycle() const;
             SIMDVector readMemoryAddress(const SIMDVector& address) const;
@@ -185,6 +187,8 @@ namespace vc4c
                 readStrideSetup(0), writeStrideSetup(0), lastDMAReadTrigger(0), lastDMAWriteTrigger(0), currentCycle(0),
                 cache({})
             {
+                // just some dummy data to simulate previous values
+                std::for_each(cache.begin(), cache.end(), [](auto& entry) { entry.fill(0xDEADDEAD); });
             }
 
             SIMDVector readValue();

@@ -544,7 +544,7 @@ void TestMathFunctions::testRint()
 void TestMathFunctions::testRootn()
 {
     testBinaryFunction<16, NormalDistribution<0>>(config, "-DOUT=float16 -DIN0=float16 -DIN1=int16 -DFUNC=rootn",
-        FlushAndRoundBinary{[](float a, int b) -> float { return std::pow(a, 1.0f / b); }},
+        FlushAndRoundBinary{[](float a, int b) -> float { return std::pow(a, 1.0f / static_cast<float>(b)); }},
         std::bind(&TestMathFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 }
 

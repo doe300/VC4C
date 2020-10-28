@@ -51,29 +51,27 @@ tools::Word EmulationData::calcNumWorkItems() const
         workGroup.numGroups[1] * workGroup.numGroups[2];
 }
 
+static std::string toAddressString(std::size_t address)
+{
+    std::stringstream ss;
+    ss << "0x" << std::hex << std::setfill('0') << std::setw(8) << address;
+    return ss.str();
+}
+
 tools::Word* Memory::getWordAddress(MemoryAddress address)
 {
     if(auto direct = VariantNamespace::get_if<DirectBuffer>(&data))
     {
         if(address >= direct->size() * sizeof(Word))
         {
-            logging::warn() << "Buffer: [0, " << std::hex << direct->size() << std::dec << ")" << logging::endl;
+            logging::warn() << "Buffer: [" << toAddressString(0) << ", " << toAddressString(direct->size()) << ")"
+                            << logging::endl;
             throw CompilationError(CompilationStep::GENERAL,
-                "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
+                "Memory address is out of bounds, consider using larger buffer", toAddressString(address));
         }
         return direct->data() + (address / sizeof(Word));
     }
     auto& buffers = VariantNamespace::get<MappedBuffers>(data);
-    if(address >= (buffers.rbegin()->first + buffers.rbegin()->second.get().size()))
-    {
-        logging::logLazy(logging::Level::WARNING, [&]() {
-            for(const auto& buffer : buffers)
-                logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
-                                << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
-        });
-        throw CompilationError(CompilationStep::GENERAL,
-            "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
-    }
     for(const auto& buf : buffers)
     {
         if(buf.first <= address && (buf.first + buf.second.get().size()) > address)
@@ -84,10 +82,10 @@ tools::Word* Memory::getWordAddress(MemoryAddress address)
     }
     logging::logLazy(logging::Level::WARNING, [&]() {
         for(const auto& buffer : buffers)
-            logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
-                            << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
+            logging::warn() << "Buffer: [" << toAddressString(buffer.first) << ", "
+                            << toAddressString(buffer.first + buffer.second.get().size()) << ")" << logging::endl;
     });
-    throw CompilationError(CompilationStep::GENERAL, "Address is not part of any buffer", std::to_string(address));
+    throw CompilationError(CompilationStep::GENERAL, "Address is not part of any buffer", toAddressString(address));
 }
 
 const tools::Word* Memory::getWordAddress(MemoryAddress address) const
@@ -96,23 +94,14 @@ const tools::Word* Memory::getWordAddress(MemoryAddress address) const
     {
         if(address >= direct->size() * sizeof(Word))
         {
-            logging::warn() << "Buffer: [0, " << std::hex << direct->size() << std::dec << ")" << logging::endl;
+            logging::warn() << "Buffer: [" << toAddressString(0) << ", " << toAddressString(direct->size()) << ")"
+                            << logging::endl;
             throw CompilationError(CompilationStep::GENERAL,
-                "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
+                "Memory address is out of bounds, consider using larger buffer", toAddressString(address));
         }
         return direct->data() + (address / sizeof(Word));
     }
     auto& buffers = VariantNamespace::get<MappedBuffers>(data);
-    if(address >= (buffers.rbegin()->first + buffers.rbegin()->second.get().size()))
-    {
-        logging::logLazy(logging::Level::WARNING, [&]() {
-            for(const auto& buffer : buffers)
-                logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
-                                << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
-        });
-        throw CompilationError(CompilationStep::GENERAL,
-            "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
-    }
     for(const auto& buf : buffers)
     {
         if(buf.first <= address && (buf.first + buf.second.get().size()) > address)
@@ -123,10 +112,10 @@ const tools::Word* Memory::getWordAddress(MemoryAddress address) const
     }
     logging::logLazy(logging::Level::WARNING, [&]() {
         for(const auto& buffer : buffers)
-            logging::warn() << "Buffer: [" << std::hex << buffer.first << ", "
-                            << (buffer.first + buffer.second.get().size()) << std::dec << ")" << logging::endl;
+            logging::warn() << "Buffer: [" << toAddressString(buffer.first) << ", "
+                            << toAddressString(buffer.first + buffer.second.get().size()) << ")" << logging::endl;
     });
-    throw CompilationError(CompilationStep::GENERAL, "Address is not part of any buffer", std::to_string(address));
+    throw CompilationError(CompilationStep::GENERAL, "Address is not part of any buffer", toAddressString(address));
 }
 
 tools::Word Memory::readWord(MemoryAddress address) const
@@ -135,7 +124,9 @@ tools::Word Memory::readWord(MemoryAddress address) const
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Reading word from non-word-aligned memory location will be truncated to align with "
                    "word-boundaries: "
-                << address << logging::endl);
+                << toAddressString(address) << logging::endl);
+    address = (address / sizeof(Word)) * sizeof(Word);
+    assertAddressInMemory(address, sizeof(Word));
     return *getWordAddress(address);
 }
 
@@ -150,6 +141,36 @@ MemoryAddress Memory::getMaximumAddress() const
         return static_cast<MemoryAddress>(direct->size() * sizeof(Word));
     return VariantNamespace::get<MappedBuffers>(data).rbegin()->first +
         static_cast<Word>(VariantNamespace::get<MappedBuffers>(data).rbegin()->second.get().size());
+}
+
+void Memory::assertAddressInMemory(MemoryAddress address, std::size_t numBytes) const
+{
+    if(auto direct = VariantNamespace::get_if<DirectBuffer>(&data))
+    {
+        if((address + numBytes) > (direct->size() * sizeof(Word)))
+        {
+            logging::warn() << "Buffer: [" << toAddressString(0) << ", " << toAddressString(direct->size()) << ")"
+                            << logging::endl;
+            throw CompilationError(CompilationStep::GENERAL,
+                "Memory address is out of bounds, consider using larger buffer",
+                "(" + toAddressString(address) + ", " + std::to_string(numBytes) + ")");
+        }
+        return;
+    }
+    auto& buffers = VariantNamespace::get<MappedBuffers>(data);
+    for(auto& buffer : buffers)
+    {
+        if(buffer.first <= address && (buffer.first + buffer.second.get().size()) >= (address + numBytes))
+            // the address fits into this buffer
+            return;
+    }
+    logging::logLazy(logging::Level::WARNING, [&]() {
+        for(const auto& buffer : buffers)
+            logging::warn() << "Buffer: [" << toAddressString(buffer.first) << ", "
+                            << toAddressString(buffer.first + buffer.second.get().size()) << ")" << logging::endl;
+    });
+    throw CompilationError(CompilationStep::GENERAL, "Address is not part of any buffer",
+        "(" + toAddressString(address) + ", " + std::to_string(numBytes) + ")");
 }
 
 void Memory::setUniforms(const std::vector<Word>& uniforms, MemoryAddress address)
@@ -509,53 +530,21 @@ void UniformCache::setUniformAddress(const SIMDVector& val)
 
 std::pair<SIMDVector, bool> TMUs::readTMU()
 {
-    if(tmu0ResponseQueue.empty() && tmu1ResponseQueue.empty())
+    if(!outputValue)
         throw CompilationError(CompilationStep::GENERAL, "Cannot read from empty TMU queue!");
-    if(!tmu0ResponseQueue.empty() && !tmu1ResponseQueue.empty())
-        // TODO or is there only one response queue? This would be more understandable from hardware point of view (for
-        // ordering)
-        logging::warn()
-            << "Reading from r4 when both TMUs have queued responses is not yet tested and might give in wrong results"
-            << logging::endl;
-
-    // need to select the first triggered read in both queues
-    std::queue<std::pair<SIMDVector, uint32_t>>* queue = nullptr;
-    bool tmuFlag = false;
-    if(!tmu0ResponseQueue.empty())
-    {
-        queue = &tmu0ResponseQueue;
-        tmuFlag = false;
-    }
-    if(!tmu1ResponseQueue.empty())
-    {
-        if(queue == nullptr)
-        {
-            queue = &tmu1ResponseQueue;
-            tmuFlag = true;
-        }
-        else if(tmu1ResponseQueue.front().second < queue->front().second)
-        {
-            queue = &tmu1ResponseQueue;
-            tmuFlag = true;
-        }
-    }
-
-    if(queue == nullptr)
-        throw CompilationError(CompilationStep::GENERAL, "Illegal TMU response queue");
-
-    auto front = queue->front();
-    queue->pop();
-    if(tmuFlag)
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 68, "TMU0 read", 1);
-    else
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 69, "TMU1 read", 1);
-    CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading from TMU: " << front.first.to_string(true) << logging::endl);
-    return std::make_pair(front.first, true);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 68, "TMU read", 1);
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading from TMU: " << outputValue->to_string(true) << logging::endl);
+    auto result = *outputValue;
+    // NOTE: This is technically not correct (the previous value stays in r4 just like in any other register), but it is
+    // required for our current structure (2 different values for TMU/SFU) to work. Otherwise the value would always be
+    // taken from the component first read.
+    outputValue = {};
+    return std::make_pair(std::move(result), true);
 }
 
 bool TMUs::hasValueOnR4() const
 {
-    return !tmu0ResponseQueue.empty() || !tmu1ResponseQueue.empty();
+    return outputValue.has_value();
 }
 
 void TMUs::setTMUNoSwap(const SIMDVector& swapVal)
@@ -570,7 +559,7 @@ void TMUs::setTMURegisterS(uint8_t tmu, const SIMDVector& val)
     checkTMUWriteCycle();
 
     tmu = toRealTMU(tmu);
-    auto& requestQueue = tmu == 1 ? tmu1RequestQueue : tmu0RequestQueue;
+    auto& requestQueue = tmu == 1 ? tmu1Queue : tmu0Queue;
 
     if(requestQueue.size() >= 8)
         throw CompilationError(CompilationStep::GENERAL, "TMU request queue is full!");
@@ -599,13 +588,10 @@ bool TMUs::triggerTMURead(uint8_t tmu)
 {
     tmu = toRealTMU(tmu);
 
-    auto& requestQueue = tmu == 1 ? tmu1RequestQueue : tmu0RequestQueue;
-    auto& responseQueue = tmu == 1 ? tmu1ResponseQueue : tmu0ResponseQueue;
+    auto& requestQueue = tmu == 1 ? tmu1Queue : tmu0Queue;
 
     if(requestQueue.empty())
         throw CompilationError(CompilationStep::GENERAL, "No data in TMU request queue to be read!");
-    if(responseQueue.size() >= 8)
-        throw CompilationError(CompilationStep::GENERAL, "TMU response queue is full!");
 
     auto val = requestQueue.front();
     if(tmu == 0)
@@ -623,7 +609,7 @@ bool TMUs::triggerTMURead(uint8_t tmu)
             log << "Distance between triggering of TMU read and read is " << (qpu.getCurrentCycle() - val.second)
                 << ", additional stalls may be introduced" << logging::endl);
     requestQueue.pop();
-    responseQueue.push(std::make_pair(val.first, qpu.getCurrentCycle()));
+    outputValue = val.first;
     return true;
 }
 
@@ -668,6 +654,9 @@ SIMDVector SFU::readSFU()
     if(!sfuResult)
         throw CompilationError(CompilationStep::GENERAL, "Cannot read empty SFU result!");
     auto val = sfuResult.value();
+    // NOTE: This is technically not correct (the previous value stays in r4 just like in any other register), but it is
+    // required for our current structure (2 different values for TMU/SFU) to work. Otherwise the value would always be
+    // taken from the component first read.
     sfuResult = {};
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 70, "SFU read", 1);
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading from SFU: " << val.to_string(true) << logging::endl);
@@ -686,9 +675,9 @@ static SIMDVector calcSFU(const SIMDVector& in, const std::function<Literal(Lite
 
 static Literal addSFUError(Literal val)
 {
-    // assume 10 bits of SFU accuracy (half float)
-    // -> convert from 23 bits accuracy to 10 bits accuracy
-    return Literal(val.unsignedInt() & 0xFFFFE000);
+    // Tests have shown that the accuracy is better than half-float (10 bits), but less then full 23 bits float. For the
+    // used test data, the error was somewhere between 512 and 1024 ULP.
+    return Literal(val.unsignedInt() & 0xFFFFFC00);
 }
 
 void SFU::startRecip(const SIMDVector& val)
@@ -958,7 +947,7 @@ void VPM::setDMAWriteAddress(const SIMDVector& val)
         log << "Copying " << sizes.first << " rows with " << sizes.second << " elements of " << typeSize
             << " bytes each " << (setup.dmaSetup.getHorizontal() ? "horizontally" : "vertically")
             << " from VPM address " << vpmBaseAddress.first << "," << vpmBaseAddress.second << " into RAM at "
-            << address << " with a memory stride of " << stride << logging::endl);
+            << toAddressString(address) << " with a memory stride of " << stride << logging::endl);
 
     if(vpmBaseAddress.first >= 64)
         throw CompilationError(
@@ -968,9 +957,7 @@ void VPM::setDMAWriteAddress(const SIMDVector& val)
     {
         for(uint32_t i = 0; i < sizes.first; ++i)
         {
-            if(address + typeSize * sizes.second > memory.getMaximumAddress())
-                throw CompilationError(CompilationStep::GENERAL,
-                    "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
+            memory.assertAddressInMemory(address, typeSize * sizes.second);
             memcpy(reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
                 reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first).at(vpmBaseAddress.second)) + byteOffset,
                 typeSize * sizes.second);
@@ -986,9 +973,7 @@ void VPM::setDMAWriteAddress(const SIMDVector& val)
     {
         for(uint32_t i = 0; i < sizes.second; ++i)
         {
-            if(address + typeSize * sizes.first > memory.getMaximumAddress())
-                throw CompilationError(CompilationStep::GENERAL,
-                    "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
+            memory.assertAddressInMemory(address, typeSize * sizes.first);
             for(uint32_t k = 0; k < sizes.first; ++k)
             {
                 memcpy(reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
@@ -1050,7 +1035,7 @@ void VPM::setDMAReadAddress(const SIMDVector& val)
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Copying " << sizes.first << " rows with " << sizes.second << " elements of " << typeSize
             << " bytes each " << (setup.dmaSetup.getVertical() ? "vertically" : "horizontally") << " from RAM address "
-            << address << " into VPM at " << vpmBaseAddress.first << "," << vpmBaseAddress.second
+            << toAddressString(address) << " into VPM at " << vpmBaseAddress.first << "," << vpmBaseAddress.second
             << " with byte-offset of " << byteOffset << " and a memory pitch of " << pitch << logging::endl);
 
     if(vpmBaseAddress.first >= 64)
@@ -1061,9 +1046,7 @@ void VPM::setDMAReadAddress(const SIMDVector& val)
     {
         for(uint32_t i = 0; i < sizes.second; ++i)
         {
-            if(address + typeSize * sizes.first > memory.getMaximumAddress())
-                throw CompilationError(CompilationStep::GENERAL,
-                    "Memory address is out of bounds, consider using larger buffer", std::to_string(address));
+            memory.assertAddressInMemory(address, typeSize * sizes.first);
             for(uint32_t k = 0; k < sizes.first; ++k)
             {
                 memcpy(reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first + k).at(vpmBaseAddress.second + i)) +
@@ -1085,6 +1068,7 @@ void VPM::setDMAReadAddress(const SIMDVector& val)
     {
         for(uint32_t i = 0; i < sizes.first; ++i)
         {
+            memory.assertAddressInMemory(address, typeSize * sizes.second);
             memcpy(reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first).at(vpmBaseAddress.second)) + byteOffset,
                 reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
                 typeSize * sizes.second);
@@ -2050,8 +2034,7 @@ static Memory fillMemory(const StableList<Global>& globalData, const EmulationDa
             throw CompilationError(
                 CompilationStep::GENERAL, "Unhandled type of global data", global.initialValue.type.to_string());
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "\tGlobal '" << global.name << "' at offset 0x" << std::hex << currentAddress << std::dec
-                << logging::endl);
+            log << "\tGlobal '" << global.name << "' at offset " << toAddressString(currentAddress) << logging::endl);
         if(auto compound = global.initialValue.getCompound())
         {
             for(const auto& word : *compound)
@@ -2077,8 +2060,8 @@ static Memory fillMemory(const StableList<Global>& globalData, const EmulationDa
         if(pair.second)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "\tParameter at offset 0x" << std::hex << currentAddress << std::dec << " with "
-                    << pair.second->size() << " words" << logging::endl);
+                log << "\tParameter at offset " << toAddressString(currentAddress) << " with " << pair.second->size()
+                    << " words" << logging::endl);
             parameterAddressesOut.emplace_back(currentAddress);
             std::copy_n(pair.second->data(), pair.second->size(), addr);
             currentAddress += static_cast<MemoryAddress>(pair.second->size() * sizeof(uint32_t));
