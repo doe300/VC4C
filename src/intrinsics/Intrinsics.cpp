@@ -363,7 +363,6 @@ static InstructionWalker intrinsifyPopcount(Method& method, InstructionWalker it
     // https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
     // Alternative implementation (esp. for 64-bit) can be found here:
     // https://en.wikipedia.org/wiki/Hamming_weight#Efficient_implementation
-    // TODO Supports llvm.ctpop intrinsic, saves 1 to 40 instructions depending on type
     auto& arg = callSite->assertArgument(0);
     auto typeWidth = arg.type.getScalarBitCount();
 

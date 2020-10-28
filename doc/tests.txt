@@ -68,7 +68,7 @@ test_functional_convert			PASSED
 test_functional_get				PASSED
 test_functional_hash			PASSED
 test_functional_identity		PASSED
-test_functional_popcount		result mismatch (popcount<unsigned long long>, returns all zeroes from 2nd element; PASSES on emulator)
+test_functional_popcount		PASSED
 test_functional_unpack			PASSED
 test_gather						PASSED
 test_generate					PASSED
@@ -80,7 +80,7 @@ test_includes					PASSED
 test_inner_product				result mismatch
 test_inplace_merge				PASSED
 test_inplace_reduce				result mismatch ("reduce_iota", reads 1-past-end of buffer)
-test_insertion_sort				result mismatch ("sort_long_vector", "sort_ulong_vector"), PASSES on emulator
+test_insertion_sort				PASSED
 test_invoke						result mismatch (ULP, "invoke_builtin": result: inf expected: 256.f for function pow(2, 8))
 test_iota						PASSED
 test_is_permutation				PASSED
@@ -135,7 +135,7 @@ test_set_difference				PASSED
 test_set_intersection			PASSED
 test_set_symmetric_difference   PASSED
 test_set_union					PASSED
-test_sort						result mismatch (long vectors); compilation error (register allocation)
+test_sort						Invalid Value error (get_object_info.hpp:104)
 test_sort_by_key				result mismatch, compilation error (register allocation)
 test_sort_by_transform			PASSED
 test_stable_partition			PASSED (reads 1-after-bounds of allocated buffer)

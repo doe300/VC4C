@@ -164,14 +164,41 @@ static NODISCARD InstructionWalker insertReadLongVectorFromTMU(
     Value upperAddresses(UNDEFINED_VALUE);
     it = insertCalculateAddressOffsets(method, it, tmpAddress, dest.type, upperAddresses);
 
+    /*
+     * This works:
+     * tmu0s = <address>
+     * tmu0s = <address>
+     * (load_tmu0)
+     * <lower> = r4
+     * (load_tmu0)
+     * <upper> = r4
+     *
+     * This works:
+     * tmu0s = <address>
+     * (load_tmu0)
+     * tmu0s = <address>
+     * <lower> = r4
+     * (load_tmu0)
+     * <upper> = r4
+     *
+     * This does not work:
+     * tmu0s = <address>
+     * (load_tmu0)
+     * tmu0s = <address>
+     * (load_tmu0)
+     * <lower> = r4
+     * <upper> = r4
+     * (Both receive the result of the last load_tmu0, since it overrides any previous value in r4)
+     */
+
     assign(it, tmu.getAddress(addr.type)) = lowerAddresses;
-    nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
-    // TODO do we get more performance when first writing both addresses and then triggering both loads?
     assign(it, tmu.getAddress(addr.type)) = upperAddresses;
-    nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
 
     // read the lower and upper elements into the result variables
+    nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
     assign(it, outputData->lower->createReference()) = TMU_READ_REGISTER;
+
+    nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
     assign(it, outputData->upper->createReference()) = TMU_READ_REGISTER;
 
     return it;
