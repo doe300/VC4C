@@ -1,5 +1,5 @@
 
-__kernel void test_prime(const int maybePrime, __global bool* out)
+__kernel void test_prime(const int maybePrime, __global uint* out)
 {
 	float tmp = maybePrime;
 	tmp = sqrt(tmp);

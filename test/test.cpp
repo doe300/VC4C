@@ -35,6 +35,7 @@
 #include "tools.h"
 #include "logger.h"
 #include "RegressionTest.h"
+#include "TestData.h"
 
 //TODO test for compact optional!
 
@@ -167,14 +168,25 @@ int main(int argc, char** argv)
     // we need this first argument, since the  cpptest-lite helper expects the first argument to be skipped (as if passed directly the main arguments)
     args.push_back(argv[0]);
 
+    // manually put together the list of selected emulation tests
+    std::vector<std::string> emulationTestNames;
+
     for(auto i = 1; i < argc; ++i)
-    { 
-        if (!vc4c::tools::parseConfigurationParameter(config, argv[i]))
-            args.push_back(argv[i]);
+    {
+        if (!test_data::parseTestDataParameter(argv[i], emulationTestNames) && !vc4c::tools::parseConfigurationParameter(config, argv[i]))
+            args.emplace_back(argv[i]);
 
         //TODO rewrite, actually print same help (parts of it) as VC4C
         if(std::string("--help") == argv[i] || std::string("-h") == argv[i])
             std::cout << "NOTE: This only lists the options for the 'cpptest-lite' test-suite. For more options see 'VC4C --help'!" << std::endl;
+    }
+
+    if(!emulationTestNames.empty())
+    {
+        args.emplace_back(const_cast<char*>("--custom-test-data"));
+        Test::registerSuite([&]() -> Test::Suite* {
+            return new TestEmulator(config, std::vector<std::string>(emulationTestNames.begin(), emulationTestNames.end()));
+        }, "custom-test-data");
     }
 
     return Test::runSuites(int(args.size()), args.data());

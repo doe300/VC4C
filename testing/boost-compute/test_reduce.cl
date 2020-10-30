@@ -4,7 +4,8 @@
 #define boost_tuple_get(x, n) (x.v ## n)
 
 #define VPT 8
-#define TPB 12
+// This needs to be a power of two for the second loop not to access any out-of-bounds memory
+#define TPB 8
 
 __kernel void reduce(__global int* input, const uint offset, const uint count, __global int* output, const uint output_offset)
 {

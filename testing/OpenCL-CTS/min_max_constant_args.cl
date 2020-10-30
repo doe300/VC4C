@@ -10,7 +10,7 @@ __kernel void sample_test(__constant int* src1, __constant int* src2, __constant
     __constant int* src45, __constant int* src46, __constant int* src47, __constant int* src48, __constant int* src49,
     __constant int* src50, __constant int* src51, __constant int* src52, __constant int* src53, __constant int* src54,
     __constant int* src55, __constant int* src56, __constant int* src57, __constant int* src58, __constant int* src59,
-    __constant int* src60, __constant int* src61, __constant int* src62, __constant int* src63, __constant int* src64,
+    __constant int* src60, __constant int* src61, __constant int* src62, __constant int* src63,
     __global int* dst)
 {
     int tid = get_global_id(0);
@@ -78,5 +78,4 @@ __kernel void sample_test(__constant int* src1, __constant int* src2, __constant
     dst[tid] += src61[tid];
     dst[tid] += src62[tid];
     dst[tid] += src63[tid];
-    dst[tid] += src64[tid];
 }

@@ -29,9 +29,9 @@ __kernel void test_add(__global const uchar16* in0, __global const ushort16* in1
 //	*out1 = convert_int16((uchar16)(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15)) + convert_int16((ushort16)(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15));
 }
 
-__kernel void test_param(const uchar16 in1, const int4 in2, __global int4* out)
+__kernel void test_param(const uchar16 in1, const int4 in2, const long2 in3, __global int4* out)
 {
-	*out = in2 + as_int4(in1);
+	*out = in2 + as_int4(in1) + as_int4(in3);
 }
 
 __kernel void test_vector_load(const __global char* in, __global char3* out)

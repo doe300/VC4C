@@ -7,7 +7,6 @@
 #include "TestMemoryAccess.h"
 
 #include "emulation_helper.h"
-#include "test_cases.h"
 
 #include <numeric>
 
@@ -331,7 +330,7 @@ void TestMemoryAccess::testPrivateStorage()
 
     EmulationData data;
     data.kernelName = "test_private_storage";
-    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.maxEmulationCycles = maxExecutionCycles;
     data.module = std::make_pair("", &buffer);
     data.workGroup.dimensions = 3;
     data.workGroup.globalOffsets = {0, 0, 0};
@@ -367,7 +366,7 @@ void TestMemoryAccess::testLocalStorage()
 
     EmulationData data;
     data.kernelName = "test_local_storage";
-    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.maxEmulationCycles = maxExecutionCycles;
     data.module = std::make_pair("", &buffer);
     data.workGroup.dimensions = 3;
     data.workGroup.globalOffsets = {0, 0, 0};
@@ -400,7 +399,7 @@ void TestMemoryAccess::testVectorAssembly()
 
     EmulationData data;
     data.kernelName = "test_constant_storage";
-    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.maxEmulationCycles = maxExecutionCycles;
     data.module = std::make_pair("", &buffer);
     data.workGroup.dimensions = 3;
     data.workGroup.globalOffsets = {0, 0, 0};
@@ -424,7 +423,7 @@ void TestMemoryAccess::testConstantStorage()
 
     EmulationData data;
     data.kernelName = "test_constant_storage2";
-    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.maxEmulationCycles = maxExecutionCycles;
     data.module = std::make_pair("", &buffer);
     data.workGroup.dimensions = 3;
     data.workGroup.globalOffsets = {0, 0, 0};
@@ -448,7 +447,7 @@ void TestMemoryAccess::testRegisterStorage()
 
     EmulationData data;
     data.kernelName = "test_register_storage";
-    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.maxEmulationCycles = maxExecutionCycles;
     data.module = std::make_pair("", &buffer);
     data.workGroup.dimensions = 3;
     data.workGroup.globalOffsets = {0, 0, 0};
@@ -472,7 +471,7 @@ void TestMemoryAccess::testVPMWrites()
 
     EmulationData data;
     data.kernelName = "test_vpm_write";
-    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.maxEmulationCycles = maxExecutionCycles;
     data.module = std::make_pair("", &buffer);
 
     // parameter 0 is input
@@ -514,7 +513,7 @@ void TestMemoryAccess::testVPMReads()
 
     EmulationData data;
     data.kernelName = "test_vpm_read";
-    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.maxEmulationCycles = maxExecutionCycles;
     data.module = std::make_pair("", &buffer);
 
     // parameters 0 and 1 are both input/output
@@ -598,7 +597,7 @@ void TestMemoryAccess::testVectorLoadStorePrivateRegister()
 
     EmulationData data;
     data.kernelName = "test_private_register";
-    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.maxEmulationCycles = maxExecutionCycles;
     data.module = std::make_pair("", &buffer);
 
     // output
@@ -638,7 +637,7 @@ void TestMemoryAccess::testVectorLoadStorePrivateVPMFull()
 
     EmulationData data;
     data.kernelName = "test_private_vpm_full_row";
-    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.maxEmulationCycles = maxExecutionCycles;
     data.module = std::make_pair("", &buffer);
 
     // output
@@ -679,7 +678,7 @@ void TestMemoryAccess::testVectorLoadStorePrivateVPMPartial()
 
     EmulationData data;
     data.kernelName = "test_private_vpm_partial_row";
-    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.maxEmulationCycles = maxExecutionCycles;
     data.module = std::make_pair("", &buffer);
 
     // output
@@ -720,7 +719,7 @@ void TestMemoryAccess::testVectorLoadStoreLocalParameter()
 
     EmulationData data;
     data.kernelName = "test_local_parameter";
-    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.maxEmulationCycles = maxExecutionCycles;
     data.module = std::make_pair("", &buffer);
 
     // output
@@ -763,7 +762,7 @@ void TestMemoryAccess::testVectorLoadStoreGlobalParameter()
 
     EmulationData data;
     data.kernelName = "test_global";
-    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.maxEmulationCycles = maxExecutionCycles;
     data.module = std::make_pair("", &buffer);
 
     // output
@@ -1410,10 +1409,10 @@ void TestMemoryAccess::emulateKernel(std::istream& code, const std::string& kern
 {
     EmulationData data;
     data.kernelName = kernelName;
-    data.maxEmulationCycles = vc4c::test::maxExecutionCycles;
+    data.maxEmulationCycles = maxExecutionCycles;
     data.module = std::make_pair("", &code);
 
-    auto sizeFactor = std::ceil(numItems / static_cast<float>(NUM_QPUS));
+    auto sizeFactor = std::ceil(static_cast<float>(numItems) / static_cast<float>(NUM_QPUS));
     auto localSize = numItems / static_cast<unsigned>(sizeFactor);
     auto numGroups = static_cast<unsigned>(sizeFactor);
     TEST_ASSERT_EQUALS(numItems, localSize * numGroups);

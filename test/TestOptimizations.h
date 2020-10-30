@@ -42,6 +42,10 @@ public:
     void testArithmetic(std::string passParamName);
     void testClamp(std::string passParamName);
     void testCross(std::string passParamName);
+
+private:
+    void testSHA1();
+    void testSHA256();
 };
 
 #endif /* VC4C_TEST_OPTIMIZATIONS_H */

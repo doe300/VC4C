@@ -136,6 +136,15 @@ protected:
         if(!cachePrecompilation)
             cachedPrecompilations.erase(tmpIt);
     }
+
+    void compileStream(std::stringstream& buffer, std::istream& input, const std::string& options)
+    {
+        config.outputMode = vc4c::OutputMode::BINARY;
+        config.writeKernelInfo = true;
+        std::unique_ptr<std::istream> precompiled;
+        vc4c::Precompiler::precompile(input, precompiled, config, options);
+        vc4c::Compiler::compile(*precompiled, buffer, config, "");
+    }
 };
 
 #endif /* VC4C_TEST_COMPILATION_HELPER_H */

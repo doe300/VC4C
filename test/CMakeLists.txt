@@ -16,6 +16,9 @@ target_include_directories (TestVC4C PRIVATE "${cpptest_HEADERS}")
 
 target_include_directories(TestVC4C PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/../src)
 
+include(test_files.cmake)
+target_link_libraries(TestVC4C TestData)
+
 # SPIR-V Headers
 add_dependencies(TestVC4C SPIRV-Dependencies)
 target_include_directories(TestVC4C SYSTEM PRIVATE ${SPIRV_Headers_HEADERS})

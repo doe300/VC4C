@@ -9,52 +9,40 @@
 
 #include "cpptest.h"
 
-#include "Precompiler.h"
 #include "TestCompilationHelper.h"
 #include "config.h"
 
 #include <map>
+#include <unordered_map>
 #include <vector>
 
-namespace vc4c
+namespace test_data
 {
-    namespace tools
-    {
-        struct EmulationData;
-    }
-} // namespace vc4c
+    // Handle for the internal TestData structure
+    class TestData;
+} // namespace test_data
 
 class TestEmulator : public Test::Suite, protected TestCompilationHelper
 {
 public:
     TestEmulator(const vc4c::Configuration& config = {});
-    explicit TestEmulator(bool cachePrecompilation, const vc4c::Configuration& config = {});
+    explicit TestEmulator(const vc4c::Configuration& config,
+        std::map<std::string, const test_data::TestData*>&& testData,
+        std::vector<std::string>&& additionalTestNames = {});
+    TestEmulator(const vc4c::Configuration& config, std::vector<std::string>&& additionalTestNames) :
+        TestEmulator(config, {}, std::move(additionalTestNames))
+    {
+    }
     ~TestEmulator() override;
 
-    void testHelloWorld();
-    void testHelloWorldVector();
-    void testPrime();
-    void testBarrier();
-    void testBranches();
-    void testWorkItem();
-    void testSHA1();
-    void testSHA256();
-    void testIntegerEmulations(std::size_t index, std::string name);
-    void testFloatEmulations(std::size_t index, std::string name);
-    void testPartialMD5();
-    void testCRC16();
-    void testPearson16();
-    void testPi();
-
     void printProfilingInfo();
+    void runTestData(std::string dataName, bool useCompilationCache);
+    void runNoSuchTestData(std::string dataName);
+
+    static std::map<std::string, const test_data::TestData*> getAllTestData();
 
 protected:
-    void testIntegerEmulation(
-        vc4c::tools::EmulationData& data, std::map<uint32_t, std::vector<uint32_t>>& expectedResults);
-    void testFloatingEmulation(vc4c::tools::EmulationData& data,
-        std::map<uint32_t, std::vector<uint32_t>>& expectedResults, unsigned maxULP = 1);
-
-    bool cachePrecompilation;
+    std::unordered_map<std::string, std::string> compilationCache;
 };
 
 #endif /* TEST_EMULATOR_H */

@@ -33,3 +33,16 @@ _buf0[index]=boost_popcount(_buf1[index]);
 }
 
 }
+
+// Additional test to narrow down popcount result error
+__kernel void popcount_uint(__global uint* _buf0, __global uint* _buf1, const uint count)
+{
+uint index = get_local_id(0) + (32 * get_group_id(0));
+for(uint i = 0; i < 4; i++){
+    if(index < count){
+_buf0[index]=popcount(_buf1[index]);
+       index += 8;
+    }
+}
+
+}

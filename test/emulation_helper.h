@@ -21,6 +21,8 @@
 #include <random>
 #include <sstream>
 
+constexpr uint32_t maxExecutionCycles{1 << 16};
+
 // just to check that really the long- and double-versions are used
 template <typename T>
 struct UniformDistribution
