@@ -5,6 +5,7 @@
  */
 #include "TestOptimizationSteps.h"
 
+#include "Bitfield.h"
 #include "Expression.h"
 #include "Method.h"
 #include "Module.h"
@@ -14,8 +15,11 @@
 #include "optimization/ControlFlow.h"
 #include "optimization/Eliminator.h"
 #include "optimization/Flags.h"
+#include "periphery/VPM.h"
 
 #include <cmath>
+
+#include "log.h"
 
 using namespace vc4c;
 using namespace vc4c::optimizations;
@@ -35,6 +39,7 @@ TestOptimizationSteps::TestOptimizationSteps()
     TEST_ADD(TestOptimizationSteps::testEliminateBitOperations);
     TEST_ADD(TestOptimizationSteps::testCombineRotations);
     TEST_ADD(TestOptimizationSteps::testLoopInvariantCodeMotion);
+    TEST_ADD(TestOptimizationSteps::testCombineDMALoads);
 }
 
 static bool checkEquals(
@@ -1988,4 +1993,220 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
     TEST_ASSERT(it->getOutput().value() == NOP_REGISTER);
     it.nextInMethod();
     TEST_ASSERT(!!it.get<Branch>());
+}
+
+void TestOptimizationSteps::testCombineDMALoads()
+{
+    using namespace vc4c::intermediate;
+
+    auto testCombineDMALoadsSub = [&](Module& module, Method& inputMethod, Configuration& config, DataType vectorType) {
+
+        uint8_t elementBitCount = vectorType.getElementType().getScalarBitCount();
+        uint8_t dmaSetupMode = 0;
+        uint8_t vpitch = 1;
+        uint8_t vprSize = 0;
+        uint8_t vprStride = 0;
+        switch(elementBitCount)
+        {
+        case 8:
+            dmaSetupMode = 4;
+            vpitch = 4;
+            vprSize = 0;
+            vprStride = 4;
+            break;
+        case 16:
+            dmaSetupMode = 2;
+            vpitch = 2;
+            vprSize = 1;
+            vprStride = 2;
+            break;
+        case 32:
+            dmaSetupMode = 0;
+            vpitch = 1;
+            vprSize = 2;
+            vprStride = 1;
+            break;
+        }
+
+        const int numOfLoads = 3;
+        periphery::VPRDMASetup expectedDMASetup(dmaSetupMode, vectorType.getVectorWidth() % 16, numOfLoads, vpitch, 0);
+        periphery::VPRGenericSetup expectedVPRSetup(vprSize, vprStride, numOfLoads, 0);
+
+        inputMethod.dumpInstructions();
+
+        combineDMALoads(module, inputMethod, config);
+
+        inputMethod.dumpInstructions();
+
+        for(auto& bb : inputMethod)
+        {
+            int numOfDMASetup = 0;
+            int numOfStrideSetup = 0;
+            int numOfVPRSetup = 0;
+            int numOfVPMRead = 0;
+
+            for(auto& it : bb)
+            {
+                if(auto move = dynamic_cast<intermediate::MoveOperation*>(it.get()))
+                {
+                    auto source = move->getSource();
+                    if(source.getLiteralValue() &&
+                        (move->getOutput()->hasRegister(REG_VPM_IN_SETUP) ||
+                            has_flag(move->decoration, InstructionDecorations::VPM_READ_CONFIGURATION)))
+                    {
+                        auto dmaSetup =
+                            periphery::VPRSetup::fromLiteral(source.getLiteralValue()->unsignedInt()).dmaSetup;
+                        TEST_ASSERT_EQUALS(expectedDMASetup, dmaSetup);
+
+                        numOfDMASetup++;
+                    }
+                    else if(auto reg = source.checkRegister())
+                    {
+                        // VPM Read
+                        if(reg->file != RegisterFile::ACCUMULATOR && reg->num == 48)
+                        {
+                            numOfVPMRead++;
+                        }
+                    }
+                }
+                else if(auto load = dynamic_cast<intermediate::LoadImmediate*>(it.get()))
+                {
+                    if(load->type == LoadType::REPLICATE_INT32 &&
+                        (load->getOutput()->hasRegister(REG_VPM_IN_SETUP) ||
+                            has_flag(load->decoration, InstructionDecorations::VPM_READ_CONFIGURATION)))
+                    {
+                        auto vpr = periphery::VPRSetup::fromLiteral(load->getImmediate().unsignedInt());
+                        if(vpr.isStrideSetup())
+                        {
+                            TEST_ASSERT_EQUALS(vectorType.getInMemoryWidth(), vpr.strideSetup.getPitch());
+                            numOfStrideSetup++;
+                        }
+                        if(vpr.isGenericSetup())
+                        {
+                            TEST_ASSERT_EQUALS(expectedVPRSetup, vpr.genericSetup);
+                            numOfVPRSetup++;
+                        }
+                    }
+                }
+            }
+
+            TEST_ASSERT_EQUALS(1, numOfDMASetup);
+            TEST_ASSERT_EQUALS(1, numOfStrideSetup);
+            TEST_ASSERT_EQUALS(1, numOfVPRSetup);
+            TEST_ASSERT_EQUALS(numOfLoads, numOfVPMRead);
+        }
+    };
+
+    auto putMethodCall = [](Method& inputMethod, InstructionWalker& inIt, const DataType& vectorType,
+                             std::string funcName, std::vector<Value>&& args) {
+        auto res = inputMethod.addNewLocal(vectorType);
+        inIt.emplace((new intermediate::MethodCall(std::move(res), std::move(funcName), std::move(args))));
+    };
+
+    const DataType Float16{DataType::WORD, 16, true};
+    const DataType Float8{DataType::WORD, 8, true};
+    const DataType Uchar16{DataType::BYTE, 16, false};
+
+    // vload16(size_t, const float*)
+    const std::string vload16f = "_Z7vload16jPU3AS1Kf";
+    // vload8(size_t, const float*)
+    const std::string vload8f = "_Z6vload8jPU3AS1Kf";
+    // vload16(size_t, const uchar*)
+    const std::string vload16uc = "_Z7vload16jPU3AS1Kh";
+
+    Configuration config{};
+
+    {
+        // vload16f * 3
+
+        Module module{config};
+        Method inputMethod(module);
+
+        const DataType FloatPtr = inputMethod.createPointerType(TYPE_FLOAT);
+
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+        auto in = assign(inIt, FloatPtr, "%in") = UNIFORM_REGISTER;
+
+        putMethodCall(inputMethod, inIt, Float16, vload16f, {0_val, in});
+        putMethodCall(inputMethod, inIt, Float16, vload16f, {1_val, in});
+        putMethodCall(inputMethod, inIt, Float16, vload16f, {2_val, in});
+
+        testCombineDMALoadsSub(module, inputMethod, config, Float16);
+    }
+
+    {
+        // vload8f * 3
+
+        Module module{config};
+        Method inputMethod(module);
+
+        const DataType FloatPtr = inputMethod.createPointerType(TYPE_FLOAT);
+
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+        auto in = assign(inIt, FloatPtr, "%in") = UNIFORM_REGISTER;
+
+        putMethodCall(inputMethod, inIt, Float8, vload8f, {0_val, in});
+        putMethodCall(inputMethod, inIt, Float8, vload8f, {1_val, in});
+        putMethodCall(inputMethod, inIt, Float8, vload8f, {2_val, in});
+
+        testCombineDMALoadsSub(module, inputMethod, config, Float8);
+    }
+
+    {
+        // vload16uc * 3
+
+        Module module{config};
+        Method inputMethod(module);
+
+        const DataType Int8Ptr = inputMethod.createPointerType(TYPE_INT8);
+
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+        auto in = assign(inIt, Int8Ptr, "%in") = UNIFORM_REGISTER;
+
+        putMethodCall(inputMethod, inIt, Uchar16, vload16uc, {0_val, in});
+        putMethodCall(inputMethod, inIt, Uchar16, vload16uc, {1_val, in});
+        putMethodCall(inputMethod, inIt, Uchar16, vload16uc, {2_val, in});
+
+        testCombineDMALoadsSub(module, inputMethod, config, Uchar16);
+    }
+
+    {
+        // vload16f * 3
+
+        Module module{config};
+        Method inputMethod(module);
+
+        const DataType FloatPtr = inputMethod.createPointerType(TYPE_FLOAT);
+
+        auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+        auto in = assign(inIt, FloatPtr, "%in") = UNIFORM_REGISTER;
+
+        auto offset1 = assign(inIt, TYPE_INT32, "%offset1") = 42_val;
+        auto offset2 = assign(inIt, TYPE_INT32, "%offset2") = offset1 + 1_val;
+        auto offset3 = assign(inIt, TYPE_INT32, "%offset3") = offset1 + 2_val;
+
+        putMethodCall(inputMethod, inIt, Float16, vload16f, {offset3, in});
+        putMethodCall(inputMethod, inIt, Float16, vload16f, {offset2, in});
+        putMethodCall(inputMethod, inIt, Float16, vload16f, {offset1, in});
+
+        testCombineDMALoadsSub(module, inputMethod, config, Float16);
+    }
+
+    // {
+    //     // expand
+    //
+    //     Literal l(2);
+    //     Value a(l, TYPE_INT32);
+    //     Value b = 3_val;
+    //     SubExpression expr(
+    //         new ValueBinaryOp(makeValueBinaryOpFromLocal(a, ValueBinaryOp::BinaryOp::Add, b),
+    //             ValueBinaryOp::BinaryOp::Sub, std::make_shared<ValueTerm>(1_val)));
+    //     ValueExpr::ExpandedExprs expanded;
+    //     expr->expand(expanded);
+    //
+    //     TEST_ASSERT_EQUALS(1, expanded.size());
+    //
+    //     auto n = expanded[0].second->getInteger();
+    //     TEST_ASSERT_EQUALS(4, n.value_or(0));
+    // }
 }

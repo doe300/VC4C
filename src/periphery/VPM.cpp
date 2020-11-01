@@ -675,7 +675,7 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 }
 
 InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress, DataType type,
-    const VPMArea* area, bool useMutex, const Value& inAreaOffset, const Value& numEntries)
+    const VPMArea* area, bool useMutex, const Value& inAreaOffset, const Value& numEntries, Optional<uint16_t> memoryPitch)
 {
     if(area != nullptr)
         // FIXME this needs to have the numEntries added and the correct type!!!
@@ -744,7 +744,8 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
     if(numEntries != INT_ONE)
         // NOTE: This for read the pitch (start-to-start) and for write the stride (end-to-start) is set, we need to set
         // this to the data size, but not required for write setup!
-        strideSetup.strideSetup = VPRStrideSetup(static_cast<uint16_t>(type.getInMemoryWidth()));
+        // strideSetup.strideSetup = VPRStrideSetup(static_cast<uint16_t>(type.getInMemoryWidth()));
+        strideSetup.strideSetup = VPRStrideSetup(static_cast<uint16_t>(memoryPitch.value_or(type.getInMemoryWidth())));
     it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(strideSetup.value)));
     it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
     it.nextInBlock();
@@ -1169,15 +1170,17 @@ VPWDMASetup VPMArea::toWriteDMASetup(DataType elementType, uint8_t numRows) cons
     return setup;
 }
 
-VPRGenericSetup VPMArea::toReadSetup(DataType elementType, uint8_t numRows) const
+VPRGenericSetup VPMArea::toReadSetup(DataType elementType/*, uint8_t numRows*/) const
 {
+    uint8_t numRows_ = numRows;
+
     elementType = simplifyComplexTypes(elementType);
     DataType type = elementType.isUnknown() ? getElementType() : elementType;
     if(type.getScalarBitCount() > 32)
     {
         // 64-bit integer vectors are stored as 2 rows of 32-bit integer vectors in VPM
         type = DataType{32, type.getVectorWidth(), type.isFloatingType()};
-        numRows = 2 * numRows;
+        numRows_ = 2 * numRows_;
     }
     if(type.isUnknown())
         throw CompilationError(
@@ -1186,7 +1189,10 @@ VPRGenericSetup VPMArea::toReadSetup(DataType elementType, uint8_t numRows) cons
     // if we can pack into a single row, do so. Otherwise set stride to beginning of next row
     const uint8_t stride =
         canBePackedIntoRow() ? 1 : static_cast<uint8_t>(TYPE_INT32.getScalarBitCount() / type.getScalarBitCount());
-    VPRGenericSetup setup(getVPMSize(type), stride, numRows, calculateQPUSideAddress(type, rowOffset, 0));
+
+    if (numRows_ >= 16) numRows_ = 1;
+
+    VPRGenericSetup setup(getVPMSize(type), stride, numRows_, calculateQPUSideAddress(type, rowOffset, 0));
     setup.setHorizontal(IS_HORIZONTAL);
     setup.setLaned(!IS_PACKED);
     return setup;

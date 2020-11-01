@@ -6,17 +6,20 @@
 
 #include "Combiner.h"
 
+#include "../Expression.h"
 #include "../InstructionWalker.h"
 #include "../analysis/MemoryAnalysis.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/operators.h"
 #include "../periphery/VPM.h"
+#include "../spirv/SPIRVHelper.h"
 #include "Eliminator.h"
 #include "log.h"
 
 #include <algorithm>
 #include <cstdlib>
 #include <memory>
+#include <regex>
 
 // TODO combine y = (x >> n) << n with and
 // same for y = (x << n) >> n (at least of n constant)
@@ -27,6 +30,7 @@ using namespace vc4c;
 using namespace vc4c::optimizations;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
+using namespace vc4c::periphery;
 
 // Taken from https://stackoverflow.com/questions/2835469/how-to-perform-rotate-shift-in-c?noredirect=1&lq=1
 constexpr static uint32_t rotate_left_halfword(uint32_t value, uint8_t shift) noexcept
@@ -1137,6 +1141,518 @@ InstructionWalker optimizations::combineArithmeticOperations(
         it.previousInBlock();
     }
     return it;
+}
+
+SubExpression makeValueBinaryOpFromLocal(Value& left, const OpCode& binOp, Value& right)
+{
+    return SubExpression(std::make_shared<Expression>(binOp, SubExpression(left), SubExpression(right)));
+}
+
+// try to convert shl to mul and return it as ValueExpr
+SubExpression shlToMul(const Value& value, const intermediate::Operation* op)
+{
+    auto left = op->getFirstArg();
+    auto right = *op->getSecondArg();
+    int shiftValue = 0;
+    if(auto lit = right.checkLiteral())
+    {
+        shiftValue = lit->signedInt();
+    }
+    else if(auto imm = right.checkImmediate())
+    {
+        shiftValue = imm->getIntegerValue().value_or(0);
+    }
+
+    if(shiftValue > 0)
+    {
+        auto right = Value(Literal(1 << shiftValue), TYPE_INT32);
+        return makeValueBinaryOpFromLocal(left, OP_FMUL, right);
+    }
+    else
+    {
+        return SubExpression(value);
+    }
+}
+
+SubExpression iiToExpr(const Value& value, const LocalUser* inst)
+{
+    // add, sub, shr, shl, asr
+    if(auto op = dynamic_cast<const intermediate::Operation*>(inst))
+    {
+        if(op->op == OP_ADD || op->op == OP_SUB)
+        {
+            auto left = op->getFirstArg();
+            auto right = *op->getSecondArg();
+            return makeValueBinaryOpFromLocal(left, op->op, right);
+        }
+        else if(op->op == OP_OR) // Treat `or` as `add`
+        {
+            auto left = op->getFirstArg();
+            auto right = *op->getSecondArg();
+            return makeValueBinaryOpFromLocal(left, OP_ADD, right);
+        }
+        else if(op->op == OP_SHL)
+        {
+            // convert shl to mul
+            return shlToMul(value, op);
+            // TODO: shr, asr
+        }
+        else
+        {
+            // If op is neither add nor sub, return value as-is.
+            return SubExpression(value);
+        }
+    }
+    // mul, div
+    else if(auto op = dynamic_cast<const intermediate::IntrinsicOperation*>(inst))
+    {
+        OpCode binOp = OP_NOP;
+        if(op->opCode == "mul")
+        {
+            binOp = Expression::FAKEOP_MUL;
+        }
+        else if(op->opCode == "div")
+        {
+            binOp = Expression::FAKEOP_DIV;
+        }
+        else
+        {
+            // If op is neither add nor sub, return value as-is.
+            return SubExpression(value);
+        }
+
+        auto left = op->getFirstArg();
+        auto right = *op->getSecondArg();
+        return makeValueBinaryOpFromLocal(left, binOp, right);
+    }
+
+    return SubExpression(value);
+}
+
+Optional<int> getIntegerFromExpression(const SubExpression& expr)
+{
+    if(auto value = expr.checkValue())
+    {
+        if(auto lit = value->checkLiteral())
+        {
+            return Optional<int>(lit->signedInt());
+        }
+        else if(auto imm = value->checkImmediate())
+        {
+            return imm->getIntegerValue();
+        }
+    }
+    return Optional<int>();
+}
+
+//                                                 signed, value
+class ExpandedExprs : public std::vector<std::pair<bool, SubExpression>>
+{
+public:
+    std::string to_string() const
+    {
+        std::stringstream ss;
+        for(auto& p : *this)
+        {
+            ss << (p.first ? "+" : "-") << p.second.to_string();
+        }
+        return ss.str();
+    }
+};
+
+void expandExpression(const SubExpression& subExpr, ExpandedExprs& expanded)
+{
+    if(auto expr = subExpr.checkExpression())
+    {
+        ExpandedExprs leftEE, rightEE;
+        auto& left = expr->arg0;
+        auto& right = expr->arg1;
+        auto& op = expr->code;
+
+        expandExpression(left, leftEE);
+        expandExpression(right, rightEE);
+
+        auto getInteger = [](const std::pair<bool, SubExpression>& v) {
+            std::function<Optional<int>(const int&)> addSign = [&](const int& num) {
+                return make_optional(v.first ? num : -num);
+            };
+            return getIntegerFromExpression(v.second) & addSign;
+        };
+
+        auto leftNum = (leftEE.size() == 1) ? getInteger(leftEE[0]) : Optional<int>();
+        auto rightNum = (rightEE.size() == 1) ? getInteger(rightEE[0]) : Optional<int>();
+
+        auto append = [](ExpandedExprs& ee1, ExpandedExprs& ee2) { ee1.insert(ee1.end(), ee2.begin(), ee2.end()); };
+
+        if(leftNum && rightNum)
+        {
+            int l = leftNum.value_or(0);
+            int r = rightNum.value_or(0);
+            int num = 0;
+
+            if(op == OP_ADD)
+            {
+                num = l + r;
+            }
+            else if(op == OP_SUB)
+            {
+                num = l - r;
+            }
+            else if(op == Expression::FAKEOP_MUL)
+            {
+                num = l * r;
+            }
+            else if(op == Expression::FAKEOP_DIV)
+            {
+                num = l / r;
+            }
+            else
+            {
+                throw CompilationError(CompilationStep::OPTIMIZER, "Unknown operation", op.name);
+            }
+
+            // TODO: Care other types
+            auto value = Value(Literal(std::abs(num)), TYPE_INT32);
+            SubExpression foldedExpr(value);
+            expanded.push_back(std::make_pair(true, foldedExpr));
+        }
+        else
+        {
+            if(op == OP_ADD)
+            {
+                append(expanded, leftEE);
+                append(expanded, rightEE);
+            }
+            else if(op == OP_SUB)
+            {
+                append(expanded, leftEE);
+
+                for(auto& e : rightEE)
+                {
+                    e.first = !e.first;
+                }
+                append(expanded, rightEE);
+            }
+            else if(op == Expression::FAKEOP_MUL)
+            {
+                if(leftNum || rightNum)
+                {
+                    int num = 0;
+                    ExpandedExprs* ee = nullptr;
+                    if(leftNum)
+                    {
+                        num = leftNum.value_or(0);
+                        ee = &rightEE;
+                    }
+                    else
+                    {
+                        num = rightNum.value_or(0);
+                        ee = &leftEE;
+                    }
+                    for(int i = 0; i < num; i++)
+                    {
+                        append(expanded, *ee);
+                    }
+                }
+                else
+                {
+                    expanded.push_back(
+                        std::make_pair(true, SubExpression(std::make_shared<Expression>(op, left, right))));
+                }
+            }
+            else if(op == Expression::FAKEOP_DIV)
+            {
+                expanded.push_back(std::make_pair(true, SubExpression(std::make_shared<Expression>(op, left, right))));
+            }
+            else
+            {
+                throw CompilationError(CompilationStep::OPTIMIZER, "Unknown operation", op.name);
+            }
+        }
+    }
+    else if(auto value = subExpr.checkValue())
+    {
+        expanded.push_back(std::make_pair(true, subExpr));
+    }
+    else
+    {
+        throw CompilationError(CompilationStep::OPTIMIZER, "Cannot expand expression", subExpr.to_string());
+    }
+}
+
+void calcValueExpr(ExpandedExprs& expanded)
+{
+    // ExpandedExprs expanded;
+    // expandExpression(expr, expanded);
+
+    // for(auto& p : expanded)
+    //     logging::debug() << (p.first ? "+" : "-") << p.second->to_string() << " ";
+    // logging::debug() << logging::endl;
+
+    for(auto p = expanded.begin(); p != expanded.end();)
+    {
+        auto comp = std::find_if(expanded.begin(), expanded.end(), [&p](const std::pair<bool, SubExpression>& other) {
+            return p->first != other.first && p->second == other.second;
+        });
+        if(comp != expanded.end())
+        {
+            expanded.erase(comp);
+            p = expanded.erase(p);
+        }
+        else
+        {
+            p++;
+        }
+    }
+
+    // SubExpression result(INT_ZERO);
+    // for(auto& p : expanded)
+    // {
+    //     result = SubExpression(std::make_shared<Expression>(p.first ? OP_ADD : OP_SUB, result, p.second));
+    // }
+    //
+    // return result;
+}
+
+SubExpression replaceLocalToExpr(const SubExpression& subExpr, const Value& local, SubExpression newExpr)
+{
+    if(auto expr = subExpr.checkExpression())
+    {
+        return SubExpression(std::make_shared<Expression>(expr->code,
+                    replaceLocalToExpr(expr->arg0, local, newExpr),
+                    replaceLocalToExpr(expr->arg1, local, newExpr)));
+
+    }
+    else if(auto replacee = subExpr.checkLocal())
+    {
+        if (auto replacer = local.checkLocal()) {
+            if (*replacee == *replacer) {
+                return newExpr;
+            }
+        }
+    }
+
+    return subExpr;
+}
+
+void optimizations::combineDMALoads(const Module& module, Method& method, const Configuration& config)
+{
+    using namespace std;
+    using namespace VariantNamespace;
+
+    const std::regex vloadReg("vload(2|3|4|8|16)");
+
+    for(auto& bb : method)
+    {
+        //             loadInstrs,                        offsetValues,  addrValue
+        map<int, tuple<vector<intermediate::MethodCall*>, vector<Value>, Optional<Value>>> vloads;
+
+        for(auto& it : bb)
+        {
+            // Find all vloadn calls
+            if(auto call = dynamic_cast<intermediate::MethodCall*>(it.get()))
+            {
+                auto name = vc4c::spirv::demangleFunctionName(call->methodName);
+
+                std::smatch m;
+                if(std::regex_search(name, m, vloadReg))
+                {
+                    int n = std::stoi(m.str(1));
+
+                    // TODO: Check whether all second argument values are equal.
+
+                    auto& vload = vloads[n];
+                    auto& loadInstrs = get<0>(vload);
+                    auto& offsetValues = get<1>(vload);
+                    auto& addrValue = get<2>(vload);
+
+                    if(!addrValue.has_value())
+                    {
+                        addrValue = call->getArgument(1);
+                    }
+                    else if(addrValue != call->getArgument(1))
+                    {
+                        continue;
+                    }
+
+                    offsetValues.push_back(call->assertArgument(0));
+                    loadInstrs.push_back(call);
+                }
+            }
+        }
+
+        for(auto& p : vloads)
+        {
+            auto vectorLength = p.first;
+            auto& vload = p.second;
+            auto& loadInstrs = get<0>(vload);
+            auto& offsetValues = get<1>(vload);
+            auto& addrValue = get<2>(vload);
+
+            if(offsetValues.size() <= 1)
+                continue;
+
+            for(auto& inst : loadInstrs)
+            {
+                logging::debug() << inst->to_string() << logging::endl;
+            }
+
+            std::vector<std::pair<Value, SubExpression>> addrExprs;
+
+            for(auto& addrValue : offsetValues)
+            {
+                if(auto loc = addrValue.checkLocal())
+                {
+                    if(auto writer = loc->getSingleWriter())
+                    {
+                        addrExprs.push_back(std::make_pair(addrValue, iiToExpr(addrValue, writer)));
+                    }
+                    else
+                    {
+                        addrExprs.push_back(std::make_pair(addrValue, SubExpression(addrValue)));
+                    }
+                }
+                else
+                {
+                    // TODO: is it ok?
+                    addrExprs.push_back(std::make_pair(addrValue, SubExpression(addrValue)));
+                }
+            }
+
+            for(auto& current : addrExprs)
+            {
+                for(auto& other : addrExprs)
+                {
+                    current.second = replaceLocalToExpr(current.second, other.first, other.second);
+                }
+            }
+
+            for(auto& pair : addrExprs)
+            {
+                logging::debug() << pair.first.to_string() << " = " << pair.second.to_string() << logging::endl;
+            }
+
+            ExpandedExprs diff;
+            bool eqDiff = true;
+            for(size_t i = 1; i < addrExprs.size(); i++)
+            {
+                auto x = addrExprs[i - 1].second;
+                auto y = addrExprs[i].second;
+                auto diffExpr = SubExpression(std::make_shared<Expression>(OP_SUB, y, x));
+
+                ExpandedExprs currentDiff;
+                expandExpression(diffExpr, currentDiff);
+
+                calcValueExpr(currentDiff);
+
+                // Apply calcValueExpr again for integer literals.
+                SubExpression currentExpr(INT_ZERO);
+                for(auto& p : currentDiff)
+                {
+                    currentExpr =
+                        SubExpression(std::make_shared<Expression>(p.first ? OP_ADD : OP_SUB, currentExpr, p.second));
+                }
+                currentDiff.clear();
+                expandExpression(currentExpr, currentDiff);
+                calcValueExpr(currentDiff);
+
+                // logging::debug() << currentDiff.to_string() << ", " << diff.to_string() << logging::endl;
+
+                if(i == 1)
+                {
+                    diff = std::move(currentDiff);
+                }
+                else if(currentDiff != diff)
+                {
+                    eqDiff = false;
+                    break;
+                }
+            }
+
+            logging::debug() << addrExprs.size() << " loads are " << (eqDiff ? "" : "not ")
+                             << "equal difference: " << diff.to_string() << logging::endl;
+
+            if(eqDiff)
+            {
+                // The form of diff should be "0 (+/-) expressions...", then remove the value 0 at most right.
+                // ExpandedExprs expanded;
+                // expandExpression(diff, expanded);
+                // for (auto& ex : expanded) {
+                //     logging::debug() << "ex = " << ex.second.to_string()  << logging::endl;
+                // }
+                if(diff.size() == 1)
+                {
+                    auto diffExpr = diff[0].second;
+
+                    // logging::debug() << "diff = " << diff.to_string()  << logging::endl;
+
+                    auto term = diffExpr.getConstantExpression();
+                    auto mpValue = term.has_value() ? term->getConstantValue() : Optional<Value>{};
+                    auto mpLiteral = mpValue.has_value() ? mpValue->getLiteralValue() : Optional<Literal>{};
+
+                    if(mpLiteral)
+                    {
+                        if(mpLiteral->unsignedInt() < (1u << 12))
+                        {
+                            auto it = bb.walk();
+                            bool firstCall = true;
+                            while(!it.isEndOfBlock())
+                            {
+                                auto call = it.get<intermediate::MethodCall>();
+                                if(call && std::find(loadInstrs.begin(), loadInstrs.end(), call) != loadInstrs.end())
+                                {
+                                    it.erase();
+
+                                    auto output = *call->getOutput();
+                                    if(firstCall)
+                                    {
+                                        firstCall = false;
+
+                                        auto addrArg = call->assertArgument(1);
+
+                                        auto elemType = addrArg.type.getElementType();
+                                        auto vectorSize = elemType.getInMemoryWidth() * vectorLength;
+
+                                        // TODO: limit loadInstrs.size()
+                                        Value offset = assign(it, TYPE_INT32) =
+                                            offsetValues[0] * Literal(vectorLength * elemType.getInMemoryWidth());
+                                        Value addr = assign(it, TYPE_INT32) = offset + addrArg;
+
+                                        uint16_t memoryPitch =
+                                            static_cast<uint16_t>(mpLiteral->unsignedInt()) * vectorSize;
+
+                                        DataType VectorType{
+                                            elemType.getInMemoryWidth() * DataType::BYTE, vectorLength, false};
+
+                                        uint64_t rows = loadInstrs.size();
+                                        auto entries = Value(Literal(static_cast<uint32_t>(rows)), TYPE_INT32);
+                                        it = method.vpm->insertReadRAM(method, it, addr, VectorType, nullptr, true,
+                                            INT_ZERO, entries, Optional<uint16_t>(memoryPitch));
+
+                                        VPMArea area(VPMUsage::SCRATCH, 0, static_cast<uint8_t>(rows));
+                                        it = method.vpm->insertReadVPM(method, it, output, &area, true);
+                                    }
+                                    else
+                                    {
+                                        // TODO: gather these instructions in one mutex lock
+                                        it = method.vpm->insertLockMutex(it, true);
+                                        assign(it, output) = VPM_IO_REGISTER;
+                                        it = method.vpm->insertUnlockMutex(it, true);
+                                    }
+                                }
+                                else
+                                {
+                                    it.nextInBlock();
+                                }
+                            }
+
+                            logging::debug() << loadInstrs.size() << " loads are combined" << logging::endl;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 static Optional<std::pair<Value, InstructionDecorations>> combineAdditions(

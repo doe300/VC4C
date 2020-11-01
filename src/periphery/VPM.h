@@ -328,7 +328,8 @@ namespace vc4c
          *
          * see Broadcom spec, table 33
          */
-        class VPRGenericSetup : private Bitfield<uint32_t>
+        // class VPRGenericSetup : private Bitfield<uint32_t>
+        class VPRGenericSetup : public Bitfield<uint32_t>
         {
         public:
             VPRGenericSetup(uint8_t size, uint8_t stride, uint8_t numVectors = 1, uint8_t address = 0) : Bitfield(0)
@@ -408,7 +409,9 @@ namespace vc4c
          *
          * see Broadcom spec, table 36
          */
-        class VPRDMASetup : private Bitfield<uint32_t>
+        // class VPRDMASetup : private Bitfield<uint32_t>
+        // TODO: Changed to public, is it ok?
+        class VPRDMASetup : public Bitfield<uint32_t>
         {
         public:
             VPRDMASetup(
@@ -801,7 +804,7 @@ namespace vc4c
              *
              * If the data-type is set to unknown, the default element-type of this area is used
              */
-            VPRGenericSetup toReadSetup(DataType elementType, uint8_t numRows = 1) const;
+            VPRGenericSetup toReadSetup(DataType elementType/*, uint8_t numRows = 1*/) const;
 
             /*
              * Generates a RAM-to-VPM DMA read setup for loading the contents of a memory address into this VPM area
@@ -866,7 +869,7 @@ namespace vc4c
              */
             NODISCARD InstructionWalker insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
                 DataType type, const VPMArea* area = nullptr, bool useMutex = true,
-                const Value& inAreaOffset = INT_ZERO, const Value& numEntries = INT_ONE);
+                const Value& inAreaOffset = INT_ZERO, const Value& numEntries = INT_ONE, Optional<uint16_t> memoryPitch = {});
             /*
              * Inserts a write from VPM into RAM via DMA
              */
@@ -909,12 +912,12 @@ namespace vc4c
              */
             void dumpUsage() const;
 
+            InstructionWalker insertLockMutex(InstructionWalker it, bool useMutex) const;
+            InstructionWalker insertUnlockMutex(InstructionWalker it, bool useMutex) const;
+
         private:
             const unsigned maximumVPMSize;
             std::vector<std::shared_ptr<VPMArea>> areas;
-
-            InstructionWalker insertLockMutex(InstructionWalker it, bool useMutex) const;
-            InstructionWalker insertUnlockMutex(InstructionWalker it, bool useMutex) const;
         };
 
         /*

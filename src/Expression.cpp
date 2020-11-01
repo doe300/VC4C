@@ -6,6 +6,8 @@
 using namespace vc4c;
 
 constexpr OpCode Expression::FAKEOP_UMUL;
+constexpr OpCode Expression::FAKEOP_MUL;
+constexpr OpCode Expression::FAKEOP_DIV;
 
 SubExpression::SubExpression(const Optional<Value>& val) : Base(VariantNamespace::monostate{})
 {

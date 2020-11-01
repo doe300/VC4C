@@ -16,12 +16,15 @@
 #include "../optimization/ControlFlow.h"
 #include "../optimization/Eliminator.h"
 #include "../optimization/Reordering.h"
+#include "../intermediate/operators.h"
 #include "../spirv/SPIRVBuiltins.h"
 #include "Inliner.h"
 #include "LiteralValues.h"
 #include "LongOperations.h"
 #include "MemoryAccess.h"
 #include "Rewrite.h"
+
+#include "../optimization/Combiner.h"
 
 #include "log.h"
 
@@ -30,6 +33,8 @@
 
 using namespace vc4c;
 using namespace vc4c::normalization;
+using namespace vc4c::periphery;
+using namespace vc4c::operators;
 
 static bool checkWorkGroupUniform(const Value& arg)
 {
@@ -256,6 +261,16 @@ void Normalizer::normalize(Module& module) const
         PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 2, "Eliminate Phi-nodes (after)",
             method->countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 1);
     }
+
+    {
+        // TODO: move this optimization to appropriate location
+        auto kernels = module.getKernels();
+        for(Method* kernelFunc : kernels)
+        {
+            optimizations::combineDMALoads(module, *kernelFunc, config);
+        }
+    }
+
     auto kernels = module.getKernels();
     // 2. inline kernel-functions
     for(Method* kernelFunc : kernels)
@@ -269,6 +284,7 @@ void Normalizer::normalize(Module& module) const
         PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 5, "Inline (after)",
             kernel.countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 4);
     }
+
     // 3. run other normalization steps on kernel functions
     const auto f = [&module, this](Method* kernelFunc) -> void { normalizeMethod(module, *kernelFunc); };
     ThreadPool::scheduleAll<Method*>("Normalization", kernels, f, THREAD_LOGGER.get());
