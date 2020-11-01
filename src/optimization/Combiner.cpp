@@ -1167,6 +1167,12 @@ SubExpression iiToExpr(const Value& value, const LocalUser* inst)
             auto right = *op->getSecondArg();
             return makeValueBinaryOpFromLocal(left, op->op, right);
         }
+        else if(op->op == OP_OR) // Treat `or` as `add`
+        {
+            auto left = op->getFirstArg();
+            auto right = *op->getSecondArg();
+            return makeValueBinaryOpFromLocal(left, OP_ADD, right);
+        }
         else if(op->op == OP_SHL)
         {
             // convert shl to mul
