@@ -300,7 +300,8 @@ static std::vector<Entry> allKernels = {
 
     Entry{PASSED, FAST, "./testing/rodinia/backprop_kernel.cl", ""},
     Entry{PASSED, FAST, "./testing/rodinia/bfs-Kernels.cl", ""},
-    Entry{PASSED, FAST, "./testing/rodinia/cfd-Kernels.cl", ""},
+    // XXX sporadically register association errors
+    Entry{PENDING_LLVM, FAST, "./testing/rodinia/cfd-Kernels.cl", ""},
     Entry{PASSED, FAST, "./testing/rodinia/find_ellipse_kernel.cl", ""},
     Entry{PASSED, FAST, "./testing/rodinia/gaussianElim_kernels.cl", ""},
     Entry{PENDING_LLVM | PENDING_SPIRV, SLOW, "./testing/rodinia/heartwall_kernel_gpu_opencl.cl", ""},

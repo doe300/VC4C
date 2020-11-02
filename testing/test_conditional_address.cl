@@ -109,13 +109,14 @@ __kernel void test_phi_copy_address_simple(__global int* mem0, __global int* mem
 //     ptr[gid] = tmp + 17;
 // }
 
-__kernel void test_select_read_address_local(const __local int* in0, __global int* out)
+__kernel void test_select_read_address_local(__local int* in0, __global int* out)
 {
     // fits into VPM on purpose, will still be located in RAM, since the conditional accessed memory locations need
     // to be stored in the same memory type (VPM, RAM) for now.
     __local int in1[16];
     uint gid = (uint) get_global_id(0);
     // need to initially set some value to not be optimized away (or return undefined values)
+    in0[gid] = (int) gid;
     in1[gid] = (int) gid;
     const __local int* ptr = (gid & 1) ? in1 : in0;
     int tmp = ptr[gid];

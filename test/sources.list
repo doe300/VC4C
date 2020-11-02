@@ -1,48 +1,26 @@
 target_sources(TestVC4C
   PRIVATE
     RegressionTest.cpp
-    RegressionTest.h
-    test_cases.h
     test.cpp
     TestAnalyses.cpp
-    TestAnalyses.h
     TestArithmetic.cpp
-    TestArithmetic.h
     TestCommonFunctions.cpp
-    TestCommonFunctions.h
     TestConversionFunctions.cpp
-    TestConversionFunctions.h
     TestCustomContainers.cpp
     TestEmulator.cpp
-    TestEmulator.h
     TestExpressions.cpp
-    TestExpressions.h
     TestFrontends.cpp
-    TestFrontends.h
     TestGeometricFunctions.cpp
-    TestGeometricFunctions.h
     TestGraph.cpp
-    TestGraph.h
     TestInstructions.cpp
-    TestInstructions.h
-    TestIntegerFunctions.h
     TestIntegerFunctions.cpp
     TestIntrinsics.cpp
-    TestIntrinsics.h
     TestMathFunctions.cpp
-    TestMathFunctions.h
     TestMemoryAccess.cpp
-    TestMemoryAccess.h
     TestOperators.cpp
-    TestOperators.h
     TestOptimizations.cpp
-    TestOptimizations.h
     TestOptimizationSteps.cpp
-    TestOptimizationSteps.h
     TestPatternMatching.cpp
-    TestPatternMatching.h
     TestRelationalFunctions.cpp
-    TestRelationalFunctions.h
     TestVectorFunctions.cpp
-    TestVectorFunctions.h
 )
