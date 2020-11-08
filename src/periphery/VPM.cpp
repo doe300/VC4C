@@ -714,14 +714,14 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(
-            method, it, type.getElementType(), inAreaOffset, elementOffset, !realArea.canBePackedIntoRow());
+        // If we cannot pack the row, the data accessed from the QPUs is aligned to the beginning of a separate row per
+        // element. To also align the data transferred via DMA to that, we do not align to a row of the correct type in
+        // the call to #calculateElementOffsetInVPM, but instead below force alignment to 32-bit row.
+        it = calculateElementOffsetInVPM(method, it, type.getElementType(), inAreaOffset, elementOffset, true);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
-        // TODO is this correct? it fails memory-emulation tests. Is the element offset different for
-        // master/remove_mutex branch?
-        // if(!realArea.canBePackedIntoRow())
-        //     // need to modify offset to point to next row, not next element in same row
-        //     elementOffset = assign(it, TYPE_INT32, "%vpm_row_offset") = elementOffset << 4_val;
+        if(!realArea.canBePackedIntoRow())
+            // need to modify offset to point to next row, not next element in same row
+            elementOffset = assign(it, TYPE_INT32, "%vpm_row_offset") = elementOffset << 4_val;
         // 3) write setup with dynamic address
         dmaSetupBits = assign(it, TYPE_INT32, "%vpr_setup") =
             (dmaSetupBits + elementOffset, InstructionDecorations::VPM_READ_CONFIGURATION);
@@ -800,13 +800,14 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(
-            method, it, type.getElementType(), inAreaOffset, elementOffset, !realArea.canBePackedIntoRow());
+        // If we cannot pack the row, the data accessed from the QPUs is aligned to the beginning of a separate row per
+        // element. To also align the data transferred via DMA to that, we do not align to a row of the correct type in
+        // the call to #calculateElementOffsetInVPM, but instead below force alignment to 32-bit row.
+        it = calculateElementOffsetInVPM(method, it, type.getElementType(), inAreaOffset, elementOffset, true);
         // 2) dynamically calculate new VPM address from base and offset (shift and add offset to setup-value)
-        // TODO is this correct? See #insertReadRAM
-        // if(!realArea.canBePackedIntoRow())
-        //     // need to modify offset to point to next row, not next element in same row
-        //     elementOffset = assign(it, TYPE_INT32, "%vpm_row_offset") = elementOffset << 4_val;
+        if(!realArea.canBePackedIntoRow())
+            // need to modify offset to point to next row, not next element in same row
+            elementOffset = assign(it, TYPE_INT32, "%vpm_row_offset") = elementOffset << 4_val;
         Value shiftedOffset = assign(it, TYPE_INT32) = elementOffset << 3_val;
         // 3) write setup with dynamic address
         dmaSetupBits = assign(it, TYPE_INT32, "%vpw_setup") =

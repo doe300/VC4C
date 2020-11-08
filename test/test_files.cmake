@@ -93,14 +93,6 @@ create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ OpenCLIPP/Histogram.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ pocl/test_structs_as_args.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ rodinia/nearestNeighbor_kernel.cl)
 
-set(TEST_FILES_SOURCE ${CMAKE_CURRENT_BINARY_DIR}/test_files/test_files.cpp)
-add_custom_command(OUTPUT ${TEST_FILES_SOURCE}
-	COMMAND printf "#include \"test_files.h\"\\n" > ${TEST_FILES_SOURCE}
-	COMMAND printf "${STRING_DEFINITIONS}" >> ${TEST_FILES_SOURCE}
-	DEPENDS ${BINARY_DEPENCENCIES}
-	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-	VERBATIM)
-
 set(TEST_FILES_HEADER ${CMAKE_CURRENT_BINARY_DIR}/test_files.h)
 add_custom_command(OUTPUT ${TEST_FILES_HEADER}
 	COMMAND printf "#include <string>\\n" > ${TEST_FILES_HEADER}
@@ -108,6 +100,14 @@ add_custom_command(OUTPUT ${TEST_FILES_HEADER}
 	COMMAND printf "${STRING_DECLARATIONS}" >> ${TEST_FILES_HEADER}
 	COMMAND printf "}\\n" >> ${TEST_FILES_HEADER}
 	DEPENDS ${BINARY_DEPENCENCIES}
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+	VERBATIM)
+
+set(TEST_FILES_SOURCE ${CMAKE_CURRENT_BINARY_DIR}/test_files/test_files.cpp)
+add_custom_command(OUTPUT ${TEST_FILES_SOURCE}
+	COMMAND printf "#include \"test_files.h\"\\n" > ${TEST_FILES_SOURCE}
+	COMMAND printf "${STRING_DEFINITIONS}" >> ${TEST_FILES_SOURCE}
+	DEPENDS ${BINARY_DEPENCENCIES} ${TEST_FILES_HEADER}
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 	VERBATIM)
 

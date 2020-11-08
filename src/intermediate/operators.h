@@ -707,6 +707,18 @@ namespace vc4c
             return ComparisonWrapper{COND_ZERO_SET, val.val, UNDEFINED_VALUE, func};
         }
 
+        NODISCARD inline ComparisonWrapper iszero(as_float&& val)
+        {
+            // IEEE 754 considers -0 and 0 to be equal according to the "usual numeric comparisons", see
+            // https://en.wikipedia.org/wiki/Signed_zero#Comparisons
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
+                // check all bits zero except the sign, which we don't care about to also allow for -0
+                assign(it, out) = (arg0 & Value(Literal(0x7FFFFFFFu), TYPE_INT32), SetFlag::SET_FLAGS, deco);
+            };
+            return ComparisonWrapper{COND_ZERO_SET, val.val, UNDEFINED_VALUE, func};
+        }
+
         NODISCARD inline ComparisonWrapper selectSIMDElement(uint8_t index)
         {
             return as_unsigned{ELEMENT_NUMBER_REGISTER} == as_unsigned{Value(SmallImmediate(index), TYPE_INT8)};

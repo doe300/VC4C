@@ -183,6 +183,22 @@ static NODISCARD InstructionWalker insertCheckForNaN(
     return it;
 }
 
+static NODISCARD InstructionWalker insertCheckFloatZero(
+    InstructionWalker it, const Value& result, const Comparison* comp)
+{
+    assign(it, result) = BOOL_FALSE;
+    auto zeroCond = assignNop(it) = iszero(as_float{comp->getFirstArg()});
+    assign(it, result) = (BOOL_TRUE, zeroCond);
+    if(auto arg1 = comp->getSecondArg())
+    {
+        // if we have 2 inputs, we need to check whether BOTH are zero
+        zeroCond = assignNop(it) = iszero(as_float{*arg1});
+        // if the second one is NOT zero, we need to clear the flag, so for ifzc, set to 0
+        assign(it, result) = (BOOL_FALSE, zeroCond.invert());
+    }
+    return it;
+}
+
 static void intrinsifyFloatingRelation(Method& method, InstructionWalker it, const Comparison* comp)
 {
     // since we do not support NaNs/Inf and denormals, all ordered comparisons are treated as unordered
@@ -208,19 +224,32 @@ static void intrinsifyFloatingRelation(Method& method, InstructionWalker it, con
     }
     else if(COMP_ORDERED_EQ == comp->opCode)
     {
-        // !isnan(a) && !isnan(b) && a == b <=> !(isnan(a) || isnan(b) || a != b)
+        // IEEE 754 considers -0 and 0 to be equal according to the "usual numeric comparisons", see
+        // https://en.wikipedia.org/wiki/Signed_zero#Comparisons
+        // !isnan(a) && !isnan(b) && (a == b || (iszero(a) && iszero(b))) <=>
+        // !(isnan(a) || isnan(b) || a != b) || (iszero(a) && iszero(b))
         const auto& res = comp->getOutput().value();
         it = insertCheckForNaN(it, res, comp, true);
         auto cond = assignNop(it) = (as_float{comp->getFirstArg()} != as_float{comp->assertArgument(1)});
         assign(it, res) = (BOOL_FALSE, cond);
+        auto tmpZero = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getOutput()->type.getVectorWidth()), "%iszero");
+        it = insertCheckFloatZero(it, tmpZero, comp);
+        assign(it, res) = res || tmpZero;
         it.erase();
     }
     else if(COMP_ORDERED_NEQ == comp->opCode)
     {
-        // !isnan(a) && !isnan(b) && a != b <=> !(isnan(a) || isnan(b) || a == b)
+        // IEEE 754 considers -0 and 0 to be equal according to the "usual numeric comparisons", see
+        // https://en.wikipedia.org/wiki/Signed_zero#Comparisons
+        // !isnan(a) && !isnan(b) && a != b && !(iszero(a) && iszero(b)) <=>
+        // !(isnan(a) || isnan(b) || a == b || (iszero(a) && iszero(b))
         const auto& res = comp->getOutput().value();
         it = insertCheckForNaN(it, res, comp, true);
         auto cond = assignNop(it) = (as_float{comp->getFirstArg()} == as_float{comp->assertArgument(1)});
+        assign(it, res) = (BOOL_FALSE, cond);
+        auto tmpZero = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getOutput()->type.getVectorWidth()), "%iszero");
+        it = insertCheckFloatZero(it, tmpZero, comp);
+        cond = assignNop(it) = as_unsigned{tmpZero} != as_unsigned{INT_ZERO};
         assign(it, res) = (BOOL_FALSE, cond);
         it.erase();
     }
@@ -259,11 +288,18 @@ static void intrinsifyFloatingRelation(Method& method, InstructionWalker it, con
     }
     else if(COMP_UNORDERED_NEQ == comp->opCode)
     {
-        // isnan(a) || isnan(b) || a != b
+        // IEEE 754 considers -0 and 0 to be equal according to the "usual numeric comparisons", see
+        // https://en.wikipedia.org/wiki/Signed_zero#Comparisons
+        // isnan(a) || isnan(b) || (a != b && !(iszero(a) && iszero(b)))
         const auto& res = comp->getOutput().value();
         it = insertCheckForNaN(it, res, comp, false);
-        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} != as_float{comp->assertArgument(1)});
-        assign(it, res) = (BOOL_TRUE, cond);
+        auto tmpZero = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getOutput()->type.getVectorWidth()), "%iszero");
+        it = insertCheckFloatZero(it, tmpZero, comp);
+        assign(it, tmpZero) = tmpZero ^ BOOL_TRUE;
+        // if the values are equal, we need to clear the flag
+        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} == as_float{comp->assertArgument(1)});
+        assign(it, tmpZero) = (BOOL_FALSE, cond);
+        assign(it, res) = res || tmpZero;
         it.erase();
     }
     else if(COMP_UNORDERED_LT == comp->opCode)
