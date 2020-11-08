@@ -9,6 +9,7 @@
 #include <numeric>
 #include <random>
 #include <sstream>
+#include <stdexcept>
 
 namespace test_data
 {
@@ -196,7 +197,7 @@ namespace test_data
         return result;
     }
 
-    static WorkDimensions toDimensions(uint32_t localSizeX, uint32_t localSizeY = 1, uint32_t localSizeZ = 1,
+    inline WorkDimensions toDimensions(uint32_t localSizeX, uint32_t localSizeY = 1, uint32_t localSizeZ = 1,
         uint32_t numGroupsX = 1, uint32_t numGroupsY = 1, uint32_t numGroupsZ = 1, uint32_t globalOffsetX = 0,
         uint32_t globalOffsetY = 0, uint32_t globalOffsetZ = 0)
     {
@@ -213,6 +214,22 @@ namespace test_data
         config.globalOffsets[2] = globalOffsetZ;
 
         return config;
+    }
+
+    inline WorkDimensions calculateDimensions(std::size_t numElements, std::size_t vectorWidth = 16)
+    {
+        auto numWorkItems = numElements / vectorWidth;
+        if((numElements % vectorWidth) != 0)
+            ++numWorkItems;
+        for(uint32_t groupSize = 12; groupSize > 0; --groupSize)
+        {
+            if(numWorkItems % groupSize == 0)
+            {
+                auto numGroups = static_cast<uint32_t>(numWorkItems / groupSize);
+                return toDimensions(groupSize, 1, 1, numGroups, 1, 1);
+            }
+        }
+        throw std::invalid_argument{"Work cannot be distributed across work-groups: " + std::to_string(numElements)};
     }
 
     template <typename T>
@@ -465,6 +482,7 @@ namespace test_data
     void registerGeneralTests();
     void registerOpenCLCommonFunctionTests();
     void registerOpenCLGeometricFunctionTests();
+    void registerOpenCLRelationalFunctionTests();
     void registerMemoryTests();
 
 } // namespace test_data

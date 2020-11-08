@@ -111,7 +111,14 @@ add_custom_command(OUTPUT ${TEST_FILES_HEADER}
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 	VERBATIM)
 
-add_library(TestData STATIC FloatTests.cpp MemoryTests.cpp TestData.cpp ${BINARY_DEPENCENCIES} ${TEST_FILES_SOURCE} ${TEST_FILES_HEADER})
+add_library(TestData STATIC
+	FloatTests.cpp
+	MemoryTests.cpp
+	RelationalTests.cpp
+	TestData.cpp
+	${BINARY_DEPENCENCIES}
+	${TEST_FILES_SOURCE}
+)
 target_include_directories(TestData PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(TestData PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(TestData PRIVATE ${VC4C_ENABLED_WARNINGS})
