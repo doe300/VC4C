@@ -1,4 +1,8 @@
-
+/*
+ * Author: doe300
+ *
+ * See the file "LICENSE" for the full license governing this code.
+ */
 #include "TestEntries.h"
 
 #include "test_files.h"

@@ -1,3 +1,8 @@
+/*
+ * Author: doe300
+ *
+ * See the file "LICENSE" for the full license governing this code.
+ */
 #include "TestData.h"
 
 #include "TestEntries.h"
@@ -24,9 +29,9 @@ static std::map<std::string, TestData> ALL_TESTS{};
 void test_data::registerTest(TestData&& data)
 {
     auto key = data.uniqueName;
-    auto wasInserted = ALL_TESTS.emplace(std::move(key), std::move(data)).second;
+    auto wasInserted = ALL_TESTS.emplace(key, std::move(data)).second;
     if(!wasInserted)
-        throw std::runtime_error{"TestData key is not unique: " + data.uniqueName};
+        throw std::runtime_error{"TestData key is not unique: " + key};
 }
 
 void test_data::registerGeneralTests()
@@ -773,8 +778,11 @@ static void initializeTests()
         registerGeneralTests();
         registerOpenCLCommonFunctionTests();
         registerOpenCLGeometricFunctionTests();
+        registerOpenCLIntegerFunctionTests();
         registerOpenCLRelationalFunctionTests();
         registerMemoryTests();
+        registerTypeConversionTests();
+        registerVectorTests();
     }
 }
 

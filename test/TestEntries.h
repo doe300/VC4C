@@ -1,7 +1,13 @@
+/*
+ * Author: doe300
+ *
+ * See the file "LICENSE" for the full license governing this code.
+ */
 #pragma once
 
 #include "TestData.h"
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <iomanip>
@@ -152,6 +158,20 @@ namespace test_data
         return result;
     }
 
+    template <typename R, std::size_t GroupSize, typename T = R,
+        typename Func = std::function<std::array<R, GroupSize>(const T*)>>
+    std::vector<R> expand(const std::vector<T>& arg0, const Func& func)
+    {
+        auto numElements = arg0.size() * GroupSize;
+        std::vector<R> result(numElements);
+        for(std::size_t i = 0; i < numElements; i += GroupSize)
+        {
+            auto tmp = func(arg0.data() + i);
+            std::copy(tmp.begin(), tmp.end(), result.begin() + i);
+        }
+        return result;
+    }
+
     // just to check that really the long- and double-versions are used
     template <typename T>
     struct UniformDistribution
@@ -159,9 +179,9 @@ namespace test_data
     };
 
     template <>
-    struct UniformDistribution<long> : public std::uniform_int_distribution<long>
+    struct UniformDistribution<int64_t> : public std::uniform_int_distribution<int64_t>
     {
-        explicit UniformDistribution(long min, long max) : std::uniform_int_distribution<long>(min, max) {}
+        explicit UniformDistribution(int64_t min, int64_t max) : std::uniform_int_distribution<int64_t>(min, max) {}
     };
 
     template <>
@@ -233,12 +253,30 @@ namespace test_data
     }
 
     template <typename T>
+    T makePrintable(T val)
+    {
+        return val;
+    }
+
+    inline int32_t makePrintable(int8_t val)
+    {
+        // promote to integer, so they are not printed as characters, but as numbers
+        return val;
+    }
+
+    inline uint32_t makePrintable(uint8_t val)
+    {
+        // promote to integer, so they are not printed as characters, but as numbers
+        return val;
+    }
+
+    template <typename T>
     Result checkScalarEquals(T expected, T actual, std::string&& additionalInfo = "")
     {
         if(expected != actual)
             return Result{false,
-                "Validation error: Got " + std::to_string(actual) + ", expected " + std::to_string(expected) +
-                    std::move(additionalInfo)};
+                "Validation error: Got " + std::to_string(makePrintable(actual)) + ", expected " +
+                    std::to_string(makePrintable(expected)) + std::move(additionalInfo)};
         return RESULT_OK;
     }
 
@@ -272,8 +310,9 @@ namespace test_data
             else
             {
                 ss << std::scientific << std::setprecision(std::numeric_limits<T>::max_digits10);
-                ss << "Validation error: Got " << actual << ", expected " << expected << " with an error of "
-                   << std::dec << realDelta << ", allowed are " << ulp << " ULP" << additionalInfo;
+                ss << "Validation error: Got " << makePrintable(actual) << ", expected " << makePrintable(expected)
+                   << " with an error of " << std::dec << realDelta << ", allowed are " << ulp << " ULP"
+                   << additionalInfo;
             }
             return Result{false, ss.str()};
         }
@@ -297,7 +336,7 @@ namespace test_data
                 {
                     if(!actualValues.empty())
                         actualValues.append(", ");
-                    actualValues.append(std::to_string(resultData[i]));
+                    actualValues.append(std::to_string(makePrintable(resultData[i])));
                     if(!wrongIndices.empty())
                         wrongIndices.append(", ");
                     wrongIndices.append(std::to_string(i));
@@ -429,8 +468,8 @@ namespace test_data
                         actualValues << ", ";
                     }
                     noError = false;
-                    expectedValues << expected[i];
-                    actualValues << resultData[i];
+                    expectedValues << makePrintable(expected[i]);
+                    actualValues << makePrintable(resultData[i]);
                     if(!result.error.empty())
                         actualValues << " (" << result.error << ')';
                     wrongIndices << i;
@@ -460,9 +499,8 @@ namespace test_data
         return checkParameter<CompareEquals<T>>(index, std::move(expected));
     }
 
-    template <typename T>
-    ResultVerification checkParameter(
-        std::size_t index, std::size_t numEntries, std::function<Result(const std::vector<T>&)>&& predicate)
+    template <typename T, typename Func = std::function<Result(const std::vector<T>&)>>
+    ResultVerification checkParameter(std::size_t index, std::size_t numEntries, Func&& predicate)
     {
         return [index, numEntries, predicate{std::move(predicate)}](TestRunner& runner) -> Result {
             std::vector<T> resultData(numEntries);
@@ -482,7 +520,10 @@ namespace test_data
     void registerGeneralTests();
     void registerOpenCLCommonFunctionTests();
     void registerOpenCLGeometricFunctionTests();
+    void registerOpenCLIntegerFunctionTests();
     void registerOpenCLRelationalFunctionTests();
     void registerMemoryTests();
+    void registerTypeConversionTests();
+    void registerVectorTests();
 
 } // namespace test_data

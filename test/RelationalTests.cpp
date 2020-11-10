@@ -1,4 +1,8 @@
-
+/*
+ * Author: doe300
+ *
+ * See the file "LICENSE" for the full license governing this code.
+ */
 #include "TestEntries.h"
 
 #include "test_files.h"
@@ -524,6 +528,7 @@ void test_data::registerOpenCLRelationalFunctionTests()
     // 1. condition is true (MSB in vector element set or scalar != 0) -> second value is selected
     // 2. condition is false (MSB in vector element clear or scalar == 0) -> first value is selected
 
+    // TODO result mismatch
     registerTest(
         TestData{"select_long_vector", DataFilter::USES_LONG, &TERNARY_FUNCTION, "-DTYPE=long2 -DFUNC=select", "test",
             {toBufferParameter(std::vector<int64_t>(2)),

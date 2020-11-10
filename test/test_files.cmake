@@ -112,9 +112,12 @@ add_custom_command(OUTPUT ${TEST_FILES_SOURCE}
 	VERBATIM)
 
 add_library(TestData STATIC
+	ConversionTests.cpp
 	FloatTests.cpp
+	IntegerTests.cpp
 	MemoryTests.cpp
 	RelationalTests.cpp
+	VectorTests.cpp
 	TestData.cpp
 	${BINARY_DEPENCENCIES}
 	${TEST_FILES_SOURCE}

@@ -1,3 +1,8 @@
+/*
+ * Author: doe300
+ *
+ * See the file "LICENSE" for the full license governing this code.
+ */
 #pragma once
 
 #include <array>
@@ -124,6 +129,8 @@ namespace test_data
         TYPE_HANDLING = 0x1 << 0xD,
         // Focuses on relational/comparison functions/operators
         COMPARISONS = 0x1 < 0xE,
+        // Focuses on type conversions
+        TYPE_CONVERSIONS = 0x1 < 0xF,
         // Disabled test, since it does not work right now
         DISABLED = 0x80000000,
         ALL = 0xFFFFFFFF

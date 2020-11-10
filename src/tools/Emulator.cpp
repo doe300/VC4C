@@ -472,10 +472,12 @@ void Registers::writeStorageRegister(Register reg, SIMDVector&& val, std::bitset
     }
     auto& vec = storageRegisters.at(toIndex(reg)) = std::make_pair(
         toStorageValue(storageRegisters.at(toIndex(reg)).first, val, elementMask, bitMask), qpu.currentCycle);
-    if(reg.num == REG_REPLICATE_ALL.num && elementMask.any())
+    if(reg.num == REG_REPLICATE_ALL.num)
     {
-        // TODO if some flags are set, but not the 0th (or 0th, 4th, 8th and 12th), need to retain old value?
-        // TODO or is conditional replication possible at all?
+        if(!elementMask.test(0))
+            // Tests have shown that the flags for element 0 also apply here, like for any register write
+            // TODO for per-quad rotation, need to check the flags on the 0th element of the quad?
+            return;
         // is not actually stored in the physical file A or B
         vec.first = SIMDVector{};
         storageRegisters.at(toIndex(REG_ACC5)).first = val;
@@ -1285,6 +1287,10 @@ static void checkValidPackTarget(Pack packMode, const qpu_asm::Instruction& inst
 
     if(secondReg.file == RegisterFile::PHYSICAL_A && secondReg.isGeneralPurpose())
         // valid pack target
+        return;
+
+    if(firstReg.num == REG_NOP.num || secondReg.num == REG_NOP.num)
+        // XXX don't know whether the value is actually packed or not, but we don't care
         return;
 
     // no valid pack target
