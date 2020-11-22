@@ -1078,7 +1078,10 @@ namespace vc4c
      * - ftoi(NaN) = 0
      * - ftoi(Inf) = 0
      * - ftoi(-Inf) = 0
-     * -> any out-of-bounds value is flushed to zero
+     * - ftoi(2^31) = INT_MIN
+     * - ftoi(FLT_MAX) = INT_MIN
+     * - ftoi(FLT_MIN) = INT_MIN
+     * - all other out-of-bounds values are flushed to zero
      */
     static constexpr OpCode OP_FTOI{"ftoi", 7, 0, 1, true, false,
         add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};

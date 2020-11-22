@@ -234,6 +234,10 @@ namespace vc4c
     static constexpr Register REG_REPLICATE_QUAD{RegisterFile::PHYSICAL_A, 37};
     /*
      * Writing to this register distributes the value from the first element to all 15 other elements
+     *
+     * NOTE: Tests have shown that flags of the setting instruction are heeded, i.e. for conditional instruction setting
+     * this register, the replicated value is only overwritten if the condition for the 0th element is met (similar to
+     * any other kind of ALU register write).
      */
     static constexpr Register REG_REPLICATE_ALL{RegisterFile::PHYSICAL_B, 37};
     /*
@@ -562,7 +566,8 @@ namespace vc4c
         /*
          * The bit-wise representation of this literal
          */
-        union {
+        union
+        {
             int32_t i;
             uint32_t u;
             float f;

@@ -167,6 +167,11 @@ namespace vc4c
 
         std::string to_string() const;
 
+        /**
+         * Returns whether this basic block is part of the explicit work-group loop
+         */
+        bool isWorkGroupLoop() const;
+
     private:
         Method& method;
         intermediate::InstructionsList instructions;

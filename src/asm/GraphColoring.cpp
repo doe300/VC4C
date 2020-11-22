@@ -500,13 +500,19 @@ void GraphColoring::createGraph()
         node.possibleFiles = pair.second.possibleFiles;
         node.initialFile = pair.second.possibleFiles;
         {
-            auto load = dynamic_cast<const intermediate::LoadImmediate*>(pair.first->getSingleWriter());
-            auto move = dynamic_cast<const intermediate::MoveOperation*>(pair.first->getSingleWriter());
+            auto writer = pair.first->getSingleWriter();
+            auto load = dynamic_cast<const intermediate::LoadImmediate*>(writer);
+            auto move = dynamic_cast<const intermediate::MoveOperation*>(writer);
             // TODO can we use the splat value decoration here? First test seem to fail for some reason...
             if(!(load && load->type == intermediate::LoadType::REPLICATE_INT32) &&
                 !(move && !dynamic_cast<const intermediate::VectorRotation*>(move) && move->getSource().isAllSame()))
                 // Since writing to r5 automatically replicates, we only use it for values we know to be the same across
                 // all SIMD elements
+                node.blockR5();
+            if(writer && writer->hasConditionalExecution())
+                // Since writing to replication register also heeds the element flags, using the replicate-all register
+                // as output makes the output of all elements dependent on the flags of the 0th element instead of the
+                // flags of the single elements.
                 node.blockR5();
         }
         if(pair.second.firstOccurrence.get() == pair.second.lastOccurrence.get())

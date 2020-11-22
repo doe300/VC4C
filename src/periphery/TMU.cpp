@@ -279,9 +279,9 @@ InstructionWalker periphery::insertReadTMU(Method& method, InstructionWalker it,
         assign(it, tmu.getYCoord()) = 0_val;
     }
     assign(it, tmu.getXCoord(xCoord.type)) = xCoord;
-    // 4. trigger loadtmu
+    // 4. trigger loadtmu (stalls 9 to 20 cycles)
     nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
-    // 5. read from r4 (stalls 9 to 20 cycles)
+    // 5. read from r4
     assign(it, dest) = TMU_READ_REGISTER;
     // 6. TODO reset UNIFORM pointer? for next work-group iteration, or disable when used with images?
     return it;

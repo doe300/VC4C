@@ -165,6 +165,7 @@ InstructionWalker intrinsics::intrinsifyIntegerToLongMultiplication(
 
     if(!isUnsigned)
     {
+        // TODO what is max(INT_MIN, -INT_MIN)? Or first what is -INT_MIN?
         auto minusArg0 = assign(it, arg0.type, "%mul_hi.arg0Abs") = -as_signed{arg0};
         arg0 = assign(it, arg0.type, "%mul_hi.arg0Abs") = max(as_signed{arg0}, as_signed{minusArg0});
         auto minusArg1 = assign(it, arg1.type, "%mul_hi.arg1Abs") = -as_signed{arg1};
@@ -187,7 +188,6 @@ InstructionWalker intrinsics::intrinsifyIntegerToLongMultiplication(
     // (non-)distinction
     // NOTE: in contrast to the normal 32-bit multiplication, we need to take 16-bit portions, since for 24-bit
     // multiplication, we lose the upper 16 bits (2 * 24 = 48 > 32)!
-    Value lowTmp = UNDEFINED_VALUE;
 
     auto outputType = call->getOutput()->type;
     auto arg0Hi = assign(it, outputType, "%mul_hi.arg0Hi") = as_unsigned{arg0} >> 16_val;
@@ -198,16 +198,12 @@ InstructionWalker intrinsics::intrinsifyIntegerToLongMultiplication(
     auto resHiLo = assign(it, outputType, "%mul_hi.resHiLo") = mul24(arg0Hi, arg1Lo);
     auto resLoHi = assign(it, outputType, "%mul_hi.resLoHi") = mul24(arg0Lo, arg1Hi);
     auto resLo = assign(it, outputType, "%mul_hi.resLo") = mul24(arg0Lo, arg1Lo);
-    if(lowResult)
-        lowTmp = assign(it, outputType) = resLo;
+    auto lowTmp = assign(it, outputType) = resLo;
     auto resOverflow = assign(it, outputType, "%mul_hi.of") = 0_val;
     resLo = assign(it, outputType, "%mul_hi.resLo") = as_unsigned{resLo} >> 16_val;
     auto resMid = assign(it, outputType, "%mul_hi.resMid") = (resHiLo + resLoHi, SetFlag::SET_FLAGS);
-    if(lowResult)
-    {
-        auto tmp = assign(it, outputType) = resMid << 16_val;
-        assign(it, *lowResult) = lowTmp + tmp;
-    }
+    auto tmp = assign(it, outputType) = resMid << 16_val;
+    auto resLower = assign(it, outputType, "%mul_hi.resLo") = lowTmp + tmp;
     assign(it, resOverflow) = (resOverflow + 1_val, COND_CARRY_SET);
     resMid = assign(it, outputType, "%mul_hi.resMid") = (resMid + resLo, SetFlag::SET_FLAGS);
     assign(it, resOverflow) = (resOverflow + 1_val, COND_CARRY_SET);
@@ -219,24 +215,36 @@ InstructionWalker intrinsics::intrinsifyIntegerToLongMultiplication(
 
     if(!isUnsigned)
     {
+        // Code to apply 64-bit two's complement (and select that) taken from
+        // https://gitlab.freedesktop.org/mesa/mesa/blob/master/src/compiler/nir/nir_lower_alu.c (function
+        // lower_alu_instr, case nir_op_imul_high)
+        auto lowerComplement = assign(it, outputType, "%mul_hi.lowComp") = ~resLower;
+        lowerComplement = assign(it, outputType, "%mul_hi.lowComp") = (lowerComplement + INT_ONE, SetFlag::SET_FLAGS);
+        auto carry = assign(it, outputType, "%mul_hi.lowCarry") = INT_ZERO;
+        assign(it, carry) = (INT_ONE, COND_CARRY_SET);
+
         auto out = assign(it, outputType, "%mul_hi.out") = resMid + resHi;
+        auto highComplement = assign(it, outputType, "%mul_hi.highComp") = ~out;
+        highComplement = assign(it, outputType, "%mul_hi.highComp") = highComplement + carry;
+
+        auto finalResult = assign(it, outputType, "%mul_hi.out") = out;
         auto arg0Neg = assign(it, arg0.type, "%mul_hi.arg0Sign") = as_signed{call->assertArgument(0)} >> 31_val;
         auto arg1Neg = assign(it, arg1.type, "%mul_hi.arg1Sign") = as_signed{call->assertArgument(1)} >> 31_val;
-        auto sign = assign(it, outputType, "%mul_hi.sign") = arg0Neg ^ arg1Neg;
-        /*
-         * This is a short-circuit of (sign & (-out - 1)) | (~sign & out) with
-         * - out = the unsigned result and
-         * - sign = ((x >> 31) ^ (y >> 31)) (either sign set)
-         *
-         * (sign & (-out - 1)) | (~sign & out)
-         * <=> (sign & ~out) | (~sign & out)
-         * <=> sign ^ out
-         */
-        out = assign(it, outputType, "%mul_hi.out") = sign ^ out;
-        it.reset((new MoveOperation(call->getOutput().value(), std::move(out)))->copyExtrasFrom(call));
+        auto cond = assignNop(it) = as_unsigned{arg0Neg} != as_unsigned{arg1Neg};
+        assign(it, finalResult) = (highComplement, cond);
+        if(lowResult)
+        {
+            // TODO is this correct?
+            assign(it, *lowResult) = resLower;
+            assign(it, *lowResult) = (lowerComplement, cond);
+        }
+
+        it.reset((new MoveOperation(call->getOutput().value(), std::move(finalResult)))->copyExtrasFrom(call));
     }
     else
     {
+        if(lowResult)
+            assign(it, *lowResult) = resLower;
         it.reset(new Operation(OP_ADD, call->getOutput().value(), resMid, resHi));
         it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
     }

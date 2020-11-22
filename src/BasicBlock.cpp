@@ -343,3 +343,10 @@ std::string BasicBlock::to_string() const
     return "block " + getLabel()->getLabel()->name;
 }
 LCOV_EXCL_STOP
+
+bool BasicBlock::isWorkGroupLoop() const
+{
+    return check(getLabel()) & [](const intermediate::IntermediateInstruction& ins) -> bool {
+        return ins.hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_LOOP);
+    };
+}

@@ -1039,7 +1039,11 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
         return setFlags(Literal(std::max(std::fabs(firstLit.real()), std::fabs(secondLit.real()))), carryFlag, false);
     }
     case OP_FTOI.opAdd:
-        // Converts unsigned values > 2^31 to unsigned integer and anything out of bounds [INT_MIN, UINT_MAX] to 0.
+        // Converts unsigned values > 2^31 to unsigned integer and most out of bounds [INT_MIN, UINT_MAX] to 0.
+        if(firstLit.real() == std::numeric_limits<float>::max() ||
+            firstLit.real() == std::numeric_limits<float>::lowest())
+            // somehow FLT_MIN and FLT_MAX are converted to INT_MIN
+            return setFlags(Literal(std::numeric_limits<int32_t>::min()), false);
         if(std::isnan(firstLit.real()) || std::isinf(firstLit.real()) ||
             std::abs(firstLit.real()) > static_cast<float>(std::numeric_limits<int64_t>::max()) ||
             std::abs(static_cast<int64_t>(firstLit.real())) > std::numeric_limits<int32_t>::max())

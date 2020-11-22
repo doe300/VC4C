@@ -6,8 +6,11 @@
 
 #include "TypeConversions.h"
 
+#include "Helper.h"
 #include "VectorHelper.h"
 #include "operators.h"
+
+#include <cmath>
 
 using namespace vc4c;
 using namespace vc4c::intermediate;
@@ -512,5 +515,104 @@ InstructionWalker intermediate::insertFloatToIntegerSaturation(
     // src <= itof(min) -> dest = min
     auto underflowCond = assignNop(it) = as_float{src} <= as_float{minFloat};
     assign(it, dest) = (minInteger, underflowCond);
+    return it;
+}
+
+InstructionWalker intermediate::insertUnsignedToFloatConversion(
+    InstructionWalker it, Method& method, const Value& src, const Value& dest)
+{
+    if(src.type.getScalarBitCount() < 32)
+    {
+        // make sure, leading bits are zeroes
+        const uint32_t mask = src.type.getScalarWidthMask();
+        auto tmp = assign(it, dest.type, "%uitofp") = (src & Value(Literal(mask), TYPE_INT32));
+        it.emplace(new Operation(OP_ITOF, dest, tmp));
+        it.nextInBlock();
+    }
+    else if(src.type.getScalarBitCount() > 32)
+    {
+        auto parts = Local::getLocalData<MultiRegisterData>(src.checkLocal());
+        if(!parts)
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Can't convert long to floating value without having multi-register data", it->to_string());
+
+        auto upperPart = method.addNewLocal(dest.type);
+        it = insertUnsignedToFloatConversion(it, method, parts->upper->createReference(), upperPart);
+        auto lowerPart = method.addNewLocal(dest.type);
+        it = insertUnsignedToFloatConversion(it, method, parts->lower->createReference(), lowerPart);
+        auto tmp = assign(it, upperPart.type) = upperPart * Value(Literal(std::pow(2.0f, 32.0f)), TYPE_FLOAT);
+        assign(it, dest) = tmp + lowerPart;
+    }
+    else // 32-bits
+    {
+        // TODO sometimes is off by 1 ULP, e.g. for 1698773569 gets 1698773504 instead of expected 1698773632
+        // uitof(x) = y * uitof(x/y) + uitof(x & |y|), where |y| is the bits for y
+        auto tmpInt = assign(it, src.type) = src / 2_lit;
+        auto tmpFloat = method.addNewLocal(dest.type);
+        it.emplace(new Operation(OP_ITOF, tmpFloat, tmpInt));
+        it.nextInBlock();
+        auto tmpFloat2 = assign(it, tmpFloat.type) = tmpFloat * Value(Literal(2.0f), TYPE_FLOAT);
+        auto tmpInt2 = assign(it, src.type) = src % 2_lit;
+        auto tmpFloat3 = method.addNewLocal(dest.type);
+        it.emplace(new Operation(OP_ITOF, tmpFloat3, tmpInt2));
+        it.nextInBlock();
+        assign(it, dest) = as_float{tmpFloat2} + as_float{tmpFloat3};
+    }
+    return it;
+}
+
+InstructionWalker intermediate::insertSignedToFloatConversion(
+    InstructionWalker it, Method& method, const Value& src, const Value& dest)
+{
+    if(src.type.getScalarBitCount() > 32)
+    {
+        auto parts = Local::getLocalData<MultiRegisterData>(src.checkLocal());
+        if(!parts)
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Can't convert long to floating value without having multi-register data", it->to_string());
+
+        auto upperPart = method.addNewLocal(dest.type);
+        it.emplace(new intermediate::Operation(OP_ITOF, upperPart, parts->upper->createReference()));
+        it.nextInBlock();
+        upperPart = assign(it, upperPart.type) = upperPart * Value(Literal(std::pow(2.0f, 32.0f)), TYPE_FLOAT);
+        /*
+         * Case handling:
+         * - Upper part positive -> normal flow (upper part to float * 2^32 + unsigned lower part to float)
+         * - Upper part all zeroes -> normal flow (lower part is zero-extended and already handled as unsigned)
+         * - Upper part negative -> inverted flow (upper part to float * 2^32 - |lower part| to float)
+         * - Upper part all ones -> ignore upper part
+         */
+        auto lowerAbs = method.addNewLocal(parts->lower->type);
+        Value dummySign = UNDEFINED_VALUE;
+        it = insertMakePositive(it, method, parts->lower->createReference(), lowerAbs, dummySign);
+        auto lowerInput = assign(it, parts->lower->type) = parts->lower->createReference();
+        auto cond = assignNop(it) = as_signed{parts->upper->createReference()} < as_signed{0_val};
+        assign(it, lowerInput) = (lowerAbs, cond);
+
+        // convert the actual (absolute value of the) lower part
+        auto lowerPart = method.addNewLocal(dest.type);
+        it = intermediate::insertUnsignedToFloatConversion(it, method, lowerInput, lowerPart);
+
+        // if upper part was negative, subtract, otherwise add the parts together
+        cond = assignNop(it) = as_signed{parts->upper->createReference()} < as_signed{0_val};
+        assign(it, lowerPart) = (-as_float{lowerPart}, cond);
+        // if upper part is all ones, do not add it (since it is only the sign, no value)
+        cond = assignNop(it) = as_signed{parts->upper->createReference()} == as_signed{0xFFFFFFFF_val};
+        assign(it, upperPart) = (FLOAT_ZERO, cond);
+        it.emplace(new intermediate::Operation(OP_FADD, dest, upperPart, lowerPart));
+        it.nextInBlock();
+        return it;
+    }
+
+    // for non 32-bit types, need to sign-extend
+    auto intValue = src;
+    if(src.type.getScalarBitCount() < 32)
+    {
+        intValue = method.addNewLocal(TYPE_INT32, "%sitofp");
+        it = insertSignExtension(it, method, src, intValue, true);
+    }
+
+    it.emplace(new Operation(OP_ITOF, dest, intValue));
+    it.nextInBlock();
     return it;
 }

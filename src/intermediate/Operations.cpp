@@ -187,9 +187,11 @@ qpu_asm::DecoratedInstruction Operation::convertToAsm(const FastMap<const Local*
             "32-bit saturation is only applicable for integer addition/subtraction", to_string());
 
     // according to tests we cannot directly pack into periphery registers
-    if(pack.hasEffect() && (outReg.file != RegisterFile::PHYSICAL_A || !outReg.isGeneralPurpose()))
-        throw CompilationError(
-            CompilationStep::CODE_GENERATION, "Pack modes cannot write into periphery registers directly", to_string());
+    if(pack.hasEffect() && (outReg.file != RegisterFile::PHYSICAL_A || !outReg.isGeneralPurpose()) &&
+        outReg.num != REG_NOP.num)
+        throw CompilationError(CompilationStep::CODE_GENERATION,
+            "Pack modes cannot write into periphery register (" + outReg.to_string(true, false) + ") directly",
+            to_string());
 
     InputMultiplex inMux0 = getInputMux(input0.first, getFirstArg().checkRegister(), input0.second);
     if(!input0.second)

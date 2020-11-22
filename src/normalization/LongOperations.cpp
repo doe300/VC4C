@@ -12,6 +12,8 @@
 #include "../intrinsics/Operators.h"
 #include "log.h"
 
+#include <cmath>
+
 using namespace vc4c;
 using namespace vc4c::normalization;
 using namespace vc4c::operators;
@@ -375,6 +377,8 @@ static void lowerLongOperation(
         cond = assignNop(it) = as_unsigned{out->lower->createReference()} != as_unsigned{in0Low};
         assign(it, *setCarryFlag) = (BOOL_TRUE, cond);
     }
+    else
+        throw CompilationError(CompilationStep::NORMALIZER, "Unsupported operation on 64-bit integers", op.to_string());
 
     if(isDummyOutput && originalOut && originalOut != NOP_REGISTER)
     {
@@ -529,6 +533,16 @@ void normalization::lowerLongOperation(
         {
             // TODO correct for signed??
             assign(it, call->getOutput().value()) = (src->lower->createReference(), call->decoration);
+            it.erase();
+        }
+        else if(src && call->methodName.find("vc4cl_ulong_to_float") != std::string::npos)
+        {
+            it = intermediate::insertUnsignedToFloatConversion(it, method, call->assertArgument(0), *call->getOutput());
+            it.erase();
+        }
+        else if(src && call->methodName.find("vc4cl_long_to_float") != std::string::npos)
+        {
+            it = intermediate::insertSignedToFloatConversion(it, method, call->assertArgument(0), *call->getOutput());
             it.erase();
         }
         else if(out && src && call->methodName.find("vc4cl_bitcast_long") != std::string::npos)

@@ -113,7 +113,7 @@ static IntrinsicFunction intrinsifySFUInstruction(const Register sfuRegister)
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying unary '" << callSite->to_string() << "' to SFU call" << logging::endl);
         it = periphery::insertSFUCall(sfuRegister, it, callSite->assertArgument(0));
-        it.reset((new MoveOperation(callSite->getOutput().value(), Value(REG_SFU_OUT, callSite->getOutput()->type)))
+        it.reset((new MoveOperation(callSite->getOutput().value(), Value(REG_SFU_OUT, callSite->getReturnType())))
                      ->copyExtrasFrom(callSite));
         return it;
     };
@@ -1161,46 +1161,16 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
     // integer to float
     else if(op->opCode == "sitofp")
     {
-        // for non 32-bit types, need to sign-extend
-        Value tmp = op->getFirstArg();
-        if(op->getFirstArg().type.getScalarBitCount() < 32)
-        {
-            tmp = method.addNewLocal(TYPE_INT32, "%sitofp");
-            it = insertSignExtension(it, method, op->getFirstArg(), tmp, true);
-        }
-        it.reset(new Operation(OP_ITOF, op->getOutput().value(), tmp));
+        it = insertSignedToFloatConversion(it, method, op->getFirstArg(), op->getOutput().value());
+        // remove 'sitofp'
+        it.erase();
         return true;
     }
     else if(op->opCode == "uitofp")
     {
-        const Value tmp = method.addNewLocal(op->getOutput()->type, "%uitofp");
-        if(op->getFirstArg().type.getScalarBitCount() < 32)
-        {
-            // make sure, leading bits are zeroes
-            const uint32_t mask = op->getFirstArg().type.getScalarWidthMask();
-            assign(it, tmp) = (op->getFirstArg() & Value(Literal(mask), TYPE_INT32));
-            it.reset(new Operation(OP_ITOF, op->getOutput().value(), tmp));
-        }
-        else if(op->getFirstArg().type.getScalarBitCount() > 32)
-        {
-            throw CompilationError(CompilationStep::NORMALIZER,
-                "Can't convert long to floating value, since long is not supported", op->to_string());
-        }
-        else // 32-bits
-        {
-            // TODO sometimes is off by 1 ULP, e.g. for 1698773569 gets 1698773504 instead of expected 1698773632
-            // uitof(x) = y * uitof(x/y) + uitof(x & |y|), where |y| is the bits for y
-            auto tmpInt = assign(it, op->getFirstArg().type) = op->getFirstArg() / 2_lit;
-            auto tmpFloat = method.addNewLocal(op->getOutput()->type);
-            it.emplace(new Operation(OP_ITOF, tmpFloat, tmpInt));
-            it.nextInBlock();
-            auto tmpFloat2 = assign(it, tmpFloat.type) = tmpFloat * Value(Literal(2.0f), TYPE_FLOAT);
-            auto tmpInt2 = assign(it, op->getFirstArg().type) = op->getFirstArg() % 2_lit;
-            auto tmpFloat3 = method.addNewLocal(op->getOutput()->type);
-            it.emplace(new Operation(OP_ITOF, tmpFloat3, tmpInt2));
-            it.nextInBlock();
-            it.reset(new Operation(OP_FADD, op->getOutput().value(), tmpFloat2, tmpFloat3));
-        }
+        it = insertUnsignedToFloatConversion(it, method, op->getFirstArg(), op->getOutput().value());
+        // remove 'uitofp'
+        it.erase();
         return true;
     }
     // float to integer
