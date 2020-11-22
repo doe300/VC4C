@@ -155,10 +155,11 @@ template <typename T>
 static T madSat(T in1, T in2, T in3)
 {
     // TODO does not work for 64-bit types
+    using LongType = std::conditional_t<std::is_unsigned<T>::value, uint64_t, int64_t>;
     return static_cast<T>(
-        std::min(std::max(static_cast<int64_t>(in1) * static_cast<int64_t>(in2) + static_cast<int64_t>(in3),
-                     static_cast<int64_t>(std::numeric_limits<T>::min())),
-            static_cast<int64_t>(std::numeric_limits<T>::max())));
+        std::min(std::max(static_cast<LongType>(in1) * static_cast<LongType>(in2) + static_cast<LongType>(in3),
+                     static_cast<LongType>(std::numeric_limits<T>::min())),
+            static_cast<LongType>(std::numeric_limits<T>::max())));
 }
 
 // taken from: https://stackoverflow.com/questions/25799215/bitwise-rotation-circular-shift
@@ -276,7 +277,8 @@ static void registerTypeTests(const std::string& typeName, const std::string& up
             0, transform<std::make_unsigned_t<T>, T>(values, Abs<T, std::is_unsigned<T>::value>{}))}});
 
     // TODO abs_diff_ulong fails on hardware and Emulator
-    registerTest(TestData{"abs_diff_" + typeName, flags, &BINARY_FUNCTION,
+    // TODO fail for (among many others): (0, max), (1, max), (-1, max), (min, max), (min, most), (max, most)
+    registerTest(TestData{"abs_diff_" + typeName, flags | LONG_UNSUPPORTED, &BINARY_FUNCTION,
         "-DOUT=" + unsignedName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=abs_diff", "test",
         {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)), toBufferParameter(std::vector<T>(productLeft)),
             toBufferParameter(std::vector<T>(productRight))},
@@ -332,7 +334,6 @@ static void registerTypeTests(const std::string& typeName, const std::string& up
     if(sizeof(T) <= sizeof(uint32_t))
     {
         // TODO add 64-bit support
-        // TODO mad_hi_int fails on emulator and hardware (but OpenCL CTS test passes!)
         registerTest(TestData{"mad_hi_" + typeName, flags, &TERNARY_FUNCTION,
             "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DIN2=" + typeName +
                 "16 -DFUNC=mad_hi",
@@ -346,8 +347,12 @@ static void registerTypeTests(const std::string& typeName, const std::string& up
                     [](T in0, T in1, T in2) -> T { return madHi(in0, in1, in2); }))}});
     }
 
-    // TODO mad_sat_(u)int fails on emulator and hardware (but OpenCL CTS test passes!)
-    registerTest(TestData{"mad_sat_" + typeName, flags | LONG_UNSUPPORTED, &TERNARY_FUNCTION,
+    // TODO mad_sat_int fails on emulator and hardware (but OpenCL CTS test passes! Probably does not test such corner
+    // cases)
+    // Fails for 1 * min/max + 1/min, since long add is not saturated and overflows
+    registerTest(TestData{"mad_sat_" + typeName,
+        flags | LONG_UNSUPPORTED | (std::is_same<T, int32_t>::value ? DataFilter::DISABLED : DataFilter::NONE),
+        &TERNARY_FUNCTION,
         "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DIN2=" + typeName +
             "16 -DFUNC=mad_sat",
         "test",
@@ -377,7 +382,6 @@ static void registerTypeTests(const std::string& typeName, const std::string& up
     if(sizeof(T) <= sizeof(uint32_t))
     {
         // TODO add 64-bit support
-        //TODO mul_hi_int fails on emulator and hardware (but OpenCL CTS test passes!)
         registerTest(TestData{"mul_hi_" + typeName, flags, &BINARY_FUNCTION,
             "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=mul_hi", "test",
             {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)),

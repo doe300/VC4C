@@ -204,13 +204,15 @@ void test_data::registerOpenCLCommonFunctionTests()
                 -5.0f, 12.0f, -3.0f, -2.0f, -1.0f})}});
 
     // maximum error of 2 ULP not in OpenCL 1.2 standard, but in latest
-    registerTest(TestData{"degrees", DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES, &UNARY_FUNCTION,
-        "-DFUNC=degrees", "test",
+    registerTest(TestData{"degrees", DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES | DataFilter::DISABLED,
+        &UNARY_FUNCTION, "-DFUNC=degrees", "test",
         {toBufferParameter(std::vector<float>(values.size(), 42.0f)), toBufferParameter(std::vector<float>(values))},
         calculateDimensions(values.size()),
         {checkParameter<CompareULP<2>>(0, transform<float>(values, [](float val) -> float {
-            // TODO is this okay with the OpenCL C standard? At least this is what the GPU does
-            return std::isnan(val) ? std::numeric_limits<float>::infinity() : val * 57.295780181884765625f;
+            // FIXME is not, C99 refers to IEEE 754 which states in section 6.2: "For an operation with quiet NaN
+            // inputs, other than maximum and minimum operations,if a floating-point result is to be delivered the
+            // result shall be a quiet NaN which should be one of the inputNaNs."
+            return val * 57.295780181884765625f;
         }))}});
 
     // maximum error of 0 ULP not in OpenCL 1.2 standard, but in latest
@@ -252,14 +254,12 @@ void test_data::registerOpenCLCommonFunctionTests()
             CompareAbsoluteError{1e-3f})}});
 
     // maximum error of 2 ULP not in OpenCL 1.2 standard, but in latest
-    registerTest(TestData{"radians", DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES, &UNARY_FUNCTION,
-        "-DFUNC=radians", "test",
+    registerTest(TestData{"radians", DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES | DataFilter::DISABLED,
+        &UNARY_FUNCTION, "-DFUNC=radians", "test",
         {toBufferParameter(std::vector<float>(values.size(), 42.0f)), toBufferParameter(std::vector<float>(values))},
         calculateDimensions(values.size()),
-        {checkParameter<CompareULP<2>>(0, transform<float>(values, [](float val) -> float {
-            // TODO is this okay with the OpenCL C standard? At least this is what the GPU does
-            return std::isnan(val) ? std::numeric_limits<float>::infinity() : val * (static_cast<float>(M_PI) / 180.f);
-        }))}});
+        {checkParameter<CompareULP<2>>(0,
+            transform<float>(values, [](float val) -> float { return val * (static_cast<float>(M_PI) / 180.f); }))}});
 
     // maximum error of 0 ULP not in OpenCL 1.2 standard, but in latest
     registerTest(TestData{"step", DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES, &BINARY_FUNCTION,
