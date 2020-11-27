@@ -10,20 +10,12 @@
 
 #include "cpptest.h"
 #include "cpptest-main.h"
-#include "TestArithmetic.h"
 #include "TestEmulator.h"
 #include "TestGraph.h"
 #include "TestInstructions.h"
 #include "TestOperators.h"
 #include "TestFrontends.h"
 #include "TestMathFunctions.h"
-#include "TestIntegerFunctions.h"
-#include "TestCommonFunctions.h"
-#include "TestGeometricFunctions.h"
-#include "TestRelationalFunctions.h"
-#include "TestVectorFunctions.h"
-#include "TestMemoryAccess.h"
-#include "TestConversionFunctions.h"
 #include "TestOptimizations.h"
 #include "TestIntrinsics.h"
 #include "TestExpressions.h"
@@ -76,46 +68,6 @@ static Test::Suite* newMathFunctionsTest()
     return new TestMathFunctions(config);
 }
 
-static Test::Suite* newArithmeticTest()
-{
-    return new TestArithmetic(config);
-}
-
-static Test::Suite* newIntegerFunctionsTest()
-{
-    return new TestIntegerFunctions(config);
-}
-
-static Test::Suite* newCommonFunctionsTest()
-{
-    return new TestCommonFunctions(config);
-}
-
-static Test::Suite* newGometricFunctionsTest()
-{
-    return new TestGeometricFunctions(config);
-}
-
-static Test::Suite* newRelationalFunctionsTest()
-{
-    return new TestRelationalFunctions(config);
-}
-
-static Test::Suite* newVectorFunctionsTest()
-{
-    return new TestVectorFunctions(config);
-}
-
-static Test::Suite* newMemoryAccessTest()
-{
-    return new TestMemoryAccess(config);
-}
-
-static Test::Suite* newConversionFunctionsTest()
-{
-    return new TestConversionFuntions(config);
-}
-
 static Test::Suite* newIntrinsicsTest()
 {
     return new TestIntrinsicFunctions(config);
@@ -151,14 +103,6 @@ int main(int argc, char** argv)
     Test::registerSuite(newEmulatorTest, "test-emulator", "Runs selected code-samples through the emulator");
     Test::registerSuite(newMathFunctionsTest, "emulate-math", "Runs emulation tests for the OpenCL standard-library math functions");
     Test::registerSuite(Test::newInstance<TestGraph>, "test-graph", "Runs basic test for the graph data structure");
-    Test::registerSuite(newArithmeticTest, "emulate-arithmetic", "Runs emulation tests for various kind of operations");
-    Test::registerSuite(newIntegerFunctionsTest, "emulate-integer", "Runs emulation tests for the OpenCL standard-library integer functions");
-    Test::registerSuite(newCommonFunctionsTest, "emulate-common", "Runs emulation tests for the OpenCL standard-library common functions");
-    Test::registerSuite(newGometricFunctionsTest, "emulate-geometric", "Runs emulation tests for the OpenCL standard-library geometric functions");
-    Test::registerSuite(newRelationalFunctionsTest, "emulate-relational", "Runs emulation tests for the OpenCL standard-library relational functions");
-    Test::registerSuite(newVectorFunctionsTest, "emulate-vector", "Runs emulation tests for the OpenCL standard-library vector functions");
-    Test::registerSuite(newMemoryAccessTest, "emulate-memory", "Runs emulation tests for various functions testing different kinds of memory access");
-    Test::registerSuite(newConversionFunctionsTest, "emulate-conversions", "Runs emulation tests for the OpenCL standard-library type conversion functions");
     Test::registerSuite(newIntrinsicsTest, "test-intrinsics", "Runs tests on the code generated for intrinsic functions");
     Test::registerSuite(Test::newInstance<TestPatternMatching>, "test-patterns", "Runs tests on the pattern matching framework");
     Test::registerSuite(Test::newInstance<TestCustomContainers>, "test-container", "Runs tests on the custom container types");

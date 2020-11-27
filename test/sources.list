@@ -3,24 +3,16 @@ target_sources(TestVC4C
     RegressionTest.cpp
     test.cpp
     TestAnalyses.cpp
-    TestArithmetic.cpp
-    TestCommonFunctions.cpp
-    TestConversionFunctions.cpp
     TestCustomContainers.cpp
     TestEmulator.cpp
     TestExpressions.cpp
     TestFrontends.cpp
-    TestGeometricFunctions.cpp
     TestGraph.cpp
     TestInstructions.cpp
-    TestIntegerFunctions.cpp
     TestIntrinsics.cpp
     TestMathFunctions.cpp
-    TestMemoryAccess.cpp
     TestOperators.cpp
     TestOptimizations.cpp
     TestOptimizationSteps.cpp
     TestPatternMatching.cpp
-    TestRelationalFunctions.cpp
-    TestVectorFunctions.cpp
 )
