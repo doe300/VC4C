@@ -518,6 +518,7 @@ namespace test_data
 
     // The single TestData generators, roughly separated by category
     void registerGeneralTests();
+    void registerArithmeticTests();
     void registerOpenCLCommonFunctionTests();
     void registerOpenCLGeometricFunctionTests();
     void registerOpenCLIntegerFunctionTests();

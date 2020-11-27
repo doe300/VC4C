@@ -287,13 +287,15 @@ static void registerTypeTests(const std::string& typeName, const std::string& up
             transform<std::make_unsigned_t<T>, T, T>(
                 productLeft, productRight, Abs<T, std::is_unsigned<T>::value>{}))}});
 
-    registerTest(TestData{"add_sat_" + typeName, flags | LONG_UNSUPPORTED, &BINARY_FUNCTION,
-        "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=add_sat", "test",
-        {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)), toBufferParameter(std::vector<T>(productLeft)),
-            toBufferParameter(std::vector<T>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(
-            0, transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return addSat(in0, in1); }))}});
+    // XXX SPIRV-LLVM-Translator can't lower llvm.uadd.sat.v16i32 yet
+    registerTest(
+        TestData{"add_sat_" + typeName, flags | LONG_UNSUPPORTED | DataFilter::SPIRV_DISABLED, &BINARY_FUNCTION,
+            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=add_sat", "test",
+            {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)),
+                toBufferParameter(std::vector<T>(productLeft)), toBufferParameter(std::vector<T>(productRight))},
+            calculateDimensions(productLeft.size()),
+            {checkParameterEquals(
+                0, transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return addSat(in0, in1); }))}});
 
     registerTest(TestData{"hadd_" + typeName, flags, &BINARY_FUNCTION,
         "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=hadd", "test",
@@ -399,13 +401,15 @@ static void registerTypeTests(const std::string& typeName, const std::string& up
         {checkParameterEquals(
             0, transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return rotate(in0, in1); }))}});
 
-    registerTest(TestData{"sub_sat_" + typeName, flags | LONG_UNSUPPORTED, &BINARY_FUNCTION,
-        "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=sub_sat", "test",
-        {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)), toBufferParameter(std::vector<T>(productLeft)),
-            toBufferParameter(std::vector<T>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(
-            0, transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return subSat(in0, in1); }))}});
+    // XXX SPIRV-LLVM-Translator can't lower llvm.usub.sat.v16i32 yet
+    registerTest(
+        TestData{"sub_sat_" + typeName, flags | LONG_UNSUPPORTED | DataFilter::SPIRV_DISABLED, &BINARY_FUNCTION,
+            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=sub_sat", "test",
+            {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)),
+                toBufferParameter(std::vector<T>(productLeft)), toBufferParameter(std::vector<T>(productRight))},
+            calculateDimensions(productLeft.size()),
+            {checkParameterEquals(
+                0, transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return subSat(in0, in1); }))}});
 
     registerTest(TestData{"upsample_" + typeName, flags | LONG_UNSUPPORTED, &BINARY_FUNCTION,
         "-DOUT=" + upsampleTypeName + "16 -DIN0=" + typeName + "16 -DIN1=" + unsignedName + "16 -DFUNC=upsample",

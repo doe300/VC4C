@@ -20,7 +20,10 @@ using namespace vc4c::tools;
 auto defaultFilter = test_data::DataFilter::DISABLED | test_data::DataFilter::VECTOR_PARAM;
 
 TestEmulator::TestEmulator(const vc4c::Configuration& config) :
-    TestEmulator(config, test_data::getAllTests(defaultFilter))
+    TestEmulator(config,
+        test_data::getAllTests(defaultFilter |
+            (config.frontend == Frontend::SPIR_V ? test_data::DataFilter::SPIRV_DISABLED :
+                                                   test_data::DataFilter::NONE)))
 {
 }
 

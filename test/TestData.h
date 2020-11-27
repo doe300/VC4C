@@ -131,6 +131,8 @@ namespace test_data
         COMPARISONS = 0x1 < 0xE,
         // Focuses on type conversions
         TYPE_CONVERSIONS = 0x1 < 0xF,
+        // Disabled test, since the SPIR-V front-end does not support parts of it
+        SPIRV_DISABLED = 0x40000000,
         // Disabled test, since it does not work right now
         DISABLED = 0x80000000,
         ALL = 0xFFFFFFFF

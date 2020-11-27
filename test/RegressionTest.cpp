@@ -225,7 +225,7 @@ static std::vector<Entry> allKernels = {
     Entry{PENDING_LLVM | PENDING_SPIRV, FAST, "./testing/clNN/im2col.cl", ""},
     Entry{PASSED, FAST, "./testing/clNN/SoftMax.cl", "-DSOFTMAX_THREADS=4"},
     Entry{PASSED, FAST, "./testing/clNN/SpatialAveragePooling.cl", "-DDtype=float -DCOUNT_INCLUDE_PAD=true"},
-    Entry{PENDING_LLVM, FAST, "./testing/clNN/SpatialMaxPooling.cl", "-DDtype=float"},
+    Entry{PENDING_LLVM | PENDING_SPIRV, FAST, "./testing/clNN/SpatialMaxPooling.cl", "-DDtype=float"},
 
     // all kernels
     // Entry{PASSED, FAST, "./testing/HandBrake/openclkernels.cl", ""},
