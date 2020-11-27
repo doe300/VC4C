@@ -202,6 +202,9 @@ namespace vc4c
      *     12 clock stalls when it reads from V3D L2 cache.
      *     20 clock stalls when it reads directly from memory."
      * - see https://www.raspberrypi.org/forums/viewtopic.php?p=1143940#p1144081
+     *
+     * NOTE: These stalls are generated between writing the TMU S address and issuing the load signal, not for reading
+     * the r4 output register!
      */
     static constexpr Register REG_TMU_OUT{RegisterFile::ACCUMULATOR, 36};
     /*
@@ -566,8 +569,7 @@ namespace vc4c
         /*
          * The bit-wise representation of this literal
          */
-        union
-        {
+        union {
             int32_t i;
             uint32_t u;
             float f;

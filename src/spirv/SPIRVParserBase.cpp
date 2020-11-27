@@ -306,16 +306,26 @@ static CompoundConstant parseConstant(const ParsedInstruction& instruction, cons
             //"[...] Larger types take multiple words, with low-order words appearing first."
             // e.g. for long/double constants
             val |= static_cast<uint64_t>(instruction.getWord(4)) << 32;
-        auto lit = toLongLiteral(val);
-        if(!lit)
-            throw CompilationError(
-                CompilationStep::PARSER, "Constant value is out of valid range", std::to_string(val));
-        constant = CompoundConstant(typeMappings.at(instruction.getTypeId()), *lit);
+        if(auto lit = toLongLiteral(val))
+        {
+            constant = CompoundConstant(typeMappings.at(instruction.getTypeId()), *lit);
 
-        if(constant.type.isFloatingType())
-            // set correct type, just for cosmetic purposes
-            constant = CompoundConstant(typeMappings.at(instruction.getTypeId()),
-                Literal(bit_cast<uint32_t, float>(static_cast<uint32_t>(val))));
+            if(constant.type.isFloatingType())
+                // set correct type, just for cosmetic purposes
+                constant = CompoundConstant(typeMappings.at(instruction.getTypeId()),
+                    Literal(bit_cast<uint32_t, float>(static_cast<uint32_t>(val))));
+        }
+        else
+        {
+            // 64-bit word which does not fit into 32-bit literal, so make a compound constant
+            auto compoundType = typeMappings.at(instruction.getTypeId());
+            auto elementType = TYPE_INT32.toVectorType(compoundType.getVectorWidth());
+            constant = CompoundConstant(compoundType,
+                {
+                    CompoundConstant(elementType, Literal(instruction.getWord(3))),
+                    CompoundConstant(elementType, Literal(instruction.getWord(4))),
+                });
+        }
     }
     return constant;
 }

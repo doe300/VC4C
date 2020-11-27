@@ -279,18 +279,22 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
     if(methodID)
         calledFunction = methods.at(methodID.value()).method->name;
     std::vector<Value> args;
-    for(const uint32_t op : arguments)
+    auto numArgsToConvert = arguments.size();
+    if(calledFunction.find("vload") == 0 && arguments.size() == 3)
+        // For the OpenCL C functions  "vloadn", "vload_halfn" and "vloada_halfn" the 3rd argument is the vector width
+        // as literal number and therefore has no type, so we can't map it to any Value
+        numArgsToConvert = 2;
+    for(std::size_t i = 0; i < numArgsToConvert; ++i)
     {
-        args.push_back(getValue(op, *method.method, types, constants, localTypes, localMapping));
+        args.emplace_back(getValue(arguments[i], *method.method, types, constants, localTypes, localMapping));
     }
     // For some built-in OpenCL instruction, we need some special fix-up.
     // E.g. for vector load/stores the SPIR-V OpenCL built-in operations are called vloadn/vstoren, but the function
     // names are vloadN/vstoreN (where N is the vector size)
     if(calledFunction == "vloadn")
     {
-        // the last parameter is the vector width, remove it and write it into the name
+        // the last parameter is the vector width, write it into the name
         auto num = arguments.back();
-        args.pop_back();
         calledFunction = "vload" + std::to_string(num);
     }
     else if(calledFunction == "vstoren")
@@ -515,10 +519,12 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
     Value source = getValue(sourceID, *method.method, types, constants, localTypes, localMapping);
     Value dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
     bool isSaturated = has_flag(decorations, intermediate::InstructionDecorations::SATURATED_CONVERSION);
+    // The rest of the compiler does not handle this decoration at all
+    decorations = remove_flag(decorations, intermediate::InstructionDecorations::SATURATED_CONVERSION);
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating intermediate conversion from " << source.to_string(false) << " to " << dest.to_string(true)
-            << logging::endl);
+            << (isSaturated ? " (saturated)" : "") << logging::endl);
 
     if(type == ConversionType::BITCAST)
     {
@@ -538,16 +544,20 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
 
     // extend input value to 32-bit integer type with proper sign
     Value tmp = source;
-    if(source.type.getScalarBitCount() < 32 &&
+    // extend to either 32 bit or 64 if the destination type has 64 bits
+    auto referenceSize = std::max(dest.type.getScalarBitCount(), uint8_t{32});
+    auto resultType =
+        (dest.type.getScalarBitCount() > 32 ? TYPE_INT64 : TYPE_INT32).toVectorType(source.type.getVectorWidth());
+    if(source.type.getScalarBitCount() < referenceSize &&
         (type == ConversionType::SIGNED_TO_SIGNED || type == ConversionType::SIGNED_TO_UNSIGNED))
     {
-        tmp = method.method->addNewLocal(TYPE_INT32.toVectorType(source.type.getVectorWidth()));
+        tmp = method.method->addNewLocal(resultType);
         method.method->appendToEnd((new intermediate::IntrinsicOperation("sext", Value(tmp), std::move(source))));
     }
-    if(source.type.getScalarBitCount() < 32 &&
+    if(source.type.getScalarBitCount() < referenceSize &&
         (type == ConversionType::UNSIGNED_TO_SIGNED || type == ConversionType::UNSIGNED_TO_UNSIGNED))
     {
-        tmp = method.method->addNewLocal(TYPE_INT32.toVectorType(source.type.getVectorWidth()));
+        tmp = method.method->addNewLocal(resultType);
         method.method->appendToEnd((new intermediate::IntrinsicOperation("zext", Value(tmp), std::move(source)))
                                        ->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT));
     }

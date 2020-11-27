@@ -73,13 +73,12 @@ static void lowerFlags(Method& method, InstructionWalker it, const MultiRegister
         setCarryFlag)
     {
         /*
-         * This is e.g. the behavior of (F)MIN, (F)MAX, etc.
+         * This is e.g. the behavior of (F)MIN, (F)MAX, (F)ADD, etc.
          * - OR'ing upper and lower parts together gives the zero-check
          * - for negative check, need to only consider high bit of upper part
          * => compress lower part to never set the high bit
          * - since we take the carry flag from outside, we don't care in here which behavior actually sets the carry
          *   flag and can apply this block for all operations matching the zero and negative flags
-         *
          */
         auto tmp0 = assign(flagIt, flagType) = as_unsigned{output.lower->createReference()} >> 1_val;
         // since we shift the last bit of the lower part out, need to separately add it again back in
@@ -144,6 +143,7 @@ static void lowerLongOperation(
     auto flagBehavior = op.op.flagBehavior;
     bool returnsFloat = op.op.returnsFloat;
     Optional<Value> setCarryFlag = NO_VALUE;
+    bool retainSetFlag = false;
 
     if(op.op == OP_ADD)
     {
@@ -153,12 +153,25 @@ static void lowerLongOperation(
          * %tmp = %a.upper + %b.upper
          * %out.upper = %tmp + carry bit
          */
+        if(op.doesSetFlag())
+            setCarryFlag = assign(it, TYPE_BOOL) = BOOL_FALSE;
+        assign(it, out->upper->createReference()) = (in0Up + in1Up.value(), op.decoration, op.getFlags());
+        if(setCarryFlag)
+            assign(it, *setCarryFlag) = (BOOL_TRUE, COND_CARRY_SET);
         assign(it, out->lower->createReference()) = (in0Low + in1Low.value(), SetFlag::SET_FLAGS, op.decoration);
-        assign(it, out->upper->createReference()) = (in0Up + in1Up.value(), op.decoration);
         op.setOutput(out->upper->createReference());
         op.setArgument(0, out->upper->createReference());
         op.setArgument(1, INT_ONE);
         op.setCondition(COND_CARRY_SET);
+        if(setCarryFlag)
+        {
+            // For flags set by conditional instructions, the flags are only updated where the operation is actually
+            // executed, which we can use here.
+            // NOTE: This carry is set by the above conditional instruction and is thus not the same carry condition as
+            // above!
+            retainSetFlag = true;
+            assign(it, *setCarryFlag) = (BOOL_TRUE, COND_CARRY_SET);
+        }
     }
     else if(op.op == OP_SUB)
     {
@@ -176,6 +189,8 @@ static void lowerLongOperation(
         if(auto secondOp = secondIt.get<intermediate::Operation>())
             lowerLongOperation(method, secondIt, *secondOp, config);
         lowerLongOperation(method, it, op, config);
+        // break here to not handle flags again, they are already handled by the lowered add
+        return;
     }
     else if(op.op == OP_NOT)
     {
@@ -389,7 +404,8 @@ static void lowerLongOperation(
 
     if(op.doesSetFlag())
     {
-        op.setSetFlags(SetFlag::DONT_SET);
+        if(!retainSetFlag)
+            op.setSetFlags(SetFlag::DONT_SET);
         lowerFlags(method, it, *out, flagBehavior, returnsFloat, setCarryFlag);
     }
 }

@@ -408,6 +408,7 @@ InstructionWalker intermediate::insertSaturation(
     }
     else // saturation can be easily done via pack-modes
     {
+        // FIXME does not handle 64-bit inputs correctly!
         if(dest.type.getScalarBitCount() == 8)
         {
             Value tmpSrc = src;
@@ -417,7 +418,7 @@ InstructionWalker intermediate::insertSaturation(
             if(isOutputSigned)
             {
                 // dest = min(max(src, -128), 127)
-                auto tmp = assign(it, TYPE_INT8) =
+                auto tmp = assign(it, src.type) =
                     max(as_signed{tmpSrc}, as_signed{Value(Literal(std::numeric_limits<int8_t>::min()), TYPE_INT8)});
                 return it.emplace(
                     new Operation(OP_MIN, dest, tmp, Value(Literal(std::numeric_limits<int8_t>::max()), TYPE_INT8)));
@@ -437,7 +438,7 @@ InstructionWalker intermediate::insertSaturation(
                 return it.emplace((new MoveOperation(dest, tmpSrc))->setPackMode(PACK_INT_TO_SIGNED_SHORT_SATURATE));
             else
             {
-                auto tmp = assign(it, TYPE_INT16) =
+                auto tmp = assign(it, src.type) =
                     max(as_signed{tmpSrc}, as_signed{Value(Literal(std::numeric_limits<uint16_t>::min()), TYPE_INT16)});
                 return it.emplace(
                     new Operation(OP_MIN, dest, tmp, Value(Literal(std::numeric_limits<uint16_t>::max()), TYPE_INT16)));

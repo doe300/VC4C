@@ -9,6 +9,7 @@
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
 #include "../intermediate/operators.h"
+#include "../normalization/LongOperations.h"
 #include "log.h"
 
 #include <cmath>
@@ -45,10 +46,83 @@ static NODISCARD InstructionWalker replaceWithSetBoolean(
     return it;
 }
 
+static void intrinsifyLongRelation(Method& method, InstructionWalker it, const Comparison* comp, bool invertResult)
+{
+    auto boolType = TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth());
+    auto firstParts = normalization::getLowerAndUpperWords(comp->getFirstArg());
+    auto secondParts = normalization::getLowerAndUpperWords(comp->assertArgument(1));
+
+    if(COMP_EQ == comp->opCode)
+    {
+        auto cond = assignNop(it) = as_unsigned{firstParts.first} == as_unsigned{secondParts.first};
+        // dummy instruction to be replaced
+        it.emplace(new intermediate::MoveOperation(NOP_REGISTER, NOP_REGISTER));
+        auto tmp = method.addNewLocal(boolType, "%lcomp");
+        it = replaceWithSetBoolean(it, tmp, invertResult ? cond.invert() : cond);
+        it.nextInBlock();
+        cond = assignNop(it) = as_unsigned{firstParts.second} == as_unsigned{secondParts.second};
+        if(invertResult)
+        {
+            // A != B <=> (A.low != B.low) || (A.up != B.up)
+            assign(it, tmp) = (BOOL_TRUE, cond.invert());
+            it.reset(new intermediate::MoveOperation(comp->getOutput().value(), tmp));
+        }
+        else
+            // A == B <=> (A.low == B.low) && (A.up == B.up)
+            it = replaceWithSetBoolean(it, comp->getOutput().value(), cond, tmp);
+    }
+    else if(COMP_UNSIGNED_LT == comp->opCode || COMP_SIGNED_LT == comp->opCode)
+    {
+        /*
+         * For unsigned:
+         * A < B               <=> (A.up < B.up) || (A.up == B.up && A.low < B.low)
+         * !(A < B) <=> A >= B <=> (A.up > B.up) || (A.up == B.up && A.low >= B.low)
+         * All comparisons are unsigned!
+         *
+         * For signed:
+         * A < B               <=> (A.up < B.up) || (A.up == B.up) && (A.low < B.low)
+         * !(A < B) <=> A >= B <=> (A.up > B.up) || (A.up == B.up) && (A.low >= B.low)
+         * First comparison is signed, second is unsigned!
+         *
+         * If A.up == B.up, then either both are positive or both are negative. Since for both negative numbers we can
+         * compare them as if they were positive (e.g. -1 > -17 the same as 0xFFFFFFFF > 0xFFFFFFEF) and thus the "upper
+         * parts both positive" and "upper parts both negative" have the same lower comparison.
+         */
+        const char* upperComparison = nullptr;
+        if(COMP_UNSIGNED_LT == comp->opCode)
+            upperComparison = invertResult ? COMP_UNSIGNED_GT : COMP_UNSIGNED_LT;
+        else
+            upperComparison = invertResult ? COMP_SIGNED_GT : COMP_SIGNED_LT;
+
+        auto tmpUpper = method.addNewLocal(boolType, "%lcomp");
+        it.emplace(new intermediate::Comparison(
+            upperComparison, Value(tmpUpper), Value(firstParts.second), Value(secondParts.second)));
+        intrinsics::intrinsifyComparison(method, it);
+        it.nextInBlock();
+
+        auto tmpLower = method.addNewLocal(boolType, "%lcomp");
+        it.emplace(new intermediate::Comparison(invertResult ? COMP_UNSIGNED_GE : COMP_UNSIGNED_LT, Value(tmpLower),
+            Value(firstParts.first), Value(secondParts.first)));
+        intrinsics::intrinsifyComparison(method, it);
+        it.nextInBlock();
+
+        assign(it, comp->getOutput().value()) = tmpUpper;
+        auto cond = assignNop(it) = as_unsigned{firstParts.second} == as_unsigned{secondParts.second};
+        it.reset(new intermediate::MoveOperation(comp->getOutput().value(), tmpLower, cond));
+    }
+    else
+        throw CompilationError(CompilationStep::NORMALIZER, "Unrecognized integer comparison", comp->opCode);
+}
+
 static void intrinsifyIntegerRelation(Method& method, InstructionWalker it, const Comparison* comp, bool invertResult)
 {
     // http://llvm.org/docs/LangRef.html#icmp-instruction
     auto boolType = TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth());
+    if(comp->getFirstArg().type.getScalarBitCount() > 32 || comp->assertArgument(1).type.getScalarBitCount() > 32)
+    {
+        // long comparison, split into multiple parts and run integer comparisons
+        return intrinsifyLongRelation(method, it, comp, invertResult);
+    }
     if(COMP_EQ == comp->opCode)
     {
         auto cond = assignNop(it) = (as_unsigned{comp->getFirstArg()} == as_unsigned{comp->assertArgument(1)});

@@ -745,7 +745,7 @@ static bool canReplaceBitOp(const intermediate::Operation& op)
 
 static bool hasByteExtractionMode(const intermediate::UnpackingInstruction& inst)
 {
-    return inst.getUnpackMode() == UNPACK_8A_32 | inst.getUnpackMode() == UNPACK_8B_32 ||
+    return inst.getUnpackMode() == UNPACK_8A_32 || inst.getUnpackMode() == UNPACK_8B_32 ||
         inst.getUnpackMode() == UNPACK_8C_32 || inst.getUnpackMode() == UNPACK_8D_32;
 }
 

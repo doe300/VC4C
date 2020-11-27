@@ -778,7 +778,6 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
     }
     const Value& arg0 = op->getFirstArg();
     const Value& arg1 = op->getSecondArg().value_or(UNDEFINED_VALUE);
-    const bool saturateResult = op->hasDecoration(InstructionDecorations::SATURATED_CONVERSION);
     // integer multiplication
     if(op->opCode == "mul")
     {
@@ -1091,21 +1090,10 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
     // truncate bits
     else if(op->opCode == "trunc")
     {
-        if(saturateResult)
-        {
-            // let pack-mode handle saturation
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Intrinsifying saturated truncate with move and pack-mode: " << op->to_string()
-                    << logging::endl);
-            it = insertSaturation(
-                it, method, op->getFirstArg(), op->getOutput().value(), ConversionType::UNSIGNED_TO_UNSIGNED);
-            it.nextInBlock();
-            it.erase();
-        }
         // if orig = i64, dest = i32 -> move
         // also applies to orig = i32, dest = i32
         // -> This can occur if original is i33 already truncated to i32 in front-end
-        else if(op->getFirstArg().type.getScalarBitCount() >= 32 && op->getOutput()->type.getScalarBitCount() == 32)
+        if(op->getFirstArg().type.getScalarBitCount() >= 32 && op->getOutput()->type.getScalarBitCount() == 32)
         {
             // do nothing, is just a move of the lower part
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -1130,11 +1118,6 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
     }
     else if(op->opCode == "fptrunc")
     {
-        if(saturateResult)
-        {
-            throw CompilationError(CompilationStep::NORMALIZER,
-                "Saturation on floating-point conversion is not supported", op->to_string());
-        }
         it = insertFloatingPointConversion(it, method, arg0, op->getOutput().value());
         // remove 'fptrunc'
         it.erase();
@@ -1178,6 +1161,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
     {
         if(has_flag(op->decoration, intermediate::InstructionDecorations::SATURATED_CONVERSION))
         {
+            // TODO this is only executed for SPIR-V, LLVM does the saturation in OpenCL C code, merge it!
             auto tmp = method.addNewLocal(op->getOutput()->type);
             it = insertFloatToIntegerSaturation(it, method, arg0, tmp,
                 getMinimumSignedValue(tmp.type.getScalarBitCount()),
@@ -1193,6 +1177,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
     {
         if(has_flag(op->decoration, InstructionDecorations::SATURATED_CONVERSION))
         {
+            // TODO this is only executed for SPIR-V, LLVM does the saturation in OpenCL C code, merge it!
             auto tmp = method.addNewLocal(op->getOutput()->type);
             it = insertFloatToIntegerSaturation(
                 it, method, arg0, tmp, 0, getMaximumUnsignedValue(tmp.type.getScalarBitCount()));
@@ -1248,11 +1233,6 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
     // floating point conversion
     else if(op->opCode == "fpext")
     {
-        if(saturateResult)
-        {
-            throw CompilationError(CompilationStep::NORMALIZER,
-                "Saturation on floating-point conversion is not supported", op->to_string());
-        }
         it = insertFloatingPointConversion(it, method, op->getFirstArg(), op->getOutput().value());
         // remove 'fpext'
         it.erase();
