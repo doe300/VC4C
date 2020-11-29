@@ -17,6 +17,8 @@
 #include "MemoryMappings.h"
 #include "log.h"
 
+#include <algorithm>
+
 using namespace vc4c;
 using namespace vc4c::normalization;
 using namespace vc4c::intermediate;
@@ -788,6 +790,60 @@ static tools::SmallSortedPointerSet<const MemoryInfo*> getMemoryInfos(const Loca
     return result;
 }
 
+static bool hasOnlyAddressesDerivateOfLocalId(const MemoryAccessRange& range)
+{
+    // Be conservative, if there are no dynamic address parts in the container, don't assume that there are none, but
+    // that we might have failed/skipped to determine them.
+    return !range.dynamicAddressParts.empty() &&
+        std::all_of(range.dynamicAddressParts.begin(), range.dynamicAddressParts.end(),
+            [](const std::pair<Value, intermediate::InstructionDecorations>& parts) -> bool {
+                // TODO add support for derivates of global/local id, as long as they are guaranteed to not overlap!
+                return has_flag(parts.second, intermediate::InstructionDecorations::BUILTIN_LOCAL_ID) ||
+                    has_flag(parts.second, intermediate::InstructionDecorations::BUILTIN_GLOBAL_ID);
+            });
+}
+
+static bool mayHaveCrossWorkItemMemoryDependency(const Local* memoryObject, const MemoryInfo& info)
+{
+    if(check(memoryObject->as<Global>()) & &Global::isConstant ||
+            check(memoryObject->as<Parameter>()) & [](const Parameter& param) -> bool {
+           return has_flag(param.decorations, ParameterDecorations::READ_ONLY);
+       })
+        // constant memory -> no write -> no dependency
+        return false;
+    if(info.convertedRegisterType || info.mappedRegisterOrConstant || (info.area && info.area->requiresSpacePerQPU()))
+        // per-QPU fields -> not shared -> no dependency
+        return false;
+
+    switch(info.type)
+    {
+    case MemoryAccessType::RAM_LOAD_TMU:
+        // load of constant data -> no data dependency possible
+        return false;
+    case MemoryAccessType::QPU_REGISTER_READONLY:
+    case MemoryAccessType::QPU_REGISTER_READWRITE:
+    case MemoryAccessType::VPM_PER_QPU:
+        // data not shared -> no data dependency possible
+        return false;
+    default:
+        // memory access type allows for read/write -> need further access range checking
+        break;
+    }
+
+    if(info.ranges)
+    {
+        if(std::all_of(info.ranges->begin(), info.ranges->end(), hasOnlyAddressesDerivateOfLocalId))
+            // If we manged to figure out the dynamic address parts to be (a derivation of) the local or global id,
+            // then we don't have data dependencies across different local ids.
+            return false;
+    }
+
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Memory access might have cross work-item data dependency: " << memoryObject->to_string() << " ("
+            << info.to_string() << ')' << logging::endl);
+    return true;
+}
+
 /* clang-format off */
 /*
  * Matrix of memory types and storage locations:
@@ -876,6 +932,14 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
             // TODO if we disallow the caching, the VPM cache rows are still allocated!
         }
     }
+
+    if(std::none_of(infos.begin(), infos.end(), [](const std::pair<const Local*, MemoryInfo>& info) -> bool {
+           return mayHaveCrossWorkItemMemoryDependency(info.first, info.second);
+       }))
+        // We can reason that no work-item (across work-group loops) accesses memory written by another work-item
+        // (except maybe the work-item of the previous loop with the same local ID) and thus we can omit the work-group
+        // synchronization barrier blocks, since there is no possible data races we need to guard against.
+        method.flags = add_flag(method.flags, MethodFlags::NO_CROSS_ITEM_MEMORY_ACCESS);
 
     // list of basic blocks where multiple VPM accesses could be combined
     FastSet<BasicBlock*> affectedBlocks;

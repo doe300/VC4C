@@ -1950,8 +1950,18 @@ static void insertRepetitionBlocks(
  * any of them can start executing the next work-group iteration. The expected behavior is very similar to the
  * barrier(...) OpenCL C function.
  */
-static void insertSynchronizationBlock(Method& method, BasicBlock& lastBlock)
+static bool insertSynchronizationBlock(Method& method, BasicBlock& lastBlock)
 {
+    // TODO move this synchronization block(s) after the work-group loop, to skip for last work-group?!
+
+    // we insert the label/block in any case, since otherwise we would need to do similar in the caller if this
+    // synchronization block is not inserted. In case the synchronization is not used, the empty block is just optimized
+    // away anyway.
+    auto it = method.emplaceLabel(lastBlock.walk(),
+        new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL, "", "%work_item_synchronization").local()));
+    auto& syncBlock = *it.getBasicBlock();
+    intermediate::redirectAllBranches(lastBlock, syncBlock);
+
     if(has_flag(method.flags, MethodFlags::TRAILING_CONTROL_FLOW_BARRIER) ||
         has_flag(method.flags, MethodFlags::LEADING_CONTROL_FLOW_BARRIER))
     {
@@ -1962,19 +1972,38 @@ static void insertSynchronizationBlock(Method& method, BasicBlock& lastBlock)
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Skipping work-item synchronization block due to already trailing barrier in kernel code!"
                 << logging::endl);
-        return;
+        return false;
     }
 
-    CPPLOG_LAZY(logging::Level::DEBUG, log << "Inserting work-item synchronization block..." << logging::endl);
+    if(method.metaData.getWorkGroupSize() == 1)
+    {
+        // Only a single work-item (per work-group), so no need to synchronize, since all work-items/work-groups are
+        // guaranteed to be executed serially.
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Skipping work-item synchronization block due to single work-item per work-group!" << logging::endl);
+        return false;
+    }
 
-    auto it = method.emplaceLabel(lastBlock.walk(),
-        new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL, "", "%work_item_synchronization").local()));
-    auto& syncBlock = *it.getBasicBlock();
-    intermediate::redirectAllBranches(lastBlock, syncBlock);
+    if(has_flag(method.flags, MethodFlags::NO_CROSS_ITEM_MEMORY_ACCESS))
+    {
+        // There is no memory written which is read by another work-item, so we cannot run into data races there!
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Skipping work-item synchronization block due to absence of cross-item data dependencies!"
+                << logging::endl);
+        return false;
+    }
+
+    // TODO Only insert when already barrier call (and therefore semaphore access to barrier semaphores) present?
+    //   Reasoning: This is to avoid write (by other work-items) from next work-group overwriting reads in the previous
+    //   work-group. For such code to be correct (even without work-group loop), barrier() needs to be used between
+    //   writes and reads, to avoid data being read which is not yet written (by other work-items).
+
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Inserting work-item synchronization block..." << logging::endl);
 
     it.nextInBlock();
     intrinsics::insertControlFlowBarrier(method, it);
     method.flags = add_flag(method.flags, MethodFlags::TRAILING_CONTROL_FLOW_BARRIER);
+    return true;
 }
 
 bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const Configuration& config)
@@ -2008,7 +2037,9 @@ bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const
     bool groupIdsNotUsed = moveGroupIdInitializers(method, defaultBlock, startBlock);
 
     // Insert a block to synchronize all work-item/QPUs to avoid data races between work-group iterations
-    insertSynchronizationBlock(method, *lastBlock);
+    auto syncBlockInserted = insertSynchronizationBlock(method, *lastBlock);
+    PROFILE_COUNTER(
+        vc4c::profiler::COUNTER_OPTIMIZATION + 7000, "Work-group synchronization blocks", syncBlockInserted);
 
     // Insert all the code required to increment/reset the ids and repeat the kernel code
     insertRepetitionBlocks(method, defaultBlock, *lastBlock, groupIdsNotUsed);

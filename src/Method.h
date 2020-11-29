@@ -47,7 +47,12 @@ namespace vc4c
         /**
          * This kernel function has a trailing work-group synchronization (control-flow barrier)
          */
-        TRAILING_CONTROL_FLOW_BARRIER = 2 << 2
+        TRAILING_CONTROL_FLOW_BARRIER = 1 << 3,
+        /**
+         * This kernel function is guaranteed to have no cross-item memory access, i.e. a work-item never writes memory
+         * read by another work-item. This property allows us to do some more memory access optimizations.
+         */
+        NO_CROSS_ITEM_MEMORY_ACCESS = 1 << 4
     };
 
     /*
