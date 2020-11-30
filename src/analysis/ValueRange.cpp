@@ -175,23 +175,33 @@ Optional<Value> ValueRange::getUpperLimit(DataType type) const
     if(!hasExplicitBoundaries())
         return NO_VALUE;
     ValueRange typeLimits;
-    std::function<Literal(double)> conv;
+    std::function<Optional<Literal>(double)> conv;
     if(type.isFloatingType())
     {
         auto it = floatTypeLimits.find(type);
         if(it == floatTypeLimits.end())
             throw CompilationError(CompilationStep::GENERAL, "Unhandled floating-point type", type.to_string());
         typeLimits = it->second;
-        conv = [](double d) -> Literal { return Literal(static_cast<float>(d)); };
+        conv = [](double d) -> Optional<Literal> { return Literal(static_cast<float>(d)); };
     }
     else if(type.isIntegralType())
     {
         auto isSigned = !isUnsignedType(type);
         typeLimits = toIntTypeLimit(type.getScalarBitCount(), isSigned);
         if(isSigned)
-            conv = [](double d) -> Literal { return Literal(static_cast<int32_t>(std::ceil(d))); };
+            conv = [](double d) -> Optional<Literal> {
+                auto val = std::ceil(d);
+                auto max = static_cast<double>(std::numeric_limits<int32_t>::max());
+                auto min = static_cast<double>(std::numeric_limits<int32_t>::min());
+                return val <= max && val >= min ? Literal(static_cast<int32_t>(std::ceil(d))) : Optional<Literal>{};
+            };
         else
-            conv = [](double d) -> Literal { return Literal(static_cast<uint32_t>(std::ceil(d))); };
+            conv = [](double d) -> Optional<Literal> {
+                auto val = std::ceil(d);
+                auto max = static_cast<double>(std::numeric_limits<uint32_t>::max());
+                auto min = static_cast<double>(std::numeric_limits<uint32_t>::min());
+                return val <= max && val >= min ? Literal(static_cast<uint32_t>(std::ceil(d))) : Optional<Literal>{};
+            };
     }
     else
         return NO_VALUE;
@@ -200,7 +210,9 @@ Optional<Value> ValueRange::getUpperLimit(DataType type) const
         return NO_VALUE;
     if(maxValue > typeLimits.maxValue)
         return NO_VALUE;
-    return Value(conv(maxValue), type);
+    if(auto lit = conv(maxValue))
+        return Value(*lit, type);
+    return NO_VALUE;
 }
 
 ValueRange ValueRange::toAbsoluteRange() const noexcept
@@ -439,7 +451,7 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
                 max = std::max(max,
                     std::max(static_cast<int64_t>(element.signedInt()), static_cast<int64_t>(element.unsignedInt())));
             }
-            extendBoundaries(min, max);
+            extendBoundaries(static_cast<double>(min), static_cast<double>(max));
         }
     }
     else if(constant && constant->hasRegister(REG_QPU_NUMBER))

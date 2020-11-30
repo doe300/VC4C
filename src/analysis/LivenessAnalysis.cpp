@@ -364,8 +364,7 @@ static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::uni
     // copy on purpose, since result could be modified by previous forAllIncomingEdges loop
     auto startLiveLocals = analyzer->getStartResult();
 
-    if(node.key == startOfKernel &&
-        node.key->getLabel()->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_LOOP))
+    if(node.key == startOfKernel && node.key->isWorkGroupLoop())
     {
         // skip work-group loop, since they do not modify the live locals
         // Since if the work-group loop is not active, there might be a kernel code loop back to the start, we only
@@ -413,6 +412,12 @@ static FastSet<const Local*> initializeEndOfBlockLiveLocals(const BasicBlock& bl
      * To fix this, we iterate once over the basic block forward and mark all live-times from write to the next read.
      * This gives us (some non-complete version of) the live locals at the end of the block and guarantees that unread
      * writes are considered live until the end of the block!
+     *
+     * TODO a better way to do this would be to drop the second write, which avoids register conflicts and reduces
+     * instruction count. But at this point, we cannot do that, so we would need to guarantee that before!
+     * TODO actually only would need to make sure the live-time includes everything between the last read and the last
+     * write instruction itself in the block, so we do not overwrite any other local. We don't care if another local
+     * gets mapped to the same register afterwards and overwrites our value, since it is never actually read again!
      */
     FastSet<const Local*> endLiveLocals;
     for(const auto& it : block)

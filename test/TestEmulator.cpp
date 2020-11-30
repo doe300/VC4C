@@ -44,7 +44,8 @@ TestEmulator::TestEmulator(const vc4c::Configuration& config,
     {
         TEST_ADD_TWO_ARGUMENTS(TestEmulator::runTestData, std::string{test.first}, true);
     }
-    TEST_ADD(TestEmulator::printProfilingInfo);
+    if(!testData.empty())
+        TEST_ADD(TestEmulator::printProfilingInfo);
 }
 
 TestEmulator::~TestEmulator() = default;

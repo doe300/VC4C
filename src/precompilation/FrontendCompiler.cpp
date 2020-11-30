@@ -92,7 +92,10 @@ static std::vector<std::string> buildClangCommand(const std::string& compiler, c
      *
      * As solution, we set inline behavior to C89, even OpenCL is based on C99
      */
-    command.emplace_back("-fgnu89-inline");
+    if(options.find("-cl-std=CLC++") == std::string::npos && options.find("-cl-std=clc++") == std::string::npos &&
+        options.find("-std=CLC++") == std::string::npos && options.find("-std=clc++") == std::string::npos)
+        // apparently this flag is not allowed for "C++ for OpenCL" mode or probably C++ in general
+        command.emplace_back("-fgnu89-inline");
     // link in our standard-functions
     command.emplace_back("-Wno-undefined-inline");
     command.emplace_back("-Wno-unused-parameter");

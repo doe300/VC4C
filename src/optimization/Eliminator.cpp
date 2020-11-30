@@ -776,12 +776,18 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                 // or  v4, v1, v2    mov v4, v2
                 auto foundAnd = [&](const Local* out, const Local* in, InstructionWalker walker) {
                     auto it = walker.copy().nextInBlock();
-                    while(!it.isEndOfBlock())
+                    // have some kind of upper limit for number if instructions to check
+                    auto instructionsRemaining = config.additionalOptions.maxCommonExpressionDinstance;
+                    while(instructionsRemaining > 0 && !it.isEndOfBlock())
                     {
+                        --instructionsRemaining;
                         auto op2 = it.get<intermediate::Operation>();
                         if(op2 && op2->op == OP_AND && canReplaceBitOp(*op2) && op2->readsLocal(out) &&
                             op2->readsLocal(in))
                         {
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Replacing (%a AND %b) AND %a with %a AND %b: " << op2->to_string()
+                                    << logging::endl);
                             auto mov =
                                 new intermediate::MoveOperation(op2->getOutput().value(), out->createReference());
                             mov->copyExtrasFrom(it.get());
@@ -791,6 +797,8 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                         else if(op2 && op2->op == OP_OR && canReplaceBitOp(*op2) && op2->readsLocal(out) &&
                             op2->readsLocal(in))
                         {
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Replacing (%a AND %b) OR %a with %a: " << op2->to_string() << logging::endl);
                             auto mov = new intermediate::MoveOperation(op2->getOutput().value(), in->createReference());
                             mov->copyExtrasFrom(it.get());
                             replaced = true;
@@ -801,7 +809,8 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                     }
                 };
 
-                if(auto out = op->checkOutputLocal())
+                auto out = op->checkOutputLocal();
+                if(out && !op->readsLocal(out))
                 {
                     if(auto loc = op->getFirstArg().checkLocal())
                         foundAnd(out, loc, it);
@@ -838,12 +847,17 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                 // or  v4, v1, v2    mov v4, v1
                 auto foundOr = [&](const Local* out, const Local* in, InstructionWalker walker) {
                     auto it = walker.copy().nextInBlock();
-                    while(!it.isEndOfBlock())
+                    // have some kind of upper limit for number if instructions to check
+                    auto instructionsRemaining = config.additionalOptions.maxCommonExpressionDinstance;
+                    while(instructionsRemaining > 0 && !it.isEndOfBlock())
                     {
+                        --instructionsRemaining;
                         auto op2 = it.get<intermediate::Operation>();
                         if(op2 && op2->op == OP_AND && canReplaceBitOp(*op2) && op2->readsLocal(out) &&
                             op2->readsLocal(in))
                         {
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Replacing (%a OR %b) AND %a with %a: " << op2->to_string() << logging::endl);
                             auto mov = new intermediate::MoveOperation(op2->getOutput().value(), in->createReference());
                             mov->copyExtrasFrom(it.get());
                             replaced = true;
@@ -852,6 +866,9 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                         else if(op2 && op2->op == OP_OR && canReplaceBitOp(*op2) && op2->readsLocal(out) &&
                             op2->readsLocal(in))
                         {
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Replacing (%a OR %b) OR %a with %a OR %b: " << op2->to_string()
+                                    << logging::endl);
                             auto mov =
                                 new intermediate::MoveOperation(op2->getOutput().value(), out->createReference());
                             mov->copyExtrasFrom(it.get());
@@ -863,7 +880,8 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                     }
                 };
 
-                if(auto out = op->checkOutputLocal())
+                auto out = op->checkOutputLocal();
+                if(out && !op->readsLocal(out))
                 {
                     if(auto loc = op->getFirstArg().checkLocal())
                         foundOr(out, loc, it);

@@ -513,6 +513,15 @@ SPIRVConversion::SPIRVConversion(const uint32_t id, SPIRVMethod& method, const u
 {
 }
 
+static std::string toConversionFunctionName(ConversionType type, bool isSaturated, DataType outType)
+{
+    auto outName =
+        outType.getTypeName(type == ConversionType::SIGNED_TO_SIGNED || type == ConversionType::UNSIGNED_TO_SIGNED,
+            type == ConversionType::SIGNED_TO_UNSIGNED || type == ConversionType::UNSIGNED_TO_UNSIGNED);
+
+    return "convert_" + outName + (isSaturated ? "_sat" : "");
+}
+
 void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
     MethodMapping& methods, LocalMapping& localMapping)
 {
@@ -560,6 +569,25 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
         tmp = method.method->addNewLocal(resultType);
         method.method->appendToEnd((new intermediate::IntrinsicOperation("zext", Value(tmp), std::move(source)))
                                        ->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT));
+    }
+
+    // Try to utilize the VC4CLStdLib function by reverse-engineering the function name and checking whether such a
+    // function is mapped
+    {
+        auto functionName = toConversionFunctionName(type, isSaturated, dest.type);
+        std::unique_ptr<intermediate::MethodCall> dummyCall(
+            new intermediate::MethodCall(Value(dest), std::string(functionName), {source}));
+        dummyCall->addDecorations(decorations);
+        if(std::count_if(methods.begin(), methods.end(), [&dummyCall, &functionName](const auto& pair) -> bool {
+               return pair.second.method->name == functionName && dummyCall->matchesSignature(*pair.second.method);
+           }) == 1)
+        {
+            // To be on the safe side, only go this way if we found exactly a single matching function
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Reverting to VC4CL std-lib conversion function: " << dummyCall->to_string() << logging::endl);
+            method.method->appendToEnd(dummyCall.release());
+            return;
+        }
     }
 
     // truncate/saturate to correctly sized type
