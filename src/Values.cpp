@@ -211,14 +211,11 @@ int Register::getAccumulatorNumber() const noexcept
 
 bool Register::operator<(Register right) const noexcept
 {
-    const auto tmp = static_cast<unsigned char>(file) < static_cast<unsigned char>(right.file);
-    return tmp || num < right.num;
-}
-
-bool Register::operator>(Register right) const noexcept
-{
-    const auto tmp = static_cast<unsigned char>(file) > static_cast<unsigned char>(right.file);
-    return tmp || num > right.num;
+    if(static_cast<unsigned char>(file) < static_cast<unsigned char>(right.file))
+        return true;
+    if(file == right.file)
+        return num < right.num;
+    return false;
 }
 
 bool Register::operator==(Register right) const noexcept
@@ -751,6 +748,11 @@ bool Value::isAllSame() const
         return !imm->isVectorRotation();
     if(auto vec = VariantNamespace::get_if<const SIMDVector*>(&data))
         return *vec && static_cast<bool>((*vec)->getAllSame());
+    if(auto loc = VariantNamespace::get_if<Local*>(&data))
+    {
+        auto writer = (*loc)->getSingleWriter();
+        return writer && writer->hasDecoration(intermediate::InstructionDecorations::IDENTICAL_ELEMENTS);
+    }
     return false;
 }
 

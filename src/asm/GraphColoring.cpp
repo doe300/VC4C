@@ -240,6 +240,8 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
             if(!rot->isFullRotationAllowed())
                 // per-quad vector rotation MUST NOT take accumulator as input!
                 toBlock = add_flag(toBlock, RegisterFile::ACCUMULATOR);
+            else
+                localUses.at(firstArg->local()).isFullVectorRotated = true;
             if(!rot->isPerQuadRotationAllowed())
                 // only accumulators can be rotated across all vector elements
                 toBlock = add_flag(toBlock, RegisterFile::PHYSICAL_A);
@@ -514,6 +516,13 @@ void GraphColoring::createGraph()
                 // as output makes the output of all elements dependent on the flags of the 0th element instead of the
                 // flags of the single elements.
                 node.blockR5();
+        }
+        if(pair.second.isFullVectorRotated)
+        {
+            // "The full horizontal vector rotate is only available when both of the mul ALU input arguments are taken
+            // from accumulators r0-r3."
+            node.blockRegister(RegisterFile::ACCUMULATOR, 4);
+            node.blockRegister(RegisterFile::ACCUMULATOR, 5);
         }
         if(pair.second.firstOccurrence.get() == pair.second.lastOccurrence.get())
         {

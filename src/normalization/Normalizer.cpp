@@ -39,10 +39,17 @@ static bool checkWorkGroupUniform(const Value& arg)
         return true;
     if(auto local = arg.checkLocal())
     {
-        return local->is<Parameter>() || local->is<Global>() ||
-            local->allUsers(LocalUse::Type::WRITER, [](const intermediate::IntermediateInstruction* instr) -> bool {
-                return instr->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
-            });
+        if(local->is<Parameter>() || local->is<Global>())
+            return true;
+        // Some values might not have a writer yet, e.g. parameter, parts of 64-bit integers. And since all_of(empty) is
+        // true, we need to check that we have writer to actually check
+        bool hasWriters = false;
+        if(local->allUsers(
+               LocalUse::Type::WRITER, [&hasWriters](const intermediate::IntermediateInstruction* instr) -> bool {
+                   hasWriters = true;
+                   return instr->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+               }))
+            return hasWriters;
     }
     return false;
 }
@@ -53,9 +60,17 @@ static bool checkSplatValue(const Value& arg)
         return true;
     if(auto local = arg.checkLocal())
     {
-        return local->allUsers(LocalUse::Type::WRITER, [](const intermediate::IntermediateInstruction* instr) -> bool {
-            return instr->hasDecoration(intermediate::InstructionDecorations::IDENTICAL_ELEMENTS);
-        });
+        if(auto param = arg.checkLocal()->as<Parameter>())
+            return param->type.isScalarType() || param->type.getPointerType();
+        // Some values might not have a writer yet, e.g. parameter, parts of 64-bit integers. And since all_of(empty) is
+        // true, we need to check that we have writer to actually check
+        bool hasWriters = false;
+        if(local->allUsers(
+               LocalUse::Type::WRITER, [&hasWriters](const intermediate::IntermediateInstruction* instr) -> bool {
+                   hasWriters = true;
+                   return instr->hasDecoration(intermediate::InstructionDecorations::IDENTICAL_ELEMENTS);
+               }))
+            return hasWriters;
     }
     return false;
 }
@@ -83,9 +98,14 @@ static void propagateDecorations(Module& module, Method& method, InstructionWalk
             (it->hasDecoration(intermediate::InstructionDecorations::BUILTIN_GLOBAL_ID) ||
                 it->hasDecoration(intermediate::InstructionDecorations::BUILTIN_LOCAL_ID)))
             continue;
-        if(check.first == intermediate::InstructionDecorations::IDENTICAL_ELEMENTS &&
-            it.get<intermediate::MemoryInstruction>())
-            continue;
+        if(check.first == intermediate::InstructionDecorations::IDENTICAL_ELEMENTS)
+        {
+            if(it.get<intermediate::MemoryInstruction>())
+                continue;
+            auto load = it.get<intermediate::LoadImmediate>();
+            if(load && load->type != intermediate::LoadType::REPLICATE_INT32)
+                continue;
+        }
         if(it->hasConditionalExecution())
         {
             auto flagsIt = it.getBasicBlock()->findLastSettingOfFlags(it);

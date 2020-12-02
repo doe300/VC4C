@@ -793,7 +793,8 @@ static tools::SmallSortedPointerSet<const MemoryInfo*> getMemoryInfos(const Loca
 static bool hasOnlyAddressesDerivateOfLocalId(const MemoryAccessRange& range)
 {
     // Be conservative, if there are no dynamic address parts in the container, don't assume that there are none, but
-    // that we might have failed/skipped to determine them.
+    // that we might have failed/skipped to determine them. Also if all work-items statically access the same index, we
+    // do have a cross-item access.
     return !range.dynamicAddressParts.empty() &&
         std::all_of(range.dynamicAddressParts.begin(), range.dynamicAddressParts.end(),
             [](const std::pair<Value, intermediate::InstructionDecorations>& parts) -> bool {

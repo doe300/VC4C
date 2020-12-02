@@ -387,9 +387,9 @@ InstructionWalker optimizations::simplifyOperation(
             // don't skip next instruction
             it.previousInBlock();
         }
-        if(it.get<intermediate::VectorRotation>() && move->getSource().isLiteralValue())
+        if(it.get<intermediate::VectorRotation>() && move->getSource().isAllSame())
         {
-            // replace rotation of constant with move
+            // replace rotation of splat value with move
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Replacing obsolete " << move->to_string() << " with move 6" << logging::endl);
             it.reset((new intermediate::MoveOperation(

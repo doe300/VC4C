@@ -1139,8 +1139,8 @@ void TestInstructions::testRegister()
 
     TEST_ASSERT(REG_ACC0 < REG_ACC1)
     TEST_ASSERT((Register(RegisterFile::PHYSICAL_A, 16)) < (Register(RegisterFile::PHYSICAL_B, 1)))
-    TEST_ASSERT(REG_ACC1 > REG_ACC0)
-    TEST_ASSERT((Register(RegisterFile::PHYSICAL_B, 16)) > (Register(RegisterFile::PHYSICAL_A, 1)))
+    TEST_ASSERT(!(REG_ACC1 < REG_ACC0))
+    TEST_ASSERT(!((Register(RegisterFile::PHYSICAL_B, 16)) < (Register(RegisterFile::PHYSICAL_B, 16))))
 
     TEST_ASSERT(!REG_ACC0.isVertexPipelineMemory())
     TEST_ASSERT(REG_VPM_IO.isVertexPipelineMemory())

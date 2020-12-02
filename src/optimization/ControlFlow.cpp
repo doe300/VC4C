@@ -818,18 +818,20 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
 static NODISCARD InstructionWalker loadScalarParameter(
     Parameter& param, DataType type, Method& method, InstructionWalker it, bool isElement = false)
 {
+    auto decorations =
+        add_flag(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::IDENTICAL_ELEMENTS);
     if(type.isSimpleType() && type.getScalarBitCount() > 32 && param.get<MultiRegisterData>())
     {
         // 64-bit integer direct value load, need to insert two loads
         auto parts = Local::getLocalData<MultiRegisterData>(&param);
 
         // data is stored in little endian, so lower word first
-        assign(it, parts->lower->createReference()) = (Value(REG_UNIFORM, TYPE_INT32),
-            isElement ? COND_ZERO_SET : COND_ALWAYS, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
-            isElement ? InstructionDecorations::ELEMENT_INSERTION : InstructionDecorations::NONE);
-        assign(it, parts->upper->createReference()) = (Value(REG_UNIFORM, TYPE_INT32),
-            isElement ? COND_ZERO_SET : COND_ALWAYS, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
-            isElement ? InstructionDecorations::ELEMENT_INSERTION : InstructionDecorations::NONE);
+        assign(it, parts->lower->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT32), isElement ? COND_ZERO_SET : COND_ALWAYS, decorations,
+                isElement ? InstructionDecorations::ELEMENT_INSERTION : InstructionDecorations::NONE);
+        assign(it, parts->upper->createReference()) =
+            (Value(REG_UNIFORM, TYPE_INT32), isElement ? COND_ZERO_SET : COND_ALWAYS, decorations,
+                isElement ? InstructionDecorations::ELEMENT_INSERTION : InstructionDecorations::NONE);
     }
     else if(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND))
     {
@@ -843,10 +845,10 @@ static NODISCARD InstructionWalker loadScalarParameter(
     }
     else
     {
-        assign(it, param.createReference()) = (Value(REG_UNIFORM, type), isElement ? COND_ZERO_SET : COND_ALWAYS,
-            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
-            // all pointers are unsigned
-            param.type.getPointerType() ? InstructionDecorations::UNSIGNED_RESULT : InstructionDecorations::NONE);
+        assign(it, param.createReference()) =
+            (Value(REG_UNIFORM, type), isElement ? COND_ZERO_SET : COND_ALWAYS, decorations,
+                // all pointers are unsigned
+                param.type.getPointerType() ? InstructionDecorations::UNSIGNED_RESULT : InstructionDecorations::NONE);
     }
     if(isElement)
         it.copy().previousInBlock()->addDecorations(InstructionDecorations::ELEMENT_INSERTION);
@@ -877,7 +879,7 @@ static void generateStopSegment(Method& method)
     // write QPU number finished (value must be NON-NULL, so we invert it -> the first 28 bits are always 1)
     method.appendToEnd(
         (new intermediate::Operation(OP_NOT, Value(REG_HOST_INTERRUPT, TYPE_INT8), Value(REG_QPU_NUMBER, TYPE_INT8)))
-            ->addDecorations(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
+            ->addDecorations(InstructionDecorations::IDENTICAL_ELEMENTS));
     auto nop = new intermediate::Nop(intermediate::DelayType::THREAD_END);
     // set signals to stop thread/program
     nop->setSignaling(SIGNAL_END_PROGRAM);
@@ -950,8 +952,8 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
      */
     // initially set all implicit UNIFORMs to unused
     method.metaData.uniformsUsed.value = 0;
-    auto workInfoDecorations =
-        add_flag(InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+    auto workInfoDecorations = add_flag(InstructionDecorations::UNSIGNED_RESULT,
+        InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::IDENTICAL_ELEMENTS);
     bool isLocalInfoRequired = isLocalInformationRequired(config);
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::WORK_DIMENSIONS))
     {
@@ -1814,7 +1816,8 @@ NODISCARD static bool moveGroupIdInitializers(Method& method, BasicBlock& defaul
             if(auto it = defaultBlock.findWalkerForInstruction(writer, defaultBlock.walkEnd()))
                 it->erase();
         }
-        assign(insertIt, loc->createReference()) = INT_ZERO;
+        assign(insertIt, loc->createReference()) =
+            (INT_ZERO, InstructionDecorations::IDENTICAL_ELEMENTS, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
     }
 
     if(groupIdsOnlyRead)
@@ -1827,7 +1830,8 @@ NODISCARD static bool moveGroupIdInitializers(Method& method, BasicBlock& defaul
         while(!it.isEndOfBlock())
             it.erase();
         // 2. Add new assignment to grouped value
-        assign(it, method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_IDS)->createReference()) = INT_ZERO;
+        assign(it, method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_IDS)->createReference()) =
+            (INT_ZERO, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
     }
 
     return groupIdsOnlyRead;
@@ -1846,11 +1850,14 @@ NODISCARD static InstructionWalker insertAddressResetBlock(
     // insert after label, not before
     it.nextInBlock();
 
-    auto tmp = assign(it, TYPE_INT32) = UNIFORM_REGISTER;
-    assign(it, maxGroupIdX) = UNIFORM_REGISTER;
-    assign(it, maxGroupIdY) = UNIFORM_REGISTER;
-    assign(it, maxGroupIdZ) = UNIFORM_REGISTER;
-    assign(it, Value(REG_UNIFORM_ADDRESS, TYPE_INT32)) = tmp;
+    // NOTE: This is NOT work-group uniform, since every QPU has its own UNIFORM values (e.g. for local ID)
+    auto tmp = assign(it, TYPE_INT32) = (UNIFORM_REGISTER, InstructionDecorations::IDENTICAL_ELEMENTS);
+    auto decorations =
+        add_flag(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::IDENTICAL_ELEMENTS);
+    assign(it, maxGroupIdX) = (UNIFORM_REGISTER, decorations);
+    assign(it, maxGroupIdY) = (UNIFORM_REGISTER, decorations);
+    assign(it, maxGroupIdZ) = (UNIFORM_REGISTER, decorations);
+    assign(it, Value(REG_UNIFORM_ADDRESS, TYPE_INT32)) = (tmp, InstructionDecorations::IDENTICAL_ELEMENTS);
     return it;
 }
 
@@ -1876,9 +1883,11 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     {
         // First increment current id then reset previous dimension to be able to skip inserting a nop, since we read
         // the current id immediately afterwards.
-        assign(it, id) = id + INT_ONE;
+        assign(it, id) = (id + INT_ONE, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
+            InstructionDecorations::IDENTICAL_ELEMENTS);
         if(previousId)
-            assign(it, previousId->createReference()) = INT_ZERO;
+            assign(it, previousId->createReference()) = (INT_ZERO, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
+                InstructionDecorations::IDENTICAL_ELEMENTS);
         // setting this decoration allows for most of the conditional code inserted below to be optimized away
         condDecorations = InstructionDecorations::IDENTICAL_ELEMENTS;
     }

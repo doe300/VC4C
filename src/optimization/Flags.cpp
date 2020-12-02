@@ -314,7 +314,7 @@ static bool checkAllInputElementsAreSame(const Value& input, InstructionWalker i
 static bool checkAllResultElementsAreSame(
     const intermediate::IntermediateInstruction& inst, Optional<InstructionWalker> it)
 {
-    if(inst.hasDecoration(intermediate::InstructionDecorations::IDENTICAL_ELEMENTS))
+    if(!inst.hasConditionalExecution() && inst.hasDecoration(intermediate::InstructionDecorations::IDENTICAL_ELEMENTS))
         return true;
     if(inst.hasConditionalExecution())
     {

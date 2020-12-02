@@ -35,6 +35,9 @@ namespace vc4c
             // NOTE: this is the instruction-iterator, so it points to the combined operation not the single operation
             // actually using the local
             FastSet<InstructionWalker> associatedInstructions;
+            // whether this local is read in a vector rotation and is therefore additionally limited at the possible
+            // mapped registers
+            bool isFullVectorRotated;
 
             LocalUsage(InstructionWalker first, InstructionWalker last);
         };

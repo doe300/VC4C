@@ -63,7 +63,6 @@ namespace vc4c
         int getAccumulatorNumber() const noexcept;
 
         bool operator<(Register right) const noexcept;
-        bool operator>(Register right) const noexcept;
         bool operator==(Register right) const noexcept;
         bool operator!=(Register right) const noexcept
         {

@@ -123,9 +123,8 @@ static NODISCARD InstructionWalker intrinsifyReadWorkItemInfo(Method& method, In
 
 static NODISCARD InstructionWalker intrinsifyReadLocalSize(Method& method, InstructionWalker it, const Value& arg)
 {
-    auto decorations =
-        add_flag(add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT),
-            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+    auto decorations = add_flag(InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::UNSIGNED_RESULT,
+        InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
     /*
      * Use the value set via reqd_work_group_size(x, y, z) - if set - and return here.
      * This is valid, since the OpenCL standard states: "is the work-group size that must be used as the local_work_size
@@ -190,9 +189,8 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
             (new MoveOperation(out, method.findOrCreateBuiltin(BuiltinLocal::Type::WORK_DIMENSIONS)->createReference()))
                 ->copyExtrasFrom(callSite)
                 ->addDecorations(add_flag(callSite->decoration,
-                    add_flag(add_flag(InstructionDecorations::BUILTIN_WORK_DIMENSIONS,
-                                 InstructionDecorations::UNSIGNED_RESULT),
-                        InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))));
+                    add_flag(InstructionDecorations::BUILTIN_WORK_DIMENSIONS, InstructionDecorations::UNSIGNED_RESULT),
+                    InstructionDecorations::WORK_GROUP_UNIFORM_VALUE)));
         return true;
     }
     if(callSite->methodName == FUNCTION_NAME_NUM_GROUPS && callSite->getArguments().size() == 1)
@@ -202,7 +200,7 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
         it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {BuiltinLocal::Type::NUM_GROUPS_X, BuiltinLocal::Type::NUM_GROUPS_Y, BuiltinLocal::Type::NUM_GROUPS_Z},
             INT_ONE,
-            add_flag(add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT),
+            add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT,
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
         return true;
     }
@@ -211,7 +209,7 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of the work-group ids" << logging::endl);
         it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {BuiltinLocal::Type::GROUP_ID_X, BuiltinLocal::Type::GROUP_ID_Y, BuiltinLocal::Type::GROUP_ID_Z}, INT_ZERO,
-            add_flag(add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT),
+            add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT,
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
         return true;
     }
@@ -222,7 +220,7 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
             {BuiltinLocal::Type::GLOBAL_OFFSET_X, BuiltinLocal::Type::GLOBAL_OFFSET_Y,
                 BuiltinLocal::Type::GLOBAL_OFFSET_Z},
             INT_ZERO,
-            add_flag(add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT),
+            add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT,
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
         return true;
     }
@@ -252,13 +250,14 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
         it.emplace(new MoveOperation(tmpNumGroups, NOP_REGISTER));
         it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {BuiltinLocal::Type::NUM_GROUPS_X, BuiltinLocal::Type::NUM_GROUPS_Y, BuiltinLocal::Type::NUM_GROUPS_Z},
-            INT_ONE, add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT));
+            INT_ONE,
+            add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT,
+                InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
         it.nextInBlock();
         it.reset((new Operation(OP_MUL24, callSite->getOutput().value(), tmpLocalSize, tmpNumGroups))
                      ->copyExtrasFrom(callSite)
                      ->addDecorations(add_flag(callSite->decoration,
-                         add_flag(add_flag(InstructionDecorations::BUILTIN_GLOBAL_SIZE,
-                                      InstructionDecorations::UNSIGNED_RESULT),
+                         add_flag(InstructionDecorations::BUILTIN_GLOBAL_SIZE, InstructionDecorations::UNSIGNED_RESULT,
                              InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))));
         return true;
     }
@@ -277,7 +276,8 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
         it.emplace(new MoveOperation(tmpGroupID, NOP_REGISTER));
         it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {BuiltinLocal::Type::GROUP_ID_X, BuiltinLocal::Type::GROUP_ID_Y, BuiltinLocal::Type::GROUP_ID_Z}, INT_ZERO,
-            add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT));
+            add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT,
+                InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
         it.nextInBlock();
         it.emplace(new MoveOperation(tmpLocalSize, NOP_REGISTER));
         it = intrinsifyReadLocalSize(method, it, callSite->assertArgument(0));
@@ -286,18 +286,19 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
         it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {BuiltinLocal::Type::GLOBAL_OFFSET_X, BuiltinLocal::Type::GLOBAL_OFFSET_Y,
                 BuiltinLocal::Type::GLOBAL_OFFSET_Z},
-            INT_ZERO, add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT));
+            INT_ZERO,
+            add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT,
+                InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
         it.nextInBlock();
         it.emplace(new MoveOperation(tmpLocalID, NOP_REGISTER));
         it = intrinsifyReadLocalID(method, it, callSite->assertArgument(0));
         it.nextInBlock();
         assign(it, tmpRes0) = mul24(tmpGroupID, tmpLocalSize);
         assign(it, tmpRes1) = tmpGlobalOffset + tmpRes0;
-        it.reset(
-            (new Operation(OP_ADD, callSite->getOutput().value(), tmpRes1, tmpLocalID))
-                ->copyExtrasFrom(callSite)
-                ->addDecorations(add_flag(callSite->decoration,
-                    add_flag(InstructionDecorations::BUILTIN_GLOBAL_ID, InstructionDecorations::UNSIGNED_RESULT))));
+        it.reset((new Operation(OP_ADD, callSite->getOutput().value(), tmpRes1, tmpLocalID))
+                     ->copyExtrasFrom(callSite)
+                     ->addDecorations(add_flag(callSite->decoration, InstructionDecorations::BUILTIN_GLOBAL_ID,
+                         InstructionDecorations::UNSIGNED_RESULT)));
         return true;
     }
     return false;

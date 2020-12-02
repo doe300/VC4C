@@ -906,6 +906,11 @@ qpu_asm::DecoratedInstruction CombinedOperation::convertToAsm(const FastMap<cons
     qpu_asm::ALUInstruction mulInstr =
         *mulOp->convertToAsm(registerMapping, labelMapping, instructionIndex).instruction.as<qpu_asm::ALUInstruction>();
 
+    if(addInstr.getSig() == SIGNAL_ALU_IMMEDIATE && mulInstr.getSig() == SIGNAL_ALU_IMMEDIATE &&
+        addInstr.getInputB() != mulInstr.getInputB())
+        throw CompilationError(CompilationStep::CODE_GENERATION,
+            "Can't map combined instruction with two distinct immediate arguments", to_string());
+
     addInstr.setMulCondition(mulInstr.getMulCondition());
     addInstr.setMulMultiplexA(mulInstr.getMulMultiplexA());
     addInstr.setMulMultiplexB(mulInstr.getMulMultiplexB());

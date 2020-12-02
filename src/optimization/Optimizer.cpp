@@ -58,7 +58,7 @@ static const std::vector<OptimizationStep> SINGLE_STEPS = {
     // calculates constant operations
     OptimizationStep("FoldConstants", foldConstants),
     // simplifies arithmetic operations into moves or into "easier" operations
-    OptimizationStep("SimplifyArithmetics", simplifyOperation),
+    OptimizationStep("SimplifyOperation", simplifyOperation),
     // combines operations according to arithmetic rules
     OptimizationStep("CombineArithmetics", combineArithmeticOperations),
     // removes calls to SFU registers with constant input
