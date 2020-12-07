@@ -497,3 +497,50 @@ void intermediate::redirectAllBranches(BasicBlock& oldTarget, BasicBlock& newTar
                          ->copyExtrasFrom(branch));
     }
 }
+
+bool intermediate::needsDelay(
+    const IntermediateInstruction* firstInst, const IntermediateInstruction* secondInst, const Local* local)
+{
+    // we also need to insert an instruction, if the local is unpacked in any successive instruction,
+    // in which case it cannot be on an accumulator. Since we have a direct read-after-write, the local
+    // can also not be on register-file A -> we need to insert buffer
+    bool isUnpacked = false;
+    local->forUsers(LocalUse::Type::READER, [&isUnpacked](const LocalUser* user) {
+        if(user->hasUnpackMode())
+            isUnpacked = true;
+    });
+
+    auto hasPackMode = firstInst->hasPackMode();
+    if(auto combined = dynamic_cast<const CombinedOperation*>(firstInst))
+        hasPackMode = (combined->getFirstOp() && combined->getFirstOp()->hasPackMode()) ||
+            (combined->getSecondOp() && combined->getSecondOp()->hasPackMode());
+
+    auto hasUnpackMode = secondInst->hasUnpackMode();
+    if(auto combined = dynamic_cast<const CombinedOperation*>(secondInst))
+        hasUnpackMode = (combined->getFirstOp() && combined->getFirstOp()->hasUnpackMode()) ||
+            (combined->getSecondOp() && combined->getSecondOp()->hasUnpackMode());
+
+    return hasPackMode || hasUnpackMode || dynamic_cast<const VectorRotation*>(secondInst) || isUnpacked;
+}
+
+bool intermediate::needsDelay(
+    InstructionWalker firstIt, InstructionWalker secondIt, const Local* local, std::size_t accumulatorThreshold)
+{
+    return needsDelay(firstIt.get(), secondIt.get(), local) ||
+        !firstIt.getBasicBlock()->isLocallyLimited(firstIt, local, accumulatorThreshold);
+}
+
+bool intermediate::needsDelay(const IntermediateInstruction* firstInst, const IntermediateInstruction* secondInst)
+{
+    if((firstInst->writesRegister(REG_REPLICATE_ALL) || firstInst->writesRegister(REG_REPLICATE_QUAD) ||
+           firstInst->writesRegister(REG_ACC5)) &&
+        secondInst->readsRegister(REG_ACC5) && dynamic_cast<const VectorRotation*>(secondInst))
+        // below we only check for local, so explicitly check for registers here
+        return true;
+    bool isDelayNeeded = false;
+    firstInst->forUsedLocals([&](const Local* loc, LocalUse::Type type, const IntermediateInstruction&) {
+        if(has_flag(type, LocalUse::Type::WRITER) && secondInst->readsLocal(loc))
+            isDelayNeeded = isDelayNeeded || needsDelay(firstInst, secondInst, loc);
+    });
+    return isDelayNeeded;
+}

@@ -297,29 +297,31 @@ InstructionWalker optimizations::combineFlagWithOutput(
 }
 
 static bool checkAllResultElementsAreSame(
-    const intermediate::IntermediateInstruction& inst, Optional<InstructionWalker>);
+    const intermediate::IntermediateInstruction& inst, Optional<InstructionWalker> it, std::size_t stepsRemaining);
 
-static bool checkAllInputElementsAreSame(const Value& input, InstructionWalker it)
+static bool checkAllInputElementsAreSame(const Value& input, InstructionWalker it, std::size_t stepsRemaining)
 {
     bool allElementsSame = input.isAllSame();
-    if(!allElementsSame && input.checkLocal())
+    if(!allElementsSame && stepsRemaining > 0 && input.checkLocal())
     {
         allElementsSame = input.local()->allUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) -> bool {
-            return checkAllResultElementsAreSame(*writer, it.getBasicBlock()->findWalkerForInstruction(writer, it));
+            return checkAllResultElementsAreSame(
+                *writer, it.getBasicBlock()->findWalkerForInstruction(writer, it), stepsRemaining - 1);
         });
     }
     return allElementsSame;
 }
 
 static bool checkAllResultElementsAreSame(
-    const intermediate::IntermediateInstruction& inst, Optional<InstructionWalker> it)
+    const intermediate::IntermediateInstruction& inst, Optional<InstructionWalker> it, std::size_t stepsRemaining)
 {
     if(!inst.hasConditionalExecution() && inst.hasDecoration(intermediate::InstructionDecorations::IDENTICAL_ELEMENTS))
         return true;
     if(inst.hasConditionalExecution())
     {
         auto flagIt = it ? it->getBasicBlock()->findLastSettingOfFlags(*it) : Optional<InstructionWalker>{};
-        if(flagIt && !flagIt->isEndOfBlock() && checkAllResultElementsAreSame(*(*flagIt).get(), *flagIt))
+        if(flagIt && stepsRemaining > 0 && !flagIt->isEndOfBlock() &&
+            checkAllResultElementsAreSame(*(*flagIt).get(), *flagIt, stepsRemaining - 1))
             // If we can argue that the (required) flags are set the same for all elements, then the conditional
             // instruction sets the same value for all elements.
             return true;
@@ -346,7 +348,7 @@ static bool checkAllResultElementsAreSame(
     }
 
     if(it && std::all_of(inst.getArguments().begin(), inst.getArguments().end(), [&](const Value& arg) -> bool {
-           return checkAllInputElementsAreSame(arg, *it);
+           return checkAllInputElementsAreSame(arg, *it, stepsRemaining);
        }))
         // TODO do we need to exclude some operation types? Or heed some extra option/flags?
         return true;
@@ -421,7 +423,8 @@ InstructionWalker optimizations::simplifyFlag(
         return it;
 
     // check whether all our inputs are identical over the whole SIMD vector
-    if(!checkAllInputElementsAreSame(*input, it))
+    // limit is arbitrary and only for performance reasons to not run into very deep recursions
+    if(!checkAllInputElementsAreSame(*input, it, 8))
         return it;
 
     // check all depending conditional executions, whether they allow us to change the flags

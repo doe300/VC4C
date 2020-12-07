@@ -246,32 +246,6 @@ static NODISCARD InstructionWalker findReplacementCandidate(
     return replacementIt;
 }
 
-/*
- * only insert instruction,
- * - if local is used afterwards (and not just in the next few instructions)
- * - or the pack-mode of the previous instruction is set, since in that case, the register-file A
- * MUST be used, so it cannot be read in the next instruction
- * - or the unpack-mode of this instruction is set, since in that case, the register-file A MUST be
- * used, so it cannot be written to in the previous instruction
- * - also vector-rotations MUST be on accumulator, but the input MUST NOT be written in the previous
- * instruction, so they are also split up
- */
-static bool needsDelay(
-    InstructionWalker prevIt, InstructionWalker nextIt, const Local* local, std::size_t accumulatorThreshold)
-{
-    // we also need to insert an instruction, if the local is unpacked in any successive instruction,
-    // in which case it cannot be on an accumulator. Since we have a direct read-after-write, the local
-    // can also not be on register-file A -> we need to insert buffer
-    bool isUnpacked = false;
-    local->forUsers(LocalUse::Type::READER, [&isUnpacked](const LocalUser* user) {
-        if(user->hasUnpackMode())
-            isUnpacked = true;
-    });
-
-    return prevIt->hasPackMode() || nextIt->hasUnpackMode() || nextIt.get<VectorRotation>() ||
-        !prevIt.getBasicBlock()->isLocallyLimited(prevIt, local, accumulatorThreshold) || isUnpacked;
-}
-
 static bool replaceNOPs(BasicBlock& basicBlock, Method& method, const Configuration& config)
 {
     InstructionWalker it = basicBlock.walk();

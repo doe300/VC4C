@@ -115,6 +115,43 @@ namespace vc4c
          * Redirects all EXPLICIT branches previously targeting the old target to now jump to the new target.
          */
         void redirectAllBranches(BasicBlock& oldTarget, BasicBlock& newTarget);
+
+        /**
+         * Checks whether:
+         * - the pack-mode of the previous instruction is set, since in that case, the register-file A MUST be used, so
+         * it cannot be read in the next instruction
+         * - the unpack-mode of this instruction is set, since in that case, the register-file A MUST be used, so it
+         * cannot be written to in the previous instruction
+         * - also vector-rotations MUST be on accumulator, but the input MUST NOT be written in the previous instruction
+         *
+         * NOTE: This function does not check whether the instructions are actually neighboring!
+         *
+         * @return whether they has to be another instruction between the two given instructions, i.e. due to
+         * read-after-write of locals
+         */
+        bool needsDelay(
+            const IntermediateInstruction* firstInst, const IntermediateInstruction* secondInst, const Local* local);
+
+        /**
+         * Runs the checks of the #needsDelay(() function above with additional checks enabled:
+         * - local is used afterwards (and not just in the next few instructions)
+         *
+         * NOTE: This function does not check whether the instructions are actually neighboring!
+         *
+         * @return whether they has to be another instruction between the two given instructions, i.e. due to
+         * read-after-write of locals
+         */
+        bool needsDelay(InstructionWalker firstIt, InstructionWalker secondIt, const Local* local,
+            std::size_t accumulatorThreshold);
+
+        /**
+         * Generalized version of above check running the #needsDelay() check for all locals written in the first and
+         * used in the second instruction
+         *
+         * @return whether they has to be another instruction between the two given instructions, i.e. due to
+         * read-after-write of locals
+         */
+        bool needsDelay(const IntermediateInstruction* firstInst, const IntermediateInstruction* secondInst);
     } // namespace intermediate
 } // namespace vc4c
 

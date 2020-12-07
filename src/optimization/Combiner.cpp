@@ -102,10 +102,25 @@ bool optimizations::simplifyBranches(const Module& module, Method& method, const
     return hasChanged;
 }
 
-using MergeCondition = std::function<bool(Operation*, Operation*, MoveOperation*, MoveOperation*)>;
+static bool isSimpleMoveOfZero(const MoveOperation* move)
+{
+    return move && move->isSimpleMove() && move->getSource().hasLiteral(0_lit);
+}
+
+struct MergeConditionData
+{
+    /**
+     * One of the instructions is a simple move of zero and can be rewritten by converting to an xor of the one of the
+     * (literal) inputs of the other instruction.
+     */
+    MoveOperation* rewriteSimpleMoveOfZero = nullptr;
+};
+
+using MergeCondition = std::function<bool(Operation*, Operation*, MoveOperation*, MoveOperation*, MergeConditionData&)>;
 static const std::vector<MergeCondition> mergeConditions = {
     // check both instructions are actually mapped to machine code
-    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
         if(firstOp != nullptr && !firstOp->mapsToASMInstruction())
             return false;
         if(firstMove != nullptr && !firstMove->mapsToASMInstruction())
@@ -117,12 +132,14 @@ static const std::vector<MergeCondition> mergeConditions = {
         return true;
     },
     // check neither instruction is a vector rotation
-    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
         return (firstMove == nullptr || dynamic_cast<VectorRotation*>(firstMove) == nullptr) &&
             (secondMove == nullptr || dynamic_cast<VectorRotation*>(secondMove) == nullptr);
     },
     // check at most one instruction is a mandatory delay
-    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
         unsigned numDelays = 0;
         if((check<IntermediateInstruction>(firstOp) | check<IntermediateInstruction>(firstMove))
                 ->hasDecoration(InstructionDecorations::MANDATORY_DELAY))
@@ -133,7 +150,8 @@ static const std::vector<MergeCondition> mergeConditions = {
         return numDelays <= 1;
     },
     // check both instructions use different ALUs
-    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
         if(firstOp != nullptr && secondOp != nullptr)
         {
             if((firstOp->op.runsOnAddALU() && firstOp->op.runsOnMulALU()) ||
@@ -148,7 +166,8 @@ static const std::vector<MergeCondition> mergeConditions = {
         return true;
     },
     // check reads from or writes to special registers
-    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
         if(firstOp != nullptr && (firstOp->checkOutputRegister() || firstOp->readsRegister()))
             return false;
         else if(firstMove != nullptr && (firstMove->checkOutputRegister() || firstMove->readsRegister()))
@@ -160,7 +179,8 @@ static const std::vector<MergeCondition> mergeConditions = {
         return true;
     },
     // check second operation using the result of the first
-    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
         Value outFirst(UNDEFINED_VALUE);
         if(firstOp != nullptr && firstOp->getOutput())
             outFirst = firstOp->getOutput().value();
@@ -185,7 +205,8 @@ static const std::vector<MergeCondition> mergeConditions = {
     },
     // check operations use same output and do not have inverted conditions. If the first write is unconditional and has
     // no side-effects, make it conditional on the inversion of the second write.
-    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
         Value outFirst(UNDEFINED_VALUE);
         ConditionCode condFirst = COND_ALWAYS;
         bool firstSideEffects = false;
@@ -231,7 +252,8 @@ static const std::vector<MergeCondition> mergeConditions = {
         return true;
     },
     // check first operation sets flags and second operation depends on them
-    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
         SetFlag setsFlags = SetFlag::DONT_SET;
         bool usesFlags = false;
         ConditionCode firstCond = COND_ALWAYS;
@@ -267,7 +289,8 @@ static const std::vector<MergeCondition> mergeConditions = {
         return setsFlags == SetFlag::DONT_SET || !usesFlags;
     },
     // check MUL ALU sets flags (flags would be set by ADD ALU)
-    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
         ConditionCode firstCond = firstOp ? firstOp->getCondition() : firstMove->getCondition();
         ConditionCode secondCond = secondOp ? secondOp->getCondition() : secondMove->getCondition();
         if(firstCond.isInversionOf(secondCond))
@@ -283,10 +306,14 @@ static const std::vector<MergeCondition> mergeConditions = {
         return true;
     },
     // check maximum 1 literal value is used (both can use the same literal value)
-    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
         // TODO This could be optimized, if we known which literals will be extracted to extra load instructions.
         // XXX Need then to check only for literals which are converted to small immediate values in-place.
         Optional<Literal> literal;
+        // If one literal user is a move of 0, we can rewrite it with a XOR of one of the arguments of the other
+        // instruction
+        MoveOperation* simpleMoveOfZero = nullptr;
         if(firstOp != nullptr)
         {
             if(auto lit = firstOp->getFirstArg().getLiteralValue())
@@ -298,27 +325,61 @@ static const std::vector<MergeCondition> mergeConditions = {
         {
             if(auto lit = firstMove->getSource().getLiteralValue())
                 literal = lit;
+            if(isSimpleMoveOfZero(firstMove))
+                simpleMoveOfZero = firstMove;
         }
         if(literal)
         {
             if(secondOp != nullptr)
             {
                 if(secondOp->getFirstArg().getLiteralValue() && !secondOp->getFirstArg().hasLiteral(*literal))
-                    return false;
+                {
+                    if(simpleMoveOfZero)
+                        literal = secondOp->getFirstArg().getLiteralValue();
+                    else
+                        return false;
+                }
                 if((secondOp->getSecondArg() & &Value::getLiteralValue) &&
                     !secondOp->assertArgument(1).hasLiteral(*literal))
-                    return false;
+                {
+                    if(simpleMoveOfZero)
+                        literal = secondOp->getSecondArg() & &Value::getLiteralValue;
+                    else
+                        return false;
+                }
             }
             if(secondMove != nullptr)
             {
                 if(secondMove->getSource().getLiteralValue() && !secondMove->getSource().hasLiteral(*literal))
-                    return false;
+                {
+                    if(simpleMoveOfZero)
+                        literal = secondMove->getSource().getLiteralValue();
+                    else if(isSimpleMoveOfZero(secondMove))
+                        simpleMoveOfZero = secondMove;
+                    else
+                        return false;
+                }
             }
         }
+        else if(isSimpleMoveOfZero(secondMove))
+            simpleMoveOfZero = secondMove;
+
+        if(simpleMoveOfZero && literal && literal->unsignedInt() != 0)
+        {
+            // XOR needs to be on add ALU, so check whether other instruction can be on mul ALU
+            if(simpleMoveOfZero == firstMove && ((secondOp && secondOp->op.runsOnMulALU()) || secondMove))
+                data.rewriteSimpleMoveOfZero = firstMove;
+            else if(simpleMoveOfZero == secondMove && ((firstOp && firstOp->op.runsOnMulALU()) || firstMove))
+                data.rewriteSimpleMoveOfZero = secondMove;
+            else
+                return false;
+        }
+
         return true;
     },
     // check a maximum of 2 inputs are read from
-    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
         std::pair<Value, Value> inputs = std::make_pair(UNDEFINED_VALUE, UNDEFINED_VALUE);
         if(firstOp != nullptr)
         {
@@ -326,7 +387,7 @@ static const std::vector<MergeCondition> mergeConditions = {
             if(auto arg1 = firstOp->getSecondArg())
                 inputs.second = *arg1;
         }
-        if(firstMove != nullptr)
+        if(firstMove != nullptr && data.rewriteSimpleMoveOfZero != firstMove)
             inputs.first = firstMove->getSource();
         if(secondOp != nullptr)
         {
@@ -345,7 +406,7 @@ static const std::vector<MergeCondition> mergeConditions = {
                     return false;
             }
         }
-        if(secondMove != nullptr)
+        if(secondMove != nullptr && data.rewriteSimpleMoveOfZero != secondMove)
         {
             if(secondMove->getSource() != inputs.first)
             {
@@ -358,7 +419,8 @@ static const std::vector<MergeCondition> mergeConditions = {
         return true;
     },
     // check at most 1 signal (including IMMEDIATE) is set, same for Un-/Pack
-    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
         Signaling firstSignal = SIGNAL_NONE;
         Signaling secondSignal = SIGNAL_NONE;
 
@@ -381,7 +443,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         if(firstMove != nullptr)
         {
             firstSignal = firstMove->getSignal();
-            if(firstMove->getSource().getLiteralValue())
+            if(firstMove->getSource().getLiteralValue() && data.rewriteSimpleMoveOfZero != firstMove)
                 firstSignal = SIGNAL_ALU_IMMEDIATE;
             firstPack = firstMove->getPackMode();
             firstUnpack = firstMove->getUnpackMode();
@@ -397,7 +459,7 @@ static const std::vector<MergeCondition> mergeConditions = {
         if(secondMove != nullptr)
         {
             secondSignal = secondMove->getSignal();
-            if(secondMove->getSource().getLiteralValue())
+            if(secondMove->getSource().getLiteralValue() && data.rewriteSimpleMoveOfZero != secondMove)
                 secondSignal = SIGNAL_ALU_IMMEDIATE;
             secondPack = secondMove->getPackMode();
             secondUnpack = secondMove->getUnpackMode();
@@ -428,7 +490,8 @@ static const std::vector<MergeCondition> mergeConditions = {
         return true;
     },
     // check not two different boolean values which both are used in conditional jump
-    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove) -> bool {
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
         // since boolean values are combined with ELEM_NUMBER (reg-file A) before conditional branch, they cannot be on
         // reg-file A  combining two of those can cause register-association errors
         // TODO find a way to fix this
@@ -488,9 +551,10 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                      */
                     // TODO a written-to register MUST not be read in the next instruction (check instruction
                     // before/after combined) (unless within local range)
+                    MergeConditionData data;
                     bool conditionsMet = std::all_of(mergeConditions.begin(), mergeConditions.end(),
-                        [op, nextOp, move, nextMove](
-                            const MergeCondition& cond) -> bool { return cond(op, nextOp, move, nextMove); });
+                        [op, nextOp, move, nextMove, &data](
+                            const MergeCondition& cond) -> bool { return cond(op, nextOp, move, nextMove, data); });
                     if(instr->checkOutputLocal() && nextInstr->checkOutputLocal())
                     {
                         // extra check, only combine writes to the same local, if local is only used within the next
@@ -552,6 +616,40 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                             if(nextInstr->hasUnpackMode() && nextInstr->readsLocal(checkIt->getOutput()->local()))
                                 conditionsMet = false;
                         }
+                    }
+
+                    if(conditionsMet && data.rewriteSimpleMoveOfZero)
+                    {
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Rewriting simple move of zero to XOR of other argument to enable combination: "
+                                << data.rewriteSimpleMoveOfZero->to_string() << logging::endl);
+                        if(data.rewriteSimpleMoveOfZero == move)
+                        {
+                            Value arg = nextInstr->assertArgument(0);
+                            if(auto litArg = nextInstr->findLiteralArgument())
+                                // prefer the literal argument for XOR'ing for easier readability
+                                arg = *litArg;
+                            it.reset(
+                                (new Operation(OP_XOR, move->getOutput().value(), arg, arg))->copyExtrasFrom(move));
+                            move = nullptr;
+                            op = it.get<Operation>();
+                            instr = op;
+                        }
+                        else if(data.rewriteSimpleMoveOfZero == nextMove)
+                        {
+                            Value arg = instr->assertArgument(0);
+                            if(auto litArg = instr->findLiteralArgument())
+                                // prefer the literal argument for XOR'ing for easier readability
+                                arg = *litArg;
+                            nextIt.reset((new Operation(OP_XOR, nextMove->getOutput().value(), arg, arg))
+                                             ->copyExtrasFrom(nextMove));
+                            nextMove = nullptr;
+                            nextOp = nextIt.get<Operation>();
+                            nextInstr = nextOp;
+                        }
+                        else
+                            // would be very very weird to run into here
+                            conditionsMet = false;
                     }
 
                     if(conditionsMet)
