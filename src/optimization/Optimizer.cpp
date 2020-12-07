@@ -25,6 +25,7 @@ using namespace vc4c::optimizations;
 
 const std::string optimizations::PASS_WORK_GROUP_LOOP = "loop-work-groups";
 const std::string optimizations::PASS_CACHE_MEMORY = "cache-memory";
+extern const std::string optimizations::PASS_PEEPHOLE_REMOVE = "peephole-remove";
 
 OptimizationPass::OptimizationPass(const std::string& name, const std::string& parameterName, const Pass& pass,
     const std::string& description, OptimizationType type) :
@@ -35,7 +36,7 @@ OptimizationPass::OptimizationPass(const std::string& name, const std::string& p
 
 bool OptimizationPass::operator()(const Module& module, Method& method, const Configuration& config) const
 {
-    return pass(module, method, config);
+    return pass && pass(module, method, config);
 }
 
 OptimizationStep::OptimizationStep(const std::string& name, const Step& step) : name(name), step(step) {}
@@ -103,12 +104,6 @@ static bool runSingleSteps(const Module& module, Method& method, const Configura
     return true;
 }
 
-// optimization pass which does not do anything (e.g. the actual optimization is done somewhere else)
-static bool dummyPass(const Module& module, Method& method, const Configuration& config)
-{
-    return false;
-}
-
 static void addToPasses(const OptimizationPass& pass, std::vector<const OptimizationPass*>& initialPasses,
     std::vector<const OptimizationPass*>& repeatingPasses, std::vector<const OptimizationPass*>& finalPasses)
 {
@@ -141,6 +136,10 @@ Optimizer::Optimizer(const Configuration& config) : config(config)
 static bool runPass(
     const OptimizationPass& pass, std::size_t index, const Module& module, Method& method, const Configuration& config)
 {
+    if(!pass)
+        // don't pretend we run this pass, since we do not, at least not here
+        return false;
+
     logging::logLazy(logging::Level::DEBUG, [&]() {
         logging::debug() << logging::endl;
         logging::debug() << "Running pass: " << pass.name << logging::endl;
@@ -239,7 +238,7 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      * The first optimizations run modify the control-flow of the method.
      */
     // XXX not enabled with any optimization level for now
-    OptimizationPass("CacheMemoryInVPM", PASS_CACHE_MEMORY, dummyPass, "caches memory accesses in VPM where applicable",
+    OptimizationPass("CacheMemoryInVPM", PASS_CACHE_MEMORY, nullptr, "caches memory accesses in VPM where applicable",
         OptimizationType::INITIAL),
     OptimizationPass("AddWorkGroupLoops", PASS_WORK_GROUP_LOOP, addWorkGroupLoop,
         "merges all work-group executions into a single kernel execution", OptimizationType::INITIAL),
@@ -306,7 +305,10 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
     OptimizationPass("ReorderInstructions", "reorder", reorderWithinBasicBlocks,
         "re-order instructions to eliminate more NOPs and stall cycles", OptimizationType::FINAL),
     OptimizationPass("CombineALUIinstructions", "combine", combineOperations,
-        "run peep-hole optimization to combine ALU-operations", OptimizationType::FINAL)};
+        "run peep-hole optimization to combine ALU-operations", OptimizationType::FINAL),
+    OptimizationPass("PeepholeRemoveInstructions", PASS_PEEPHOLE_REMOVE, nullptr,
+        "runs peephole-optimization after register-mapping to remove useless instructions", OptimizationType::INITIAL),
+};
 
 std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
 {
@@ -341,6 +343,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("combine");
         passes.emplace("remove-unused-flags");
         passes.emplace(PASS_WORK_GROUP_LOOP);
+        passes.emplace(PASS_PEEPHOLE_REMOVE);
         FALL_THROUGH
     case OptimizationLevel::NONE:
         // TODO this is not an optimization, more a normalization step.

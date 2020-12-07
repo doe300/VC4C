@@ -13,6 +13,8 @@
 #include "../InstructionWalker.h"
 #include "../Module.h"
 #include "../Profiler.h"
+#include "../optimization/Optimizer.h"
+#include "../optimization/Peephole.h"
 #include "GraphColoring.h"
 #include "KernelInfo.h"
 #include "RegisterFixes.h"
@@ -138,16 +140,20 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
         PROFILE_END(colorGraph);
     }
 
+    // map to registers
+    PROFILE_START(toRegisterMap);
+    auto registerMapping = coloredGraph->toRegisterMap();
+    PROFILE_END(toRegisterMap);
+
+    // run some peephole-optimizations
+    if(optimizations::Optimizer::isEnabled(optimizations::PASS_PEEPHOLE_REMOVE, config))
+        optimizations::removeObsoleteInstructions(module, method, config, registerMapping);
+
     // create label-map + remove labels
     const auto labelMap = mapLabels(method);
 
     // IMPORTANT: DO NOT OPTIMIZE, RE-ORDER, COMBINE, INSERT OR REMOVE ANY INSTRUCTION AFTER THIS POINT!!!
     // otherwise, labels/branches will be wrong
-
-    // map to registers
-    PROFILE_START(toRegisterMap);
-    auto registerMapping = coloredGraph->toRegisterMap();
-    PROFILE_END(toRegisterMap);
 
     CPPLOG_LAZY(logging::Level::DEBUG, log << "-----" << logging::endl);
     std::size_t index = 0;

@@ -25,6 +25,7 @@ namespace vc4c
         // Some pass names which are explicitly accessed by other parts of the code
         extern const std::string PASS_WORK_GROUP_LOOP;
         extern const std::string PASS_CACHE_MEMORY;
+        extern const std::string PASS_PEEPHOLE_REMOVE;
 
         /**
          * Type of optimization.
@@ -63,6 +64,11 @@ namespace vc4c
                 const std::string& description, OptimizationType type);
 
             bool operator()(const Module& module, Method& method, const Configuration& config) const;
+
+            inline operator bool() const noexcept
+            {
+                return static_cast<bool>(pass);
+            }
 
             const std::string name;
             const std::string parameterName;
