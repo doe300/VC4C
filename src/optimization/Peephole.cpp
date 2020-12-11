@@ -8,6 +8,7 @@
 #include "../Values.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
+#include "Combiner.h"
 #include "log.h"
 
 using namespace vc4c;
@@ -23,6 +24,30 @@ static InstructionWalker lookAhead(InstructionWalker it)
         if(it.has() && it->mapsToASMInstruction())
             break;
         it.nextInMethod();
+    }
+    return it;
+}
+
+static InstructionWalker lookAheadInBlock(InstructionWalker it)
+{
+    it.nextInBlock();
+    while(!it.isEndOfBlock())
+    {
+        if(it.has() && it->mapsToASMInstruction())
+            break;
+        it.nextInBlock();
+    }
+    return it;
+}
+
+static InstructionWalker lookBackInBlock(InstructionWalker it)
+{
+    it.previousInBlock();
+    while(!it.isEndOfBlock() && !it.isStartOfBlock())
+    {
+        if(it.has() && it->mapsToASMInstruction())
+            break;
+        it.previousInBlock();
     }
     return it;
 }
@@ -308,4 +333,70 @@ void optimizations::removeObsoleteInstructions(
     PROFILE_END(PeepholeRemoveInstructions);
     PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_OPTIMIZATION + 7011, "PeepholeRemoveInstructions (after)",
         kernel.countInstructions(), vc4c::profiler::COUNTER_OPTIMIZATION + 7010);
+}
+
+void optimizations::combineRegisterMappedOperations(const Module& module, Method& kernel, const Configuration& config,
+    const FastMap<const Local*, Register>& registerMap)
+{
+    logging::logLazy(logging::Level::DEBUG, [&]() {
+        logging::debug() << logging::endl;
+        logging::debug() << "Running peephole pass: CombineInstructions" << logging::endl;
+    });
+
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + 7020, "PeepholeCombineInstructions (before)",
+        kernel.countInstructions());
+    PROFILE_START(PeepholeCombineInstructions);
+
+    for(auto& block : kernel)
+    {
+        auto it = block.walk();
+        auto nextIt = lookAheadInBlock(it);
+        while(!it.isEndOfBlock() && !nextIt.isEndOfBlock())
+        {
+            if(!it.has() || !it->mapsToASMInstruction() || !nextIt.has() || !nextIt->mapsToASMInstruction())
+            {
+                it.nextInBlock();
+                nextIt = lookAheadInBlock(it);
+                continue;
+            }
+
+            bool conditionsMet = true;
+            auto move = it.get<intermediate::MoveOperation>();
+            auto op = it.get<intermediate::Operation>();
+            auto nextMove = nextIt.get<intermediate::MoveOperation>();
+            auto nextOp = nextIt.get<intermediate::Operation>();
+            if((!move && !op) || (!nextMove && !nextOp))
+                conditionsMet = false;
+
+            if(conditionsMet)
+            {
+                MergeConditionData data{&registerMap};
+                conditionsMet = std::all_of(MERGE_CONDITIONS.begin(), MERGE_CONDITIONS.end(),
+                    [op, nextOp, move, nextMove, &data](
+                        const MergeCondition& cond) -> bool { return cond(op, nextOp, move, nextMove, data); });
+            }
+            if(conditionsMet)
+            {
+                auto checkIt = lookAheadInBlock(nextIt);
+                if(checkIt.isEndOfBlock() || !checkIt.has() || !canRemoveInstructionBetween(it, checkIt, registerMap))
+                    conditionsMet = false;
+            }
+            if(conditionsMet)
+            {
+                auto checkIt = lookBackInBlock(it);
+                if(checkIt.isEndOfBlock() || !checkIt.has() ||
+                    !canRemoveInstructionBetween(checkIt, nextIt, registerMap))
+                    conditionsMet = false;
+            }
+
+            if(conditionsMet)
+                combineOperationsInner(it, nextIt);
+
+            it.nextInBlock();
+            nextIt = lookAheadInBlock(it);
+        }
+    }
+    PROFILE_END(PeepholeCombineInstructions);
+    PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_OPTIMIZATION + 7021, "PeepholeCombineInstructions (after)",
+        kernel.countInstructions(), vc4c::profiler::COUNTER_OPTIMIZATION + 7020);
 }

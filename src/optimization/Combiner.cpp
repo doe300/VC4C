@@ -102,22 +102,17 @@ bool optimizations::simplifyBranches(const Module& module, Method& method, const
     return hasChanged;
 }
 
+bool MergeConditionData::isPeepholeRun() const noexcept
+{
+    return registerMap;
+}
+
 static bool isSimpleMoveOfZero(const MoveOperation* move)
 {
     return move && move->isSimpleMove() && move->getSource().hasLiteral(0_lit);
 }
 
-struct MergeConditionData
-{
-    /**
-     * One of the instructions is a simple move of zero and can be rewritten by converting to an xor of the one of the
-     * (literal) inputs of the other instruction.
-     */
-    MoveOperation* rewriteSimpleMoveOfZero = nullptr;
-};
-
-using MergeCondition = std::function<bool(Operation*, Operation*, MoveOperation*, MoveOperation*, MergeConditionData&)>;
-static const std::vector<MergeCondition> mergeConditions = {
+const std::vector<MergeCondition> optimizations::MERGE_CONDITIONS = {
     // check both instructions are actually mapped to machine code
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
         MergeConditionData& data) -> bool {
@@ -251,6 +246,46 @@ static const std::vector<MergeCondition> mergeConditions = {
         }
         return true;
     },
+    // check operations write to registers on same physical register file ("peephole mode" only)
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
+        if(!data.isPeepholeRun())
+            return true;
+
+        auto firstInst = firstOp ? dynamic_cast<UnpackingInstruction*>(firstOp) : firstMove;
+        auto secondInst = secondOp ? dynamic_cast<UnpackingInstruction*>(secondOp) : secondMove;
+
+        auto firstOutReg = firstInst->checkOutputRegister();
+        if(auto loc = firstInst->checkOutputLocal())
+        {
+            auto locIt = data.registerMap->find(loc);
+            if(locIt == data.registerMap->end())
+                return false;
+            firstOutReg = locIt->second;
+        }
+
+        auto secondOutReg = secondInst->checkOutputRegister();
+        if(auto loc = secondInst->checkOutputLocal())
+        {
+            auto locIt = data.registerMap->find(loc);
+            if(locIt == data.registerMap->end())
+                return false;
+            secondOutReg = locIt->second;
+        }
+
+        if(!firstOutReg || !secondOutReg ||
+            (firstOutReg->file == secondOutReg->file && firstOutReg->isGeneralPurpose() &&
+                secondOutReg->isGeneralPurpose()))
+            // fail if we write to two physical registers on the same file, even if it is the same register
+            return false;
+
+        if(firstOutReg->file == RegisterFile::ACCUMULATOR && firstOutReg->file == RegisterFile::ACCUMULATOR &&
+            *firstOutReg == *secondOutReg && !firstInst->getCondition().isInversionOf(secondInst->getCondition()))
+            // fail if we write the same accumulator, unless we have inverted conditions for writing
+            return false;
+
+        return true;
+    },
     // check first operation sets flags and second operation depends on them
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
         MergeConditionData& data) -> bool {
@@ -366,6 +401,10 @@ static const std::vector<MergeCondition> mergeConditions = {
 
         if(simpleMoveOfZero && literal && literal->unsignedInt() != 0)
         {
+            if(data.isPeepholeRun())
+                // don't do the rewrite for the "peephole mode" for now, to not make it too complex, especially since
+                // in a further check below this is also not regarded
+                return false;
             // XOR needs to be on add ALU, so check whether other instruction can be on mul ALU
             if(simpleMoveOfZero == firstMove && ((secondOp && secondOp->op.runsOnMulALU()) || secondMove))
                 data.rewriteSimpleMoveOfZero = firstMove;
@@ -377,9 +416,12 @@ static const std::vector<MergeCondition> mergeConditions = {
 
         return true;
     },
-    // check a maximum of 2 inputs are read from
+    // check a maximum of 2 inputs are read from ("normal" mode)
     [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
         MergeConditionData& data) -> bool {
+        if(data.isPeepholeRun())
+            // skip this particular check, we have the "peephole mode" version just below
+            return true;
         std::pair<Value, Value> inputs = std::make_pair(UNDEFINED_VALUE, UNDEFINED_VALUE);
         if(firstOp != nullptr)
         {
@@ -416,6 +458,59 @@ static const std::vector<MergeCondition> mergeConditions = {
                     return false;
             }
         }
+        return true;
+    },
+    // check a maximum of 4 inputs are read from ("pephole mode")
+    [](Operation* firstOp, Operation* secondOp, MoveOperation* firstMove, MoveOperation* secondMove,
+        MergeConditionData& data) -> bool {
+        if(!data.isPeepholeRun())
+            // skip this particular check, we have the "normal" version just above
+            return true;
+
+        /*
+         * For "peephole mode", we already know the registers a local is mapped to and can therefore be more
+         * accurate with this check. More precisely, we need to check that:
+         * - at most 4 distinct inputs are used
+         * - at most a single input is located at physical register file A or B respectively
+         * - at most one small immediate value or register on physical register file B is read
+         */
+        auto firstInst = firstOp ? dynamic_cast<UnpackingInstruction*>(firstOp) : firstMove;
+        auto secondInst = secondOp ? dynamic_cast<UnpackingInstruction*>(secondOp) : secondMove;
+        SortedSet<Register> allRegisters;
+        FastSet<SmallImmediate> allImmediates;
+        bool hasError = false;
+        auto extractRegister = [&](const Value& val) {
+            if(auto reg = val.checkRegister())
+                allRegisters.emplace(*reg);
+            else if(auto imm = val.checkImmediate())
+                allImmediates.emplace(*imm);
+            else if(auto loc = val.checkLocal())
+            {
+                auto locIt = data.registerMap->find(loc);
+                if(locIt != data.registerMap->end())
+                    allRegisters.emplace(locIt->second);
+                else
+                    hasError = true;
+            }
+            else
+                hasError = true;
+        };
+        for(const auto& arg : firstInst->getArguments())
+            extractRegister(arg);
+        for(const auto& arg : secondInst->getArguments())
+            extractRegister(arg);
+
+        if(hasError || allImmediates.size() > 1 || (allImmediates.size() + allRegisters.size()) > 4)
+            return false;
+        if(std::count_if(allRegisters.begin(), allRegisters.end(),
+               [](const Register& reg) -> bool { return reg.file == RegisterFile::PHYSICAL_A; }) > 1)
+            return false;
+        if(allImmediates.size() +
+                static_cast<std::size_t>(std::count_if(allRegisters.begin(), allRegisters.end(),
+                    [](const Register& reg) -> bool { return reg.file == RegisterFile::PHYSICAL_B; })) >
+            1)
+            return false;
+
         return true;
     },
     // check at most 1 signal (including IMMEDIATE) is set, same for Un-/Pack
@@ -511,6 +606,115 @@ static const std::vector<MergeCondition> mergeConditions = {
         return true;
     }};
 
+bool optimizations::combineOperationsInner(InstructionWalker it, InstructionWalker nextIt)
+{
+    auto move = it.get<intermediate::MoveOperation>();
+    auto op = it.get<intermediate::Operation>();
+    auto nextMove = nextIt.get<intermediate::MoveOperation>();
+    auto nextOp = nextIt.get<intermediate::Operation>();
+
+    // move supports both ADD and MUL ALU
+    // if merge, make "move" to other op-code or x x / v8max x x
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Merging instructions " << it->to_string() << " and " << nextIt->to_string() << logging::endl);
+    if(op && nextOp)
+    {
+        it.reset(
+            new CombinedOperation(dynamic_cast<Operation*>(it.release()), dynamic_cast<Operation*>(nextIt.release())));
+        nextIt.erase();
+    }
+    else if(op && nextMove)
+    {
+        if(auto newMove = nextMove->combineWith(op->op))
+        {
+            newMove->copyExtrasFrom(nextMove);
+            it.reset(new CombinedOperation(dynamic_cast<Operation*>(it.release()), newMove));
+            nextIt.erase();
+        }
+        else
+        {
+            logging::warn() << "Error combining move-operation '" << nextMove->to_string()
+                            << "' with: " << op->to_string() << logging::endl;
+            return false;
+        }
+    }
+    else if(move && nextOp)
+    {
+        if(Operation* newMove = move->combineWith(nextOp->op))
+        {
+            newMove->copyExtrasFrom(move);
+            it.reset(new CombinedOperation(newMove, dynamic_cast<Operation*>(nextIt.release())));
+            nextIt.erase();
+        }
+        else
+        {
+            logging::warn() << "Error combining move-operation '" << move->to_string()
+                            << "' with: " << nextOp->to_string() << logging::endl;
+            return false;
+        }
+    }
+    else if(move && nextMove)
+    {
+        bool firstOnMul = (move->hasPackMode() && move->getPackMode().supportsMulALU()) ||
+            (nextMove->hasPackMode() && !nextMove->getPackMode().supportsMulALU()) || nextMove->doesSetFlag();
+        Operation* newMove0 = move->combineWith(firstOnMul ? OP_ADD : OP_MUL24);
+        Operation* newMove1 = nextMove->combineWith(firstOnMul ? OP_MUL24 : OP_ADD);
+        if(newMove0 && newMove1)
+        {
+            newMove0->copyExtrasFrom(move);
+            newMove1->copyExtrasFrom(nextMove);
+            it.reset(new CombinedOperation(newMove0, newMove1));
+            nextIt.erase();
+        }
+        else
+        {
+            logging::warn() << "Error combining move-operation '" << move->to_string()
+                            << "' with: " << nextMove->to_string() << logging::endl;
+            return false;
+        }
+    }
+    else
+        throw CompilationError(
+            CompilationStep::OPTIMIZER, "Unhandled combination, type", (it->to_string() + ", ") + nextIt->to_string());
+
+    if(CombinedOperation* comb = it.get<CombinedOperation>())
+    {
+        // move instruction usable on both ALUs to the free ALU
+        if(comb->getFirstOp()->op.runsOnAddALU() && comb->getFirstOp()->op.runsOnMulALU())
+        {
+            OpCode code = comb->getFirstOp()->op;
+            if(comb->getSecondOp()->op.runsOnAddALU())
+                code.opAdd = 0;
+            else // by default (e.g. both run on both ALUs), map to ADD ALU
+                code.opMul = 0;
+            comb->getFirstOp()->op = code;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Fixing operation available on both ALUs to " << (code.opAdd == 0 ? "MUL" : "ADD")
+                    << " ALU: " << comb->getFirstOp()->to_string() << logging::endl);
+        }
+        if(comb->getSecondOp()->op.runsOnAddALU() && comb->getSecondOp()->op.runsOnMulALU())
+        {
+            OpCode code = comb->getSecondOp()->op;
+            if(comb->getFirstOp()->op.runsOnMulALU())
+                code.opMul = 0;
+            else // by default (e.g. both run on both ALUs), map to MUL ALU
+                code.opAdd = 0;
+            comb->getSecondOp()->op = code;
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Fixing operation available on both ALUs to " << (code.opAdd == 0 ? "MUL" : "ADD")
+                    << " ALU: " << comb->getSecondOp()->to_string() << logging::endl);
+        }
+
+        // mark combined instruction as delay, if one of the combined instructions is
+        if(comb->getFirstOp()->hasDecoration(InstructionDecorations::MANDATORY_DELAY) ||
+            comb->getSecondOp()->hasDecoration(InstructionDecorations::MANDATORY_DELAY))
+            comb->addDecorations(InstructionDecorations::MANDATORY_DELAY);
+        return true;
+    }
+
+    return false;
+}
+
 bool optimizations::combineOperations(const Module& module, Method& method, const Configuration& config)
 {
     // TODO can combine operation x and y if y is something like (result of x & 0xFF/0xFFFF) -> pack-mode
@@ -551,8 +755,8 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                      */
                     // TODO a written-to register MUST not be read in the next instruction (check instruction
                     // before/after combined) (unless within local range)
-                    MergeConditionData data;
-                    bool conditionsMet = std::all_of(mergeConditions.begin(), mergeConditions.end(),
+                    MergeConditionData data{};
+                    bool conditionsMet = std::all_of(MERGE_CONDITIONS.begin(), MERGE_CONDITIONS.end(),
                         [op, nextOp, move, nextMove, &data](
                             const MergeCondition& cond) -> bool { return cond(op, nextOp, move, nextMove, data); });
                     if(instr->checkOutputLocal() && nextInstr->checkOutputLocal())
@@ -652,104 +856,8 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                             conditionsMet = false;
                     }
 
-                    if(conditionsMet)
-                    {
+                    if(conditionsMet && combineOperationsInner(it, nextIt))
                         hasChanged = true;
-                        // move supports both ADD and MUL ALU
-                        // if merge, make "move" to other op-code or x x / v8max x x
-                        CPPLOG_LAZY(logging::Level::DEBUG,
-                            log << "Merging instructions " << instr->to_string() << " and " << nextInstr->to_string()
-                                << logging::endl);
-                        if(op != nullptr && nextOp != nullptr)
-                        {
-                            it.reset(new CombinedOperation(
-                                dynamic_cast<Operation*>(it.release()), dynamic_cast<Operation*>(nextIt.release())));
-                            nextIt.erase();
-                        }
-                        else if(op != nullptr && nextMove != nullptr)
-                        {
-                            Operation* newMove = nextMove->combineWith(op->op);
-                            if(newMove != nullptr)
-                            {
-                                newMove->copyExtrasFrom(nextMove);
-                                it.reset(new CombinedOperation(dynamic_cast<Operation*>(it.release()), newMove));
-                                nextIt.erase();
-                            }
-                            else
-                                logging::warn() << "Error combining move-operation '" << nextMove->to_string()
-                                                << "' with: " << op->to_string() << logging::endl;
-                        }
-                        else if(move != nullptr && nextOp != nullptr)
-                        {
-                            Operation* newMove = move->combineWith(nextOp->op);
-                            if(newMove != nullptr)
-                            {
-                                newMove->copyExtrasFrom(move);
-                                it.reset(new CombinedOperation(newMove, dynamic_cast<Operation*>(nextIt.release())));
-                                nextIt.erase();
-                            }
-                            else
-                                logging::warn() << "Error combining move-operation '" << move->to_string()
-                                                << "' with: " << nextOp->to_string() << logging::endl;
-                        }
-                        else if(move != nullptr && nextMove != nullptr)
-                        {
-                            bool firstOnMul = (move->hasPackMode() && move->getPackMode().supportsMulALU()) ||
-                                (nextMove->hasPackMode() && !nextMove->getPackMode().supportsMulALU()) ||
-                                nextMove->doesSetFlag();
-                            Operation* newMove0 = move->combineWith(firstOnMul ? OP_ADD : OP_MUL24);
-                            Operation* newMove1 = nextMove->combineWith(firstOnMul ? OP_MUL24 : OP_ADD);
-                            if(newMove0 != nullptr && newMove1 != nullptr)
-                            {
-                                newMove0->copyExtrasFrom(move);
-                                newMove1->copyExtrasFrom(nextMove);
-                                it.reset(new CombinedOperation(newMove0, newMove1));
-                                nextIt.erase();
-                            }
-                            else
-                                logging::warn() << "Error combining move-operation '" << move->to_string()
-                                                << "' with: " << nextMove->to_string() << logging::endl;
-                        }
-                        else
-                            throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled combination, type",
-                                (instr->to_string() + ", ") + nextInstr->to_string());
-                        if(it.get<CombinedOperation>() != nullptr)
-                        {
-                            // move instruction usable on both ALUs to the free ALU
-                            CombinedOperation* comb = it.get<CombinedOperation>();
-                            if(comb->getFirstOp()->op.runsOnAddALU() && comb->getFirstOp()->op.runsOnMulALU())
-                            {
-                                OpCode code = comb->getFirstOp()->op;
-                                if(comb->getSecondOp()->op.runsOnAddALU())
-                                    code.opAdd = 0;
-                                else // by default (e.g. both run on both ALUs), map to ADD ALU
-                                    code.opMul = 0;
-                                comb->getFirstOp()->op = code;
-                                CPPLOG_LAZY(logging::Level::DEBUG,
-                                    log << "Fixing operation available on both ALUs to "
-                                        << (code.opAdd == 0 ? "MUL" : "ADD")
-                                        << " ALU: " << comb->getFirstOp()->to_string() << logging::endl);
-                            }
-                            if(comb->getSecondOp()->op.runsOnAddALU() && comb->getSecondOp()->op.runsOnMulALU())
-                            {
-                                OpCode code = comb->getSecondOp()->op;
-                                if(comb->getFirstOp()->op.runsOnMulALU())
-                                    code.opMul = 0;
-                                else // by default (e.g. both run on both ALUs), map to MUL ALU
-                                    code.opAdd = 0;
-                                comb->getSecondOp()->op = code;
-                                CPPLOG_LAZY(logging::Level::DEBUG,
-                                    log << "Fixing operation available on both ALUs to "
-                                        << (code.opAdd == 0 ? "MUL" : "ADD")
-                                        << " ALU: " << comb->getSecondOp()->to_string() << logging::endl);
-                            }
-
-                            // mark combined instruction as delay, if one of the combined instructions is
-                            if(comb->getFirstOp()->hasDecoration(InstructionDecorations::MANDATORY_DELAY) ||
-                                comb->getSecondOp()->hasDecoration(InstructionDecorations::MANDATORY_DELAY))
-                                comb->addDecorations(InstructionDecorations::MANDATORY_DELAY);
-                        }
-                    }
                 }
             }
             it.nextInBlock();

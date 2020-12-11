@@ -148,6 +148,8 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
     // run some peephole-optimizations
     if(optimizations::Optimizer::isEnabled(optimizations::PASS_PEEPHOLE_REMOVE, config))
         optimizations::removeObsoleteInstructions(module, method, config, registerMapping);
+    if(optimizations::Optimizer::isEnabled(optimizations::PASS_PEEPHOLE_COMBINE, config))
+        optimizations::combineRegisterMappedOperations(module, method, config, registerMapping);
 
     // create label-map + remove labels
     const auto labelMap = mapLabels(method);

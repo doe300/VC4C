@@ -7,12 +7,25 @@
 #ifndef COMBINER_H
 #define COMBINER_H
 
+#include "../performance.h"
+
+#include <functional>
+#include <vector>
+
 namespace vc4c
 {
     class Method;
     class Module;
     class InstructionWalker;
     struct Configuration;
+    class Local;
+    struct Register;
+
+    namespace intermediate
+    {
+        class MoveOperation;
+        class Operation;
+    } // namespace intermediate
 
     namespace optimizations
     {
@@ -47,6 +60,48 @@ namespace vc4c
          *   label %105
          */
         bool simplifyBranches(const Module& module, Method& method, const Configuration& config);
+
+        /**
+         * Additional data to influence the merge condition checking and relay intermediate information between the
+         * single conditions
+         */
+        struct MergeConditionData
+        {
+            /**
+             * The optional label-to-register map. If this is set, the merge conditions are checked in "peephole mode",
+             * modifying some checks from a more generic version to check the exact registers locals are mapped to,
+             * allowing for more accurate results.
+             *
+             * This value has to be set before the merge condition checks are started.
+             */
+            const FastMap<const Local*, Register>* registerMap = nullptr;
+            /**
+             * One of the instructions is a simple move of zero and can be rewritten by converting to an xor of the one
+             * of the (literal) inputs of the other instruction.
+             *
+             * This value is set during the merge condition checks.
+             */
+            intermediate::MoveOperation* rewriteSimpleMoveOfZero = nullptr;
+
+            bool isPeepholeRun() const noexcept;
+        };
+
+        using MergeCondition = std::function<bool(intermediate::Operation*, intermediate::Operation*,
+            intermediate::MoveOperation*, intermediate::MoveOperation*, MergeConditionData&)>;
+
+        // The global merge conditions
+        extern const std::vector<MergeCondition> MERGE_CONDITIONS;
+
+        /**
+         * Utility function to do the actual combination of operations
+         *
+         * On success, the CombinedInstruction is inserted into the first parameter it while the second parameter nextIt
+         * is erased, making it inaccessible for further processing.
+         *
+         * NOTE: This function does NOT check for combinability, this has to be done before!
+         */
+        bool combineOperationsInner(InstructionWalker it, InstructionWalker nextIt);
+
         /*
          * Combine ALU-instructions which (can) use different ALUs into a single instruction accessing both ALUs.
          * There are two types of instruction-pairs which can be combined:

@@ -26,6 +26,7 @@ namespace vc4c
         extern const std::string PASS_WORK_GROUP_LOOP;
         extern const std::string PASS_CACHE_MEMORY;
         extern const std::string PASS_PEEPHOLE_REMOVE;
+        extern const std::string PASS_PEEPHOLE_COMBINE;
 
         /**
          * Type of optimization.

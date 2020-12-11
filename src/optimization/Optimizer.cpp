@@ -25,7 +25,8 @@ using namespace vc4c::optimizations;
 
 const std::string optimizations::PASS_WORK_GROUP_LOOP = "loop-work-groups";
 const std::string optimizations::PASS_CACHE_MEMORY = "cache-memory";
-extern const std::string optimizations::PASS_PEEPHOLE_REMOVE = "peephole-remove";
+const std::string optimizations::PASS_PEEPHOLE_REMOVE = "peephole-remove";
+const std::string optimizations::PASS_PEEPHOLE_COMBINE = "peephole-combine";
 
 OptimizationPass::OptimizationPass(const std::string& name, const std::string& parameterName, const Pass& pass,
     const std::string& description, OptimizationType type) :
@@ -306,8 +307,14 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "re-order instructions to eliminate more NOPs and stall cycles", OptimizationType::FINAL),
     OptimizationPass("CombineALUIinstructions", "combine", combineOperations,
         "run peep-hole optimization to combine ALU-operations", OptimizationType::FINAL),
+    /*
+     * The following peephole-optimizations are not actually run in the main optimization code, but are run separately
+     * by the code generator.
+     */
     OptimizationPass("PeepholeRemoveInstructions", PASS_PEEPHOLE_REMOVE, nullptr,
-        "runs peephole-optimization after register-mapping to remove useless instructions", OptimizationType::INITIAL),
+        "runs peephole-optimization after register-mapping to remove useless instructions", OptimizationType::FINAL),
+    OptimizationPass("PeepholeCombineInstructions", PASS_PEEPHOLE_COMBINE, nullptr,
+        "runs peephole-optimization after register-mapping to combine instructions", OptimizationType::FINAL),
 };
 
 std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
@@ -344,6 +351,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("remove-unused-flags");
         passes.emplace(PASS_WORK_GROUP_LOOP);
         passes.emplace(PASS_PEEPHOLE_REMOVE);
+        passes.emplace(PASS_PEEPHOLE_COMBINE);
         FALL_THROUGH
     case OptimizationLevel::NONE:
         // TODO this is not an optimization, more a normalization step.
