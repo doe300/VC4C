@@ -6,6 +6,7 @@
 
 #include "Intrinsics.h"
 
+#include "../SIMDVector.h"
 #include "../analysis/ValueRange.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
@@ -436,6 +437,24 @@ struct Intrinsic
     Intrinsic(const IntrinsicFunction& func, const BinaryInstruction& binary) : func(func), binaryInstr(binary) {}
 };
 
+static UnaryInstruction calculateIntrinsic(DataType resultBaseType, std::function<Literal(Literal)>&& func)
+{
+    return [=](const Value& val) {
+        auto resultType = resultBaseType.toVectorType(val.type.getVectorWidth());
+        if(auto lit = val.getLiteralValue())
+            return Value(func(*lit), resultType);
+        else if(auto vec = val.checkVector())
+        {
+            SIMDVector resultVector{UNDEFINED_LITERAL};
+            for(uint8_t i = 0; i < resultVector.size(); ++i)
+                resultVector[i] = func((*vec)[i]);
+            return SIMDVectorHolder::storeVector(std::move(resultVector), resultType, vec->getStorage());
+        }
+        throw CompilationError(
+            CompilationStep::NORMALIZER, "Invalid value type for pre-calculation of intrinsic", val.to_string());
+    };
+}
+
 /*
  * NOTE: We sort intrinsics in descending order on purpose, to correctly select e.g. fmaxabs for vc4cl_fmaxabs (and not
  * fmax)
@@ -486,12 +505,11 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> unaryIn
     {"vc4cl_saturate_lsb", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_INT_TO_UNSIGNED_CHAR_SATURATE)}},
     {"vc4cl_is_nan",
         Intrinsic{intrinsifyCheckNaN(false),
-            [](const Value& val) { return std::isnan(val.literal().real()) ? INT_ONE : INT_ZERO; }}},
+            calculateIntrinsic(TYPE_INT32, [](const Literal& lit) { return std::isnan(lit.real()) ? 1_lit : 0_lit; })}},
     {"vc4cl_is_inf_nan",
         Intrinsic{intrinsifyCheckNaN(true),
-            [](const Value& val) {
-                return std::isnan(val.literal().real()) || std::isinf(val.literal().real()) ? INT_ONE : INT_ZERO;
-            }}},
+            calculateIntrinsic(TYPE_INT32,
+                [](const Literal& lit) { return std::isnan(lit.real()) || std::isinf(lit.real()) ? 1_lit : 0_lit; })}},
     {"vc4cl_vload3", Intrinsic{intrinsifyMemoryAccess(MemoryAccess::READ, true)}},
     /* simply set the event to something so it is initialized */
     {"vc4cl_set_event", Intrinsic{intrinsifyValueRead(INT_ZERO), [](const Value& val) -> Value { return INT_ZERO; }}},
@@ -574,31 +592,32 @@ const static std::map<std::string, std::pair<Intrinsic, Optional<Value>>, std::g
         // TODO correct?? Since we do not discard out-of-bounds values!
         {"vc4cl_bitcast_uchar",
             {Intrinsic{intrinsifyBinaryALUInstruction("and", true),
-                 [](const Value& val) { return Value(Literal(val.literal().unsignedInt() & 0xFF), TYPE_INT8); }},
+                 calculateIntrinsic(TYPE_INT8, [](const Literal& lit) { return Literal(lit.unsignedInt() & 0xFF); })},
                 Value(Literal(0xFFu), TYPE_INT8)}},
         {"vc4cl_bitcast_char",
             {Intrinsic{intrinsifyBinaryALUInstruction("mov"),
-                 [](const Value& val) { return Value(val.literal(), TYPE_INT8); }},
+                 calculateIntrinsic(TYPE_INT8, [](const Literal& lit) { return lit; })},
                 NO_VALUE}},
         {"vc4cl_bitcast_ushort",
             {Intrinsic{intrinsifyBinaryALUInstruction("and", true),
-                 [](const Value& val) { return Value(Literal(val.literal().unsignedInt() & 0xFFFF), TYPE_INT16); }},
+                 calculateIntrinsic(
+                     TYPE_INT16, [](const Literal& lit) { return Literal(lit.unsignedInt() & 0xFFFF); })},
                 Value(Literal(0xFFFFu), TYPE_INT16)}},
         {"vc4cl_bitcast_short",
             {Intrinsic{intrinsifyBinaryALUInstruction("mov"),
-                 [](const Value& val) { return Value(val.literal(), TYPE_INT16); }},
+                 calculateIntrinsic(TYPE_INT16, [](const Literal& lit) { return lit; })},
                 NO_VALUE}},
         {"vc4cl_bitcast_uint",
             {Intrinsic{intrinsifyBinaryALUInstruction("mov", true),
-                 [](const Value& val) { return Value(Literal(val.literal()), TYPE_INT32); }},
+                 calculateIntrinsic(TYPE_INT32, [](const Literal& lit) { return lit; })},
                 NO_VALUE}},
         {"vc4cl_bitcast_int",
             {Intrinsic{intrinsifyBinaryALUInstruction("mov"),
-                 [](const Value& val) { return Value(val.literal(), TYPE_INT32); }},
+                 calculateIntrinsic(TYPE_INT32, [](const Literal& lit) { return lit; })},
                 NO_VALUE}},
         {"vc4cl_bitcast_float",
             {Intrinsic{intrinsifyBinaryALUInstruction("mov"),
-                 [](const Value& val) { return Value(Literal(val.literal()), TYPE_INT32); }},
+                 calculateIntrinsic(TYPE_FLOAT, [](const Literal& lit) { return lit; })},
                 NO_VALUE}}};
 
 static bool intrinsifyNoArgs(Method& method, InstructionWalker it)

@@ -20,7 +20,7 @@ self_assign-test-opencl			local size (128) exceeds device maximum
 vector_convert-test-opencl		compilation error
 
 Boost Compute:
-test_accumulate					result mismatch (error in test! Buffer is already freed when kernel is executed, test does not wait for kernel to execute!)
+test_accumulate					PASSED
 test_adjacent_difference		PASSED
 test_adjacent_find				PASSED
 test_amd_cpp_kernel_language	SKIPPED
@@ -43,11 +43,11 @@ test_context_error				PASSED
 test_copy						PASSED
 test_copy_if					PASSED
 test_copy_type_mismatch			PASSED
-test_count						result mismatch ("count_if_odd", "count_if_with_reduce", both based on initial_reduce kernel, passes on emulator)
+test_count						PASSED
 test_counting_iterator			PASSED
 test_device						PASSED (skips some OpenCL 2.0+ tests)
 test_discard_iterator			PASSED
-test_discrete_distribution		result mismatch (failing kernels based on initial_reduce kernel)
+test_discrete_distribution		PASSED
 test_dynamic_bitset				result mismatch (failing kernels based on initial_reduce kernel), passes on emulator
 test_equal						PASSED
 test_equal_range				PASSED
@@ -75,11 +75,11 @@ test_generate					PASSED
 test_image1d					SKIPPED
 test_image2d					FAILED ("Invalid Operation")
 test_image3d					SKIPPED
-test_image_sampler				FAILED (nullptr access, probably ICD dispatch of clCreateSamplerWithProperties functions)
+test_image_sampler				FAILED (nullptr access, ICD dispatch of clCreateSamplerWithProperties functions)
 test_includes					PASSED
-test_inner_product				result mismatch
+test_inner_product				PASSED
 test_inplace_merge				PASSED
-test_inplace_reduce				result mismatch ("reduce_iota", reads 1-past-end of buffer)
+test_inplace_reduce				PASSED
 test_insertion_sort				PASSED
 test_invoke						result mismatch (ULP, "invoke_builtin": result: inf expected: 256.f for function pow(2, 8))
 test_iota						PASSED
@@ -92,7 +92,7 @@ test_linear_congruential_engine	PASSED
 test_literal_conversion			PASSED
 test_local_buffer				SKIPPED ("device does not support local memory")
 test_malloc						PASSED
-test_mapped_view				result mismatch ("mapped_view_reduce_doctest"), race condition accessing the host buffer vs. copying from host to device buffer
+test_mapped_view				PASSED
 test_merge						PASSED
 test_merge_sort_gpu				Invalid Value error (get_object_info.hpp:104, trying to read CL_DEVICE_PARENT_DEVICE? does not happen on host emulation), double test skipped
 test_mersenne_twister_engine	PASSED
@@ -101,7 +101,7 @@ test_multiple_objects			PASSED
 test_next_permutation			PASSED
 test_no_device_found			PASSED
 test_normal_distribution		result value mismatch ("normal_distribution_statistics", got inf/nan, expected 10/2), reads 1-after-bounds of allocated buffer
-test_nth_element				PASSED (reads 1-after-bounds!)
+test_nth_element				PASSED
 test_opencl_error				PASSED
 test_pair						PASSED
 test_partial_sum				PASSED
@@ -114,11 +114,11 @@ test_platform					PASSED/SKIPPED
 test_prev_permutation			PASSED
 test_program					PASSED
 test_program_cache				PASSED/SKIPPED
-test_radix_sort					result mismatches, writes outside of allocated buffers, crashes Jenkins slave process!
+test_radix_sort					PASSED? / result mismatches, writes outside of allocated buffers, crashes Jenkins slave process!
 test_radix_sort_by_key			result mismatches, reads 1-after-bounds of allocated buffer
 test_random_fill				PASSED
 test_random_shuffle				PASSED
-test_reduce						result mismatches
+test_reduce						PASSED (fixed test?)
 test_reduce_by_key				PASSED
 test_remove						PASSED
 test_replace					PASSED
@@ -149,21 +149,21 @@ test_svm_ptr					PASSED
 test_system						PASSED
 test_tabulate					PASSED
 test_threefry_engine			result mismatch (TODO fix + retest)
-test_transform					result mismatch (ULP pow and 0 != x)
+test_transform					result mismatch
 test_transform_if				PASSED
 test_transform_iterator			PASSED
 test_transform_reduce			result mismatch ("mean_and_std_dev")
 test_tuple						PASSED
 test_type_traits				PASSED
 test_types						PASSED
-test_uniform_int_distribution	result mismatch
-test_uniform_real_distribution	result mismatch
+test_uniform_int_distribution	PASSED
+test_uniform_real_distribution	PASSED
 test_unique						PASSED
 test_unique_copy				PASSED
 test_unsupported_extension		PASSED
 test_user_defined_types			PASSED
 test_user_event					PASSED
-test_valarray					result mismatch (only "sum", calls boost::compute::accumulate)
+test_valarray					PASSED
 test_vector						PASSED (reads 1-after-bounds of allocated buffer)
 test_wait_list					PASSED
 test_zip_iterator				PASSED

@@ -890,17 +890,6 @@ qpu_asm::DecoratedInstruction CombinedOperation::convertToAsm(const FastMap<cons
         throw CompilationError(
             CompilationStep::CODE_GENERATION, "One of the combined operations ins NULL", to_string());
 
-    if(addOp->getOutput() && mulOp->getOutput() && addOp->getOutput().value() != mulOp->getOutput().value())
-    {
-        const Register addOut = addOp->getOutput()->checkLocal() ? registerMapping.at(addOp->getOutput()->local()) :
-                                                                   addOp->getOutput()->reg();
-        const Register mulOut = mulOp->getOutput()->checkLocal() ? registerMapping.at(mulOp->getOutput()->local()) :
-                                                                   mulOp->getOutput()->reg();
-        if(addOut != mulOut && !addOut.isAccumulator() && addOut.file == mulOut.file)
-            throw CompilationError(CompilationStep::CODE_GENERATION,
-                "Can't map outputs of a combined instruction to two distinct registers in the same file", to_string());
-    }
-
     qpu_asm::ALUInstruction addInstr =
         *addOp->convertToAsm(registerMapping, labelMapping, instructionIndex).instruction.as<qpu_asm::ALUInstruction>();
     qpu_asm::ALUInstruction mulInstr =
@@ -910,6 +899,15 @@ qpu_asm::DecoratedInstruction CombinedOperation::convertToAsm(const FastMap<cons
         addInstr.getInputB() != mulInstr.getInputB())
         throw CompilationError(CompilationStep::CODE_GENERATION,
             "Can't map combined instruction with two distinct immediate arguments", to_string());
+
+    if(addInstr.getAddOutput().file == mulInstr.getMulOutput().file && addInstr.getAddOutput().isGeneralPurpose() &&
+        mulInstr.getMulOutput().isGeneralPurpose())
+        // This also does not work for output to the same register (on a physical register-file), since we cannot
+        // set the write-swap bit for one instruction but not the other, so both instructions are forced to write to
+        // different register files! This is only okay for accumulators (and any other "periphery register"), since they
+        // can be written from both "register files"
+        throw CompilationError(CompilationStep::CODE_GENERATION,
+            "Can't map outputs of a combined instruction to registers in the same file", to_string());
 
     addInstr.setMulCondition(mulInstr.getMulCondition());
     addInstr.setMulMultiplexA(mulInstr.getMulMultiplexA());

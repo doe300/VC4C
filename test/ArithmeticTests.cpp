@@ -249,6 +249,7 @@ static void registerNonFloatTests(const std::string& typeName, test_data::DataFi
         calculateDimensions(binaryInputsLeft.size()),
         {checkParameterEquals(0, transform<T>(binaryInputsLeft, binaryInputsRight, checkShiftLeft<T>))}});
 
+    // TODO binary_shr_long fails on hardware
     registerTest(TestData{"binary_shr_" + typeName, flags, &BINARY_OPERATIONS, options, "test_shr",
         {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
             toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},

@@ -127,7 +127,7 @@ static std::vector<Entry> allKernels = {
         "-DgInputStripeInnerSize=2 -DgInputStripeOuterSize=3 -DgOutputSizeSquared=16 -DgInputStripeMarginSize=1 "
         "-DgNumStripes=16 -DgOutputStripeSize=16 -DgOutputStripeNumRows=4 -DgNumFilters=4 -DgInputPlanes=4 "
         "-DgInputSizeSquared=16"},
-    Entry{PASSED, FAST, "./testing/deepCL/backward_cached.cl",
+    Entry{PENDING_LLVM_CI, FAST, "./testing/deepCL/backward_cached.cl",
         "-DgFilterSize=4 -DgFilterSizeSquared=16 -DgOutputSize=16 -DgInputSize=16 -DgMargin=1 "
         "-DgInputStripeInnerSize=2 -DgInputStripeOuterSize=3 -DgOutputSizeSquared=16 -DgInputStripeMarginSize=1 "
         "-DgNumStripes=16 -DgOutputStripeSize=16 -DgOutputStripeNumRows=4 -DgNumFilters=4 -DgInputPlanes=4 "
@@ -354,7 +354,8 @@ static std::vector<Entry> allKernels = {
     // TODO crashes the tests with "corrupted double-linked list" almost every time
     // Entry{PASSED, FAST, "./testing/NVIDIA/RadixSort.cl", "-DLOCAL_SIZE_LIMIT=8"},
     Entry{PASSED, FAST, "./testing/NVIDIA/RecursiveGaussian.cl", "-DLOCAL_SIZE_LIMIT=8"},
-    Entry{PASSED, FAST, "./testing/NVIDIA/Scan.cl", "-DLOCAL_SIZE_LIMIT=8 -DWORKGROUP_SIZE=8"},
+    Entry{PENDING_LLVM_CI | PENDING_SPIRV_CI, FAST, "./testing/NVIDIA/Scan.cl",
+        "-DLOCAL_SIZE_LIMIT=8 -DWORKGROUP_SIZE=8"},
     Entry{PENDING_LLVM | PENDING_SPIRV, FAST, "./testing/NVIDIA/Scan_b.cl", "-DLOCAL_SIZE_LIMIT=8"},
     Entry{PASSED, FAST, "./testing/NVIDIA/simpleGL.cl", "-DLOCAL_SIZE_LIMIT=8"},
     Entry{PASSED, FAST, "./testing/NVIDIA/simpleMultiGPU.cl", "-DLOCAL_SIZE_LIMIT=8"},
