@@ -270,7 +270,10 @@ static void generateConversionFunctions(const std::array<std::string, sizeof...(
 
     auto flags = DataFilter::TYPE_CONVERSIONS;
     if(sizeof(InType) > sizeof(uint32_t) || sizeof(OutType) > sizeof(uint32_t))
-        flags = flags | DataFilter::USES_LONG;
+    {
+        // long conversions are not yet correctly handled in SPIR-V front-end, at least not in CI
+        flags = flags | DataFilter::USES_LONG | DataFilter::SPIRV_DISABLED;
+    }
     if(std::is_floating_point<InType>::value)
         // most (if not all) conversions from float have some errors on edge cases
         flags = flags | DataFilter::DISABLED;

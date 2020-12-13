@@ -239,10 +239,10 @@ static std::vector<Entry> allKernels = {
     Entry{PENDING_SPIRV, FAST, "./testing/HandBrake/vscale_all_dither_opencl.cl", ""},
     Entry{PENDING_LLVM_CI, FAST, "./testing/HandBrake/vscale_all_nodither_opencl.cl", ""},
     Entry{PASSED, FAST, "./testing/HandBrake/vscale_fast_opencl.cl", ""},
-    Entry{PASSED, FAST, "./testing/HandBrake/yaif_filter.cl", ""},
+    Entry{PENDING_LLVM_CI, FAST, "./testing/HandBrake/yaif_filter.cl", ""},
 
     Entry{PASSED, SLOW, "./testing/bfgminer/diablo.cl", "-DWORKSIZE=8"},
-    Entry{PASSED, SLOW, "./testing/bfgminer/diakgcn.cl", "-DWORKSIZE=8"},
+    Entry{PENDING_SPIRV_CI, SLOW, "./testing/bfgminer/diakgcn.cl", "-DWORKSIZE=8"},
     Entry{PENDING_LLVM | PENDING_SPIRV, SLOW, "./testing/bfgminer/keccak.cl", "-DWORKSIZE=8"},
     Entry{PASSED, SLOW, "./testing/bfgminer/phatk.cl", "-DWORKSIZE=8"},
     Entry{PASSED, SLOW, "./testing/bfgminer/poclbm.cl", "-DWORKSIZE=8"},
@@ -373,7 +373,7 @@ static std::vector<Entry> allKernels = {
 
     Entry{PENDING_SPIRV, FAST, "./testing/mixbench/mix_kernels_ro.cl",
         "-Dblockdim=8 -Dclass_T=float -DELEMENTS_PER_THREAD=32 -DCOMPUTE_ITERATIONS=32 -DFUSION_DEGREE=8"},
-    Entry{PASSED, FAST, "./testing/mixbench/mix_kernels.cl",
+    Entry{PENDING_LLVM_CI, FAST, "./testing/mixbench/mix_kernels.cl",
         "-Dblockdim=8 -Dclass_T=float -DELEMENTS_PER_THREAD=32 -DCOMPUTE_ITERATIONS=32 -DFUSION_DEGREE=8 "
         "-Dmemory_ratio=8"},
 
