@@ -174,13 +174,13 @@ InstructionWalker normalization::handleContainer(
     // TODO signals, flags, conditional
     intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
     intermediate::Operation* op = it.get<intermediate::Operation>();
-    intermediate::VectorRotation* rot = it.get<intermediate::VectorRotation>();
-    if(rot != nullptr && rot->getSource().checkVector() && rot->getOffset().getRotationOffset())
+    auto rot = it->getVectorRotation();
+    if(move && rot && move->getSource().checkVector() && rot->offset.getRotationOffset())
     {
-        Value src = rot->getSource();
+        Value src = move->getSource();
         // vector rotation -> rotate container (if static offset)
         // TODO negative offset possible?
-        std::size_t offset = rot->getOffset().getRotationOffset().value();
+        std::size_t offset = rot->offset.getRotationOffset().value();
         //"Rotates the order of the elements in the range [first,last), in such a way that the element pointed by middle
         // becomes the new first element."
         if(rot->type == intermediate::RotationType::PER_QUAD)
@@ -192,18 +192,18 @@ InstructionWalker normalization::handleContainer(
         // need to rotate all (possible non-existing) 16 elements, so use a temporary vector with 16 elements and rotate
         // it
         SIMDVector tmp = src.vector().rotate(static_cast<uint8_t>(offset));
-        rot->setSource(method.module.storeVector(std::move(tmp), src.type));
+        move->setSource(method.module.storeVector(std::move(tmp), src.type));
         // TODO next step could be optimized, if we used the vector-rotation to extract an element
         // In which case, a simple copy suffices?? At least, we don't need to set the other elements
     }
     // jump from previous block to next one intended, so no "else"
     // if the source is a container and the offset is a literal (already applied above), remove the rotation (see move
     // branch) if the source is a container and the offset is no literal, extract the container, but keep rotation
-    if(rot != nullptr && rot->getSource().checkVector() && !rot->getOffset().getRotationOffset())
+    if(move && rot && move->getSource().checkVector() && !rot->offset.getRotationOffset())
     {
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Rewriting rotation from container " << rot->to_string() << logging::endl);
-        auto tmp = method.addNewLocal(rot->getSource().type);
+        auto tmp = method.addNewLocal(move->getSource().type);
         // insert vector assembly and use the resulting vector in the rotation
         it = copyVector(method, it, tmp, move->getSource());
         it->setArgument(0, std::move(tmp));

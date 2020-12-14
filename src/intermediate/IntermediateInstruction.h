@@ -22,6 +22,8 @@ namespace vc4c
     namespace intermediate
     {
         using InlineMapping = FastMap<const Local*, const Local*>;
+        struct RotationInfo;
+
         /*
          * Additional flags set for individual instructions
          */
@@ -312,6 +314,11 @@ namespace vc4c
             bool doesSetFlag() const;
             SetFlag getFlags() const;
 
+            /**
+             * @return whether this instruction applies a vector rotation
+             */
+            virtual Optional<RotationInfo> getVectorRotation() const;
+
             /*
              * Copies all the extras (signal, pack-modes, etc.) from the given instruction.
              *
@@ -521,7 +528,7 @@ namespace vc4c
                 Method& method, const std::string& localPrefix, InlineMapping& localMapping) const override;
             qpu_asm::DecoratedInstruction convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
-            Operation* combineWith(const OpCode& otherOpCode) const;
+            virtual Operation* combineWith(const OpCode& otherOpCode) const;
             bool mapsToASMInstruction() const override;
             bool isNormalized() const override;
 
@@ -557,6 +564,20 @@ namespace vc4c
         };
 
         /**
+         * Additional information about the vector-rotation part of an instruction
+         */
+        struct RotationInfo
+        {
+            RotationType type;
+            SmallImmediate offset;
+
+            bool isPerQuadRotationAllowed() const;
+            bool isFullRotationAllowed() const;
+
+            std::string to_string() const;
+        };
+
+        /**
          * A MUL ALU operation which does not calculate anything, but instead rotates the input vector
          *
          * Behavior:
@@ -576,13 +597,13 @@ namespace vc4c
                 ConditionCode cond = COND_ALWAYS, SetFlag setFlags = SetFlag::DONT_SET);
             ~VectorRotation() override = default;
 
-            std::string to_string() const override;
             IntermediateInstruction* copyFor(
                 Method& method, const std::string& localPrefix, InlineMapping& localMapping) const override;
             qpu_asm::DecoratedInstruction convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
-            Operation* combineWith(const std::string& otherOpCode) const;
+            Operation* combineWith(const OpCode& otherOpCode) const override;
             PrecalculatedValue precalculate(std::size_t numIterations) const override;
+            Optional<RotationInfo> getVectorRotation() const override;
 
             const SmallImmediate& getOffset() const;
 

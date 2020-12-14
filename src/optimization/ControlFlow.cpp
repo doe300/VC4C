@@ -227,7 +227,7 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
                         }
                     }
                 }
-                else if(dynamic_cast<const intermediate::VectorRotation*>(it.get()))
+                else if(it->getVectorRotation())
                 {
                     // abort
                     CPPLOG_LAZY(logging::Level::DEBUG,

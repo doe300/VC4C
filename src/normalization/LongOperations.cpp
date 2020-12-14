@@ -455,10 +455,10 @@ void normalization::lowerLongOperation(
 
         if(!move->hasSideEffects() && it.get<intermediate::VectorRotation>() && src)
         {
-            auto rot = it.get<intermediate::VectorRotation>();
+            auto rot = it->getVectorRotation();
             // split into 2 rotations
             it.emplace(new intermediate::VectorRotation(
-                out->lower->createReference(), src->lower->createReference(), rot->getOffset(), rot->type));
+                out->lower->createReference(), src->lower->createReference(), rot->offset, rot->type));
             it->copyExtrasFrom(move);
             it.nextInBlock();
             move->setOutput(out->upper->createReference());

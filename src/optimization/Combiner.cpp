@@ -775,12 +775,11 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                         // rotated there  since vector rotations can't rotate vectors which have been written in the
                         // instruction directly preceding it (true for both full-vector and per-quad rotations)
                         auto checkIt = nextIt.copy().nextInBlock();
-                        if(!checkIt.isEndOfBlock() && checkIt.get<VectorRotation>())
+                        if(!checkIt.isEndOfBlock() && checkIt->getVectorRotation())
                         {
-                            const Value& src = checkIt.get<VectorRotation>()->getSource();
-                            if(instr->checkOutputLocal() && instr->getOutput() == src)
+                            if(instr->checkOutputLocal() && checkIt->readsLocal(instr->checkOutputLocal()))
                                 conditionsMet = false;
-                            if(nextInstr->checkOutputLocal() && nextInstr->getOutput() == src)
+                            if(nextInstr->checkOutputLocal() && checkIt->readsLocal(nextInstr->checkOutputLocal()))
                                 conditionsMet = false;
                         }
                         // the next instruction MUST NOT unpack a value written to in one of the combined instructions
@@ -889,7 +888,7 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
 
 static Optional<Register> getSourceConstantRegister(InstructionWalker it)
 {
-    if(it.get<VectorRotation>())
+    if(it->getVectorRotation())
         // XXX would need to check for same (constant) offset too!
         return {};
     if(it.get<MoveOperation>() && (it->readsRegister(REG_ELEMENT_NUMBER) || it->readsRegister(REG_QPU_NUMBER)))

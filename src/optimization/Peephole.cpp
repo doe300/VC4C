@@ -154,7 +154,7 @@ static bool canRemoveInstructionBetween(
             return false;
         if(isRead && (prevIt->hasPackMode() || nextIt->hasUnpackMode()))
             return false;
-        if(isRead && nextIt.get<intermediate::VectorRotation>())
+        if(isRead && nextIt->getVectorRotation())
             return false;
     }
 
@@ -287,7 +287,7 @@ void optimizations::removeObsoleteInstructions(
                 }
                 auto readerIt = findSingleReader(it, it.getBasicBlock()->walkEnd(), moveOut, registerMap, inIt->second);
                 if(!readerIt.isEndOfBlock() && readerIt->readsLocal(moveOut) && !readerIt->hasUnpackMode() &&
-                    !readerIt.get<intermediate::VectorRotation>() && !nextIt.isEndOfMethod() &&
+                    !readerIt->getVectorRotation() && !nextIt.isEndOfMethod() &&
                     canRemoveInstructionBetween(lastInstruction, nextIt, registerMap))
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,

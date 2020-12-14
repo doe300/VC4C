@@ -95,7 +95,7 @@ std::shared_ptr<Expression> Expression::createExpression(const intermediate::Int
         dynamic_cast<const intermediate::LoadImmediate*>(&instr) == nullptr)
         // not an ALU or load operation
         return {};
-    if(dynamic_cast<const intermediate::VectorRotation*>(&instr) != nullptr)
+    if(instr.getVectorRotation())
         // skip vector rotations
         return {};
     if(dynamic_cast<const intermediate::LoadImmediate*>(&instr) &&

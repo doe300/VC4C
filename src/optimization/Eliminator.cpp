@@ -387,7 +387,7 @@ InstructionWalker optimizations::simplifyOperation(
             // don't skip next instruction
             it.previousInBlock();
         }
-        if(it.get<intermediate::VectorRotation>() && move->getSource().isAllSame())
+        if(it->getVectorRotation() && move->getSource().isAllSame())
         {
             // replace rotation of splat value with move
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -507,7 +507,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
         //
         // - mov.setf r0, r1
         // - mov r0, r1, load_tmu0
-        if(op && !it.get<intermediate::VectorRotation>() && !op->hasConditionalExecution() && !op->hasPackMode() &&
+        if(op && !it->getVectorRotation() && !op->hasConditionalExecution() && !op->hasPackMode() &&
             !op->hasUnpackMode() && op->getOutput().has_value() &&
             (!op->getSource().checkRegister() || !op->getSource().reg().hasSideEffectsOnRead()) &&
             (!op->checkOutputRegister()) &&
@@ -593,7 +593,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
     {
         if(it.get<intermediate::MoveOperation>() &&
             !it->hasDecoration(intermediate::InstructionDecorations::PHI_NODE) && !it->hasPackMode() &&
-            !it->hasUnpackMode() && !it->hasConditionalExecution() && !it.get<intermediate::VectorRotation>())
+            !it->hasUnpackMode() && !it->hasConditionalExecution() && !it->getVectorRotation())
         {
             // skip PHI-nodes, since they are read in another basic block (and the output is written more than once
             // anyway) as well as modification of the value, conditional execution and vector-rotations
@@ -753,8 +753,8 @@ static bool hasSingleByteExtractionWriter(const Value& val)
 {
     auto writer =
         dynamic_cast<const intermediate::MoveOperation*>((check(val.checkLocal()) & &Local::getSingleWriter).get());
-    return writer && !dynamic_cast<const intermediate::VectorRotation*>(writer) && !writer->hasConditionalExecution() &&
-        !writer->hasPackMode() && hasByteExtractionMode(*writer);
+    return writer && !writer->getVectorRotation() && !writer->hasConditionalExecution() && !writer->hasPackMode() &&
+        hasByteExtractionMode(*writer);
 }
 
 bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method, const Configuration& config)

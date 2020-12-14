@@ -231,7 +231,7 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
     // an input can only be blocked if there is another one
     if(secondArg)
     {
-        auto rot = dynamic_cast<const intermediate::VectorRotation*>(&instr);
+        auto rot = instr.getVectorRotation();
         if(rot && firstArg->checkLocal())
         {
             // logging::debug() << "Local " << firstArg.get().local.to_string() << " must be an accumulator, because it
@@ -507,7 +507,7 @@ void GraphColoring::createGraph()
             auto move = dynamic_cast<const intermediate::MoveOperation*>(writer);
             // TODO can we use the splat value decoration here? First test seem to fail for some reason...
             if(!(load && load->type == intermediate::LoadType::REPLICATE_INT32) &&
-                !(move && !dynamic_cast<const intermediate::VectorRotation*>(move) && move->getSource().isAllSame()))
+                !(move && !move->getVectorRotation() && move->getSource().isAllSame()))
                 // Since writing to r5 automatically replicates, we only use it for values we know to be the same across
                 // all SIMD elements
                 node.blockR5();
@@ -1000,7 +1000,7 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
                     it.nextInMethod();
                 } while(!it.isEndOfMethod() && it.has() && !it->mapsToASMInstruction());
                 bool localRead = checkUser(users, it).readsLocal();
-                if(localRead && it.get<intermediate::VectorRotation>())
+                if(localRead && it->getVectorRotation())
                 {
                     // TODO for locals used in vector rotations, this fix is wrong
                     throw CompilationError(CompilationStep::LABEL_REGISTER_MAPPING,

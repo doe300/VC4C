@@ -180,7 +180,7 @@ static void createLocalDependencies(DependencyGraph& graph, DependencyNode& node
     const FastMap<const Local*, const intermediate::IntermediateInstruction*>& lastLocalWrites,
     const FastMap<const Local*, const intermediate::IntermediateInstruction*>& lastLocalReads)
 {
-    bool isVectorRotation = dynamic_cast<const intermediate::VectorRotation*>(node.key) != nullptr;
+    bool isVectorRotation = node.key->getVectorRotation().has_value();
     // can only unpack from register-file A which requires a read-after-write delay of at least 1 instruction
     bool hasUnpackMode = node.key->hasUnpackMode();
     node.key->forUsedLocals(
@@ -641,8 +641,7 @@ static void createR5Dependencies(DependencyGraph& graph, DependencyNode& node,
     const intermediate::IntermediateInstruction* lastReadOfR5)
 {
     // TODO write more general for any (non-periphery) register? E.g. ms_mask, rev_flag
-    if(lastWriteOfR5 && dynamic_cast<const intermediate::VectorRotation*>(node.key) &&
-        (node.key->readsRegister(REG_ACC5)))
+    if(lastWriteOfR5 && node.key->getVectorRotation() && (node.key->readsRegister(REG_ACC5)))
     {
         // enforce distance of 1 from writing r5 to reading r5 for vector rotations
         addDependency(graph.assertNode(lastWriteOfR5).getOrCreateEdge(&node).data,

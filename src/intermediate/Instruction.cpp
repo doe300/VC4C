@@ -395,8 +395,12 @@ std::string IntermediateInstruction::createAdditionalInfoString() const
     // remove trailing ' ' (or '(' if empty)
     res = res.substr(0, res.size() - 1);
     if(!res.empty())
-        res = std::string(" ") + res + ")";
-    return res == " ()" ? "" : res;
+        res = " " + std::move(res) + ")";
+    if(res == " ()")
+        res = "";
+    if(auto offset = getVectorRotation())
+        res = " " + offset->to_string() + std::move(res);
+    return res;
 }
 LCOV_EXCL_STOP
 
@@ -602,6 +606,11 @@ bool IntermediateInstruction::doesSetFlag() const
 SetFlag IntermediateInstruction::getFlags() const
 {
     return setFlags;
+}
+
+Optional<RotationInfo> IntermediateInstruction::getVectorRotation() const
+{
+    return Optional<RotationInfo>{};
 }
 
 SignalingInstruction::SignalingInstruction(Signaling signal, Optional<Value>&& output) :

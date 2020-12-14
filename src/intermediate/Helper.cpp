@@ -520,7 +520,7 @@ bool intermediate::needsDelay(
         hasUnpackMode = (combined->getFirstOp() && combined->getFirstOp()->hasUnpackMode()) ||
             (combined->getSecondOp() && combined->getSecondOp()->hasUnpackMode());
 
-    return hasPackMode || hasUnpackMode || dynamic_cast<const VectorRotation*>(secondInst) || isUnpacked;
+    return hasPackMode || hasUnpackMode || secondInst->getVectorRotation() || isUnpacked;
 }
 
 bool intermediate::needsDelay(
@@ -534,7 +534,7 @@ bool intermediate::needsDelay(const IntermediateInstruction* firstInst, const In
 {
     if((firstInst->writesRegister(REG_REPLICATE_ALL) || firstInst->writesRegister(REG_REPLICATE_QUAD) ||
            firstInst->writesRegister(REG_ACC5)) &&
-        secondInst->readsRegister(REG_ACC5) && dynamic_cast<const VectorRotation*>(secondInst))
+        secondInst->readsRegister(REG_ACC5) && secondInst->getVectorRotation())
         // below we only check for local, so explicitly check for registers here
         return true;
     bool isDelayNeeded = false;

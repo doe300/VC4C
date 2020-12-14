@@ -63,8 +63,7 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
             priority -= 30;
 
         // give vector rotations lower priority to make the usage-range of the accumulator used smaller
-        if(dynamic_cast<const intermediate::VectorRotation*>(inst) &&
-            dynamic_cast<const intermediate::VectorRotation*>(inst)->isFullRotationAllowed())
+        if(inst->getVectorRotation() & &intermediate::RotationInfo::isFullRotationAllowed)
             priority -= 50;
 
         // for conditional instructions setting flags themselves not preceding the other instructions depending on same
@@ -236,8 +235,8 @@ static OpenSet::const_iterator selectInstruction(OpenSet& openNodes, analysis::D
             (priority == std::get<1>(selected) && lastInstruction->checkOutputLocal() &&
                 (*it)->writesLocal(lastInstruction->getOutput()->local())) ||
             // keep vector rotations close to their use by devaluing them after all other equal-priority instructions
-            (priority == std::get<1>(selected) && lastInstruction.get<intermediate::VectorRotation>() &&
-                dynamic_cast<const intermediate::VectorRotation*>(*it) == nullptr) ||
+            (priority == std::get<1>(selected) && lastInstruction->getVectorRotation() &&
+                !(*it)->getVectorRotation()) ||
             // prefer reading of r4 to free up space in TMU queue/allow other triggers to write to r4
             (priority == std::get<1>(selected) && (*it)->readsRegister(REG_TMU_OUT)) ||
             // prefer anything over locking mutex

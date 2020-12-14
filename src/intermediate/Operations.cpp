@@ -620,6 +620,24 @@ bool MoveOperation::innerEquals(const IntermediateInstruction& other) const
     return dynamic_cast<const MoveOperation*>(&other);
 }
 
+LCOV_EXCL_START
+std::string RotationInfo::to_string() const
+{
+    return offset.to_string() +
+        (type == RotationType::FULL ? " (full)" : (type == RotationType::PER_QUAD ? "(quad)" : "(full/quad)"));
+}
+LCOV_EXCL_STOP
+
+bool RotationInfo::isPerQuadRotationAllowed() const
+{
+    return type != RotationType::FULL;
+}
+
+bool RotationInfo::isFullRotationAllowed() const
+{
+    return type != RotationType::PER_QUAD;
+}
+
 VectorRotation::VectorRotation(const Value& dest, const Value& src, const SmallImmediate& offset, RotationType type,
     const ConditionCode cond, const SetFlag setFlags) :
     MoveOperation(dest, src, cond, setFlags),
@@ -651,16 +669,6 @@ VectorRotation::VectorRotation(Value&& dest, Value&& src, SmallImmediate&& offse
         throw CompilationError(
             CompilationStep::GENERAL, "Can only rotate by one of the rotation immediate values", to_string());
 }
-
-LCOV_EXCL_START
-std::string VectorRotation::to_string() const
-{
-    // this is only for display purposes, the rotation register is handled correctly
-    return (getOutput()->to_string(true) + " = ") + (getSource().to_string() + " ") + getOffset().to_string() +
-        (type == RotationType::FULL ? " (full)" : (type == RotationType::PER_QUAD ? "(quad)" : "(full/quad)")) +
-        createAdditionalInfoString();
-}
-LCOV_EXCL_STOP
 
 IntermediateInstruction* VectorRotation::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
@@ -704,7 +712,7 @@ qpu_asm::DecoratedInstruction VectorRotation::convertToAsm(const FastMap<const L
         outReg.num, OP_V8MIN, OP_NOP, input.first.num, getOffset(), MULTIPLEX_NONE, MULTIPLEX_NONE, inMux, inMux);
 }
 
-Operation* VectorRotation::combineWith(const std::string& otherOpCode) const
+Operation* VectorRotation::combineWith(const OpCode& otherOpCode) const
 {
     // for now, don't support this
     return nullptr;
@@ -714,6 +722,11 @@ PrecalculatedValue VectorRotation::precalculate(const std::size_t numIterations)
 {
     // for now, don't precalculate
     return PrecalculatedValue{NO_VALUE, {}};
+}
+
+Optional<RotationInfo> VectorRotation::getVectorRotation() const
+{
+    return RotationInfo{type, getOffset()};
 }
 
 const SmallImmediate& VectorRotation::getOffset() const
