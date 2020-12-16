@@ -1186,6 +1186,10 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
         log << "Generating intermediate switched jump on " << selector.to_string() << " to " << destinations.size()
             << " destinations with default " << defaultLabel.to_string() << logging::endl);
 
+    auto targetLabel = method.method->addNewLocal(TYPE_CODE_ADDRESS, "%switch");
+    // set branch target to default label in case no other condition matches
+    method.method->appendToEnd(new intermediate::CodeAddress(targetLabel, defaultLabel.local()));
+
     for(const auto& pair : destinations)
     {
         // comparison value is a literal
@@ -1195,11 +1199,10 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
         const Value tmp = method.method->addNewLocal(TYPE_BOOL, "%switch");
         method.method->appendToEnd(
             new intermediate::Comparison(intermediate::COMP_EQ, Value(tmp), Value(selector), std::move(comparison)));
-        auto branchCond = intermediate::insertBranchCondition(*method.method, method.method->appendToEnd(), tmp);
-        method.method->appendToEnd(new intermediate::Branch(destination.local(), branchCond.second));
+        method.method->appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, tmp, COND_ALWAYS, SetFlag::SET_FLAGS));
+        method.method->appendToEnd(new intermediate::CodeAddress(targetLabel, destination.local(), COND_ZERO_CLEAR));
     }
-    // branch default label
-    method.method->appendToEnd(new intermediate::Branch(defaultLabel.local()));
+    method.method->appendToEnd(new intermediate::Branch(targetLabel.local()));
 }
 
 Optional<Value> SPIRVSwitch::precalculate(

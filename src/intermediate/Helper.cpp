@@ -480,8 +480,14 @@ void intermediate::redirectAllBranches(BasicBlock& oldTarget, BasicBlock& newTar
     oldTarget.forPredecessors([&](InstructionWalker walker) {
         if(auto branch = walker.get<intermediate::Branch>())
         {
-            if(branch->getTarget() == oldTarget.getLabel()->getLabel())
+            auto targets = branch->getTargetLabels();
+            if(targets.find(oldTarget.getLabel()->getLabel()) != targets.end())
+            {
+                if(targets.size() != 1)
+                    throw CompilationError(CompilationStep::GENERAL,
+                        "Removing dynamic branch to target is not yet implemented", branch->to_string());
                 instructionsToBeReset.emplace_back(walker);
+            }
         }
         // fall-throughs are already handled by inserting the block
     });
@@ -520,7 +526,12 @@ bool intermediate::needsDelay(
         hasUnpackMode = (combined->getFirstOp() && combined->getFirstOp()->hasUnpackMode()) ||
             (combined->getSecondOp() && combined->getSecondOp()->hasUnpackMode());
 
-    return hasPackMode || hasUnpackMode || secondInst->getVectorRotation() || isUnpacked;
+    bool isDynamicBranchAddress = false;
+    if(auto branch = dynamic_cast<const Branch*>(secondInst))
+        // addresses used for branches need to be read from physical register-file A
+        isDynamicBranchAddress = branch->isDynamicBranch() && branch->getTarget() == local->createReference();
+
+    return hasPackMode || hasUnpackMode || secondInst->getVectorRotation() || isUnpacked || isDynamicBranchAddress;
 }
 
 bool intermediate::needsDelay(

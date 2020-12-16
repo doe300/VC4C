@@ -243,6 +243,14 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
                             << logging::endl);
                     return std::numeric_limits<int>::min();
                 }
+                else if(dynamic_cast<const intermediate::CodeAddress*>(it.get()))
+                {
+                    // abort
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Cannot vectorize loops containing code address calculations: " << it->to_string()
+                            << logging::endl);
+                    return std::numeric_limits<int>::min();
+                }
                 else if(dynamic_cast<const intermediate::SemaphoreAdjustment*>(it.get()))
                 {
                     // abort
@@ -1371,7 +1379,7 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
             auto predecessorIt = edge->data.getPredecessor(destBlock);
             if(auto branch = predecessorIt.get<intermediate::Branch>())
             {
-                if(branch->getTarget() == sourceBlock->getLabel()->getLabel())
+                if(branch->getSingleTargetLabel() == sourceBlock->getLabel()->getLabel())
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Removing explicit branch to basic block about to be merged: "
@@ -1704,7 +1712,7 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
                 {
                     auto branch = lastIt.get<intermediate::Branch>();
                     Optional<InstructionWalker> branchCondition{};
-                    if(branch && branch->getTarget() == succ->key->getLabel()->getLabel() &&
+                    if(branch && branch->getSingleTargetLabel() == succ->key->getLabel()->getLabel() &&
                         !branch->isUnconditional() &&
                         (branchCondition = predecessor.key->findLastSettingOfFlags(lastIt)))
                     {
@@ -1717,7 +1725,7 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
                     {
                         // the last branch maybe unconditional (e.g. the default for switch-cases), but we need to
                         // insert the unconditional local assignment as first instruction.
-                        if(branch && branch->getTarget() == succ->key->getLabel()->getLabel())
+                        if(branch && branch->getSingleTargetLabel() == succ->key->getLabel()->getLabel())
                             // remove original unconditional branch. If this is a fall-through don't remove anything
                             lastIt.erase();
                         // make sure the instructions are inserted before all other

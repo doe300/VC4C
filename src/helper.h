@@ -116,6 +116,21 @@ namespace vc4c
         }
         return tmp.substr(0, tmp.size() - separator.size());
     }
+    /*
+     * Converts a container (defaults to std::vector) of values to a single string separated by the given string using
+     * the given custom converter.
+     */
+    template <typename T, typename VT = std::vector<T>>
+    inline std::string to_string(
+        const VT& values, const std::function<std::string(const T&)>& func, const std::string& separator = ", ")
+    {
+        std::string tmp;
+        for(const T& val : values)
+        {
+            tmp.append(func(val)).append(separator);
+        }
+        return tmp.substr(0, tmp.size() - separator.size());
+    }
     LCOV_EXCL_STOP
 
     /*

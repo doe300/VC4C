@@ -366,15 +366,16 @@ static void insertNonPrimaryBarrierCode(Method& method, BasicBlock& block, const
     }
 
     // insert switch-case for all possible local IDs
-    BranchCond cond = BRANCH_ALWAYS;
+    auto branchTarget = method.addNewLocal(TYPE_CODE_ADDRESS, "%barrier_switch");
+    switchIt.emplace(new CodeAddress(branchTarget, afterLabel));
+    switchIt.nextInBlock();
     for(unsigned i = 1; i < maxGroupSize; ++i)
     {
-        auto tmp = assign(switchIt, TYPE_INT8) = localId ^ Value(Literal(i), TYPE_INT8);
-        std::tie(switchIt, cond) = insertBranchCondition(method, switchIt, tmp);
-        switchIt.emplace(new Branch(singleBlocks.at(i), cond.invert()));
+        auto cond = assignNop(switchIt) = as_unsigned{localId} == as_unsigned{Value(Literal(i), TYPE_INT8)};
+        switchIt.emplace(new CodeAddress(branchTarget, singleBlocks.at(i), cond));
         switchIt.nextInBlock();
     }
-    switchIt.emplace(new Branch(afterLabel));
+    switchIt.emplace(new Branch(branchTarget.local()));
 }
 
 static void insertPrimaryBarrierCode(Method& method, BasicBlock& block, const Value& localIdScalar,

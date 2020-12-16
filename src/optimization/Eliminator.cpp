@@ -33,10 +33,11 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
         intermediate::Operation* op = it.get<intermediate::Operation>();
         intermediate::MoveOperation* move = it.get<intermediate::MoveOperation>();
         intermediate::LoadImmediate* load = it.get<intermediate::LoadImmediate>();
+        auto address = it.get<intermediate::CodeAddress>();
 
         // fail-fast on all not-supported instruction types
         // also skip all instructions writing to non-locals (registers)
-        if((op || move || load) && instr->checkOutputLocal())
+        if((op || move || load || address) && instr->checkOutputLocal())
         {
             // check whether the output of an instruction is never read
             // only check for ALU-operations and loads, if no flags are set and no special signals are sent
@@ -158,7 +159,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
             }
         }
         // remove unnecessary writes to special purpose registers
-        if((op || move || load) && instr->checkOutputRegister() && !instr->hasSideEffects())
+        if((op || move || load || address) && instr->checkOutputRegister() && !instr->hasSideEffects())
         {
             // check whether the register output is actually used. This depends on the kind of register
             // Having an unused rotation offset write can happen, e.g. if the value is zero and the rotation gets
@@ -201,7 +202,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
             }
         }
         // remove unnecessary writes which are immediately overwritten
-        if((op || move || load) && instr->checkOutputLocal() && !instr->hasSideEffects())
+        if((op || move || load || address) && instr->checkOutputLocal() && !instr->hasSideEffects())
         {
             auto loc = instr->checkOutputLocal();
             auto checkIt = it.copy().nextInBlock();

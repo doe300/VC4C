@@ -631,17 +631,19 @@ bool Switch::mapInstruction(Method& method)
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating branches for switch on " << cond.to_string() << " with " << jumpLabels.size()
             << " options and the default " << defaultLabel.to_string() << logging::endl);
+    auto targetLabel = method.addNewLocal(TYPE_CODE_ADDRESS, "%switch");
+    // use default label as default value if no other condition is applied
+    method.appendToEnd(new intermediate::CodeAddress(targetLabel, defaultLabel.local()));
     for(const auto& option : jumpLabels)
     {
-        // for every case, if equal,branch to given label
+        // for every case, if equal, set target label accordingly
         Value tmp = method.addNewLocal(TYPE_BOOL, "%switch");
         method.appendToEnd(new intermediate::Comparison(
             intermediate::COMP_EQ, Value(tmp), std::move(cond), Value(Literal(option.first), TYPE_INT32)));
-        auto pair = intermediate::insertBranchCondition(method, method.appendToEnd(), tmp);
-        method.appendToEnd(new intermediate::Branch(option.second.local(), pair.second));
+        method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, tmp, COND_ALWAYS, SetFlag::SET_FLAGS));
+        method.appendToEnd(new intermediate::CodeAddress(targetLabel, option.second.local(), COND_ZERO_CLEAR));
     }
-    // branch default label
-    method.appendToEnd(new intermediate::Branch(defaultLabel.local()));
+    method.appendToEnd(new intermediate::Branch(targetLabel.local()));
 
     return true;
 }
