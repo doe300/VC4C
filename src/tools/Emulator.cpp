@@ -1327,13 +1327,21 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
                     std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
                     ++instrumentation.at(pc).numBranchTaken;
                 }
-                int32_t offset = 4 /* Branch starts at PC + 4 */ +
+                int32_t offset =
                     (br->getImmediate() / static_cast<int32_t>(sizeof(uint64_t))) /* immediate offset is in bytes */;
-                if(br->getAddRegister() == BranchReg::BRANCH_REG ||
-                    br->getBranchRelative() == BranchRel::BRANCH_ABSOLUTE)
-                    throw CompilationError(
-                        CompilationStep::GENERAL, "This kind of branch is not yet implemented", br->toASMString());
-                nextPC += static_cast<ProgramCounter>(offset);
+                if(br->getAddRegister() == BranchReg::BRANCH_REG)
+                {
+                    auto regVal =
+                        registers.readRegister(Register{RegisterFile::PHYSICAL_A, br->getRegisterAddress()}, true);
+                    // According to http://maazl.de/project/vc4asm/doc/VideoCoreIV-addendum.html, the register value is
+                    // taken from element 15, not element 0 as documented
+                    offset += regVal.first[15].signedInt() /
+                        static_cast<int32_t>(sizeof(uint64_t)) /* register value is in bytes */;
+                }
+                if(br->getBranchRelative() == BranchRel::BRANCH_RELATIVE)
+                    nextPC = nextPC + 4 /* Branch starts at PC + 4 */ + static_cast<ProgramCounter>(offset);
+                else
+                    nextPC = static_cast<ProgramCounter>(offset);
 
                 // see Broadcom specification, page 34
                 registers.writeRegister(toRegister(br->getAddOut(), br->getWriteSwap() == WriteSwap::SWAP),

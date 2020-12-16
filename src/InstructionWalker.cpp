@@ -29,11 +29,14 @@ bool InstructionVisitor::visit(const InstructionWalker& start) const
             {
                 intermediate::Branch* jump = it.get<intermediate::Branch>();
                 auto jumpIt = it;
-                if(auto nextBlock = it.getBasicBlock()->method.findBasicBlock(jump->getTarget()))
+                for(auto target : jump->getTargetLabels())
                 {
-                    bool cont = visit(nextBlock->walk());
-                    if(!cont)
-                        return false;
+                    if(auto nextBlock = it.getBasicBlock()->method.findBasicBlock(target))
+                    {
+                        bool cont = visit(nextBlock->walk());
+                        if(!cont)
+                            return false;
+                    }
                 }
                 if(jump->isUnconditional())
                     // the control-flow always jumps, destination is already processed
@@ -264,7 +267,7 @@ intermediate::IntermediateInstruction* InstructionWalker::release()
         // need to remove the branch from the block before triggering the CFG update
         std::unique_ptr<intermediate::IntermediateInstruction> tmp(pos->release());
         basicBlock->method.updateCFGOnBranchRemoval(
-            *basicBlock, dynamic_cast<intermediate::Branch*>(tmp.get())->getTarget());
+            *basicBlock, dynamic_cast<intermediate::Branch*>(tmp.get())->getTargetLabels());
         return tmp.release();
     }
     return (*pos).release();
@@ -281,7 +284,7 @@ InstructionWalker& InstructionWalker::reset(intermediate::IntermediateInstructio
         // need to remove the branch from the block before triggering the CFG update
         std::unique_ptr<intermediate::IntermediateInstruction> tmp(pos->release());
         basicBlock->method.updateCFGOnBranchRemoval(
-            *basicBlock, dynamic_cast<intermediate::Branch*>(tmp.get())->getTarget());
+            *basicBlock, dynamic_cast<intermediate::Branch*>(tmp.get())->getTargetLabels());
     }
     (*pos).reset(instr);
     if(dynamic_cast<intermediate::Branch*>(instr))
@@ -299,7 +302,7 @@ InstructionWalker& InstructionWalker::erase()
         // need to remove the branch from the block before triggering the CFG update
         std::unique_ptr<intermediate::IntermediateInstruction> tmp(pos->release());
         basicBlock->method.updateCFGOnBranchRemoval(
-            *basicBlock, dynamic_cast<intermediate::Branch*>(tmp.get())->getTarget());
+            *basicBlock, dynamic_cast<intermediate::Branch*>(tmp.get())->getTargetLabels());
     }
     pos = basicBlock->instructions.erase(pos);
     return *this;

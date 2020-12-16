@@ -358,7 +358,7 @@ namespace vc4c
         void updateCFGOnBlockInsertion(BasicBlock* block);
         void updateCFGOnBlockRemoval(BasicBlock* block);
         void updateCFGOnBranchInsertion(InstructionWalker it);
-        void updateCFGOnBranchRemoval(BasicBlock& affectedBlock, const Local* branchTarget);
+        void updateCFGOnBranchRemoval(BasicBlock& affectedBlock, const FastSet<const Local*>& branchTargets);
 
         void addLocalData(Local& loc);
 

@@ -66,8 +66,7 @@ bool optimizations::simplifyBranches(const Module& module, Method& method, const
             if(!nextIt.isEndOfMethod())
             {
                 intermediate::BranchLabel* label = nextIt.get<intermediate::BranchLabel>();
-                // intermediate::Branch* br = nextIt.get<intermediate::Branch>();
-                if(label != nullptr && label->getLabel() == thisBranch->getTarget())
+                if(label != nullptr && label->getLabel() == thisBranch->getSingleTargetLabel())
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Removing branch to next instruction: " << thisBranch->to_string() << logging::endl);
@@ -85,7 +84,7 @@ bool optimizations::simplifyBranches(const Module& module, Method& method, const
                 return hasChanged;
             if(Branch* nextBranch = nextIt.get<Branch>())
             {
-                if(skippedOtherBranch || thisBranch->getTarget() != nextBranch->getTarget())
+                if(skippedOtherBranch || thisBranch->getSingleTargetLabel() != nextBranch->getSingleTargetLabel())
                     continue;
                 // for now, only remove unconditional branches
                 if(!thisBranch->isUnconditional() || !nextBranch->isUnconditional())

@@ -135,8 +135,11 @@ void BasicBlock::forSuccessiveBlocks(const std::function<void(BasicBlock&, Instr
         {
             if(auto branch = it.get<intermediate::Branch>())
             {
-                if(auto next = method.findBasicBlock(branch->getTarget()))
-                    consumer(*next, it);
+                for(auto target : branch->getTargetLabels())
+                {
+                    if(auto next = method.findBasicBlock(target))
+                        consumer(*next, it);
+                }
             }
             it.nextInBlock();
         }
@@ -172,9 +175,12 @@ void BasicBlock::forPredecessors(const std::function<void(InstructionWalker)>& c
         {
             for(auto it = bb.walk(); !it.isEndOfBlock(); it.nextInBlock())
             {
-                intermediate::Branch* br = it.get<intermediate::Branch>();
-                if(br != nullptr && br->getTarget() == label)
-                    consumer(it);
+                if(auto branch = it.get<intermediate::Branch>())
+                {
+                    auto targets = branch->getTargetLabels();
+                    if(targets.find(label) != targets.end())
+                        consumer(it);
+                }
             }
             if(&bb == this)
                 prevBlockFound = true;

@@ -152,7 +152,7 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
 
                 // fix-up to immediately remove branches from return to %end_of_function when consecutive instructions
                 if(copyIt.get<intermediate::Branch>() &&
-                    copyIt.get<intermediate::Branch>()->getTarget() == methodEndLabel)
+                    copyIt.get<intermediate::Branch>()->getSingleTargetLabel() == methodEndLabel)
                     copyIt.erase();
             }
         }

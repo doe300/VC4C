@@ -653,7 +653,22 @@ namespace vc4c
             bool isNormalized() const override;
             SideEffectType getSideEffects() const override;
 
-            const Local* getTarget() const;
+            const Value& getTarget() const;
+
+            /**
+             * @return the single branch target, if there is such (e.g. static branch), NULL pointer otherwise
+             */
+            const Local* getSingleTargetLabel() const;
+
+            /**
+             * @return the list of (possibly dynamically calculated) targets
+             */
+            FastSet<const Local*> getTargetLabels() const;
+
+            /**
+             * @return whether this branch is dynamic, i.e. the branch target is calculated on code execution
+             */
+            bool isDynamicBranch() const;
 
             bool isUnconditional() const;
 
@@ -1119,6 +1134,38 @@ namespace vc4c
 
             const MemoryOperation op;
             const bool guardAccess;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
+        };
+
+        /**
+         * Instruction which will be mapped to a load of the code address in bytes (relative to the start of the kernel
+         * function) denoted by the input label argument.
+         */
+        struct CodeAddress final : public ExtendedInstruction
+        {
+            CodeAddress(const Value& dest, const Local* label, ConditionCode cond = COND_ALWAYS,
+                SetFlag setFlags = SetFlag::DONT_SET);
+            ~CodeAddress() override = default;
+
+            std::string to_string() const override;
+            IntermediateInstruction* copyFor(
+                Method& method, const std::string& localPrefix, InlineMapping& localMapping) const override;
+            qpu_asm::DecoratedInstruction convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+                const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
+            bool isNormalized() const override;
+
+            /**
+             * @return the label of which the address is loaded into the output local or NULL if the address of the
+             * instruction itself is to be loaded.
+             */
+            const Local* getLabel() const;
+            /**
+             * @return the instruction to which to return the address of. This is either the BranchLabel for the label
+             * or this instruction itself.
+             */
+            const IntermediateInstruction* getAddressedInstruction() const;
 
         protected:
             bool innerEquals(const IntermediateInstruction& other) const override;

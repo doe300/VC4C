@@ -178,10 +178,12 @@ static NODISCARD bool removeUsagesInBasicBlock(const Method& method, const Basic
         --usageRangeLeft;
         if(auto branch = dynamic_cast<const intermediate::Branch*>(it.get()))
         {
-            const BasicBlock* successor = method.findBasicBlock(branch->getTarget());
-            if(successor != nullptr &&
-                removeUsagesInBasicBlock(method, *successor, locale, remainingUsers, usageRangeLeft))
-                return true;
+            for(auto target : branch->getTargetLabels())
+            {
+                const BasicBlock* successor = method.findBasicBlock(target);
+                if(successor && removeUsagesInBasicBlock(method, *successor, locale, remainingUsers, usageRangeLeft))
+                    return true;
+            }
         }
         it.nextInMethod();
     }
@@ -205,12 +207,14 @@ bool Method::isLocallyLimited(InstructionWalker curIt, const Local* locale, cons
         --usageRangeLeft;
         if(auto branch = curIt.get<intermediate::Branch>())
         {
-            const BasicBlock* successor = findBasicBlock(branch->getTarget());
-            if(successor != nullptr &&
-                removeUsagesInBasicBlock(*this, *successor, locale, remainingUsers, usageRangeLeft))
-                return true;
+            for(auto target : branch->getTargetLabels())
+            {
+                const BasicBlock* successor = findBasicBlock(target);
+                if(successor && removeUsagesInBasicBlock(*this, *successor, locale, remainingUsers, usageRangeLeft))
+                    return true;
+            }
             if(branch->isUnconditional())
-                // this branch jumps away unconditionally and the successor does not have all remaining usages within
+                // this branch jumps away unconditionally and the successors do not have all remaining usages within
                 // the remaining range, so we abort
                 return false;
         }
@@ -444,9 +448,12 @@ bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
         unsigned count = 0;
         block.forPredecessors([&block, &count](InstructionWalker it) -> void {
             // only check for explicit jumps to this block, implicit "jumps" will just fall-through to the next block
-            if(it.get<intermediate::Branch>() &&
-                it.get<intermediate::Branch>()->getTarget() == block.getLabel()->getLabel())
-                ++count;
+            if(auto branch = it.get<intermediate::Branch>())
+            {
+                auto targets = branch->getTargetLabels();
+                if(targets.find(block.getLabel()->getLabel()) != targets.end())
+                    ++count;
+            }
         });
         if(count > 0)
             return false;
@@ -703,11 +710,11 @@ void Method::updateCFGOnBranchInsertion(InstructionWalker it)
     cfg->updateOnBranchInsertion(*this, it);
 }
 
-void Method::updateCFGOnBranchRemoval(BasicBlock& affectedBlock, const Local* branchTarget)
+void Method::updateCFGOnBranchRemoval(BasicBlock& affectedBlock, const FastSet<const Local*>& branchTargets)
 {
     if(!cfg)
         return;
-    cfg->updateOnBranchRemoval(*this, affectedBlock, branchTarget);
+    cfg->updateOnBranchRemoval(*this, affectedBlock, branchTargets);
 }
 
 void Method::addLocalData(Local& loc)

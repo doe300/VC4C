@@ -145,7 +145,7 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
         {
             blockIt.previousInBlock();
             auto branch = blockIt.get<intermediate::Branch>();
-            if(branch && branch->getTarget() == label)
+            if(branch && branch->getSingleTargetLabel() == label)
             {
                 jumpCondition = branch->branchCondition.toConditionCode();
                 if(branch->branchCondition != BRANCH_ALWAYS)

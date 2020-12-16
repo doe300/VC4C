@@ -350,6 +350,10 @@ static void updateFixedLocals(const intermediate::IntermediateInstruction& instr
         }
     }
 
+    if(dynamic_cast<const intermediate::Branch*>(&instr) && firstArg->checkLocal() && firstArg->type != TYPE_LABEL)
+        // code addresses used in branches can only be read from physical register-file A
+        fixToRegisterFile(RegisterFile::PHYSICAL_A, firstArg->local(), localUses);
+
     // remove all blocked files from all locals
     if(blockedFiles != RegisterFile::NONE)
     {

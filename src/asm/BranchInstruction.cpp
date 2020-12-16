@@ -37,7 +37,7 @@ std::string BranchInstruction::toASMString() const
         target += "(pc+4) + ";
     target += std::to_string(getImmediate() / 8 /* byte-index -> instruction-index */);
     if(getAddRegister() == BranchReg::BRANCH_REG)
-        target += " + " + toInputRegister(InputMultiplex::REGA, getAddOut(), getMulOut(), false);
+        target += " + " + toInputRegister(InputMultiplex::REGA, getRegisterAddress(), REG_NOP.num, false);
 
     auto s = std::string("br") + (getBranchRelative() == BranchRel::BRANCH_RELATIVE ? "r" : "a") +
         ((getBranchCondition() == BRANCH_ALWAYS ? "" : std::string(".") + getBranchCondition().to_string()) + " ") +

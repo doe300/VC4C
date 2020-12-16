@@ -116,6 +116,8 @@ static void propagateDecorations(Module& module, Method& method, InstructionWalk
         }
         if(std::all_of(it->getArguments().begin(), it->getArguments().end(), check.second))
             it->addDecorations(check.first);
+        else if(it.get<intermediate::CodeAddress>())
+            it->addDecorations(check.first);
     }
 }
 

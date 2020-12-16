@@ -37,8 +37,9 @@ std::string CFGRelation::getLabel() const
     if(predecessors.empty())
         return "" + std::move(extra);
     const auto converter = [](const std::pair<const BasicBlock*, Optional<InstructionWalker>>& pair) -> std::string {
-        if(pair.second && pair.second->get<const intermediate::Branch>())
-            return "br " + pair.second->get<const intermediate::Branch>()->branchCondition.to_string();
+        auto branch = pair.second ? pair.second->get<intermediate::Branch>() : nullptr;
+        if(branch)
+            return "br " + branch->branchCondition.to_string() + (branch->isDynamicBranch() ? "(dyn)" : "");
         return "";
     };
     return std::accumulate(predecessors.begin(), predecessors.end(), std::string{},
@@ -511,20 +512,23 @@ void ControlFlowGraph::updateOnBranchInsertion(Method& method, InstructionWalker
      * 2. check whether branches cover all in this block and remove fall-through edge to next block
      */
     auto& node = assertNode(it.getBasicBlock());
-    // may not yet exist, e.g. for forward branches
-    auto targetBlock = method.findBasicBlock(it.get<intermediate::Branch>()->getTarget());
-    if(!targetBlock)
-        throw CompilationError(CompilationStep::GENERAL,
-            "Branch target does not belong to any basic block, make sure the block is inserted before the branch",
-            it->to_string());
-    auto& nextNode = getOrCreateNode(targetBlock);
-
-    auto& edge = node.getOrCreateEdge(&nextNode).addInput(node);
-    // overwrite possible fall-through edge
-    edge.data.predecessors[node.key] = it;
-    edge.data.isWorkGroupLoop = it->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_LOOP);
-
     CFGEdge* fallThroughEdge = nullptr;
+    for(auto target : it.get<intermediate::Branch>()->getTargetLabels())
+    {
+        // may not yet exist, e.g. for forward branches
+        auto targetBlock = method.findBasicBlock(target);
+        if(!targetBlock)
+            throw CompilationError(CompilationStep::GENERAL,
+                "Branch target does not belong to any basic block, make sure the block is inserted before the branch",
+                it->to_string());
+        auto& nextNode = getOrCreateNode(targetBlock);
+
+        auto& edge = node.getOrCreateEdge(&nextNode).addInput(node);
+        // overwrite possible fall-through edge
+        edge.data.predecessors[node.key] = it;
+        edge.data.isWorkGroupLoop = it->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_LOOP);
+    }
+
     node.forAllOutgoingEdges([&](CFGNode& successor, CFGEdge& edge) -> bool {
         if(edge.data.isImplicit(node.key))
         {
@@ -555,36 +559,40 @@ void ControlFlowGraph::updateOnBranchInsertion(Method& method, InstructionWalker
     updateBackEdges(*this, &getStartOfControlFlow());
 }
 
-void ControlFlowGraph::updateOnBranchRemoval(Method& method, BasicBlock& affectedBlock, const Local* branchTarget)
+void ControlFlowGraph::updateOnBranchRemoval(
+    Method& method, BasicBlock& affectedBlock, const FastSet<const Local*>& branchTargets)
 {
     /*
      * 1. remove edge from block to destination label
      * 2. check whether branches cover all in this block and add fall-through edge to next block
      */
     auto& node = assertNode(&affectedBlock);
-    auto& destNode = assertNode(method.findBasicBlock(branchTarget));
+    for(auto branchTarget : branchTargets)
+    {
+        auto& destNode = assertNode(method.findBasicBlock(branchTarget));
 
-    CFGEdge* branchEdge = nullptr;
-    node.forAllOutgoingEdges([&](CFGNode& successor, CFGEdge& edge) -> bool {
-        if(successor.key == destNode.key)
-        {
-            if(branchEdge)
-                throw CompilationError(
-                    CompilationStep::GENERAL, "Multiple edges between two basic blocks", branchEdge->data.getLabel());
-            branchEdge = &edge;
-        }
-        return true;
-    });
+        CFGEdge* branchEdge = nullptr;
+        node.forAllOutgoingEdges([&](CFGNode& successor, CFGEdge& edge) -> bool {
+            if(successor.key == destNode.key)
+            {
+                if(branchEdge)
+                    throw CompilationError(CompilationStep::GENERAL, "Multiple edges between two basic blocks",
+                        branchEdge->data.getLabel());
+                branchEdge = &edge;
+            }
+            return true;
+        });
 
-    if(!branchEdge)
-        throw CompilationError(
-            CompilationStep::GENERAL, "No CFG edge found for branch to target", branchTarget->to_string());
+        if(!branchEdge)
+            throw CompilationError(
+                CompilationStep::GENERAL, "No CFG edge found for branch to target", branchTarget->to_string());
 
-    branchEdge->data.predecessors.erase(node.key);
-    branchEdge->removeInput(node);
-    if(branchEdge->data.predecessors.empty())
-        // we only want to remove the one direction, the jump-back needs to remain
-        node.removeEdge(*branchEdge);
+        branchEdge->data.predecessors.erase(node.key);
+        branchEdge->removeInput(node);
+        if(branchEdge->data.predecessors.empty())
+            // we only want to remove the one direction, the jump-back needs to remain
+            node.removeEdge(*branchEdge);
+    }
 
     if(node.key->fallsThroughToNextBlock(false))
     {
@@ -616,9 +624,10 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
             {
                 if(auto branch = it.get<intermediate::Branch>())
                 {
-                    isImplicit = branch->getTarget() != successor.getLabel()->getLabel();
-                    isWorkGroupLoop = branch->getTarget() == successor.getLabel()->getLabel() &&
-                        branch->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_LOOP);
+                    auto targets = branch->getTargetLabels();
+                    isImplicit = targets.find(successor.getLabel()->getLabel()) == targets.end();
+                    isWorkGroupLoop =
+                        !isImplicit && branch->hasDecoration(intermediate::InstructionDecorations::WORK_GROUP_LOOP);
                 }
             }
             // connection from bb to successor

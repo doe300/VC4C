@@ -70,6 +70,8 @@ Branch::Branch(const Local* target, BranchCond branchCond) :
     SignalingInstruction(SIGNAL_BRANCH), branchCondition(branchCond)
 {
     setArgument(0, target->createReference());
+    if(target->type != TYPE_LABEL && target->type != TYPE_CODE_ADDRESS)
+        throw CompilationError(CompilationStep::GENERAL, "Can only jump to label or code address", target->to_string());
 }
 
 Branch::Branch(const Value& linkAddressOut, const Local* target, BranchCond branchCond) :
@@ -79,18 +81,18 @@ Branch::Branch(const Value& linkAddressOut, const Local* target, BranchCond bran
     if(linkAddressOut.type != TYPE_CODE_ADDRESS)
         throw CompilationError(CompilationStep::GENERAL, "Can only store code addresses in value of proper type",
             linkAddressOut.to_string(true));
+    if(target->type != TYPE_LABEL && target->type != TYPE_CODE_ADDRESS)
+        throw CompilationError(CompilationStep::GENERAL, "Can only jump to label or code address", target->to_string());
 }
 
 LCOV_EXCL_START
 std::string Branch::to_string() const
 {
     auto linkString = getOutput() ? (getOutput()->to_string(true) + " = ") : "";
-    if(branchCondition == BRANCH_ALWAYS)
-    {
-        return linkString + std::string("br ") + getTarget()->name + createAdditionalInfoString();
-    }
-    return linkString + std::string("br.") + (branchCondition.to_string() + " ") + getTarget()->name +
-        createAdditionalInfoString();
+    auto targetName = getTarget().local()->name;
+    auto dynamicString = isDynamicBranch() ? " (dynamic)" : "";
+    auto condString = branchCondition == BRANCH_ALWAYS ? "" : ("." + branchCondition.to_string());
+    return linkString + "br" + condString + " " + targetName + dynamicString + createAdditionalInfoString();
 }
 LCOV_EXCL_STOP
 
@@ -98,7 +100,7 @@ IntermediateInstruction* Branch::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     auto newOut = getOutput() ? renameValue(method, *getOutput(), localPrefix, localMapping) : NO_VALUE;
-    return (new Branch(renameValue(method, assertArgument(0), localPrefix, localMapping).local(), branchCondition))
+    return (new Branch(renameValue(method, getTarget(), localPrefix, localMapping).local(), branchCondition))
         ->setOutput(newOut)
         ->copyExtrasFrom(this);
 }
@@ -119,11 +121,33 @@ qpu_asm::DecoratedInstruction Branch::convertToAsm(const FastMap<const Local*, R
         outReg = out->checkLocal() ? registerMapping.at(out->local()) : out->reg();
     auto addOut = outReg.file == RegisterFile::PHYSICAL_A ? outReg : REG_NOP;
     auto mulOut = outReg.file == RegisterFile::PHYSICAL_B ? outReg : REG_NOP;
-    auto labelPos = labelMapping.find(getTarget());
-    if(labelPos == labelMapping.end())
-        throw CompilationError(
-            CompilationStep::CODE_GENERATION, "Target label not mapped to any position", to_string());
-    const int64_t branchOffset = static_cast<int64_t>(labelPos->second) -
+    int64_t branchOffset;
+    std::string targetName;
+    Optional<Address> addressRegister;
+    if(auto label = getSingleTargetLabel())
+    {
+        // static branch to single label, relative address offset is the label address - the current address
+        auto labelPos = labelMapping.find(label);
+        if(labelPos == labelMapping.end())
+            throw CompilationError(
+                CompilationStep::CODE_GENERATION, "Target label not mapped to any position", to_string());
+
+        branchOffset = static_cast<int64_t>(labelPos->second);
+        targetName = label->name;
+    }
+    else
+    {
+        // dynamic branch, relative address offset is address value - the current address
+        branchOffset = 0;
+        targetName = vc4c::to_string<const Local*>(getTargetLabels(), [](const Local* label) { return label->name; });
+        auto addressReg = getTarget().checkLocal() ? registerMapping.at(getTarget().local()) : getTarget().reg();
+        if(addressReg.file != RegisterFile::PHYSICAL_A || !addressReg.isGeneralPurpose())
+            throw CompilationError(CompilationStep::CODE_GENERATION,
+                "Can only read dynamic branch address from physical register-file A", to_string());
+        addressRegister = addressReg.num;
+    }
+
+    branchOffset = branchOffset -
         static_cast<int64_t>(
             (instructionIndex + 4 /*  NOPs */) * sizeof(uint64_t)) /* convert instruction-index to byte-index */;
     if(branchOffset < static_cast<int64_t>(std::numeric_limits<int32_t>::min()) ||
@@ -131,9 +155,11 @@ qpu_asm::DecoratedInstruction Branch::convertToAsm(const FastMap<const Local*, R
         throw CompilationError(CompilationStep::CODE_GENERATION,
             "Cannot jump a distance not fitting into 32-bit integer", std::to_string(branchOffset));
     return qpu_asm::DecoratedInstruction(
-        qpu_asm::BranchInstruction(branchCondition, BranchRel::BRANCH_RELATIVE, BranchReg::NONE,
-            0 /* only 5 bits, so REG_NOP doesn't fit */, addOut.num, mulOut.num, static_cast<int32_t>(branchOffset)),
-        "to " + this->getTarget()->name);
+        qpu_asm::BranchInstruction(branchCondition, BranchRel::BRANCH_RELATIVE,
+            addressRegister ? BranchReg::BRANCH_REG : BranchReg::NONE,
+            addressRegister ? *addressRegister : 0 /* only 5 bits, so REG_NOP doesn't fit */, addOut.num, mulOut.num,
+            static_cast<int32_t>(branchOffset)),
+        "to " + targetName);
 }
 
 bool Branch::isNormalized() const
@@ -146,9 +172,49 @@ SideEffectType Branch::getSideEffects() const
     return add_flag(IntermediateInstruction::getSideEffects(), SideEffectType::BRANCH);
 }
 
-const Local* Branch::getTarget() const
+const Value& Branch::getTarget() const
 {
-    return assertArgument(0).local();
+    return assertArgument(0);
+}
+
+const Local* Branch::getSingleTargetLabel() const
+{
+    auto loc = getTarget().local();
+    if(loc && loc->type == TYPE_LABEL)
+        // direct jump to label
+        return loc;
+    return nullptr;
+}
+
+FastSet<const Local*> Branch::getTargetLabels() const
+{
+    auto loc = getTarget().local();
+    if(loc->type == TYPE_LABEL)
+        // single target
+        return {loc};
+
+    // otherwise we have multiple targets
+    FastSet<const Local*> targets;
+    loc->forUsers(LocalUse::Type::WRITER, [&](const IntermediateInstruction* writer) {
+        if(auto addressOf = dynamic_cast<const CodeAddress*>(writer))
+        {
+            if(auto label = addressOf->getLabel())
+                targets.emplace(label);
+            else
+                throw CompilationError(CompilationStep::GENERAL,
+                    "Can't determine branch target for code address not pointing to a label", writer->to_string());
+        }
+        else
+            throw CompilationError(CompilationStep::GENERAL,
+                "Can't determine branch target for code address writer not an addressof instruction",
+                writer->to_string());
+    });
+    return targets;
+}
+
+bool Branch::isDynamicBranch() const
+{
+    return getTarget().type != TYPE_LABEL;
 }
 
 bool Branch::isUnconditional() const
@@ -220,4 +286,88 @@ bool PhiNode::innerEquals(const IntermediateInstruction& other) const
 {
     // no extra fields to check
     return dynamic_cast<const PhiNode*>(&other);
+}
+
+CodeAddress::CodeAddress(const Value& dest, const Local* label, ConditionCode cond, SetFlag setFlags) :
+    ExtendedInstruction(SIGNAL_LOAD_IMMEDIATE, cond, setFlags, PACK_NOP, dest)
+{
+    if(dest.type != TYPE_CODE_ADDRESS)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Can only store code addresses in value of proper type", dest.to_string(true));
+
+    if(label)
+    {
+        if(label->type != TYPE_LABEL)
+            throw CompilationError(
+                CompilationStep::GENERAL, "Can only take code addresses of labels", label->to_string());
+        setArgument(0, label->createReference());
+    }
+    // addresses are always unsigned
+    addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+}
+
+std::string CodeAddress::to_string() const
+{
+    std::string address = "(self)";
+    if(auto label = getLabel())
+        address = label->to_string();
+    return (getOutput()->to_string(true) + " = addressof ") + std::move(address) + createAdditionalInfoString();
+}
+
+IntermediateInstruction* CodeAddress::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
+{
+    auto newOut = getOutput() ? renameValue(method, *getOutput(), localPrefix, localMapping) : NO_VALUE;
+    const Local* address = nullptr;
+    if(auto arg = getArgument(0))
+        address = renameValue(method, *arg, localPrefix, localMapping).checkLocal();
+    return (new CodeAddress(std::move(newOut).value(), address))->copyExtrasFrom(this);
+}
+
+qpu_asm::DecoratedInstruction CodeAddress::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+    const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const
+{
+    // if no label is set, take address of this instruction itself
+    auto address = instructionIndex * sizeof(uint64_t) /* convert instruction-index to byte-index */;
+    std::string addressName = "(self)";
+    if(auto label = getLabel())
+    {
+        auto labelPos = labelMapping.find(label);
+        if(labelPos == labelMapping.end())
+            throw CompilationError(
+                CompilationStep::CODE_GENERATION, "Target label not mapped to any position", to_string());
+        address = labelPos->second;
+        addressName = label->name;
+    }
+    if(address > static_cast<std::size_t>(std::numeric_limits<int32_t>::max()))
+        throw CompilationError(CompilationStep::CODE_GENERATION,
+            "Cannot load an address not fitting into 32-bit integer", std::to_string(address));
+    LoadImmediate dummy{getOutput().value(), Literal(static_cast<int32_t>(address))};
+    dummy.copyExtrasFrom(this);
+    return qpu_asm::DecoratedInstruction(
+        dummy.convertToAsm(registerMapping, labelMapping, instructionIndex).instruction, std::move(addressName));
+}
+
+bool CodeAddress::isNormalized() const
+{
+    return true;
+}
+
+const Local* CodeAddress::getLabel() const
+{
+    return getArgument(0) & &Value::checkLocal;
+}
+
+const IntermediateInstruction* CodeAddress::getAddressedInstruction() const
+{
+    if(auto label = getLabel())
+        return label->getSingleWriter();
+    return this;
+}
+
+bool CodeAddress::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherAddress = dynamic_cast<const CodeAddress*>(&other))
+        return otherAddress->getLabel() == getLabel();
+    return false;
 }
