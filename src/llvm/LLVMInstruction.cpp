@@ -307,8 +307,8 @@ bool CallSite::mapInstruction(Method& method)
             method.appendToEnd(), method, output, arguments.at(0), UNDEFINED_VALUE, arguments.at(1)));
         return true;
     }
-    static std::regex readFencePattern("_Z\\d*read_mem_fence.*");
-    static std::regex writeFencePattern("_Z\\d*write_mem_fence.*");
+    static const std::regex readFencePattern("_Z\\d*read_mem_fence.*");
+    static const std::regex writeFencePattern("_Z\\d*write_mem_fence.*");
     if(methodName.find("mem_fence") == 0 || methodName.find("read_mem_fence") == 0 ||
         methodName.find("write_mem_fence") == 0 || std::regex_match(methodName, readFencePattern) ||
         std::regex_match(methodName, writeFencePattern))

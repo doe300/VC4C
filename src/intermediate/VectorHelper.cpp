@@ -76,7 +76,7 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
     {
         appliedOffset = offset;
         // vector is rotated by offset-constant not by rotation constant -> convert to rotation constant
-        if(imm->getIntegerValue())
+        if(!imm->isVectorRotation() && imm->getIntegerValue())
         {
             if(direction == Direction::DOWN)
             {

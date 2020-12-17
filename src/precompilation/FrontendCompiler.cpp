@@ -17,6 +17,7 @@
 #include "../spirv/SPIRVToolsParser.h"
 #endif
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -230,7 +231,7 @@ void precompilation::compileOpenCLWithPCH(OpenCLSource&& source, const std::stri
  */
 static std::string cleanOptions(std::string userOptions)
 {
-    static const std::string includeFlag = "-I ";
+    const std::string includeFlag = "-I ";
     auto pos = userOptions.find(includeFlag);
     if(pos != std::string::npos)
     {
@@ -263,26 +264,62 @@ static std::string cleanOptions(std::string userOptions)
 static Optional<std::string> getDefaultHeadersPCHPath(const std::string& userOptions)
 {
     static std::mutex pchsMutex;
-    static FastMap<std::string, TemporaryFile> cachedPCHs;
+    // we keep a usage count to always discard the least used entries
+    static FastMap<std::string, std::pair<TemporaryFile, std::size_t>> cachedPCHs;
 
     auto checkOptions = cleanOptions(userOptions);
     std::lock_guard<std::mutex> guard(pchsMutex);
     auto it = cachedPCHs.find(checkOptions);
     PROFILE_COUNTER(vc4c::profiler::COUNTER_FRONTEND + 50, "OpenCL C header PCH builds", it == cachedPCHs.end());
     if(it != cachedPCHs.end())
-        return it->second.fileName;
+    {
+        ++it->second.second;
+        return it->second.first.fileName;
+    }
 
-    it = cachedPCHs.emplace(checkOptions, TemporaryFile{"/tmp/vc4c-openclc-pch-XXXXXX", true}).first;
+    // keep a limit on the maximum cached PCHs to not run out of space in /tmp if a lot of kernels are compiled (e.g.
+    // for VC4CL tests)
+    if(cachedPCHs.size() >= 32)
+    {
+        // remove all entries with single use at once to not have to do this check too often
+        for(auto it = cachedPCHs.begin(); it != cachedPCHs.end();)
+        {
+            if(it->second.second <= 1)
+            {
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Dropping precompiled OpenCL C header from cache due to cache full: "
+                        << it->second.first.fileName << " (options: '" << it->first
+                        << "', usages: " << it->second.second << ")" << logging::endl);
+                it = cachedPCHs.erase(it);
+            }
+            else
+                ++it;
+        }
+
+        // if still too many entries, remove least used
+        if(cachedPCHs.size() > 16)
+        {
+            auto it = std::min_element(cachedPCHs.begin(), cachedPCHs.end(),
+                [](const auto& one, const auto& other) -> bool { return one.second.second < other.second.second; });
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Dropping precompiled OpenCL C header from cache due to cache full: "
+                    << it->second.first.fileName << " (options: '" << it->first << "', usages: " << it->second.second
+                    << ")" << logging::endl);
+            cachedPCHs.erase(it);
+        }
+    }
+
+    it = cachedPCHs.emplace(checkOptions, std::make_pair(TemporaryFile{"/tmp/vc4c-openclc-pch-XXXXXX", true}, 1)).first;
     try
     {
         std::stringstream emptyStream{};
-        LLVMIRResult result{it->second.fileName};
+        LLVMIRResult result{it->second.first.fileName};
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Precompiling default OpenCL C header to PCH to speed up further clang front-end runs for "
                    "compilation flags: "
                 << checkOptions << logging::endl);
         compileOpenCLToLLVMIR0(&emptyStream, result.stream, checkOptions, "pch", {}, result.file, false);
-        return it->second.fileName;
+        return it->second.first.fileName;
     }
     catch(const std::exception&)
     {

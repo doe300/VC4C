@@ -111,6 +111,8 @@ namespace vc4c
              * NOTE: This method does not check for value dependencies!
              */
             bool canBeInserted(const intermediate::IntermediateInstruction* instr) const;
+
+            std::string to_string() const;
         };
 
         struct DependencyNodeBase

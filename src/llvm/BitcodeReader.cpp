@@ -852,7 +852,19 @@ void BitcodeReader::parseInstruction(
             // e.g. for alias - see https://stackoverflow.com/questions/22143143/
             if(auto alias = llvm::dyn_cast<const llvm::GlobalAlias>(call->getCalledValue()))
             {
-                func = llvm::dyn_cast<const llvm::Function>(alias->getAliasee());
+                if(auto constExpr = llvm::dyn_cast<const llvm::ConstantExpr>(alias->getAliasee()))
+                {
+                    // e.g. function-pointer bit-cast for aliasing __generic address space (OpenCL C 2.x, C++ for
+                    // OpenCL) to __global address space
+                    if(constExpr->getOpcode() == llvm::Instruction::CastOps::BitCast)
+                        func = llvm::dyn_cast<const llvm::Function>(constExpr->getOperand(0));
+                }
+                else
+                    func = llvm::dyn_cast<const llvm::Function>(alias->getAliasee());
+                if(func)
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Aliasing function '" << alias->getName() << "' to function: " << func->getName()
+                            << logging::endl);
             }
         }
         if(func == nullptr)

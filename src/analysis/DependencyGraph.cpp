@@ -9,6 +9,7 @@
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
 #include "../helper.h"
+#include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "DebugGraph.h"
 
@@ -51,6 +52,49 @@ bool Dependency::canBeInserted(const intermediate::IntermediateInstruction* inst
         return false;
     }
     return true;
+}
+
+std::string Dependency::to_string() const
+{
+    auto res = std::to_string(numDelayCycles);
+
+    SortedSet<std::string> types;
+
+    if(has_flag(type, DependencyType::VALUE_READ_AFTER_WRITE))
+        types.emplace("raw");
+    if(has_flag(type, DependencyType::VALUE_WRITE_AFTER_READ))
+        types.emplace("war");
+    if(has_flag(type, DependencyType::VALUE_WRITE_AFTER_WRITE))
+        types.emplace("waw");
+    if(has_flag(type, DependencyType::VALUE_READ_AFTER_READ))
+        types.emplace("rar");
+    if(has_flag(type, DependencyType::SIGNAL_READ_AFTER_WRITE))
+        types.emplace("sraw");
+    if(has_flag(type, DependencyType::SIGNAL_WRITE_AFTER_READ))
+        types.emplace("swar");
+    if(has_flag(type, DependencyType::SIGNAL_WRITE_AFTER_WRITE))
+        types.emplace("swaw");
+    if(has_flag(type, DependencyType::FLAGS_READ_AFTER_WRITE))
+        types.emplace("fraw");
+    if(has_flag(type, DependencyType::FLAGS_WRITE_AFTER_READ))
+        types.emplace("fwar");
+    if(has_flag(type, DependencyType::FLAGS_WRITE_AFTER_WRITE))
+        types.emplace("fwaw");
+    if(has_flag(type, DependencyType::SEMAPHORE_ORDER))
+        types.emplace("sema");
+    if(has_flag(type, DependencyType::PERIPHERY_ORDER))
+        types.emplace("peri");
+    if(has_flag(type, DependencyType::MUTEX_LOCK))
+        types.emplace("mux");
+    if(has_flag(type, DependencyType::BRANCH_ORDER))
+        types.emplace("br");
+    if(has_flag(type, DependencyType::THREAD_END_ORDER))
+        types.emplace("thrend");
+
+    if(!types.empty())
+        res.append(" (").append(vc4c::to_string<std::string>(types)).append(")");
+
+    return res;
 }
 
 bool DependencyNodeBase::hasIncomingDependencies() const
@@ -166,23 +210,10 @@ static void addDependency(Dependency& dependency, DependencyType type, unsigned 
     dependency.isMandatoryDelay = dependency.isMandatoryDelay || fixedDelay;
 }
 
-static bool isLocallyLimited(const Local* local, const intermediate::IntermediateInstruction* currentInstr,
-    const intermediate::IntermediateInstruction* lastWriter, const intermediate::IntermediateInstruction* lastReader)
-{
-    auto tmp = local->getUsers();
-    tmp.erase(currentInstr);
-    tmp.erase(lastWriter);
-    tmp.erase(lastReader);
-    return tmp.empty();
-}
-
 static void createLocalDependencies(DependencyGraph& graph, DependencyNode& node,
     const FastMap<const Local*, const intermediate::IntermediateInstruction*>& lastLocalWrites,
     const FastMap<const Local*, const intermediate::IntermediateInstruction*>& lastLocalReads)
 {
-    bool isVectorRotation = node.key->getVectorRotation().has_value();
-    // can only unpack from register-file A which requires a read-after-write delay of at least 1 instruction
-    bool hasUnpackMode = node.key->hasUnpackMode();
     node.key->forUsedLocals(
         [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) -> void {
             const intermediate::IntermediateInstruction* lastWrite = nullptr;
@@ -195,33 +226,25 @@ static void createLocalDependencies(DependencyGraph& graph, DependencyNode& node
                 if(readIt != lastLocalReads.end())
                     lastRead = readIt->second;
             }
-            unsigned distance = (!isVectorRotation && !hasUnpackMode &&
-                                    (isLocallyLimited(loc, node.key, lastWrite, lastRead) ||
-                                        isLocallyLimited(loc, &inst, lastWrite, lastRead))) ?
-                0 :
-                1;
-            if(has_flag(type, LocalUse::Type::READER))
+            auto requiresSingleInstructionDelay = lastWrite && intermediate::needsDelay(lastWrite, node.key, loc);
+            unsigned distance = requiresSingleInstructionDelay ? 1 : 0;
+            if(has_flag(type, LocalUse::Type::READER) && lastWrite)
             {
                 // any reading of a local depends on the previous write
-                if(lastWrite != nullptr)
-                {
-                    distance = std::max(distance, lastWrite->hasPackMode() ? 1u : 0u);
-                    auto& otherNode = graph.assertNode(lastWrite);
-                    addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_READ_AFTER_WRITE,
-                        distance, isVectorRotation || hasUnpackMode || lastWrite->hasPackMode());
-                }
+                auto& otherNode = graph.assertNode(lastWrite);
+                addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_READ_AFTER_WRITE, distance,
+                    requiresSingleInstructionDelay);
             }
             if(has_flag(type, LocalUse::Type::WRITER))
             {
-                if(lastWrite != nullptr)
+                if(lastWrite)
                 {
                     // writing a local needs to preserve the order the local is written before
-                    distance = std::max(distance, lastWrite->hasPackMode() ? 1u : 0u);
                     auto& otherNode = graph.assertNode(lastWrite);
                     addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::VALUE_WRITE_AFTER_WRITE,
                         distance, lastWrite->hasPackMode());
                 }
-                if(lastRead != nullptr)
+                if(lastRead)
                 {
                     // writing a local must be ordered after previous reads
                     auto& otherNode = graph.assertNode(lastRead);
@@ -776,6 +799,9 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
                     addDependency(otherNode.getOrCreateEdge(&node).data, DependencyType::BRANCH_ORDER);
                 }
             });
+            if(!branch->isUnconditional() && lastSettingOfFlags)
+                addDependency(graph->assertNode(lastSettingOfFlags).getOrCreateEdge(&node).data,
+                    DependencyType::FLAGS_READ_AFTER_WRITE);
         }
 
         // update the cached values
@@ -867,9 +893,7 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
                 return i->to_string();
             };
             auto weakEdgeFunc = [](const Dependency& dep) -> bool { return !dep.isMandatoryDelay; };
-            auto edgeLabelFunc = [](const Dependency& dep) -> std::string {
-                return std::to_string(dep.numDelayCycles);
-            };
+            auto edgeLabelFunc = [](const Dependency& dep) -> std::string { return dep.to_string(); };
             DebugGraph<const intermediate::IntermediateInstruction*, Dependency,
                 Directionality::DIRECTED>::dumpGraph<DependencyGraph>(*graph, "/tmp/vc4c-deps.dot", nameFunc,
                 weakEdgeFunc, edgeLabelFunc);

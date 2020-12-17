@@ -429,6 +429,13 @@ Optional<int32_t> SmallImmediate::getIntegerValue() const noexcept
     if(value <= 31)
         // -16, ..., -1
         return static_cast<int32_t>(value) - 32;
+    /*
+     * The SmallImmediate values representing vector rotations also provide integer values when read.
+     * I.e. "rotation by r5" (immediate 48) reads as -16, "rotation by 1" (immediate 49) as -15 and so on until
+     * "rotation by 15" (immediate 63) reads as -1.
+     */
+    if(isVectorRotation())
+        return 64 - static_cast<int32_t>(value);
     return {};
 }
 
