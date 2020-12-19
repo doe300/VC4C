@@ -435,7 +435,7 @@ Optional<int32_t> SmallImmediate::getIntegerValue() const noexcept
      * "rotation by 15" (immediate 63) reads as -1.
      */
     if(isVectorRotation())
-        return 64 - static_cast<int32_t>(value);
+        return -64 + static_cast<int32_t>(value);
     return {};
 }
 

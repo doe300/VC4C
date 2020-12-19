@@ -8,6 +8,7 @@
 
 #include "../Module.h"
 #include "../intermediate/Helper.h"
+#include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
 #include "log.h"
 
@@ -351,9 +352,9 @@ static void insertNonPrimaryBarrierCode(Method& method, BasicBlock& block, const
     auto it = block.walkEnd();
     it.emplace(new SemaphoreAdjustment(static_cast<Semaphore>(0), true));
     it.nextInBlock();
-    // just copy to ease register association
-    auto localId = assign(it, localIdScalar.type, "%local_id_scalar") = localIdScalar;
-    auto switchIt = it;
+    // replicate to make sure the SIMD element 15 which is actually used by the branch is set correctly
+    auto localId = method.addNewLocal(localIdScalar.type, "%local_id_scalar");
+    auto switchIt = intermediate::insertReplication(it, localIdScalar, localId);
 
     // we need to create the other blocks first to be able to correctly update the CFG
     SortedMap<unsigned, const Local*> singleBlocks;

@@ -186,8 +186,18 @@ void test_data::registerGeneralTests()
             })}});
 
     registerTest(TestData{"branches", DataFilter::CONTROL_FLOW, &test_branches_cl_string, "", "test_branches",
-        {toBufferParameter(std::vector<uint32_t>{512}), toBufferParameter(std::vector<uint32_t>(16, 0x42))},
-        toDimensions(1), {checkParameterEquals(1, std::vector<uint32_t>{109, 1849, 512, 100, 100, 512, 0x42, 109})}});
+        {toBufferParameter(std::vector<uint32_t>{512, 1024, 256, 32, 64, 42}),
+            toBufferParameter(std::vector<uint32_t>(6 * 12, 0x42))},
+        toDimensions(6),
+        {checkParameterEquals(1,
+            std::vector<uint32_t>{
+                109, 1849, 512, 100, 100, 512, 0x42, 109, 0x42, 0x42, 0x42, 0x42,       // in = 512
+                1010, 2027, 1024, 1000, 1000, 1024, 1010, 0x42, 0x42, 0x42, 0x42, 0x42, // in = 1024
+                108, 1833, 256, 100, 100, 256, 0x42, 0x42, 108, 0x42, 0x42, 0x42,       // in = 256
+                15, 1401, 32, 10, 10, 32, 0x42, 0x42, 0x42, 0x42, 15, 0x42,             // in = 32
+                16, 1465, 64, 10, 10, 64, 0x42, 0x42, 0x42, 16, 0x42, 0x42,             // in = 64
+                11, 1145, 42, 10, 10, 42, 0x42, 0x42, 0x42, 0x42, 0x42, 11,             // in = 42
+            })}});
 
     registerTest(TestData{"CRC16", DataFilter::COMPLEX_KERNEL, &test_hashes_cl_string, "", "crc16",
         {// output half-word

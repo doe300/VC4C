@@ -631,6 +631,13 @@ bool Switch::mapInstruction(Method& method)
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating branches for switch on " << cond.to_string() << " with " << jumpLabels.size()
             << " options and the default " << defaultLabel.to_string() << logging::endl);
+
+    // since we need to read the branch target from SIMD element 15 and our (scalar) comparison value is on element 0,
+    // we need to replicate it across all elements (or vector-rotate, but this takes the same amount of instructions)
+    auto tmpCond = method.addNewLocal(cond.type, "%switch.cond");
+    auto dummyIt = intermediate::insertReplication(method.appendToEnd(), cond, tmpCond);
+    (void) dummyIt;
+
     auto targetLabel = method.addNewLocal(TYPE_CODE_ADDRESS, "%switch");
     // use default label as default value if no other condition is applied
     method.appendToEnd(new intermediate::CodeAddress(targetLabel, defaultLabel.local()));
@@ -639,7 +646,7 @@ bool Switch::mapInstruction(Method& method)
         // for every case, if equal, set target label accordingly
         Value tmp = method.addNewLocal(TYPE_BOOL, "%switch");
         method.appendToEnd(new intermediate::Comparison(
-            intermediate::COMP_EQ, Value(tmp), std::move(cond), Value(Literal(option.first), TYPE_INT32)));
+            intermediate::COMP_EQ, Value(tmp), Value(tmpCond), Value(Literal(option.first), TYPE_INT32)));
         method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, tmp, COND_ALWAYS, SetFlag::SET_FLAGS));
         method.appendToEnd(new intermediate::CodeAddress(targetLabel, option.second.local(), COND_ZERO_CLEAR));
     }

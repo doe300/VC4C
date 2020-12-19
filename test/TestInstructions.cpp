@@ -1341,6 +1341,8 @@ void TestInstructions::testImmediates()
     for(uint8_t i = 1; i < 15; ++i)
     {
         TEST_ASSERT_EQUALS(i, SmallImmediate::fromRotationOffset(i).getRotationOffset().value())
+        TEST_ASSERT_EQUALS(
+            -16 + static_cast<int32_t>(i), SmallImmediate::fromRotationOffset(i).getIntegerValue().value())
     }
     TEST_THROWS(SmallImmediate::fromRotationOffset(0), CompilationError)
     TEST_THROWS(SmallImmediate::fromRotationOffset(42), CompilationError)

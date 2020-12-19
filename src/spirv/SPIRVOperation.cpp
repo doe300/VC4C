@@ -1186,6 +1186,12 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
         log << "Generating intermediate switched jump on " << selector.to_string() << " to " << destinations.size()
             << " destinations with default " << defaultLabel.to_string() << logging::endl);
 
+    // since we need to read the branch target from SIMD element 15 and our (scalar) comparison value is on element 0,
+    // we need to replicate it across all elements (or vector-rotate, but this takes the same amount of instructions)
+    auto tmpSelector = method.method->addNewLocal(selector.type, "%switch.cond");
+    auto dummyIt = intermediate::insertReplication(method.method->appendToEnd(), selector, tmpSelector);
+    (void) dummyIt;
+
     auto targetLabel = method.method->addNewLocal(TYPE_CODE_ADDRESS, "%switch");
     // set branch target to default label in case no other condition matches
     method.method->appendToEnd(new intermediate::CodeAddress(targetLabel, defaultLabel.local()));
@@ -1198,7 +1204,7 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
         // for every case, if equal,branch to given label
         const Value tmp = method.method->addNewLocal(TYPE_BOOL, "%switch");
         method.method->appendToEnd(
-            new intermediate::Comparison(intermediate::COMP_EQ, Value(tmp), Value(selector), std::move(comparison)));
+            new intermediate::Comparison(intermediate::COMP_EQ, Value(tmp), Value(tmpSelector), std::move(comparison)));
         method.method->appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, tmp, COND_ALWAYS, SetFlag::SET_FLAGS));
         method.method->appendToEnd(new intermediate::CodeAddress(targetLabel, destination.local(), COND_ZERO_CLEAR));
     }
