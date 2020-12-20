@@ -174,7 +174,10 @@ InstructionWalker& InstructionWalker::previousInBlock()
 
 InstructionWalker& InstructionWalker::nextInMethod()
 {
-    nextInBlock();
+    if(!isEndOfBlock())
+        // we need this check since for a linked list it seems that last->next == first, which would jump back to the
+        // label of the block
+        nextInBlock();
     if(isEndOfBlock())
     {
         if(auto tmp = basicBlock->method.getNextBlockAfter(basicBlock))
@@ -365,7 +368,10 @@ ConstInstructionWalker& ConstInstructionWalker::previousInBlock()
 
 ConstInstructionWalker& ConstInstructionWalker::nextInMethod()
 {
-    nextInBlock();
+    if(!isEndOfBlock())
+        // we need this check since for a linked list it seems that last->next == first, which would jump back to the
+        // label of the block
+        nextInBlock();
     if(isEndOfBlock())
     {
         if(auto tmp = basicBlock->method.getNextBlockAfter(basicBlock))

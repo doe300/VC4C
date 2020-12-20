@@ -116,7 +116,8 @@ namespace vc4c
             void updateOnBlockInsertion(Method& method, BasicBlock& newBlock);
             void updateOnBlockRemoval(Method& method, BasicBlock& oldBlock);
             void updateOnBranchInsertion(Method& method, InstructionWalker it);
-            void updateOnBranchRemoval(Method& method, BasicBlock& affectedBlock, const FastSet<const Local*>& branchTargets);
+            void updateOnBranchRemoval(
+                Method& method, BasicBlock& affectedBlock, const FastSet<const Local*>& branchTargets);
 
             /*
              * Creates the CFG from the basic-blocks within the given method

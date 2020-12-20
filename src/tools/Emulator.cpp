@@ -530,7 +530,7 @@ void UniformCache::setUniformAddress(const SIMDVector& val)
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 50, "write UNIFORM address", 1);
 }
 
-std::pair<SIMDVector, bool> TMUs::readTMU()
+SIMDVector TMUs::readTMU()
 {
     if(!outputValue)
         throw CompilationError(CompilationStep::GENERAL, "Cannot read from empty TMU queue!");
@@ -541,7 +541,7 @@ std::pair<SIMDVector, bool> TMUs::readTMU()
     // required for our current structure (2 different values for TMU/SFU) to work. Otherwise the value would always be
     // taken from the component first read.
     outputValue = {};
-    return std::make_pair(std::move(result), true);
+    return result;
 }
 
 bool TMUs::hasValueOnR4() const
@@ -1251,11 +1251,12 @@ uint32_t QPU::getCurrentCycle() const
 
 std::pair<SIMDVector, bool> QPU::readR4()
 {
+    // TODO this does not heed elements being masked out from writing!
     if(tmus.hasValueOnR4())
-        return tmus.readTMU();
+        lastR4Value = tmus.readTMU();
     if(sfu.hasValueOnR4())
-        return std::make_pair(sfu.readSFU(), true);
-    throw CompilationError(CompilationStep::GENERAL, "Cannot read from r4 without it being written!");
+        lastR4Value = sfu.readSFU();
+    return std::make_pair(lastR4Value, true);
 }
 
 static Register toRegister(Address addr, bool isfileB)

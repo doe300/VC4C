@@ -644,6 +644,13 @@ void test_data::registerGeneralTests()
             toBufferParameter(std::vector<uint32_t>(1)), toScalarParameter(0u)},
         toDimensions(8), {checkParameterEquals(3, std::vector<uint32_t>{1 + 5 + 9 + 13 + 17})}});
 
+    registerTest(TestData{"boost_fibonacci", DataFilter::INT_ARITHMETIC | DataFilter::FLOAT_ARITHMETIC,
+        &boost_compute_test_transform2_cl_string, "", "copy",
+        {toBufferParameter(std::vector<uint32_t>(25, 0x42)), toScalarParameter(25u)}, toDimensions(8),
+        {checkParameterEquals(0,
+            std::vector<uint32_t>{0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181,
+                6765, 10946, 17711, 28657, 46368})}});
+
     ////
     // Application Tests
     ////

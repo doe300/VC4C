@@ -131,7 +131,7 @@ namespace vc4c
         public:
             TMUs(QPU& qpu, Memory& memory) : qpu(qpu), tmuNoSwap(false), lastTMUNoSwap(0), memory(memory) {}
 
-            std::pair<SIMDVector, bool> readTMU();
+            SIMDVector readTMU();
             bool hasValueOnR4() const;
 
             void setTMUNoSwap(const SIMDVector& swapVal);
@@ -283,6 +283,7 @@ namespace vc4c
             VectorFlags flags;
             ProgramCounter pc;
             InstrumentationResults& instrumentation;
+            SIMDVector lastR4Value;
 
             friend class Registers;
             friend class UniformCache;
