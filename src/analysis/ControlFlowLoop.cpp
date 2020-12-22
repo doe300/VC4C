@@ -18,6 +18,117 @@
 using namespace vc4c;
 using namespace vc4c::analysis;
 
+std::string InductionVariable::to_string() const
+{
+    std::string condString = "(?)";
+    if(repeatCondition)
+    {
+        condString = conditionCheckedBeforeStep ? local->name : inductionStep->checkOutputLocal()->name;
+        condString += std::string(" ") + repeatCondition->first + " " + repeatCondition->second.to_string();
+    }
+    return local->to_string() + " from " + initialAssignment->to_string() + ", step " + inductionStep->to_string() +
+        ", while " + condString;
+}
+
+Optional<Literal> InductionVariable::getLowerBound() const
+{
+    return initialAssignment->precalculate(4).first & &Value::getLiteralValue;
+}
+
+Optional<Literal> InductionVariable::getUpperBound() const
+{
+    return repeatCondition->second.getLiteralValue();
+}
+
+Optional<Literal> InductionVariable::getStep() const
+{
+    if(auto stepValue = inductionStep->findOtherArgument(local->createReference()))
+    {
+        if(auto stepWriter = stepValue->getSingleWriter())
+            return stepWriter->precalculate(4).first & &Value::getLiteralValue;
+        return stepValue->getConstantValue() & &Value::getLiteralValue;
+    }
+    return {};
+}
+
+Optional<unsigned> InductionVariable::getRange() const
+{
+    auto comp = repeatCondition.value().first;
+    auto lowerBound = getLowerBound();
+    auto upperBound = getUpperBound();
+    if(!lowerBound || !upperBound || !comp)
+        return {};
+
+    if((comp == intermediate::COMP_SIGNED_LE || comp == intermediate::COMP_SIGNED_LT ||
+           comp == intermediate::COMP_UNSIGNED_LE || comp == intermediate::COMP_UNSIGNED_LT) &&
+        lowerBound->signedInt() > upperBound->signedInt())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Iterating across type wrap is not supported for: " << to_string() << logging::endl);
+        return {};
+    }
+
+    if((comp == intermediate::COMP_SIGNED_GE || comp == intermediate::COMP_SIGNED_GT ||
+           comp == intermediate::COMP_UNSIGNED_GE || comp == intermediate::COMP_UNSIGNED_GT) &&
+        lowerBound->signedInt() < upperBound->signedInt())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Iterating across type wrap is not supported for: " << to_string() << logging::endl);
+        return {};
+    }
+
+    if(comp == intermediate::COMP_SIGNED_LT)
+        return static_cast<unsigned>(upperBound->signedInt() - lowerBound->signedInt());
+    if(comp == intermediate::COMP_SIGNED_LE)
+        return static_cast<unsigned>(upperBound->signedInt() - lowerBound->signedInt() + 1);
+    if(comp == intermediate::COMP_SIGNED_GT)
+        return static_cast<unsigned>(lowerBound->signedInt() - upperBound->signedInt());
+    if(comp == intermediate::COMP_SIGNED_GE)
+        return static_cast<unsigned>(lowerBound->signedInt() - upperBound->signedInt() + 1);
+    if(comp == intermediate::COMP_UNSIGNED_LT)
+        return upperBound->unsignedInt() - lowerBound->unsignedInt();
+    if(comp == intermediate::COMP_UNSIGNED_LE)
+        return upperBound->unsignedInt() - lowerBound->unsignedInt() + 1u;
+    if(comp == intermediate::COMP_UNSIGNED_GT)
+        return lowerBound->unsignedInt() - upperBound->unsignedInt();
+    if(comp == intermediate::COMP_UNSIGNED_GE)
+        return lowerBound->unsignedInt() - upperBound->unsignedInt() + 1u;
+    if(comp == intermediate::COMP_NEQ)
+        // XXX could be wrong for unsigned induction variable and more than 2^31 iterations
+        return static_cast<unsigned>(std::max(lowerBound->signedInt(), upperBound->signedInt()) -
+            std::min(lowerBound->signedInt(), upperBound->signedInt()));
+
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Unsupported comparison for calculating distance for: " << to_string() << logging::endl);
+    return {};
+}
+
+Optional<unsigned> InductionVariable::getIterationCount() const
+{
+    auto distance = getRange();
+    auto stepValue = getStep();
+    if(!distance || !stepValue)
+        return {};
+
+    auto step = static_cast<unsigned>(std::abs(stepValue->signedInt()));
+
+    // if the condition is done before the step, we need to iteration one step extra
+    auto actualDistance = *distance + (conditionCheckedBeforeStep ? step : 0);
+
+    if(inductionStep->op == OP_ADD)
+        // iterations = (end - start) / step
+        return actualDistance / step;
+    if(inductionStep->op == OP_SUB)
+        // iterations = (start - end) / step
+        return actualDistance / step;
+    // XXX add support for more step operations
+    // E.g. mul? Need to calculate:
+    // limit = (start * step) ^ iterations -> iterations = log(start * step) / log(limit)
+
+    CPPLOG_LAZY(logging::Level::DEBUG, log << "Unsupported induction operation for: " << to_string() << logging::endl);
+    return {};
+}
+
 const CFGNode* ControlFlowLoop::findPredecessor() const
 {
     const CFGNode* predecessor = nullptr;
@@ -304,7 +415,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
             std::inserter(stepCandidates, stepCandidates.begin()));
 
         if(!initialAssignment || stepCandidates.empty())
-            break;
+            continue;
 
         if(stepCandidates.size() > 1)
         {
@@ -314,7 +425,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
                 for(auto& candidate : stepCandidates)
                     logging::debug() << '\t' << candidate->to_string() << logging::endl;
             });
-            break;
+            continue;
         }
 
         auto stepOperation = dynamic_cast<const intermediate::Operation*>(*stepCandidates.begin());
@@ -323,7 +434,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Step instruction is not an operation: " << (*stepCandidates.begin())->to_string()
                     << logging::endl);
-            break;
+            continue;
         }
 
         auto step = Expression::createExpression(*stepOperation);
@@ -331,7 +442,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Failed to determine induction step expression for: " << local->to_string() << logging::endl);
-            break;
+            continue;
         }
 
         // we have an initial value as well as a single step expression
@@ -341,7 +452,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
 
         if(!includeIterationInformation)
             // if we don't care for iteration variable information, we are done here
-            break;
+            continue;
 
         auto successors = findSuccessors();
         if(!tail && (tail = getTail()))
@@ -350,7 +461,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Failed to determine loop tail for: " << local->to_string() << logging::endl);
-            break;
+            continue;
         }
 
         const Local* repeatConditionLocal = nullptr;
@@ -368,7 +479,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Skipping non-default branch condition: " << (*branchCondition)->to_string()
                             << logging::endl);
-                    break;
+                    continue;
                 }
                 repeatConditionLocal = pair.first->local();
             }
@@ -379,7 +490,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Failed to determine repeat condition for: " << local->to_string() << logging::endl);
-            break;
+            continue;
         }
 
         // NOTE: There may be two setting of repetition flags!
@@ -390,8 +501,9 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
         const intermediate::IntermediateInstruction* comparisonInstruction =
             stepOperation->writesLocal(repeatConditionLocal) ? stepOperation : nullptr;
         auto stepLocal = stepOperation->getOutput().value().local();
-        // TODO support induction variable (not result of induction step) is used in comparison?? Possible at all, e.g.
-        // for i++? Need to distinguish between the two cases
+        // whether the comparison does not use the result of the step, but the input induction variable (the result of
+        // the previous step)
+        bool compareInductionVariableBeforeStep = false;
         if(!comparisonInstruction)
         {
             //"default" case, the iteration-variable is compared to something and the result of this comparison is
@@ -404,10 +516,19 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
 
             if(inductionFlags.empty())
             {
+                // in case the comparison is done on the induction variable before the step is applied (e.g. as result
+                // of an LLVM optimization, converting i < 8 to (i-1) < 7)
+                compareInductionVariableBeforeStep = true;
+                local->forUsers(LocalUse::Type::READER,
+                    [&](const LocalUser* reader) { addForwardFlagCandidates(inductionFlags, *reader, *this); });
+            }
+
+            if(inductionFlags.empty())
+            {
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Failed to determine repeat condition flag setters for: " << local->to_string()
                         << logging::endl);
-                break;
+                continue;
             }
 
             // search the setting of flags which decides which boolean value is set for the branch condition
@@ -438,7 +559,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
                             CPPLOG_LAZY(logging::Level::DEBUG,
                                 log << "Non-zero flags are not supported for repeat condition for: "
                                     << local->to_string() << logging::endl);
-                            break;
+                            continue;
                         }
                         // the flags (of the comparison) that causes the boolean value zero to be set
                         ConditionCode zeroSetCondition = COND_NEVER;
@@ -472,13 +593,14 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Failed to determine comparison instruction or repeat condition for: " << local->to_string()
                     << logging::endl);
-            break;
+            continue;
         }
 
         auto& inductionVar = variables.back();
+        inductionVar.conditionCheckedBeforeStep = compareInductionVariableBeforeStep;
 
         // unary "comparison" compares implicitly with zero
-        if(comparisonInstruction->getArguments().size() == 1)
+        if(comparisonInstruction->getMoveSource())
         {
             // e.g. for comparison with zero, it could just set the flags for the value and check for zero
             if(repeatCondition == COND_ZERO_CLEAR)
@@ -490,7 +612,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
             if(repeatCondition == COND_NEGATIVE_SET)
                 inductionVar.repeatCondition = std::make_pair(intermediate::COMP_SIGNED_LT, INT_ZERO);
             // we are done here if this is a simplified comparison to zero
-            break;
+            continue;
         }
 
         // check for binary comparison with direct constant
@@ -570,15 +692,15 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
                 // TODO handle some more options/handle generally? Also combine with more complex version below!
             }
             // we are done here if this is a simplified comparison to a constant/parameter
-            break;
+            continue;
         }
 
         // The comparison is usually more than 1 instruction, so handle this below
-        const auto stepValue = stepLocal->createReference();
+        const auto stepValue = (compareInductionVariableBeforeStep ? local : stepLocal)->createReference();
         if(auto otherArg = comparisonInstruction->findOtherArgument(stepValue))
         {
             // one of the inputs of the comparison instruction is the step local (the induction variable with the next
-            // step applied)
+            // step applied) or the induction local (the induction variable before the next step applied)
 
             using namespace pattern;
 
@@ -610,7 +732,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
                     repeatCondition == COND_ZERO_SET ? intermediate::COMP_UNSIGNED_LE : intermediate::COMP_UNSIGNED_GT;
                 inductionVar.repeatCondition = std::make_pair(comparison, Value(constant, constantValue.type));
                 // we are done for this case
-                break;
+                continue;
             }
 
             ConditionCode minCond = COND_NEVER;
@@ -648,7 +770,7 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
                     {
                         inductionVar.repeatCondition = std::make_pair(comparison, *realConstant);
                         // we are done for this case
-                        break;
+                        continue;
                     }
                 }
             }

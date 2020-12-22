@@ -18,6 +18,7 @@
 #include "InstructionScheduler.h"
 #include "LocalCompression.h"
 #include "Reordering.h"
+#include "Vectorizer.h"
 #include "log.h"
 
 using namespace vc4c;
@@ -238,7 +239,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
     /*
      * The first optimizations run modify the control-flow of the method.
      */
-    // XXX not enabled with any optimization level for now
+    // XXX not enabled with any optimization level for now, since we cannot yet preload (or determine that this is not
+    // necessary!)
     OptimizationPass("CacheMemoryInVPM", PASS_CACHE_MEMORY, nullptr, "caches memory accesses in VPM where applicable",
         OptimizationType::INITIAL),
     OptimizationPass("AddWorkGroupLoops", PASS_WORK_GROUP_LOOP, addWorkGroupLoop,

@@ -16,14 +16,6 @@ namespace vc4c
     namespace optimizations
     {
         /*
-         * Tries to find loops which then can be vectorized by combining multiple iterations into one.
-         *
-         * NOTE: Currently only works with "standard" for-range loops and needs to be enabled explicitly in the
-         * Configuration
-         */
-        bool vectorizeLoops(const Module& module, Method& method, const Configuration& config);
-
-        /*
          * Adds the start- and stop-segment to the kernel code
          *
          * The start-segment contains the code to read the kernel-parameters as well as the "hidden" parameters

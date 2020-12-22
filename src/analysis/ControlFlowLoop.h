@@ -45,6 +45,41 @@ namespace vc4c
             // The condition to hold to repeat the loop as the pair of comparison and the compared-to value. This might
             // not be valid for all induction variables, only for loop iteration variables
             Optional<std::pair<const char*, Value>> repeatCondition = {};
+            // Whether the repeat condition is checked on the induction variable itself before the step is applied
+            // (true) or after the step is applied (false, default)
+            bool conditionCheckedBeforeStep = false;
+
+            std::string to_string() const;
+
+            /**
+             * Returns the initial value.
+             *
+             * NOTE: This does not have to be smaller than the upper bound!
+             */
+            Optional<Literal> getLowerBound() const;
+
+            /**
+             * Returns the value at which to abort the induction.
+             *
+             * NOTE: This does not have to be larger than the lower bound!
+             * NOTE: This value does not necessarily be included in the range!
+             */
+            Optional<Literal> getUpperBound() const;
+
+            /**
+             * Returns the step for each iteration.
+             */
+            Optional<Literal> getStep() const;
+
+            /**
+             * Returns the total range between the lower and the upper bounds
+             */
+            Optional<unsigned> getRange() const;
+
+            /**
+             * Returns the static number of iterations using the lower and upper bounds and the iteration step.
+             */
+            Optional<unsigned> getIterationCount() const;
         };
 
         /**
