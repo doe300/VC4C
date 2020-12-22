@@ -89,9 +89,8 @@ static FastMap<Value, intermediate::InstructionDecorations> findDirectLevelAddit
             result[val] = add_flag(result[val], InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
         return result;
     }
-    auto move = dynamic_cast<const MoveOperation*>(writer);
-    if(move && move->isSimpleMove())
-        return findDirectLevelAdditionInputs(move->getSource());
+    if(writer->isSimpleMove())
+        return findDirectLevelAdditionInputs(writer->getMoveSource().value());
 
     auto op = dynamic_cast<const Operation*>(writer);
     bool onlySideEffectIsReadingUniform = op && op->getSideEffects() == SideEffectType::REGISTER_READ &&
@@ -384,8 +383,8 @@ static Optional<MemoryAccessRange> determineAccessRange(
     // if the instruction is a move, handle/skip it here, so the add with the shifted offset +
     // base-pointer is found correctly
     auto trackInst = &inst;
-    if(dynamic_cast<const intermediate::MoveOperation*>(&inst) && inst.assertArgument(0).getSingleWriter())
-        trackInst = inst.assertArgument(0).getSingleWriter();
+    if(auto writer = inst.getMoveSource() & &Value::getSingleWriter)
+        trackInst = writer;
 
     Optional<Value> varArg;
     auto variableArg =

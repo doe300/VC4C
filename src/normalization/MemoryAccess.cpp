@@ -78,8 +78,8 @@ static BaseAndOffset findBaseAndOffset(const Value& val)
 
     // The reader can be one of several valid cases:
     // 1. a move from another local -> need to follow the move
-    if(auto move = dynamic_cast<const MoveOperation*>(*writers.begin()))
-        return findBaseAndOffset(move->getSource());
+    if(auto source = (*writers.begin())->getMoveSource())
+        return findBaseAndOffset(*source);
     const auto& args = (*writers.begin())->getArguments();
     // 2. an addition with a local and a literal -> the local is the base, the literal the offset
     if(dynamic_cast<const Operation*>((*writers.begin())) != nullptr &&
@@ -233,10 +233,11 @@ static InstructionWalker findGroupOfVPMAccess(
         if(!(it->writesRegister(REG_VPM_DMA_LOAD_ADDR) || it->writesRegister(REG_VPM_DMA_STORE_ADDR)))
             // for simplicity, we only check for VPM addresses and find all other instructions relative to it
             continue;
-        if(!it.get<MoveOperation>())
+        auto source = it->getMoveSource();
+        if(!source)
             throw CompilationError(
                 CompilationStep::OPTIMIZER, "Setting VPM address with non-move is not supported", it->to_string());
-        const auto baseAndOffset = findBaseAndOffset(it.get<MoveOperation>()->getSource());
+        const auto baseAndOffset = findBaseAndOffset(*source);
         const bool isVPMWrite = it->writesRegister(REG_VPM_DMA_STORE_ADDR);
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Found base address " << baseAndOffset.base.to_string() << " with offset "
@@ -263,7 +264,7 @@ static InstructionWalker findGroupOfVPMAccess(
             {
                 // special case for first offset - use it to determine stride
                 group.stride = baseAndOffset.offset.value() -
-                    findBaseAndOffset(group.addressWrites[0].get<MoveOperation>()->getSource()).offset.value();
+                    findBaseAndOffset(group.addressWrites[0]->getMoveSource().value()).offset.value();
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Using a stride of " << group.stride << " elements between consecutive access to memory"
                         << logging::endl);

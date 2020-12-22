@@ -106,9 +106,9 @@ bool MergeConditionData::isPeepholeRun() const noexcept
     return registerMap;
 }
 
-static bool isSimpleMoveOfZero(const MoveOperation* move)
+static bool isSimpleMoveOfZero(const IntermediateInstruction* inst)
 {
-    return move && move->isSimpleMove() && move->getSource().hasLiteral(0_lit);
+    return inst && inst->isSimpleMove() && (inst->getMoveSource() & &Value::getLiteralValue) == 0_lit;
 }
 
 const std::vector<MergeCondition> optimizations::MERGE_CONDITIONS = {
@@ -871,10 +871,10 @@ static Optional<Literal> getSourceLiteral(InstructionWalker it)
     {
         return it.get<LoadImmediate>()->getImmediate();
     }
-    else if(it.get<MoveOperation>() && it->readsLiteral())
+    else if(auto sourceLiteral = it->getMoveSource() & &Value::getLiteralValue)
     {
         // for literal sources, any possible applied rotation has no effect, so we can accept them here
-        return it.get<MoveOperation>()->getSource().getLiteralValue();
+        return sourceLiteral;
     }
     else if(auto op = it.get<Operation>())
     {
@@ -1068,10 +1068,11 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                 Optional<Value> staticOffset = NO_VALUE;
                 if(writer && (staticOffset = (*writer)->precalculate(2).first))
                 {
+                    auto rotationInfo = rot->getVectorRotation();
                     if(staticOffset == INT_ZERO ||
                         /* since 4 divides 16, this is also valid for per-quad rotation */
-                        (rot->isFullRotationAllowed() && staticOffset->hasLiteral(16_lit)) ||
-                        (!rot->isFullRotationAllowed() && staticOffset->hasLiteral(4_lit)))
+                        (rotationInfo->isFullRotationAllowed() && staticOffset->hasLiteral(16_lit)) ||
+                        (!rotationInfo->isFullRotationAllowed() && staticOffset->hasLiteral(4_lit)))
                     {
                         // NOTE: offset of 16 can occur for downwards rotations a << (16 - x) when the actual
                         // rotation x is zero.
@@ -1185,7 +1186,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                  */
                                 const uint8_t offset = (rot->getOffset().getRotationOffset().value() +
                                                            firstRot->getOffset().getRotationOffset().value()) %
-                                    (!rot->isFullRotationAllowed() ? 4 : 16);
+                                    (!rot->getVectorRotation()->isFullRotationAllowed() ? 4 : 16);
                                 if(offset == 0)
                                 {
                                     CPPLOG_LAZY(logging::Level::DEBUG,

@@ -179,18 +179,18 @@ InstructionWalker optimizations::combineSameFlags(
     // only remove this setting of flags, if we have no other side effects and don't execute conditionally
     if(it->getSignal().hasSideEffects() || it->hasConditionalExecution())
         return it;
-    // only combine setting flags from moves (e.g. for PHI-nodes) for now
-    if(it.get<intermediate::MoveOperation>() == nullptr)
+    auto source = it->getMoveSource();
+    if(!source)
+        // only combine setting flags from moves (e.g. for PHI-nodes) for now
         return it;
-    const Value src = it.get<intermediate::MoveOperation>()->getSource();
+    const Value src = *source;
 
     InstructionWalker checkIt = it.copy().previousInBlock();
     while(!checkIt.isStartOfBlock())
     {
         if(checkIt.get() && checkIt->doesSetFlag())
         {
-            if(checkIt.get<intermediate::MoveOperation>() != nullptr &&
-                checkIt.get<intermediate::MoveOperation>()->getSource() == src && !checkIt->hasConditionalExecution())
+            if(checkIt->getMoveSource() == src && !checkIt->hasConditionalExecution())
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Removing duplicate setting of same flags: " << it->to_string() << logging::endl);
@@ -218,19 +218,19 @@ InstructionWalker optimizations::combineFlagWithOutput(
     if(!it->writesRegister(REG_NOP))
         // already has output
         return it;
-    if(!it.get<intermediate::MoveOperation>())
+    auto source = it->getMoveSource();
+    if(!source)
         // only combine setting flags from moves (e.g. for PHI-nodes) for now
         return it;
-    const auto& in = it->assertArgument(0);
+    const auto& in = *source;
     if(it->getSignal().hasSideEffects() || it->hasConditionalExecution() ||
         (in.checkRegister() && in.reg().hasSideEffectsOnRead()))
         // only remove this setting of flags, if we have no other side effects and don't execute conditionally
         return it;
     const auto movesFromSameInput = [&](InstructionWalker checkIt) -> bool {
-        return checkIt.has() &&
-            (check(checkIt.get<intermediate::MoveOperation>()) & &intermediate::MoveOperation::isSimpleMove) &&
-            (checkIt->assertArgument(0) == in ||
-                (in.getLiteralValue() && checkIt->assertArgument(0).hasLiteral(*in.getLiteralValue())));
+        auto source = checkIt.has() ? checkIt->getMoveSource() : NO_VALUE;
+        return checkIt.has() && checkIt->isSimpleMove() && source &&
+            (source == in || (in.getLiteralValue() && source->hasLiteral(*in.getLiteralValue())));
     };
 
     // look into the future until we hit the instruction requiring the flag
@@ -527,13 +527,13 @@ bool optimizations::removeConditionalFlags(const Module& module, Method& method,
         auto it = block.walk();
         while(!it.isEndOfBlock())
         {
-            auto move = it.get<intermediate::MoveOperation>();
+            auto moveSource = it->getMoveSource();
             FastAccessList<InstructionWalker> conditionalInstructions;
-            if(move && move->doesSetFlag() && move->writesRegister(REG_NOP) &&
+            if(moveSource && it->doesSetFlag() && it->writesRegister(REG_NOP) &&
                 checkAllConditionalsMatchingCondition(it, COND_ZERO_SET, conditionalInstructions))
             {
                 // very simple case, move of some variable to to NOP to set zero/non-zero flags
-                if(auto cond = getConditionalBooleanWrites(move->getSource(), it))
+                if(auto cond = getConditionalBooleanWrites(*moveSource, it))
                 {
                     // move sets non-zero, iff cond is set, otherwise it sets zero
                     // we can replace all checks for zero/non-zero with the cond (and its inversion) and remove this
@@ -541,7 +541,7 @@ bool optimizations::removeConditionalFlags(const Module& module, Method& method,
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Removing superfluous conditional setting of flags by making all dependent conditional "
                                "instruction dependent on the original flags instead: "
-                            << move->to_string() << logging::endl);
+                            << it->to_string() << logging::endl);
                     for(auto condIt : conditionalInstructions)
                     {
                         if(auto inst = condIt.get<intermediate::ExtendedInstruction>())

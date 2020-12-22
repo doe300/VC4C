@@ -279,12 +279,12 @@ Optional<VectorFlags> StaticFlagsAnalysis::analyzeStaticFlags(
             return flags;
         }
     }
-    else if(auto move = dynamic_cast<const intermediate::MoveOperation*>(inst))
+    else if(auto moveSource = inst->getMoveSource())
     {
-        if(auto writer = intermediate::getSourceInstruction(move->getSource().getSingleWriter()))
+        if(auto writer = intermediate::getSourceInstruction(moveSource->getSingleWriter()))
             // single writer, check whether we can determine the flags from that
             return analyzeStaticFlags(writer, getInstructionWalker(writer, it), true);
-        if(auto loc = move->getSource().checkLocal())
+        if(auto loc = moveSource->checkLocal())
             // the source of the move is possibly written conditionally to a boolean depending on other flags
             return getConditionalFlags(loc, it);
     }

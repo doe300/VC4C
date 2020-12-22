@@ -33,12 +33,11 @@ static NODISCARD InstructionWalker compressLocalWrite(
         log << "Compressing write of local '" << local.name << "' into container '" << container.name
             << "' at position " << index << " at: " << it->to_string() << logging::endl);
 
-    if(auto move = it.get<intermediate::MoveOperation>())
+    if(auto source = it->getMoveSource())
     {
         // directly use the source of the assignment and insert it into vector
-        const Value& src = move->getSource();
         it = intermediate::insertVectorInsertion(
-            it, method, container.createReference(), Value(SmallImmediate(index), TYPE_INT8), src);
+            it, method, container.createReference(), Value(SmallImmediate(index), TYPE_INT8), *source);
         it.erase();
         return it;
     }

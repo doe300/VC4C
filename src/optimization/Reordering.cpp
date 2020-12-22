@@ -402,52 +402,57 @@ InstructionWalker optimizations::moveRotationSourcesToAccumulators(
      * - Broadcom specification, page 20
      *
      */
-    auto rot = it.get<VectorRotation>();
-    if(rot && rot->isFullRotationAllowed())
+    auto vectorRotation = it.has() ? it->getVectorRotation() : Optional<RotationInfo>{};
+    if(vectorRotation && vectorRotation->isFullRotationAllowed())
     {
-        // NOTE: can either run on if-full-rotation allowed, this is greedy, will rewrite some cases where not necessary
-        // or on if-quad-rotation-not-allowed, this is generous, will only rewrite when necessary, but might cause
-        // register allocation errors
-        if(auto loc = rot->getSource().checkLocal())
+        for(auto& arg : it->getArguments())
         {
-            InstructionWalker writer = it.copy().previousInBlock();
-            while(!writer.isStartOfBlock())
+            // NOTE: can either run on if-full-rotation allowed, this is greedy, will rewrite some cases where not
+            // necessary or on if-quad-rotation-not-allowed, this is generous, will only rewrite when necessary, but
+            // might cause register allocation errors
+            if(auto loc = arg.checkLocal())
             {
-                if(writer.has() && writer->checkOutputLocal() && writer->getOutput()->hasLocal(loc))
-                    break;
-                writer.previousInBlock();
+                InstructionWalker writer = it.copy().previousInBlock();
+                while(!writer.isStartOfBlock())
+                {
+                    if(writer.has() && writer->checkOutputLocal() && writer->getOutput()->hasLocal(loc))
+                        break;
+                    writer.previousInBlock();
+                }
+                // if the local is either written in another block or the usage-range exceeds the accumulator threshold,
+                // move to temporary
+                if(writer.isStartOfBlock() ||
+                    !writer.getBasicBlock()->isLocallyLimited(
+                        writer, loc, config.additionalOptions.accumulatorThreshold))
+                {
+                    InstructionWalker mapper = it.copy().previousInBlock();
+                    // insert mapper before first NOP
+                    while(!mapper.isStartOfBlock() && mapper.copy().previousInBlock().get<Nop>())
+                        mapper.previousInBlock();
+                    if(mapper.isStartOfBlock())
+                        mapper.nextInBlock();
+                    // TODO no need for the nop if there is another instruction before the rotation not writing the
+                    // local
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Moving source of vector-rotation to temporary for: " << it->to_string()
+                            << logging::endl);
+                    const Value tmp = method.addNewLocal(loc->type, "%vector_rotation");
+                    mapper.emplace(new MoveOperation(tmp, loc->createReference()));
+                    it->replaceLocal(loc, tmp.local(), LocalUse::Type::READER);
+                }
             }
-            // if the local is either written in another block or the usage-range exceeds the accumulator threshold,
-            // move to temporary
-            if(writer.isStartOfBlock() ||
-                !writer.getBasicBlock()->isLocallyLimited(writer, loc, config.additionalOptions.accumulatorThreshold))
+            else if(arg.checkRegister() && (!arg.reg().isAccumulator() || arg.reg().getAccumulatorNumber() > 3) &&
+                arg != ROTATION_REGISTER)
             {
-                InstructionWalker mapper = it.copy().previousInBlock();
-                // insert mapper before first NOP
-                while(!mapper.isStartOfBlock() && mapper.copy().previousInBlock().get<Nop>())
-                    mapper.previousInBlock();
-                if(mapper.isStartOfBlock())
-                    mapper.nextInBlock();
-                // TODO no need for the nop if there is another instruction before the rotation not writing the local
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Moving source of vector-rotation to temporary for: " << it->to_string() << logging::endl);
-                const Value tmp = method.addNewLocal(loc->type, "%vector_rotation");
-                mapper.emplace(new MoveOperation(tmp, loc->createReference()));
-                it->replaceLocal(loc, tmp.local(), LocalUse::Type::READER);
-                return writer;
+                // e.g. inserting into vector from reading VPM
+                // insert temporary local to be read into, rotate local and NOP, since it is required
+                auto tmp = method.addNewLocal(arg.type, "%vector_rotation");
+                it.emplace(new MoveOperation(tmp, arg));
+                it.nextInBlock();
+                it.emplace(new Nop(DelayType::WAIT_REGISTER));
+                it.nextInBlock();
+                it->replaceValue(arg, tmp, LocalUse::Type::READER);
             }
-        }
-        else if(rot->getSource().checkRegister() &&
-            (!rot->getSource().reg().isAccumulator() || rot->getSource().reg().getAccumulatorNumber() > 3))
-        {
-            // e.g. inserting into vector from reading VPM
-            // insert temporary local to be read into, rotate local and NOP, since it is required
-            auto tmp = method.addNewLocal(rot->getSource().type, "%vector_rotation");
-            it.emplace(new MoveOperation(tmp, rot->getSource()));
-            it.nextInBlock();
-            it.emplace(new Nop(DelayType::WAIT_REGISTER));
-            it.nextInBlock();
-            rot->setSource(std::move(tmp));
         }
     }
     return it;

@@ -65,16 +65,10 @@ static Optional<Value> getDimensionalArgument(const intermediate::IntrinsicOpera
                 auto offset = rot->getOffset();
                 rotationOffsets.emplace(offset.getRotationOffset().value_or(offset));
             }
-            else if(auto move = dynamic_cast<const intermediate::MoveOperation*>(reader))
+            else if(reader->isSimpleMove() && reader->getOutput() && reader->getOutput()->type.isScalarType())
             {
-                if(move->isSimpleMove() && move->getOutput() && move->getOutput()->type.isScalarType())
-                    // "rotation" by 0
-                    rotationOffsets.emplace(0);
-                else
-                {
-                    rotationOffsets.clear();
-                    break;
-                }
+                // "rotation" by 0
+                rotationOffsets.emplace(0);
             }
             else
             {

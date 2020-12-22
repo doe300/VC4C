@@ -849,8 +849,7 @@ static Optional<Value> findPreviousUseWithImmediate(
 
     while(instRemaining > 0 && !it.isStartOfBlock())
     {
-        auto move = it.get<intermediate::MoveOperation>();
-        if(move && move->isSimpleMove() && it->getArgument(0) == arg && !move->hasConditionalExecution() &&
+        if(it.has() && it->isSimpleMove() && it->getMoveSource() == arg && !it->hasConditionalExecution() &&
             (it->getOutput() & [&](const Value& val) -> bool {
                 return val.checkLocal() &&
                     (

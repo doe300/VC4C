@@ -310,6 +310,13 @@ namespace vc4c
             return ptr ? ((*ptr).*func)() : Optional<R>{};
         }
 
+        template <typename R, typename S = T>
+        typename std::enable_if<std::is_class<S>::value, Optional<R>>::type operator&(
+            Optional<R> (S::*func)() const) const
+        {
+            return ptr ? ((*ptr).*func)() : Optional<R>{};
+        }
+
         const Pointer<T>& operator|(const Pointer<T>& other) const&
         {
             return ptr ? *this : other;

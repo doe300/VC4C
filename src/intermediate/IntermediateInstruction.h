@@ -319,6 +319,20 @@ namespace vc4c
              */
             virtual Optional<RotationInfo> getVectorRotation() const;
 
+            /**
+             * Returns whether this instruction "simply" moves the (single) argument value to the output, i.e. it copies
+             * the bits from the identical arguments to the destination without triggering any side-effects, unpacking
+             * or packing any values.
+             */
+            virtual bool isSimpleMove() const;
+
+            /**
+             * Returns the single source of this instruction, if it is a "move".
+             *
+             * NOTE: This instruction might as well have side effects!
+             */
+            virtual Optional<Value> getMoveSource() const;
+
             /*
              * Copies all the extras (signal, pack-modes, etc.) from the given instruction.
              *
@@ -438,6 +452,8 @@ namespace vc4c
              * side-effects or unpack or pack modes applied
              */
             bool isSimpleOperation() const;
+            bool isSimpleMove() const override;
+            Optional<Value> getMoveSource() const override;
 
             OpCode op;
 
@@ -536,12 +552,13 @@ namespace vc4c
 
             void setSource(Value&& value);
             const Value& getSource() const;
+            Optional<Value> getMoveSource() const override;
 
             /**
              * Returns whether this move is "simple", i.e. copying the bits from the source to the destination without
              * triggering any side-effects, unpacking or packing any values.
              */
-            virtual bool isSimpleMove() const;
+            bool isSimpleMove() const override;
 
         protected:
             bool innerEquals(const IntermediateInstruction& other) const override;
@@ -608,8 +625,7 @@ namespace vc4c
             const SmallImmediate& getOffset() const;
 
             bool isSimpleMove() const override;
-            bool isPerQuadRotationAllowed() const;
-            bool isFullRotationAllowed() const;
+            Optional<Value> getMoveSource() const override;
 
             RotationType type;
 

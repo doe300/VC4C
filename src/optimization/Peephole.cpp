@@ -180,8 +180,7 @@ static Optional<Register> getSingleRegister(
 
 static const intermediate::Operation* getSimpleLocalMove(const intermediate::Operation* op)
 {
-    if(op && (op->op == OP_OR || op->op == OP_V8MIN) && op->isSimpleOperation() && !op->hasConditionalExecution() &&
-        op->getSecondArg() == op->getFirstArg() && op->readsLocal() && op->checkOutputLocal())
+    if(op && op->isSimpleMove() && !op->hasConditionalExecution() && op->readsLocal() && op->checkOutputLocal())
         return op;
     return nullptr;
 }
@@ -236,30 +235,29 @@ void optimizations::removeObsoleteInstructions(
             it.erase();
             continue;
         }
-        auto move = it.get<intermediate::MoveOperation>();
-        if(move && move->isSimpleMove() && !move->hasConditionalExecution() && move->checkOutputLocal() &&
-            move->getSource().checkLocal())
+        if(it->isSimpleMove() && !it->hasConditionalExecution() && it->checkOutputLocal() &&
+            it->getMoveSource()->checkLocal())
         {
-            auto reg = getSingleRegister(*move, registerMap);
+            auto reg = getSingleRegister(*it.get(), registerMap);
             if(reg && canRemoveInstructionBetween(lastInstruction, nextIt, registerMap))
             {
                 // Input and output are mapped to the same register and there is no need for a delay instruction between
                 // the previous and next instruction -> remove the move completely
                 CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Removing simple move with input and output mapped to the same register: "
-                        << move->to_string() << " (register " << reg->to_string() << ')' << logging::endl);
+                    log << "Removing simple move with input and output mapped to the same register: " << it->to_string()
+                        << " (register " << reg->to_string() << ')' << logging::endl);
                 it.erase();
                 continue;
             }
-            auto moveOut = move->checkOutputLocal();
-            auto moveIn = move->getSource().checkLocal();
+            auto moveOut = it->checkOutputLocal();
+            auto moveIn = it->getMoveSource()->checkLocal();
             auto inIt = registerMap.find(moveIn);
             auto outIt = registerMap.find(moveOut);
-            if(moveOut && moveIn && moveOut->getSingleWriter() == move &&
+            if(moveOut && moveIn && moveOut->getSingleWriter() == it.get() &&
                 moveOut->countUsers(LocalUse::Type::READER) == 1 && inIt != registerMap.end() &&
                 outIt != registerMap.end() && inIt->second.file == outIt->second.file &&
                 (outIt->second != REG_ACC5 ||
-                    move->hasDecoration(intermediate::InstructionDecorations::IDENTICAL_ELEMENTS)))
+                    it->hasDecoration(intermediate::InstructionDecorations::IDENTICAL_ELEMENTS)))
             {
                 /*
                  * A simple move from local to local where the output is written and read exactly once. Furthermore, the
@@ -279,7 +277,7 @@ void optimizations::removeObsoleteInstructions(
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Removing simple move with input and output mapped to the same register file and single "
                                "read in next instruction: "
-                            << move->to_string() << " (registers " << inIt->second.to_string() << " and "
+                            << it->to_string() << " (registers " << inIt->second.to_string() << " and "
                             << outIt->second.to_string() << ')' << logging::endl);
                     it.erase();
                     nextIt->replaceLocal(moveOut, moveIn, LocalUse::Type::READER);
@@ -293,7 +291,7 @@ void optimizations::removeObsoleteInstructions(
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Removing simple move with input and output mapped to the same register file and single "
                                "read a following instruction: "
-                            << move->to_string() << " (registers " << inIt->second.to_string() << " and "
+                            << it->to_string() << " (registers " << inIt->second.to_string() << " and "
                             << outIt->second.to_string() << ')' << logging::endl);
                     it.erase();
                     readerIt->replaceLocal(moveOut, moveIn, LocalUse::Type::READER);

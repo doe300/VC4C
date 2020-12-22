@@ -416,6 +416,19 @@ bool Operation::isSimpleOperation() const
     return !hasSideEffects() && !unpackMode.hasEffect() && !packMode.hasEffect();
 }
 
+bool Operation::isSimpleMove() const
+{
+    return isSimpleOperation() && getMoveSource();
+}
+
+Optional<Value> Operation::getMoveSource() const
+{
+    return op.isIdempotent() && op.numOperands == 2 && getArguments().size() == 2 &&
+            assertArgument(0) == assertArgument(1) ?
+        assertArgument(0) :
+        NO_VALUE;
+}
+
 bool Operation::innerEquals(const IntermediateInstruction& other) const
 {
     if(auto otherOp = dynamic_cast<const Operation*>(&other))
@@ -609,6 +622,11 @@ const Value& MoveOperation::getSource() const
     return assertArgument(0);
 }
 
+Optional<Value> MoveOperation::getMoveSource() const
+{
+    return getSource();
+}
+
 bool MoveOperation::isSimpleMove() const
 {
     return !hasSideEffects() && !unpackMode.hasEffect() && !packMode.hasEffect();
@@ -688,10 +706,10 @@ qpu_asm::DecoratedInstruction VectorRotation::convertToAsm(const FastMap<const L
     if(inMux == InputMultiplex::REGB)
         // not allowed in either case, since input B is used for rotation offset
         throw CompilationError(CompilationStep::CODE_GENERATION, "Can't rotate register-file B as input", to_string());
-    if(!isPerQuadRotationAllowed() && inMux == InputMultiplex::REGA)
+    if(type == RotationType::FULL && inMux == InputMultiplex::REGA)
         throw CompilationError(CompilationStep::CODE_GENERATION,
             "Can't rotate across full SIMD-vector from physical register as input", to_string());
-    if(!isFullRotationAllowed() && inMux != InputMultiplex::REGA)
+    if(type == RotationType::PER_QUAD && inMux != InputMultiplex::REGA)
         throw CompilationError(
             CompilationStep::CODE_GENERATION, "Per-quad rotate must take register-file A as input", to_string());
 
@@ -742,14 +760,9 @@ bool VectorRotation::isSimpleMove() const
     return false;
 }
 
-bool VectorRotation::isPerQuadRotationAllowed() const
+Optional<Value> VectorRotation::getMoveSource() const
 {
-    return type != RotationType::FULL;
-}
-
-bool VectorRotation::isFullRotationAllowed() const
-{
-    return type != RotationType::PER_QUAD;
+    return NO_VALUE;
 }
 
 bool VectorRotation::innerEquals(const IntermediateInstruction& other) const

@@ -613,6 +613,16 @@ Optional<RotationInfo> IntermediateInstruction::getVectorRotation() const
     return Optional<RotationInfo>{};
 }
 
+bool IntermediateInstruction::isSimpleMove() const
+{
+    return false;
+}
+
+Optional<Value> IntermediateInstruction::getMoveSource() const
+{
+    return NO_VALUE;
+}
+
 SignalingInstruction::SignalingInstruction(Signaling signal, Optional<Value>&& output) :
     IntermediateInstruction(std::move(output))
 {

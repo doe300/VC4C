@@ -305,8 +305,7 @@ static void mapConditionalOrPhiWrites(const FastSet<const IntermediateInstructio
                     loc->getSingleWriter()->hasConditionalExecution()))
             {
                 auto writer = loc->getSingleWriter();
-                auto sourceValue = dynamic_cast<const MoveOperation*>(writer) ? writer->assertArgument(0) :
-                                                                                writer->getOutput().value();
+                auto sourceValue = writer->getMoveSource().value_or(writer->getOutput().value());
                 auto sourceWriter = check(sourceValue.getSingleWriter()) | check(writer);
                 auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
                 localAccesses.emplace(&*tmp.first);
@@ -318,8 +317,7 @@ static void mapConditionalOrPhiWrites(const FastSet<const IntermediateInstructio
         }
         if(writer->hasDecoration(InstructionDecorations::PHI_NODE) || writer->hasConditionalExecution())
         {
-            auto sourceValue =
-                dynamic_cast<const MoveOperation*>(writer) ? writer->assertArgument(0) : writer->getOutput().value();
+            auto sourceValue = writer->getMoveSource().value_or(writer->getOutput().value());
             auto sourceWriter = check(sourceValue.getSingleWriter()) | check(writer);
             auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, sourceValue});
             localAccesses.emplace(&*tmp.first);
@@ -490,9 +488,9 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping, I
         auto sourceLocal = local;
         while(auto writer = analysis::getSingleWriter(sourceLocal->createReference()))
         {
-            if(auto move = dynamic_cast<const MoveOperation*>(writer))
+            if(auto source = writer->getMoveSource())
             {
-                if(auto loc = move->getSource().checkLocal())
+                if(auto loc = source->checkLocal())
                     sourceLocal = loc;
                 else
                     break;

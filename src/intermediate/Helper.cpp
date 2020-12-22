@@ -320,9 +320,8 @@ Value intermediate::getSourceValue(Value value)
 {
     while(auto writer = value.getSingleWriter())
     {
-        auto move = dynamic_cast<const MoveOperation*>(writer);
-        if(move && move->isSimpleMove() && !move->hasConditionalExecution())
-            value = move->getSource();
+        if(writer->isSimpleMove() && !writer->hasConditionalExecution())
+            value = writer->getMoveSource().value();
         else
             break;
     }
@@ -331,10 +330,11 @@ Value intermediate::getSourceValue(Value value)
 
 const IntermediateInstruction* intermediate::getSourceInstruction(const IntermediateInstruction* inst)
 {
-    while(auto move = dynamic_cast<const MoveOperation*>(inst))
+    while(inst)
     {
         const IntermediateInstruction* writer = nullptr;
-        if(move->isSimpleMove() && !move->hasConditionalExecution() && (writer = move->getSource().getSingleWriter()))
+        if(inst->isSimpleMove() && !inst->hasConditionalExecution() &&
+            (writer = inst->getMoveSource() & &Value::getSingleWriter))
             inst = writer;
         else
             break;
@@ -346,9 +346,8 @@ static const Local* getSourceLocal(const Local* local)
 {
     while(auto writer = local->getSingleWriter())
     {
-        auto move = dynamic_cast<const MoveOperation*>(writer);
-        if(move && move->isSimpleMove() && !move->hasConditionalExecution() && move->readsLocal())
-            local = move->getSource().local();
+        if(writer->isSimpleMove() && !writer->hasConditionalExecution() && writer->readsLocal())
+            local = writer->getMoveSource().value().local();
         else
             break;
     }
@@ -363,10 +362,9 @@ FastSet<const Local*> intermediate::getEquivalenceClass(const Local* local)
     auto startLocal = getSourceLocal(local);
     // go forward - this takes all the possible branches
     std::function<void(const LocalUser*)> processNext = [&](const LocalUser* reader) {
-        auto move = dynamic_cast<const MoveOperation*>(reader);
-        if(move && move->isSimpleMove() && !move->hasConditionalExecution() && move->checkOutputLocal())
+        if(reader && reader->isSimpleMove() && !reader->hasConditionalExecution() && reader->checkOutputLocal())
         {
-            auto out = move->getOutput()->local();
+            auto out = reader->getOutput()->local();
             if(out->getSingleWriter() == reader)
             {
                 // if there are multiple writers, the local could take different values

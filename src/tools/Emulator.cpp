@@ -951,9 +951,9 @@ void VPM::setDMAWriteAddress(const SIMDVector& val)
             << " from VPM address " << vpmBaseAddress.first << "," << vpmBaseAddress.second << " into RAM at "
             << toAddressString(address) << " with a memory stride of " << stride << logging::endl);
 
-    if(vpmBaseAddress.first >= 64)
-        throw CompilationError(
-            CompilationStep::GENERAL, "VPM row address is out of range: ", std::to_string(vpmBaseAddress.first));
+    if(vpmBaseAddress.first + sizes.first > 64)
+        throw CompilationError(CompilationStep::GENERAL, "VPM row address is out of range: ",
+            std::to_string(vpmBaseAddress.first) + " + " + std::to_string(sizes.first));
 
     if(setup.dmaSetup.getHorizontal())
     {
