@@ -26,6 +26,16 @@ namespace vc4c
         using CFGNode = Node<BasicBlock*, CFGRelation, Directionality::BIDIRECTIONAL>;
         class DataDependencyGraph;
 
+        struct RepeatCondition
+        {
+            // the name of the comparison
+            const char* comparisonName;
+            // the value the induction variable is compared to
+            Value comparisonValue;
+            // the local storing the boolean result value of the repeat condition
+            const Local* conditionResult;
+        };
+
         /**
          * "Variable i in loop L is called induction variable of L if each time i changes value in L,it is
          * incremented/decremented by loop-invariant value."
@@ -44,7 +54,7 @@ namespace vc4c
             const intermediate::Operation* inductionStep;
             // The condition to hold to repeat the loop as the pair of comparison and the compared-to value. This might
             // not be valid for all induction variables, only for loop iteration variables
-            Optional<std::pair<const char*, Value>> repeatCondition = {};
+            Optional<RepeatCondition> repeatCondition = {};
             // Whether the repeat condition is checked on the induction variable itself before the step is applied
             // (true) or after the step is applied (false, default)
             bool conditionCheckedBeforeStep = false;
@@ -125,6 +135,17 @@ namespace vc4c
              */
             bool includes(const ControlFlowLoop& other) const;
 
+            /**
+             * Returns the list of all locals written in this loop which have dependencies outside of the loop (i.e. are
+             * written before the loop).
+             *
+             * These locals need special handling when rewriting the loop, since their value depends on the previous
+             * loop iteration. If the change in value for a local is independent of the loop iteration, then this local
+             * might be an InductionVariables, see #findInductionVariables().
+             */
+            tools::SmallSortedPointerSet<const Local*> findLocalDependencies(
+                const DataDependencyGraph& dependencyGraph) const;
+
             /*
              * Returns the list of induction variables of this loop.
              *
@@ -174,6 +195,9 @@ namespace vc4c
 
         private:
             const CFGNode::EdgeType* backEdge;
+
+            Optional<InductionVariable> extractInductionVariable(const Local* local, InstructionWalker tailBranch,
+                const CFGNode* tail, bool includeIterationInformation) const;
         };
 
         /*

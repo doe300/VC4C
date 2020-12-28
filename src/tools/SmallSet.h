@@ -463,6 +463,11 @@ namespace vc4c
                 return std::make_pair(Iterator{true, {}, tmp.first}, tmp.second);
             }
 
+            iterator insert(const_iterator position, const value_type& val)
+            {
+                return emplace(val).first;
+            }
+
             iterator find(const key_type& key)
             {
                 if(auto small = VariantNamespace::get_if<SmallContainer>(&data))

@@ -973,9 +973,10 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
         OpCode::getLeftIdentity(foldingOp) == OpCode::getRightIdentity(foldingOp))
     {
         // XXX could write own custom implementation for better performance
-        auto tmp = assign(it, src.type.toVectorType(4), "%vector_fold") = *OpCode::getLeftIdentity(foldingOp);
+        auto tmp = assign(it, src.type.toVectorType(4), "%vector_fold") =
+            (*OpCode::getLeftIdentity(foldingOp), decorations);
         auto cond = assignNop(it) = selectSIMDElements(std::bitset<NATIVE_VECTOR_SIZE>{0x7});
-        assign(it, tmp) = (src, cond);
+        assign(it, tmp) = (src, cond, decorations);
         return insertFoldVector(it, method, dest, tmp, foldingOp, decorations);
     }
 
@@ -1016,6 +1017,8 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
         auto newTmpResult = method.addNewLocal(dest.type.toVectorType(halfSize), "%vector_fold");
 
         it = insertVectorRotation(it, tmpResult, Value(SmallImmediate(halfSize), TYPE_INT8), tmpUp, Direction::DOWN);
+        if(auto rot = it.copy().previousInBlock().get<VectorRotation>())
+            rot->addDecorations(decorations);
 
         it.emplace(new Operation(foldingOp, newTmpResult, tmpResult, tmpUp));
         it->addDecorations(decorations);

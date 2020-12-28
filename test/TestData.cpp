@@ -333,8 +333,8 @@ void test_data::registerGeneralTests()
 
     registerTest(TestData{"vectorization1", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test1",
         {toBufferParameter(std::vector<float>(1000)), toBufferParameter(std::vector<float>(1000))}, toDimensions(1),
-        {checkParameterEquals(0, toRange(-0.0f, -14.0f, -1.0f)),
-            checkParameterEquals(1, toRange(-0.0f, -14.0f, -1.0f))}});
+        {checkParameterEquals(0, toRange(-0.0f, -1000.0f, -1.0f)),
+            checkParameterEquals(1, toRange(-0.0f, -1000.0f, -1.0f))}});
 
     registerTest(TestData{"vectorization2", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test2",
         {toBufferParameter(toRange(1.0f, 10.0f)), toBufferParameter(toRange(1.0f, 10.0f)), toScalarParameter(7.0f),
@@ -354,6 +354,16 @@ void test_data::registerGeneralTests()
     registerTest(TestData{"vectorization5", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test5",
         {toBufferParameter(std::vector<float>(1024))}, toDimensions(1),
         {checkParameterEquals(0, toRange(0.0f, 1024.0f))}});
+
+    registerTest(TestData{"vectorization6", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test6",
+        {toBufferParameter(std::vector<int32_t>(1024, 2)), toBufferParameter(toRange(-510, 514))}, toDimensions(1),
+        {checkParameterEquals(1, std::vector<int32_t>{512 * (2 + 5)})}});
+
+    auto vectorization7Result = toRange(1, 1025);
+    vectorization7Result[0] = 0;
+    registerTest(TestData{"vectorization7", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test7",
+        {toBufferParameter(toRange(0, 1024))}, toDimensions(1),
+        {checkParameterEquals(0, std::move(vectorization7Result))}});
 
     registerTest(TestData{"vectorization8", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test8",
         {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(toRange<int>(0, 4096))}, toDimensions(1),
