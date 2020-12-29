@@ -28,6 +28,7 @@ public:
     void testRegister();
     void testValueRange();
     void testStaticFlags();
+    void testIntegerComparisonDetection();
 };
 
 #endif /* VC4C_TEST_ANALYSES_H */

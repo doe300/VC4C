@@ -9,10 +9,17 @@
 #include "analysis/DataDependencyGraph.h"
 #include "analysis/DominatorTree.h"
 #include "analysis/FlagsAnalysis.h"
+#include "intermediate/Helper.h"
 #include "intermediate/operators.h"
+#include "intrinsics/Comparisons.h"
+#include "normalization/LiteralValues.h"
 
 using namespace vc4c;
 using namespace vc4c::analysis;
+using namespace vc4c::operators;
+
+static const Configuration config{};
+static Module module{config};
 
 static constexpr auto KERNEL_NESTED_LOOPS = R"(
 __kernel void test(__global int16* in, __global int16* out, uint count) {
@@ -71,6 +78,7 @@ TestAnalyses::TestAnalyses(const Configuration& config) : TestCompilationHelper(
     // TEST_ADD(TestAnalyses::testRegister);
     // TEST_ADD(TestAnalyses::testValueRange);
     TEST_ADD(TestAnalyses::testStaticFlags);
+    TEST_ADD(TestAnalyses::testIntegerComparisonDetection);
 }
 
 void TestAnalyses::testAvailableExpressions() {}
@@ -1081,5 +1089,171 @@ void TestAnalyses::testStaticFlags()
         it.emplace(new MoveOperation(NOP_REGISTER, input));
         auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it);
         TEST_ASSERT(!flags);
+    }
+}
+
+static Value getSourceValue(const Value& val)
+{
+    auto src = intermediate::getSourceValue(val);
+    if(auto constant = src.getConstantValue())
+        return *constant;
+    if(auto writer = dynamic_cast<const intermediate::Operation*>(src.getSingleWriter()))
+    {
+        // revert the sign extension
+        if(writer->op == OP_ASR)
+        {
+            auto offset = writer->assertArgument(1).getConstantValue();
+            if(auto secondWriter =
+                    dynamic_cast<const intermediate::Operation*>(writer->getFirstArg().getSingleWriter()))
+            {
+                if(secondWriter->op == OP_SHL && secondWriter->assertArgument(1) == offset)
+                    return secondWriter->getFirstArg();
+            }
+        }
+    }
+    return src;
+}
+
+void TestAnalyses::testIntegerComparisonDetection()
+{
+    using namespace vc4c::intermediate;
+    Method m(module);
+    auto& block = m.createAndInsertNewBlock(m.begin(), "dummyLabel");
+    auto it = block.walkEnd();
+
+    auto inInt0 = m.addNewLocal(TYPE_INT32, "%in.int");
+    auto inInt1 = m.addNewLocal(TYPE_INT32, "%in.int");
+    auto inShort0 = m.addNewLocal(TYPE_INT16, "%in.short");
+    auto inShort1 = m.addNewLocal(TYPE_INT16, "%in.short");
+    auto inChar0 = m.addNewLocal(TYPE_INT16, "%in.char");
+    auto inChar1 = m.addNewLocal(TYPE_INT16, "%in.char");
+
+    struct TestEntry
+    {
+        const char* inputComparison;
+        Value inputLeftOperand;
+        Value inputRightOperand;
+        const char* expectedComparison;
+        Value expectedLeftOperand;
+        Value expectedRightOperand;
+        ConditionCode expectedCondition;
+    };
+
+    std::vector<TestEntry> tests = {
+
+        // general 32-bit comparisons
+        TestEntry{COMP_EQ, inInt0, inInt1, COMP_EQ, inInt0, inInt1, COND_ZERO_SET},
+        TestEntry{COMP_NEQ, inInt0, inInt1, COMP_NEQ, inInt0, inInt1, COND_ZERO_CLEAR},
+        TestEntry{COMP_UNSIGNED_GE, inInt0, inInt1, COMP_UNSIGNED_GE, inInt0, inInt1, COND_ZERO_SET},
+        TestEntry{COMP_UNSIGNED_GT, inInt0, inInt1, COMP_UNSIGNED_LT, inInt1, inInt0, COND_ZERO_CLEAR},
+        TestEntry{COMP_UNSIGNED_LT, inInt0, inInt1, COMP_UNSIGNED_LT, inInt0, inInt1, COND_ZERO_CLEAR},
+        TestEntry{COMP_UNSIGNED_LE, inInt0, inInt1, COMP_UNSIGNED_GE, inInt1, inInt0, COND_ZERO_SET},
+        TestEntry{COMP_SIGNED_GE, inInt0, inInt1, COMP_SIGNED_LE, inInt1, inInt0, COND_CARRY_CLEAR},
+        TestEntry{COMP_SIGNED_GT, inInt0, inInt1, COMP_SIGNED_GT, inInt0, inInt1, COND_CARRY_SET},
+        TestEntry{COMP_SIGNED_LT, inInt0, inInt1, COMP_SIGNED_GT, inInt1, inInt0, COND_CARRY_SET},
+        TestEntry{COMP_SIGNED_LE, inInt0, inInt1, COMP_SIGNED_LE, inInt0, inInt1, COND_CARRY_CLEAR},
+        // 32-bit comparisons with power of 2
+        TestEntry{COMP_EQ, inInt0, 256_val, COMP_EQ, inInt0, 256_val, COND_ZERO_SET},
+        TestEntry{COMP_NEQ, inInt0, 256_val, COMP_NEQ, inInt0, 256_val, COND_ZERO_CLEAR},
+        TestEntry{COMP_UNSIGNED_GE, inInt0, 256_val, COMP_UNSIGNED_GE, inInt0, 256_val, COND_ZERO_CLEAR},
+        TestEntry{COMP_UNSIGNED_GT, inInt0, 256_val, COMP_UNSIGNED_LT, 256_val, inInt0, COND_ZERO_CLEAR},
+        TestEntry{COMP_UNSIGNED_LT, inInt0, 256_val, COMP_UNSIGNED_LT, inInt0, 256_val, COND_ZERO_SET},
+        TestEntry{COMP_UNSIGNED_LE, inInt0, 256_val, COMP_UNSIGNED_GE, 256_val, inInt0, COND_ZERO_SET},
+        TestEntry{COMP_SIGNED_GE, inInt0, 256_val, COMP_SIGNED_LE, 256_val, inInt0, COND_CARRY_CLEAR},
+        TestEntry{COMP_SIGNED_GT, inInt0, 256_val, COMP_SIGNED_GT, inInt0, 256_val, COND_CARRY_SET},
+        TestEntry{COMP_SIGNED_LT, inInt0, 256_val, COMP_SIGNED_GT, 256_val, inInt0, COND_CARRY_SET},
+        TestEntry{COMP_SIGNED_LE, inInt0, 256_val, COMP_SIGNED_LE, inInt0, 256_val, COND_CARRY_CLEAR},
+        // 32-bit comparisons with 2^x-1
+        TestEntry{COMP_EQ, inInt0, 511_val, COMP_EQ, inInt0, 511_val, COND_ZERO_SET},
+        TestEntry{COMP_NEQ, inInt0, 511_val, COMP_NEQ, inInt0, 511_val, COND_ZERO_CLEAR},
+        TestEntry{COMP_UNSIGNED_GE, inInt0, 511_val, COMP_UNSIGNED_GE, inInt0, 511_val, COND_ZERO_CLEAR},
+        TestEntry{COMP_UNSIGNED_GT, inInt0, 511_val, COMP_UNSIGNED_LE, 512_val, inInt0, COND_ZERO_CLEAR},
+        TestEntry{COMP_UNSIGNED_LT, inInt0, 511_val, COMP_UNSIGNED_LT, inInt0, 511_val, COND_ZERO_SET},
+        TestEntry{COMP_UNSIGNED_LE, inInt0, 511_val, COMP_UNSIGNED_GT, 512_val, inInt0, COND_ZERO_SET},
+        TestEntry{COMP_SIGNED_GE, inInt0, 511_val, COMP_SIGNED_LE, 511_val, inInt0, COND_CARRY_CLEAR},
+        TestEntry{COMP_SIGNED_GT, inInt0, 511_val, COMP_SIGNED_GT, inInt0, 511_val, COND_CARRY_SET},
+        TestEntry{COMP_SIGNED_LT, inInt0, 511_val, COMP_SIGNED_GT, 511_val, inInt0, COND_CARRY_SET},
+        TestEntry{COMP_SIGNED_LE, inInt0, 511_val, COMP_SIGNED_LE, inInt0, 511_val, COND_CARRY_CLEAR},
+        // 32-bit comparison with 0
+        TestEntry{COMP_EQ, inInt0, 0_val, COMP_EQ, inInt0, 0_val, COND_ZERO_SET},
+        TestEntry{COMP_NEQ, inInt0, 0_val, COMP_NEQ, inInt0, 0_val, COND_ZERO_CLEAR},
+        TestEntry{COMP_UNSIGNED_GT, inInt0, 0_val, COMP_NEQ, inInt0, 0_val, COND_ZERO_CLEAR},
+        TestEntry{COMP_SIGNED_GE, inInt0, 0_val, COMP_SIGNED_LE, 0_val, inInt0, COND_CARRY_CLEAR},
+        TestEntry{COMP_SIGNED_GT, inInt0, 0_val, COMP_SIGNED_GT, inInt0, 0_val, COND_CARRY_SET},
+        TestEntry{COMP_SIGNED_LT, inInt0, 0_val, COMP_SIGNED_GT, 0_val, inInt0, COND_CARRY_SET},
+        TestEntry{COMP_SIGNED_LE, inInt0, 0_val, COMP_SIGNED_LE, inInt0, 0_val, COND_CARRY_CLEAR},
+        // general 16-bit comparisons
+        TestEntry{COMP_EQ, inShort0, inShort1, COMP_EQ, inShort0, inShort1, COND_ZERO_SET},
+        TestEntry{COMP_NEQ, inShort0, inShort1, COMP_NEQ, inShort0, inShort1, COND_ZERO_CLEAR},
+        TestEntry{COMP_UNSIGNED_GE, inShort0, inShort1, COMP_SIGNED_LE, inShort1, inShort0, COND_CARRY_CLEAR},
+        TestEntry{COMP_UNSIGNED_GT, inShort0, inShort1, COMP_SIGNED_GT, inShort0, inShort1, COND_CARRY_SET},
+        TestEntry{COMP_UNSIGNED_LT, inShort0, inShort1, COMP_SIGNED_GT, inShort1, inShort0, COND_CARRY_SET},
+        TestEntry{COMP_UNSIGNED_LE, inShort0, inShort1, COMP_SIGNED_LE, inShort0, inShort1, COND_CARRY_CLEAR},
+        TestEntry{COMP_SIGNED_GE, inShort0, inShort1, COMP_SIGNED_LE, inShort1, inShort0, COND_CARRY_CLEAR},
+        TestEntry{COMP_SIGNED_GT, inShort0, inShort1, COMP_SIGNED_GT, inShort0, inShort1, COND_CARRY_SET},
+        TestEntry{COMP_SIGNED_LT, inShort0, inShort1, COMP_SIGNED_GT, inShort1, inShort0, COND_CARRY_SET},
+        TestEntry{COMP_SIGNED_LE, inShort0, inShort1, COMP_SIGNED_LE, inShort0, inShort1, COND_CARRY_CLEAR},
+        // general 8-bit comparisons
+        TestEntry{COMP_EQ, inChar0, inChar1, COMP_EQ, inChar0, inChar1, COND_ZERO_SET},
+        TestEntry{COMP_NEQ, inChar0, inChar1, COMP_NEQ, inChar0, inChar1, COND_ZERO_CLEAR},
+        TestEntry{COMP_UNSIGNED_GE, inChar0, inChar1, COMP_SIGNED_LE, inChar1, inChar0, COND_CARRY_CLEAR},
+        TestEntry{COMP_UNSIGNED_GT, inChar0, inChar1, COMP_SIGNED_GT, inChar0, inChar1, COND_CARRY_SET},
+        TestEntry{COMP_UNSIGNED_LT, inChar0, inChar1, COMP_SIGNED_GT, inChar1, inChar0, COND_CARRY_SET},
+        TestEntry{COMP_UNSIGNED_LE, inChar0, inChar1, COMP_SIGNED_LE, inChar0, inChar1, COND_CARRY_CLEAR},
+        TestEntry{COMP_SIGNED_GE, inChar0, inChar1, COMP_SIGNED_LE, inChar1, inChar0, COND_CARRY_CLEAR},
+        TestEntry{COMP_SIGNED_GT, inChar0, inChar1, COMP_SIGNED_GT, inChar0, inChar1, COND_CARRY_SET},
+        TestEntry{COMP_SIGNED_LT, inChar0, inChar1, COMP_SIGNED_GT, inChar1, inChar0, COND_CARRY_SET},
+        TestEntry{COMP_SIGNED_LE, inChar0, inChar1, COMP_SIGNED_LE, inChar0, inChar1, COND_CARRY_CLEAR},
+    };
+
+    for(auto& test : tests)
+    {
+        auto out = m.addNewLocal(TYPE_BOOL, std::string("%out.") + test.inputComparison);
+        it.emplace(new Comparison(
+            test.inputComparison, Value(out), Value(test.inputLeftOperand), Value(test.inputRightOperand)));
+        auto comparisonString = it->to_string();
+        auto checkIt = it.copy().previousInBlock();
+        TEST_ASSERT(intrinsics::intrinsifyComparison(m, it));
+
+        auto comp = analysis::getComparison(out.local(), checkIt);
+        if(!comp)
+            TEST_ASSERT_EQUALS(comparisonString, "");
+        TEST_ASSERT_EQUALS(test.expectedComparison, comp->name);
+        auto leftOperand = ::getSourceValue(comp->leftOperand);
+        leftOperand = leftOperand.getConstantValue().value_or(leftOperand);
+        TEST_ASSERT_EQUALS(test.expectedLeftOperand, leftOperand);
+        auto rightOperand = ::getSourceValue(comp->rightOperand);
+        rightOperand = rightOperand.getConstantValue().value_or(rightOperand);
+        TEST_ASSERT_EQUALS(test.expectedRightOperand, rightOperand);
+        if(test.expectedCondition != comp->condition)
+            TEST_ASSERT_EQUALS(test.expectedCondition.to_string(), comp->condition.to_string());
+        TEST_ASSERT_EQUALS(out.local(), comp->result);
+
+        if(test.expectedLeftOperand.getLiteralValue() || test.expectedRightOperand.getLiteralValue())
+        {
+            // second test with literal values mapped to small immediate values/loads
+            for(auto litIt = it; !litIt.isEndOfBlock(); litIt.nextInBlock())
+                litIt = normalization::handleImmediate(module, m, litIt, config);
+
+            comp = analysis::getComparison(out.local(), checkIt);
+            if(!comp)
+                TEST_ASSERT_EQUALS(comparisonString, "");
+            TEST_ASSERT_EQUALS(test.expectedComparison, comp->name);
+            auto leftOperand = ::getSourceValue(comp->leftOperand);
+            leftOperand = leftOperand.getConstantValue().value_or(leftOperand);
+            if(!leftOperand.getLiteralValue() ||
+                test.expectedLeftOperand.getLiteralValue() != *leftOperand.getLiteralValue())
+                TEST_ASSERT_EQUALS(test.expectedLeftOperand, leftOperand);
+            auto rightOperand = ::getSourceValue(comp->rightOperand);
+            rightOperand = rightOperand.getConstantValue().value_or(rightOperand);
+            if(!rightOperand.getLiteralValue() ||
+                test.expectedRightOperand.getLiteralValue() != *rightOperand.getLiteralValue())
+                TEST_ASSERT_EQUALS(test.expectedRightOperand, rightOperand);
+            if(test.expectedCondition != comp->condition)
+                TEST_ASSERT_EQUALS(test.expectedCondition.to_string(), comp->condition.to_string());
+            TEST_ASSERT_EQUALS(out.local(), comp->result);
+        }
+
+        it.nextInBlock();
     }
 }

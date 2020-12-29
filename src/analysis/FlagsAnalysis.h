@@ -49,6 +49,38 @@ namespace vc4c
             static Optional<VectorFlags> analyzeStaticFlagsWrapper(const intermediate::IntermediateInstruction* inst,
                 const Optional<VectorFlags>& previousFlags, InstructionWalker& it, BasicBlock& block);
         };
+
+        /**
+         * Extracted information about a comparison, giving information about the original comparison
+         */
+        struct ComparisonInfo
+        {
+            // the name of the comparison, one of the intermediate::COMP_XXX constants
+            std::string name;
+            // the left operand of the original comparison
+            Value leftOperand;
+            // the right operand of the original comparison
+            Value rightOperand;
+            // the (optional) local storing the boolean result value of the comparison
+            const Local* result;
+            // the flags which indicate the comparison, i.e. for an "ult" comparison, the flags indicating the left
+            // operand being less then the right operand seen as unsigned integers
+            ConditionCode condition;
+
+            std::string to_string() const;
+        };
+
+        /**
+         * Tries to extract the original comparison information for the comparison setting the flags used in the given
+         * conditional instruction.
+         */
+        Optional<ComparisonInfo> getComparison(
+            const intermediate::IntermediateInstruction* conditionalInstruction, InstructionWalker searchStart);
+
+        /**
+         * Tries to extract the original comparison information for the comparison writing into the given result local.
+         */
+        Optional<ComparisonInfo> getComparison(const Local* comparisonResult, InstructionWalker searchStart);
     } // namespace analysis
 } // namespace vc4c
 

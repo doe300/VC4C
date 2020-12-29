@@ -7,9 +7,11 @@
 #include "FlagsAnalysis.h"
 
 #include "../intermediate/Helper.h"
+#include "PatternMatching.h"
 
 #include <climits>
 #include <sstream>
+#include <vector>
 
 using namespace vc4c;
 using namespace vc4c::analysis;
@@ -314,4 +316,285 @@ std::string StaticFlagsAnalysis::to_string(const Optional<VectorFlags>& flags)
 {
     return flags.to_string();
 }
+
+std::string ComparisonInfo::to_string() const
+{
+    auto outputPart = result ? (result->to_string() + " = ") : "";
+    return outputPart + leftOperand.to_string() + " " + std::string(name) + " " + rightOperand.to_string() + " (" +
+        condition.to_string() + ")";
+}
 LCOV_EXCL_STOP
+
+struct ComparisonData
+{
+    std::string comp;
+    InstructionWalker endOfComparison;
+    ConditionCode trueCondition;
+};
+
+static Optional<ComparisonData> checkEquals(InstructionWalker searchIt, Value& leftOperand, Value& rightOperand)
+{
+    using namespace vc4c::pattern;
+
+    // Check for left == right
+    Pattern equalsPattern = {{
+
+        /* register - = xor %left, %right (setf) */
+        anyValue() = (match(OP_XOR), capture(leftOperand), capture(rightOperand), match(SetFlag::SET_FLAGS))
+
+    }};
+
+    auto result = pattern::search(searchIt, equalsPattern, true);
+    if(!result.isEndOfBlock())
+        return ComparisonData{intermediate::COMP_EQ, result, COND_ZERO_SET};
+
+    // Check for left == 0
+    Pattern zeroPattern = {{
+
+        /* register - = mov %left (setf) */
+        anyValue() = (match(FAKEOP_MOV), capture(leftOperand), match(SetFlag::SET_FLAGS))
+
+    }};
+
+    result = pattern::search(searchIt, zeroPattern, true);
+    if(!result.isEndOfBlock())
+    {
+        rightOperand = INT_ZERO;
+        return ComparisonData{intermediate::COMP_EQ, result, COND_ZERO_SET};
+    }
+
+    return {};
+}
+
+static Optional<ComparisonData> checkUnsignedLessThan(
+    InstructionWalker searchIt, Value& leftOperand, Value& rightOperand)
+{
+    using namespace vc4c::pattern;
+
+    // Check for unsigned comparison left < right (with right = 2^x - 1)
+    Value rightInverted = UNDEFINED_VALUE;
+    Value trueValue = UNDEFINED_VALUE;
+    Pattern rightMaskPattern = {{
+
+        /* bool %tmp0 = and i32 %left, i32 ~%right */
+        capture(pattern::V1) = (match(OP_AND), capture(leftOperand), capture(rightInverted)),
+        /* register - = xor i32 %left,  i32 %right (setf) */
+        anyValue() = (match(OP_XOR), capture(leftOperand), capture(rightOperand), match(SetFlag::SET_FLAGS)),
+        /* bool %tmp1 = bool true (ifz) */
+        capture(pattern::V2) = (match(FAKEOP_MOV), capture(trueValue), match(COND_ZERO_SET)),
+        /* bool %tmp1 = bool false (ifzc) */
+        capture(pattern::V2) = (match(OP_XOR), capture(trueValue), capture(trueValue), match(COND_ZERO_CLEAR)),
+        /* register - = or bool %tmp0, bool %tmp1 (setf) */
+        anyValue() = (match(OP_OR), capture(pattern::V1), capture(pattern::V2), match(SetFlag::SET_FLAGS))
+
+    }};
+
+    auto result = pattern::search(searchIt, rightMaskPattern, true);
+    if(!result.isEndOfBlock() && trueValue.getLiteralValue() & &Literal::isTrue)
+    {
+        // check that the right inverted value is the inversion of the right value and that the right value is actually
+        // a constant 2^x-1
+        auto rightInvertedConstant = rightInverted.getConstantValue() & &Value::getLiteralValue;
+        auto rightConstant = rightOperand.getConstantValue() & &Value::getLiteralValue;
+        if(rightConstant && rightInvertedConstant &&
+            rightInvertedConstant->unsignedInt() == ~rightConstant->unsignedInt() &&
+            isPowerTwo(rightConstant->unsignedInt() + 1))
+            return ComparisonData{intermediate::COMP_UNSIGNED_LT, result, COND_ZERO_SET};
+    }
+
+    // Check for unsigned comparison left <= right (with left = 2^x - 1 or right = 2^x - 1)
+    Pattern andConstantPattern = {{
+
+        /* register - = and i32 %left, i32 %right (setf) */
+        anyValue() = (match(OP_AND), capture(leftOperand), capture(rightOperand), match(SetFlag::SET_FLAGS))
+
+    }};
+
+    result = pattern::search(searchIt, andConstantPattern, true);
+    if(!result.isEndOfBlock())
+    {
+        // check that the left value is actually a constant (~2^x)-1
+        // ~(2^x-1) & %val == 0 <=> 2^x-1 >= %val <=> 2^x > %val
+        auto lit = leftOperand.getConstantValue() & &Value::getLiteralValue;
+        if(lit & [](Literal lit) { return isPowerTwo(~lit.unsignedInt() + 1); })
+        {
+            leftOperand = Value(Literal(~lit->unsignedInt() + 1), leftOperand.type);
+            return ComparisonData{intermediate::COMP_UNSIGNED_GT, result, COND_ZERO_SET};
+        }
+
+        // check that the right value is actually a constant (~2^x)-1
+        // %val & ~(2^x-1) == 0 <=> %val <= 2^x-1 <=> %val < 2^x
+        lit = rightOperand.getConstantValue() & &Value::getLiteralValue;
+        if(lit & [](Literal lit) { return isPowerTwo(~lit.unsignedInt() + 1); })
+        {
+            rightOperand = Value(Literal(~lit->unsignedInt() + 1), rightOperand.type);
+            return ComparisonData{intermediate::COMP_UNSIGNED_LT, result, COND_ZERO_SET};
+        }
+    }
+
+    // Check for general 32-bit unsigned comparison left < right
+    Pattern minMaxPattern = {{
+
+        /* register - = xor i32 %left, i32 %right (setf ) */
+        anyValue() = (match(OP_XOR), capture(leftOperand), capture(rightOperand), match(SetFlag::SET_FLAGS)),
+        /* i32 %tmp = min i32 %left, i32 %right (ifn ) */
+        capture(pattern::V1) = (match(OP_MIN), capture(leftOperand), capture(rightOperand), match(COND_NEGATIVE_SET)),
+        /* i32 %tmp = max i32 %left, i32 %right (ifnc ) */
+        capture(pattern::V1) = (match(OP_MAX), capture(leftOperand), capture(rightOperand), match(COND_NEGATIVE_CLEAR)),
+        /* register - = xor i32 %tmp, i32 %left (setf ) */
+        anyValue() = (match(OP_XOR), capture(pattern::V1), capture(leftOperand), match(SetFlag::SET_FLAGS))
+
+    }};
+
+    result = pattern::search(searchIt, minMaxPattern, true);
+    if(!result.isEndOfBlock())
+        return ComparisonData{intermediate::COMP_UNSIGNED_LT, result, COND_ZERO_CLEAR};
+
+    // NOTE: The general case for unsigned left < right for |left| and |right| < 32-bit is identical to the signed less
+    // < right and thus handled there.
+
+    return {};
+}
+
+static Optional<ComparisonData> checkSignedGreaterThan(
+    InstructionWalker searchIt, Value& leftOperand, Value& rightOperand)
+{
+    using namespace vc4c::pattern;
+
+    // Check for left > right
+    Pattern pattern = {{
+
+        /* register - = max %left, %right (setf) */
+        anyValue() = (match(OP_MAX), capture(leftOperand), capture(rightOperand), match(SetFlag::SET_FLAGS))
+
+    }};
+    auto result = pattern::search(searchIt, pattern, true);
+    if(!result.isEndOfBlock())
+        return ComparisonData{intermediate::COMP_SIGNED_GT, result, COND_CARRY_SET};
+    return {};
+}
+
+Optional<analysis::ComparisonInfo> analysis::getComparison(
+    const intermediate::IntermediateInstruction* conditionalInstruction, InstructionWalker searchStart)
+{
+    // TODO add floating point and long comparisons??
+
+    Optional<InstructionWalker> matchingFlagSetterIt;
+    if(auto it = searchStart.getBasicBlock()->findWalkerForInstruction(
+           conditionalInstruction, searchStart.getBasicBlock()->walkEnd()))
+        matchingFlagSetterIt = searchStart.getBasicBlock()->findLastSettingOfFlags(*it);
+
+    if(!matchingFlagSetterIt)
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Failed to find flag setter instruction for conditional instruction: "
+                << conditionalInstruction->to_string() << logging::endl);
+        return {};
+    }
+
+    Value leftOperand = UNDEFINED_VALUE;
+    Value rightOperand = UNDEFINED_VALUE;
+    // Since there might be multiple comparisons between the search start and the writing of the output value, we need
+    // to iteratively check until we have a match or do not find any comparison anymore. The order of the checks is on
+    // purpose, since e.g. some the unsigned less then check include an equality-check, so we need to check them first.
+    for(const auto& check : {checkUnsignedLessThan, checkSignedGreaterThan, checkEquals})
+    {
+        auto checkIt = searchStart;
+        while(auto tmp = check(checkIt, leftOperand, rightOperand))
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Found comparison: " << leftOperand.to_string() << " " << tmp->comp << " "
+                    << rightOperand.to_string() << logging::endl);
+            if(tmp->endOfComparison.get() == matchingFlagSetterIt->get())
+                // The comparison ends with the flag setter responsible for setting the boolean values, this is the
+                // comparison we want!
+                return ComparisonInfo{tmp->comp, leftOperand, rightOperand, nullptr, tmp->trueCondition};
+
+            checkIt = tmp->endOfComparison;
+            // The end of the comparison is inside the comparison, which for single instruction comparisons is
+            // also its start)
+            checkIt.nextInBlock();
+        }
+    }
+
+    return {};
+}
+
+static const char* invertComparisonName(const std::string& comparison)
+{
+    if(comparison == intermediate::COMP_EQ)
+        return intermediate::COMP_NEQ;
+    if(comparison == intermediate::COMP_NEQ)
+        return intermediate::COMP_EQ;
+    if(comparison == intermediate::COMP_UNSIGNED_GE)
+        return intermediate::COMP_UNSIGNED_LT;
+    if(comparison == intermediate::COMP_UNSIGNED_GT)
+        return intermediate::COMP_UNSIGNED_LE;
+    if(comparison == intermediate::COMP_UNSIGNED_LE)
+        return intermediate::COMP_UNSIGNED_GT;
+    if(comparison == intermediate::COMP_UNSIGNED_LT)
+        return intermediate::COMP_UNSIGNED_GE;
+    if(comparison == intermediate::COMP_SIGNED_GE)
+        return intermediate::COMP_SIGNED_LT;
+    if(comparison == intermediate::COMP_SIGNED_GT)
+        return intermediate::COMP_SIGNED_LE;
+    if(comparison == intermediate::COMP_SIGNED_LE)
+        return intermediate::COMP_SIGNED_GT;
+    if(comparison == intermediate::COMP_SIGNED_LT)
+        return intermediate::COMP_SIGNED_GE;
+
+    throw CompilationError(CompilationStep::GENERAL, "Unhandled comparison operation to invert", comparison);
+}
+
+Optional<analysis::ComparisonInfo> analysis::getComparison(const Local* comparisonResult, InstructionWalker searchStart)
+{
+    auto writers = comparisonResult->getUsers(LocalUse::Type::WRITER);
+    if(writers.size() != 2)
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Cannot determine comparison for local without exactly 2 conditional writes: "
+                << comparisonResult->to_string() << logging::endl);
+        return {};
+    }
+
+    auto trueWriterIt = std::find_if(writers.begin(), writers.end(), [](const LocalUser* writer) -> bool {
+        auto source = writer->getMoveSource();
+        return source && source->getConstantValue() & &Value::getLiteralValue & &Literal::isTrue &&
+            dynamic_cast<const intermediate::ExtendedInstruction*>(writer);
+    });
+    if(trueWriterIt == writers.end())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Failed to find writer of 'true' value for: " << comparisonResult->to_string() << logging::endl);
+        return {};
+    }
+    auto trueCond = dynamic_cast<const intermediate::ExtendedInstruction*>(*trueWriterIt)->getCondition();
+    if(trueCond == COND_ALWAYS || trueCond == COND_NEVER)
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Writer of 'true' value is not conditional: " << (*trueWriterIt)->to_string() << logging::endl);
+        return {};
+    }
+
+    if(auto result = getComparison(*writers.begin(), searchStart))
+    {
+        result->result = comparisonResult;
+        if(trueCond.isInversionOf(result->condition))
+        {
+            // Invert comparison if necessary depending on actual flags setting the bool true. E.g. for "not equals", we
+            // insert an "equals" comparison and invert the flags, so we need to invert the comparison and the flags
+            // back again here.
+            result->name = invertComparisonName(result->name);
+            result->condition = trueCond;
+        }
+        if(trueCond != result->condition)
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Found matching comparison, but flags mismatch for '" << comparisonResult->to_string()
+                    << "' and: " << result->to_string() << logging::endl);
+            return {};
+        }
+        return result;
+    }
+    return {};
+}

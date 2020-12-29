@@ -444,10 +444,10 @@ namespace vc4c
          * NOTE: Since the start of the match is returned, the iterator might need to be incremented before calling this
          * function again, otherwise the same instructions will be matched again.
          *
-         * @return the iterator for the matching instructions or end-of-block if the pattern did not match any
-         * instruction in the current block.
+         * @return the iterator (to the first or last instruction matching the pattern) for the matching instructions or
+         * end-of-block if the pattern did not match any instruction in the current block.
          */
-        NODISCARD InstructionWalker search(InstructionWalker start, Pattern& pattern);
+        NODISCARD InstructionWalker search(InstructionWalker start, Pattern& pattern, bool returnEndOfPattern = false);
 
     } // namespace pattern
 } // namespace vc4c

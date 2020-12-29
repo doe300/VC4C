@@ -1481,6 +1481,11 @@ void TestInstructions::testValue()
     TEST_ASSERT(Value(UNDEFINED_LITERAL, TYPE_INT16).isAllSame());
     TEST_ASSERT(!ELEMENT_NUMBERS.isAllSame());
     TEST_ASSERT(!ELEMENT_NUMBER_REGISTER.isAllSame());
+
+    TEST_ASSERT_EQUALS(INT_ONE, BOOL_TRUE);
+    TEST_ASSERT_EQUALS(INT_ZERO, BOOL_FALSE);
+    TEST_ASSERT(BOOL_TRUE.getLiteralValue() & &Literal::isTrue);
+    TEST_ASSERT(!(BOOL_FALSE.getLiteralValue() & &Literal::isTrue));
 }
 
 void TestInstructions::testTypes()

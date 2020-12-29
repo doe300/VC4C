@@ -475,7 +475,7 @@ InstructionWalker pattern::search(InstructionWalker start, InstructionPattern& p
     return InstructionWalker{};
 }
 
-static InstructionWalker searchInnerCompact(InstructionWalker start, Pattern& pattern)
+static InstructionWalker searchInnerCompact(InstructionWalker start, Pattern& pattern, bool returnEndOfPattern)
 {
     // Check whether all pattern parts match consecutive instructions
     MatchCache globalCache{};
@@ -499,13 +499,14 @@ static InstructionWalker searchInnerCompact(InstructionWalker start, Pattern& pa
         it.nextInBlock();
     }
 
-    return start;
+    return returnEndOfPattern ? it.previousInBlock() : start;
 }
 
-static InstructionWalker searchInnerGapped(InstructionWalker start, Pattern& pattern)
+static InstructionWalker searchInnerGapped(InstructionWalker start, Pattern& pattern, bool returnEndOfPattern)
 {
     // Check whether all pattern parts match any following instructions in the correct order
     FastSet<const Local*> gapWrittenLocals;
+    FastSet<const Local*> previouslyWrittenLocals;
     MatchCache globalCache{};
     auto it = start;
     FastAccessList<intermediate::IntermediateInstruction*> matchingInstructions;
@@ -531,15 +532,14 @@ static InstructionWalker searchInnerGapped(InstructionWalker start, Pattern& pat
         if(it.isEndOfBlock())
             return InstructionWalker{};
 
-        // this instruction matched, check for dependencies on locals written by one of the gap instructions
-        // XXX can we remove/narrow this? E.g. only abort if local is over-written?!
+        // This instruction matched, check for dependencies on locals written by one of the gap instructions. We
+        // explicitly allow for locals written by a gap instruction, as long as it was not written by a matching
+        // instruction before.
         if(it.has() && std::any_of(gapWrittenLocals.begin(), gapWrittenLocals.end(), [&](const Local* loc) -> bool {
-               return loc != nullptr && it->readsLocal(loc);
+               return loc && it->readsLocal(loc) && previouslyWrittenLocals.find(loc) != previouslyWrittenLocals.end();
            }))
         {
-            // matching instruction uses local written by gap instruction, abort
-            // XXX this also aborts if we have two successive instructions matching, the first using locals written by
-            // an unrelated instruction and the second not using them
+            // matching instruction uses local overwritten by gap instruction, abort
             return InstructionWalker{};
         }
 
@@ -547,6 +547,8 @@ static InstructionWalker searchInnerGapped(InstructionWalker start, Pattern& pat
         globalCache.insert(std::make_move_iterator(localCache.begin()), std::make_move_iterator(localCache.end()));
         localCache.clear();
         matchingInstructions.emplace_back(it.get());
+        if(it.has())
+            previouslyWrittenLocals.emplace(it->checkOutputLocal());
 
         it.nextInBlock();
     }
@@ -558,10 +560,10 @@ static InstructionWalker searchInnerGapped(InstructionWalker start, Pattern& pat
     for(unsigned i = 0; i < pattern.parts.size(); ++i)
         updateOnly(matchingInstructions[i], pattern.parts[i]);
 
-    return start;
+    return returnEndOfPattern ? it.previousInBlock() : start;
 }
 
-InstructionWalker pattern::search(InstructionWalker start, Pattern& pattern)
+InstructionWalker pattern::search(InstructionWalker start, Pattern& pattern, bool returnEndOfPattern)
 {
     if(pattern.parts.empty())
         return InstructionWalker{};
@@ -575,9 +577,9 @@ InstructionWalker pattern::search(InstructionWalker start, Pattern& pattern)
         {
             InstructionWalker it{};
             if(pattern.allowGaps)
-                it = searchInnerGapped(start, pattern);
+                it = searchInnerGapped(start, pattern, returnEndOfPattern);
             else
-                it = searchInnerCompact(start, pattern);
+                it = searchInnerCompact(start, pattern, returnEndOfPattern);
             // we found a match, return it
             if(!it.isEndOfBlock())
             {

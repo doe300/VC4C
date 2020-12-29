@@ -474,8 +474,14 @@ void TestPatternMatching::testConsecutiveSearch()
             false};
 
         auto start = block.walk().nextInBlock();
+        auto last = block.walkEnd().previousInBlock();
         auto matchIt = search(start, pattern);
         TEST_ASSERT(matchIt == start)
+        TEST_ASSERT_EQUALS(2_val, arg0)
+        TEST_ASSERT_EQUALS(110_val, arg1)
+
+        matchIt = search(start, pattern, true);
+        TEST_ASSERT(matchIt == last);
         TEST_ASSERT_EQUALS(2_val, arg0)
         TEST_ASSERT_EQUALS(110_val, arg1)
 
@@ -717,8 +723,14 @@ void TestPatternMatching::testGappedSearch()
             true};
 
         auto start = block.walk().nextInBlock();
+        auto last = block.walkEnd().previousInBlock();
         auto matchIt = search(start, pattern);
         TEST_ASSERT(matchIt == start)
+        TEST_ASSERT_EQUALS(2_val, arg0)
+        TEST_ASSERT_EQUALS(110_val, arg1)
+
+        matchIt = search(start, pattern, true);
+        TEST_ASSERT(matchIt == last)
         TEST_ASSERT_EQUALS(2_val, arg0)
         TEST_ASSERT_EQUALS(110_val, arg1)
 
@@ -793,6 +805,25 @@ void TestPatternMatching::testGappedSearch()
         TEST_ASSERT(!matchIt.isEndOfBlock())
         TEST_ASSERT_EQUALS(11.0_val, arg)
         TEST_ASSERT_EQUALS(COND_CARRY_CLEAR, cond)
+    }
+
+    // successful test - value written in gap (before first capture)
+    {
+        auto tmp1 = assign(it, TYPE_INT32) = UNIFORM_REGISTER + 17_val;
+        auto tmp2 = assign(it, TYPE_INT32) = ELEMENT_NUMBER_REGISTER;
+        assignNop(it) = tmp1 - tmp2;
+
+        Value arg0 = UNDEFINED_VALUE;
+        Value arg1 = UNDEFINED_VALUE;
+
+        Pattern pattern{{capture(arg0) = (match(OP_ADD), match(UNIFORM_REGISTER), anyValue()),
+                            anyValue() = (match(OP_SUB), capture(arg0), capture(arg1))},
+            true};
+
+        auto matchIt = search(block.walk(), pattern);
+        TEST_ASSERT(!matchIt.isEndOfBlock())
+        TEST_ASSERT_EQUALS(tmp1, arg0)
+        TEST_ASSERT_EQUALS(tmp2, arg1)
     }
 
     // failing test - start is end of block
@@ -881,5 +912,22 @@ void TestPatternMatching::testGappedSearch()
         TEST_ASSERT(matchIt.isEndOfBlock())
         TEST_ASSERT(arg.isUndefined())
         TEST_ASSERT_EQUALS(COND_NEVER, cond)
+    }
+
+    // failing test - value overwritten in gap (after first capture)
+    {
+        auto tmp = assign(it, TYPE_INT32) = UNIFORM_REGISTER + 17_val;
+        assign(it, tmp) = ELEMENT_NUMBER_REGISTER;
+        assignNop(it) = tmp + tmp;
+
+        Value arg = UNDEFINED_VALUE;
+
+        Pattern pattern{{capture(arg) = (match(OP_ADD), match(UNIFORM_REGISTER), anyValue()),
+                            anyValue() = (match(OP_ADD), capture(arg), capture(arg))},
+            true};
+
+        auto matchIt = search(block.walk(), pattern);
+        TEST_ASSERT(matchIt.isEndOfBlock())
+        TEST_ASSERT(arg.isUndefined())
     }
 }
