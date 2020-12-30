@@ -132,7 +132,7 @@ bool optimizations::removeUselessFlags(const Module& module, Method& method, con
         FastAccessList<InstructionWalker> conditionalInstructions;
 
         auto it = block.walk();
-        while(it != block.walkEnd())
+        while(!it.isEndOfBlock())
         {
             if(!it.has())
             {
@@ -160,7 +160,7 @@ bool optimizations::removeUselessFlags(const Module& module, Method& method, con
 
         if(lastSettingOfFlags)
         {
-            // process previous setting of flags
+            // process last setting of flags of block
             if(rewriteSettingOfFlags(*lastSettingOfFlags, std::move(conditionalInstructions)))
                 changedSomething = true;
         }

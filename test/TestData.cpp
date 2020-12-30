@@ -349,7 +349,7 @@ void test_data::registerGeneralTests()
 
     registerTest(TestData{"vectorization4", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test4",
         {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(std::vector<uint32_t>(1))}, toDimensions(1),
-        {checkParameterEquals(1, std::vector<uint32_t>{528896})}});
+        {checkParameterEquals(1, std::vector<uint32_t>{(1023 * 1024) / 2 + (5 * 1024)})}});
 
     registerTest(TestData{"vectorization5", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test5",
         {toBufferParameter(std::vector<float>(1024))}, toDimensions(1),

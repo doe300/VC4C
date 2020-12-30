@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 #include <sstream>
 #include <sys/select.h>
 #include <sys/time.h>
@@ -31,6 +32,8 @@ static constexpr int READ = 0;
 static constexpr int WRITE = 1;
 
 static constexpr int BUFFER_SIZE = 1024;
+
+static std::mutex forkMutex;
 
 static void initPipe(std::array<int, 2>& fds)
 {
@@ -174,6 +177,16 @@ static int runWriteOnlySubprocess(const std::string& command, std::istream* inpu
 
 int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostream* stdout, std::ostream* stderr)
 {
+    /*
+     * Make sure we only run a single child process at once.
+     *
+     * There are some issues (maybe with the file descriptors), causing clang child processes run in parallel to hang
+     * (as in not finish and not using any CPU) which will cause all the compilation to hang.
+     *
+     * This mutex is forked, but never released inside the child process! This causes no problem though, since it is not
+     * used (e.g. by another) thread in the child process at all!
+     */
+    std::lock_guard<std::mutex> guard(forkMutex);
     /*
      * Simple version, only ONE of stdin, stdout or stderr is set.
      * Now we can simplify by using popen

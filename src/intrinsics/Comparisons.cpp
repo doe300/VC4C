@@ -142,16 +142,22 @@ static void intrinsifyIntegerRelation(Method& method, InstructionWalker it, cons
          * a < b [<=> max(a & 0xFF, b & 0xFF) != a] <=> max(a, b) != a (since MSB is never set -> always positive)
          */
         ConditionCode cond = COND_NEVER;
-        if(comp->getFirstArg().type.getScalarBitCount() == 32)
+        if(comp->getFirstArg().getConstantValue() == INT_ZERO)
+        {
+            // 0 < b <=> b != 0
+            cond = assignNop(it) = (as_unsigned{comp->assertArgument(1)} != as_unsigned{INT_ZERO});
+        }
+        else if(comp->getFirstArg().type.getScalarBitCount() == 32 ||
+            comp->assertArgument(1).type.getScalarBitCount() == 32)
         {
             // a < b [b = 2^x] <=> (a & (b-1)) == a <=> (a & ~(b-1)) == 0
             if(comp->assertArgument(1).checkLiteral() && isPowerTwo(comp->assertArgument(1).literal().unsignedInt()))
             {
                 // this is actually pre-calculated, so no insertion is performed
                 Value mask = assign(it, comp->assertArgument(1).type) = comp->assertArgument(1) - 1_val;
-                Value tmp1 = assign(it, boolType, "%icomp") = comp->getFirstArg() & mask;
+                mask = assign(it, mask.type) = ~mask;
+                assignNop(it) = (comp->getFirstArg() & mask, SetFlag::SET_FLAGS);
 
-                assign(it, NOP_REGISTER) = (tmp1 ^ comp->getFirstArg(), SetFlag::SET_FLAGS);
                 // we set to true, if flag is zero, false otherwise
                 invertResult = !invertResult;
             }
@@ -161,7 +167,7 @@ static void intrinsifyIntegerRelation(Method& method, InstructionWalker it, cons
                 isPowerTwo(comp->assertArgument(1).literal().unsignedInt() + 1))
             {
                 // this is actually pre-calculated, so no insertion is performed
-                Value mask = assign(it, comp->assertArgument(1).type) = comp->assertArgument(1) ^ 0xFFFFFFFF_val;
+                Value mask = assign(it, comp->assertArgument(1).type) = ~comp->assertArgument(1);
                 Value tmp1 = assign(it, boolType, "%icomp") = comp->getFirstArg() & mask;
                 const Value tmp2 = method.addNewLocal(boolType, "%icomp");
 
@@ -174,7 +180,13 @@ static void intrinsifyIntegerRelation(Method& method, InstructionWalker it, cons
                 // we set to true, if flag is zero, false otherwise
                 invertResult = !invertResult;
             }
-            // TODO a < b [a = 2^x -1] <=> (~a & b) != 0
+            // a < b [a = 2^x - 1] <=> (~a & b) != 0
+            else if(comp->getFirstArg().checkLiteral() && isPowerTwo(comp->getFirstArg().literal().unsignedInt() + 1))
+            {
+                // this is actually pre-calculated, so no insertion is performed
+                Value mask = assign(it, comp->getFirstArg().type) = ~comp->getFirstArg();
+                assignNop(it) = (mask & comp->assertArgument(1), SetFlag::SET_FLAGS);
+            }
             else
             {
                 /*
@@ -224,12 +236,15 @@ static void intrinsifyIntegerRelation(Method& method, InstructionWalker it, cons
     {
         Value firstArg = comp->getFirstArg();
         Value secondArg = comp->assertArgument(1);
-        if(firstArg.type.getScalarBitCount() < 32)
+        // TODO is this required?
+        if(firstArg.type.getScalarBitCount() < 32 && !firstArg.getConstantValue())
         {
-            // TODO is this required?
             firstArg = method.addNewLocal(TYPE_INT32.toVectorType(firstArg.type.getVectorWidth()), "%icomp");
-            secondArg = method.addNewLocal(TYPE_INT32.toVectorType(secondArg.type.getVectorWidth()), "%icomp");
             it = insertSignExtension(it, method, comp->getFirstArg(), firstArg, true);
+        }
+        if(secondArg.type.getScalarBitCount() < 32 && !secondArg.getConstantValue())
+        {
+            secondArg = method.addNewLocal(TYPE_INT32.toVectorType(secondArg.type.getVectorWidth()), "%icomp");
             it = insertSignExtension(it, method, comp->assertArgument(1), secondArg, true);
         }
         auto cond = assignNop(it) = (as_signed{firstArg} < as_signed{secondArg});
