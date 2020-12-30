@@ -524,6 +524,8 @@ bool optimizations::removeConditionalFlags(const Module& module, Method& method,
     bool rewroteFlags = false;
     for(auto& block : method)
     {
+        if(block.empty())
+            continue;
         auto it = block.walk();
         while(!it.isEndOfBlock())
         {

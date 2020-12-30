@@ -660,6 +660,32 @@ static const char* switchComparisonOperands(const std::string& comparison)
     throw CompilationError(CompilationStep::GENERAL, "Unhandled comparison operation to switch", comparison);
 }
 
+static const char* invertComparisonOperands(const std::string& comparison)
+{
+    if(comparison == intermediate::COMP_EQ)
+        return intermediate::COMP_NEQ;
+    if(comparison == intermediate::COMP_NEQ)
+        return intermediate::COMP_EQ;
+    if(comparison == intermediate::COMP_UNSIGNED_GE)
+        return intermediate::COMP_UNSIGNED_LT;
+    if(comparison == intermediate::COMP_UNSIGNED_GT)
+        return intermediate::COMP_UNSIGNED_LE;
+    if(comparison == intermediate::COMP_UNSIGNED_LE)
+        return intermediate::COMP_UNSIGNED_GT;
+    if(comparison == intermediate::COMP_UNSIGNED_LT)
+        return intermediate::COMP_UNSIGNED_GE;
+    if(comparison == intermediate::COMP_SIGNED_GE)
+        return intermediate::COMP_SIGNED_LT;
+    if(comparison == intermediate::COMP_SIGNED_GT)
+        return intermediate::COMP_SIGNED_LE;
+    if(comparison == intermediate::COMP_SIGNED_LE)
+        return intermediate::COMP_SIGNED_GT;
+    if(comparison == intermediate::COMP_SIGNED_LT)
+        return intermediate::COMP_SIGNED_GE;
+
+    throw CompilationError(CompilationStep::GENERAL, "Unhandled comparison operation to invert", comparison);
+}
+
 static void addIterationInformation(
     InductionVariable& inductionVar, const ControlFlowLoop& loop, InstructionWalker tailBranch, const CFGNode* tail)
 {
@@ -710,21 +736,25 @@ static void addIterationInformation(
     rightOperand = rightOperand.getConstantValue().value_or(rightOperand);
 
     bool isLeftOperand = true;
-    if(leftOperand.checkLocal() == stepLocal || rightOperand.checkLocal() == stepLocal)
+    if(repeatComparison->leftOperand.checkLocal() == stepLocal || leftOperand.checkLocal() == stepLocal ||
+        repeatComparison->rightOperand.checkLocal() == stepLocal || rightOperand.checkLocal() == stepLocal)
     {
-        isLeftOperand = leftOperand.checkLocal() == stepLocal;
+        isLeftOperand =
+            repeatComparison->leftOperand.checkLocal() == stepLocal || leftOperand.checkLocal() == stepLocal;
         inductionVar.conditionCheckedBeforeStep = false;
     }
-    else if(leftOperand.checkLocal() == local || rightOperand.checkLocal() == local)
+    else if(repeatComparison->leftOperand.checkLocal() == local || leftOperand.checkLocal() == local ||
+        repeatComparison->rightOperand.checkLocal() == local || rightOperand.checkLocal() == local)
     {
-        isLeftOperand = leftOperand.checkLocal() == local;
+        isLeftOperand = repeatComparison->leftOperand.checkLocal() == local || leftOperand.checkLocal() == local;
         inductionVar.conditionCheckedBeforeStep = true;
     }
     else
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Failed to determine whether the induction or the step local is used in the comparison: "
-                << repeatComparison->to_string() << logging::endl);
+            log << "Failed to determine whether the induction variable '" << local->to_string()
+                << "' or the step local '" << stepLocal->to_string()
+                << "' is used in the comparison: " << repeatComparison->to_string() << logging::endl);
         return;
     }
 
@@ -733,10 +763,12 @@ static void addIterationInformation(
         // we expect the induction variable (or its derivative) to be on the left side of the comparison, so we need
         // to switch the operands and the comparison function
         compName = switchComparisonOperands(compName);
-    if(repeatCondition != COND_ZERO_CLEAR)
+    if(repeatCondition == COND_ZERO_SET)
+        // the boolean flag is set on zero clear, but we repeat on zero set, so we need to invert the comparison
+        compName = invertComparisonOperands(compName);
+    else if(repeatCondition != COND_ZERO_CLEAR)
     {
-        // TODO need to heed the repeatCondition? E.g. if repeat branch is not on "true", need to invert comparison!
-        CPPLOG_LAZY(logging::Level::WARNING,
+        CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Repetition branch on this flag is not yet supported: " << repeatCondition.to_string()
                 << logging::endl);
         return;

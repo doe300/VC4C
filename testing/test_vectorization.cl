@@ -44,7 +44,7 @@ kernel void test5(global float *A) {
 kernel void test6(global int *A, global int *B) {
   unsigned sum = 0;
   //Expected: should be able to vectorize
-  //Actual: loop is recognized, fails for reading and writing same memory address (B)
+  //Actual: loop is recognized and vectorized (factor 16)
   for (int i = 0; i < 1024; ++i)
     if (A[i] > B[i])
       sum += A[i] + 5;
@@ -54,7 +54,6 @@ kernel void test6(global int *A, global int *B) {
 kernel void test7(global int *A) {
   //Expected: should be able to vectorize
   //Actual: declines vectorization for reading and writing same memory address
-  //TODO
   for (int i = 1024; i > 0; --i)
     A[i] +=1;
 }
