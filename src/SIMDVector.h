@@ -7,6 +7,7 @@
 #ifndef VC4C_SIMD_VECTOR_H
 #define VC4C_SIMD_VECTOR_H 1
 
+#include "BitMask.h"
 #include "Values.h"
 #include "performance.h"
 
@@ -143,6 +144,12 @@ namespace vc4c
          * Returns whether all elements contained are undefined
          */
         bool isUndefined() const;
+
+        /**
+         * Returns the mask of bits set across any/all elements, i.e. the resulting mask will have a bit set for any
+         * position where at least one element has a bit set.
+         */
+        BitMask getBitMask() const noexcept;
 
         SIMDVector transform(const std::function<Literal(Literal)>& transformOp) const&;
         SIMDVector transform(const std::function<Literal(Literal)>& transformOp) &&;

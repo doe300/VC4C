@@ -7,6 +7,7 @@
 #ifndef VALUES_H
 #define VALUES_H
 
+#include "BitMask.h"
 #include "Bitfield.h"
 #include "Optional.h"
 #include "Types.h"
@@ -135,6 +136,17 @@ namespace vc4c
          * Returns whether this register is guaranteed to return an unsigned (positive) integer
          */
         bool isUnsignedInteger() const noexcept;
+
+        /**
+         * Returns the mask of (possible) non-zero bits the result might have when reading this register
+         */
+        BitMask getReadMask() const noexcept;
+
+        /**
+         * Returns the mask of bits used at all when writing this register, any bit not in this mask has no effect on
+         * the behavior of this register
+         */
+        BitMask getWriteMask() const noexcept;
 
         static constexpr int INVALID_ACCUMULATOR{-1};
     };
@@ -564,6 +576,11 @@ namespace vc4c
          */
         bool isUndefined() const noexcept;
 
+        /**
+         * Returns the mask of bits set
+         */
+        BitMask getBitMask() const noexcept;
+
     private:
         /*
          * The bit-wise representation of this literal
@@ -907,6 +924,11 @@ namespace vc4c
          * registers.
          */
         bool isAllSame() const;
+
+        /**
+         * Returns the mask of (possible) non-zero bits in this value when read
+         */
+        BitMask getReadMask() const noexcept;
 
         /*
          * Returns the stored data of the given type, if it matches the stored type.

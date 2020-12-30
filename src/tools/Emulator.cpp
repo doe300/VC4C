@@ -1382,7 +1382,7 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
                 PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
             }
             SIMDVector imm = load->getPack()(loadedValues, flags, false);
-            auto mask = load->getPack().getMask();
+            auto mask = load->getPack().getOutputMask();
             writeConditional(toRegister(load->getAddOut(), load->getWriteSwap() == WriteSwap::SWAP), imm,
                 load->getAddCondition(), mask);
             writeConditional(toRegister(load->getMulOut(), load->getWriteSwap() == WriteSwap::DONT_SWAP), imm,
@@ -1410,7 +1410,7 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
                     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 210, "values packed", 1);
                 }
                 result = semaphore->getPack()(result, {}, false);
-                auto mask = semaphore->getPack().getMask();
+                auto mask = semaphore->getPack().getOutputMask();
                 writeConditional(toRegister(semaphore->getAddOut(), semaphore->getWriteSwap() == WriteSwap::SWAP),
                     result, semaphore->getAddCondition(), mask);
                 writeConditional(toRegister(semaphore->getMulOut(), semaphore->getWriteSwap() == WriteSwap::DONT_SWAP),
@@ -1623,7 +1623,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
             if(aluInst->getPack().supportsMulALU())
                 throw CompilationError(CompilationStep::GENERAL, "Cannot apply mul pack mode on add result!");
             result = aluInst->getPack()(result, tmp.second, addCode.returnsFloat);
-            mask = aluInst->getPack().getMask();
+            mask = aluInst->getPack().getOutputMask();
         }
 
         writeConditional(toRegister(aluInst->getAddOut(), aluInst->getWriteSwap() == WriteSwap::SWAP), result,
@@ -1670,7 +1670,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
             if(!aluInst->getPack().supportsMulALU())
                 throw CompilationError(CompilationStep::GENERAL, "Cannot apply add pack mode on mul result!");
             result = aluInst->getPack()(result, tmp.second, mulCode.returnsFloat);
-            mask = aluInst->getPack().getMask();
+            mask = aluInst->getPack().getOutputMask();
         }
 
         // FIXME these might depend on flags of add ALU set in same instruction (which is wrong)

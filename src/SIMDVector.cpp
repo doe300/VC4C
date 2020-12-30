@@ -92,6 +92,12 @@ bool SIMDVector::isUndefined() const
     return std::all_of(elements.begin(), elements.end(), [](Literal lit) -> bool { return lit.isUndefined(); });
 }
 
+BitMask SIMDVector::getBitMask() const noexcept
+{
+    return std::accumulate(elements.begin(), elements.end(), BITMASK_NONE,
+        [](BitMask mask, Literal lit) -> BitMask { return mask | lit.getBitMask(); });
+}
+
 SIMDVector SIMDVector::transform(const std::function<Literal(Literal)>& transformOp) const&
 {
     SIMDVector copy;

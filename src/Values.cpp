@@ -11,7 +11,9 @@
 #include "SIMDVector.h"
 #include "intermediate/IntermediateInstruction.h"
 
+#include <iomanip>
 #include <limits>
+#include <sstream>
 
 using namespace vc4c;
 
@@ -25,7 +27,19 @@ static SIMDVector ZEROES_VECTOR(Literal(0));
 
 const Value vc4c::ELEMENT_NUMBERS(&ELEMENT_NUMBER_VECTOR, TYPE_INT8.toVectorType(16));
 
+Literal BitMask::operator()(Literal newValue, Literal oldValue) const noexcept
+{
+    return Literal((newValue.unsignedInt() & value) | (oldValue.unsignedInt() & ~value));
+}
+
 LCOV_EXCL_START
+std::string BitMask::to_string() const
+{
+    std::ostringstream ss;
+    ss << std::setfill('0') << std::setw(8) << std::hex << value;
+    return ss.str();
+}
+
 std::string vc4c::toString(const RegisterFile file)
 {
     std::string fileName;
@@ -312,6 +326,27 @@ bool Register::isUnsignedInteger() const noexcept
         *this == REG_REV_FLAG || *this == REG_MS_MASK || *this == REG_MUTEX;
 }
 
+BitMask Register::getReadMask() const noexcept
+{
+    if(*this == REG_ELEMENT_NUMBER || *this == REG_QPU_NUMBER || *this == REG_MS_MASK)
+        // values 0 to 15 or 0 to 12 respectively
+        return BitMask{0x0000000F};
+    if(*this == REG_X_COORDS || *this == REG_Y_COORDS || *this == REG_REV_FLAG)
+        return BitMask{0x00000001};
+
+    return BITMASK_ALL;
+}
+
+BitMask Register::getWriteMask() const noexcept
+{
+    if(*this == REG_MS_MASK)
+        return BitMask{0x0000000F};
+    if(*this == REG_REV_FLAG)
+        return BitMask{0x00000001};
+
+    return BITMASK_ALL;
+}
+
 bool Literal::operator==(const Literal& other) const noexcept
 {
     if(this == &other)
@@ -378,6 +413,11 @@ uint32_t Literal::toImmediate() const noexcept
 bool Literal::isUndefined() const noexcept
 {
     return type == LiteralType::TOMBSTONE;
+}
+
+BitMask Literal::getBitMask() const noexcept
+{
+    return isUndefined() ? BITMASK_ALL : BitMask{unsignedInt()};
 }
 
 Optional<Literal> vc4c::toLongLiteral(uint64_t val)
@@ -761,6 +801,18 @@ bool Value::isAllSame() const
         return writer && writer->hasDecoration(intermediate::InstructionDecorations::IDENTICAL_ELEMENTS);
     }
     return false;
+}
+
+BitMask Value::getReadMask() const noexcept
+{
+    if(auto lit = getLiteralValue())
+        return lit->getBitMask();
+    if(auto reg = checkRegister())
+        return reg->getReadMask();
+    if(auto vec = checkVector())
+        return vec->getBitMask();
+
+    return BITMASK_ALL;
 }
 
 std::size_t std::hash<vc4c::Value>::operator()(vc4c::Value const& val) const noexcept

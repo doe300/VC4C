@@ -7,6 +7,7 @@
 #ifndef OPCODES_H
 #define OPCODES_H
 
+#include "../BitMask.h"
 #include "../Bitfield.h"
 #include "Optional.h"
 #include "config.h"
@@ -273,6 +274,14 @@ namespace vc4c
             return isPMBitSet();
         }
         bool hasEffect() const noexcept;
+        /**
+         * Returns the mask of bits actually read, any other bit is ignored.
+         */
+        BitMask getInputMask() const;
+        /**
+         * Returns the mask of output bits which may be non-zero, depending on the input bit mask
+         */
+        BitMask operator()(BitMask mask, bool isFloatOperation) const;
 
         static const Unpack unpackTo32Bit(DataType type);
     };
@@ -358,22 +367,6 @@ namespace vc4c
     constexpr Unpack UNPACK_R4_COLOR2{13};
     constexpr Unpack UNPACK_R4_COLOR3{15};
 
-    /**
-     * Represents a mask of bytes actually used by e.g. Pack modes.
-     */
-    struct BitMask
-    {
-        uint32_t mask;
-
-        /**
-         * Creates a new literal value by taking all bits from the new value where the corresponding bit in the mask is
-         * set and taking the bits from the old value otherwise.
-         */
-        Literal operator()(Literal newValue, Literal oldValue) const noexcept;
-    };
-
-    constexpr BitMask BITMASK_ALL{0xFFFFFFFF};
-
     /*
      * ALU instructions can also pack their results back into packed storage-formats.
      *
@@ -398,7 +391,14 @@ namespace vc4c
             return isPMBitSet();
         }
         bool hasEffect() const noexcept;
-        BitMask getMask() const;
+        /**
+         * Returns the mask of bits actually written. Any other bit retains its previous value.
+         */
+        BitMask getOutputMask() const;
+        /**
+         * Returns the mask of bits actually written depending on the input mask
+         */
+        BitMask operator()(BitMask mask) const;
     };
 
     /*
@@ -771,6 +771,18 @@ namespace vc4c
         CARRY_POSITIVE = 0x2000,
     };
 
+    struct OperationBitMasks
+    {
+        // Mask of bits set to possible non-zero value. Bits where the mask is zero are guaranteed to contain zero.
+        BitMask resultMask;
+        // Mask of bits from the first operand to be even considered for calculation. Bits where the mask is zero
+        // are ignored.
+        BitMask firstArgMask;
+        // Mask of bits from the second operand to be even considered for calculation. Bits where the mask is zero
+        // are ignored.
+        BitMask secondArgMask;
+    };
+
     /*
      * The operation-code being executed by ALU instructions.
      *
@@ -843,6 +855,7 @@ namespace vc4c
         PrecalculatedVector operator()(const SIMDVector& firstOperand, const SIMDVector& secondOperand) const;
         analysis::ValueRange operator()(
             const analysis::ValueRange& firstRange, const analysis::ValueRange& secondRange) const;
+        OperationBitMasks operator()(BitMask firstMask, BitMask secondMask) const;
 
         /*
          * Whether the operation is idempotent.

@@ -152,11 +152,6 @@ bool Signaling::triggersReadOfR4() const noexcept
         *this == SIGNAL_LOAD_COVERAGE || *this == SIGNAL_LOAD_TMU0 || *this == SIGNAL_LOAD_TMU1;
 }
 
-Literal BitMask::operator()(Literal newValue, Literal oldValue) const noexcept
-{
-    return Literal((newValue.unsignedInt() & mask) | (oldValue.unsignedInt() & ~mask));
-}
-
 LCOV_EXCL_START
 std::string Unpack::to_string() const
 {
@@ -231,7 +226,7 @@ static Literal unpackLiteral(Unpack mode, Literal literal, bool isFloatOperation
     case UNPACK_8888_32:
     {
         // unsigned cast required to guarantee cutting off the value
-        uint8_t lsb = static_cast<uint8_t>(literal.unsignedInt());
+        uint8_t lsb = static_cast<uint8_t>(literal.unsignedInt() >> 24u);
         return Literal((static_cast<uint32_t>(lsb) << 24) | (static_cast<uint32_t>(lsb) << 16) |
             (static_cast<uint32_t>(lsb) << 8) | lsb);
     }
@@ -392,6 +387,38 @@ bool Unpack::hasEffect() const noexcept
 {
     // exclude "normal" NOP and NOP with pm bit set
     return value != 0 && value != 1;
+}
+
+BitMask Unpack::getInputMask() const
+{
+    if(!hasEffect())
+        return BITMASK_ALL;
+    if(*this == UNPACK_16A_32 || *this == UNPACK_R4_16A_32)
+        return BitMask{0x0000FFFF};
+    if(*this == UNPACK_16B_32 || *this == UNPACK_R4_16B_32)
+        return BitMask{0xFFFF0000};
+    if(*this == UNPACK_8A_32 || *this == UNPACK_R4_COLOR0)
+        return BitMask{0x000000FF};
+    if(*this == UNPACK_8B_32 || *this == UNPACK_R4_COLOR1)
+        return BitMask{0x0000FF00};
+    if(*this == UNPACK_8C_32 || *this == UNPACK_R4_COLOR2)
+        return BitMask{0x00FF0000};
+    if(*this == UNPACK_8D_32 || *this == UNPACK_R4_COLOR3 || *this == UNPACK_8888_32 ||
+        *this == UNPACK_R4_ALPHA_REPLICATE)
+        return BitMask{0xFF000000};
+    throw CompilationError(CompilationStep::GENERAL, "Cannot determine mask for unknown unpack mode", to_string());
+}
+
+BitMask Unpack::operator()(BitMask mask, bool isFloatOperation) const
+{
+    if(!hasEffect())
+        return mask;
+    auto outputMask = BITMASK_ALL;
+    if(!isFloatOperation &&
+        (*this == UNPACK_8A_32 || *this == UNPACK_8B_32 || *this == UNPACK_8C_32 || *this == UNPACK_8D_32))
+        outputMask = BitMask{0x000000FF};
+
+    return getInputMask() & mask ? outputMask : BITMASK_NONE;
 }
 
 LCOV_EXCL_START
@@ -667,25 +694,59 @@ bool Pack::hasEffect() const noexcept
     return value != 0 && value != 0x10;
 }
 
-BitMask Pack::getMask() const
+BitMask Pack::getOutputMask() const
 {
     if(!hasEffect())
         return BITMASK_ALL;
     if(*this == PACK_32_32 || *this == PACK_32_8888 || *this == PACK_32_8888_S || *this == PACK_MUL_GRAY_REPLICATE)
         return BITMASK_ALL;
     if(*this == PACK_32_16A || *this == PACK_32_16A_S)
-        return {0x0000FFFF};
+        return BitMask{0x0000FFFF};
     if(*this == PACK_32_16B || *this == PACK_32_16B_S)
-        return {0xFFFF0000};
+        return BitMask{0xFFFF0000};
     if(*this == PACK_32_8A || *this == PACK_32_8A_S || *this == PACK_MUL_COLOR0)
-        return {0x000000FF};
+        return BitMask{0x000000FF};
     if(*this == PACK_32_8B || *this == PACK_32_8B_S || *this == PACK_MUL_COLOR1)
-        return {0x0000FF00};
+        return BitMask{0x0000FF00};
     if(*this == PACK_32_8C || *this == PACK_32_8C_S || *this == PACK_MUL_COLOR2)
-        return {0x00FF0000};
+        return BitMask{0x00FF0000};
     if(*this == PACK_32_8D || *this == PACK_32_8D_S || *this == PACK_MUL_COLOR3)
-        return {0xFF000000};
+        return BitMask{0xFF000000};
     throw CompilationError(CompilationStep::GENERAL, "Cannot determine mask for unknown pack mode", to_string());
+}
+
+BitMask Pack::operator()(BitMask mask) const
+{
+    if(!hasEffect())
+        return mask;
+    if(*this == PACK_32_16A)
+        return mask.getLowerHalfWord() ? BitMask{0x0000FFFF} : BITMASK_NONE;
+    if(*this == PACK_32_16B)
+        return mask.getLowerHalfWord() ? BitMask{0xFFFF0000} : BITMASK_NONE;
+    if(*this == PACK_32_8888)
+        return mask.getByte0() ? BITMASK_ALL : BITMASK_NONE;
+    if(*this == PACK_32_8A)
+        return mask.getByte0() ? BitMask{0x000000FF} : BITMASK_NONE;
+    if(*this == PACK_32_8B)
+        return mask.getByte0() ? BitMask{0x0000FF00} : BITMASK_NONE;
+    if(*this == PACK_32_8C)
+        return mask.getByte0() ? BitMask{0x00FF0000} : BITMASK_NONE;
+    if(*this == PACK_32_8D)
+        return mask.getByte0() ? BitMask{0xFF000000} : BITMASK_NONE;
+    if(*this == PACK_32_16A_S)
+        return mask ? BitMask{0x0000FFFF} : BITMASK_NONE;
+    if(*this == PACK_32_16B_S)
+        return mask ? BitMask{0xFFFF0000} : BITMASK_NONE;
+    if(*this == PACK_32_8A_S || *this == PACK_MUL_COLOR0)
+        return mask ? BitMask{0x000000FF} : BITMASK_NONE;
+    if(*this == PACK_32_8B_S || *this == PACK_MUL_COLOR1)
+        return mask ? BitMask{0x0000FF00} : BITMASK_NONE;
+    if(*this == PACK_32_8C_S || *this == PACK_MUL_COLOR2)
+        return mask ? BitMask{0x00FF0000} : BITMASK_NONE;
+    if(*this == PACK_32_8D_S || *this == PACK_MUL_COLOR3)
+        return mask ? BitMask{0xFF000000} : BITMASK_NONE;
+
+    return BITMASK_ALL;
 }
 
 LCOV_EXCL_START
@@ -1486,6 +1547,41 @@ analysis::ValueRange OpCode::operator()(
     }
 
     return ValueRange(returnsFloat ? TYPE_FLOAT : TYPE_INT32);
+}
+
+OperationBitMasks OpCode::operator()(BitMask firstMask, BitMask secondMask) const
+{
+    if(opAdd == OP_CLZ.opAdd)
+        // result is in [0, 32]
+        return {BitMask{0x0000003F}, BITMASK_ALL, BITMASK_NONE};
+
+    if(opAdd == OP_AND.opAdd)
+        // only bits which are set in both operands can be set in result
+        return {firstMask & secondMask, BITMASK_ALL, BITMASK_ALL};
+
+    if(opAdd == OP_OR.opAdd || opAdd == OP_XOR.opAdd)
+        // only bits which are set in either operand can be set in result
+        return {firstMask | secondMask, BITMASK_ALL, BITMASK_ALL};
+
+    if(opAdd == OP_SHL.opAdd || opAdd == OP_SHR.opAdd || opAdd == OP_ASR.opAdd)
+        return {BITMASK_ALL, BITMASK_ALL, BitMask{0x0000001F}};
+
+    if(opAdd == OP_V8ADDS.opAdd || opAdd == OP_V8SUBS.opAdd || opMul == OP_V8ADDS.opMul || opMul == OP_V8SUBS.opMul ||
+        opMul == OP_V8MULD.opMul || opMul == OP_V8MAX.opMul || opMul == OP_V8MIN.opMul)
+    {
+        // parts are saturated/calculated per byte, so if a byte is not set at all, there cannot be any output there
+        BitMask resultMask{(firstMask.getByte0() || secondMask.getByte0() ? 0xFF : 0) |
+            (firstMask.getByte1() || secondMask.getByte1() ? 0xFF00 : 0) |
+            (firstMask.getByte2() || secondMask.getByte2() ? 0xFF0000 : 0) |
+            (firstMask.getByte3() || secondMask.getByte3() ? 0xFF000000 : 0)};
+        return {resultMask, BITMASK_ALL, BITMASK_ALL};
+    }
+
+    if(opMul == OP_MUL24.opMul)
+        return {BITMASK_ALL, BitMask{0x00FFFFFF}, BitMask{0x00FFFFFF}};
+
+    // default to needing all bits and writing all of them
+    return {BITMASK_ALL, BITMASK_ALL, numOperands > 1 ? BITMASK_ALL : BITMASK_NONE};
 }
 
 const OpCode& OpCode::toOpCode(const std::string& name)
