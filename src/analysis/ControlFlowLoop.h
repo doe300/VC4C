@@ -29,7 +29,7 @@ namespace vc4c
         struct RepeatCondition
         {
             // the name of the comparison
-            const char* comparisonName;
+            std::string comparisonName;
             // the value the induction variable is compared to
             Value comparisonValue;
             // the local storing the boolean result value of the repeat condition

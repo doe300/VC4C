@@ -5,12 +5,12 @@
  */
 #include "ControlFlowLoop.h"
 
+#include "../analysis/FlagsAnalysis.h"
 #include "../intermediate/Helper.h"
 #include "ControlFlowGraph.h"
 #include "DataDependencyGraph.h"
 #include "DebugGraph.h"
-#include "PatternMatching.h"
-#include "logger.h"
+#include "log.h"
 
 #include <limits>
 #include <sstream>
@@ -59,7 +59,7 @@ Optional<unsigned> InductionVariable::getRange() const
     auto comp = repeatCondition.value().comparisonName;
     auto lowerBound = getLowerBound();
     auto upperBound = getUpperBound();
-    if(!lowerBound || !upperBound || !comp)
+    if(!lowerBound || !upperBound || comp.empty())
         return {};
 
     if((comp == intermediate::COMP_SIGNED_LE || comp == intermediate::COMP_SIGNED_LT ||
@@ -634,6 +634,32 @@ findInitialAssignmentAndSingleStep(const Local* local, const ControlFlowLoop& lo
     return std::make_pair(stepInfo.first, stepOperation);
 }
 
+static const char* switchComparisonOperands(const std::string& comparison)
+{
+    if(comparison == intermediate::COMP_EQ)
+        return intermediate::COMP_EQ;
+    if(comparison == intermediate::COMP_NEQ)
+        return intermediate::COMP_NEQ;
+    if(comparison == intermediate::COMP_UNSIGNED_GE)
+        return intermediate::COMP_UNSIGNED_LE;
+    if(comparison == intermediate::COMP_UNSIGNED_GT)
+        return intermediate::COMP_UNSIGNED_LT;
+    if(comparison == intermediate::COMP_UNSIGNED_LE)
+        return intermediate::COMP_UNSIGNED_GE;
+    if(comparison == intermediate::COMP_UNSIGNED_LT)
+        return intermediate::COMP_UNSIGNED_GT;
+    if(comparison == intermediate::COMP_SIGNED_GE)
+        return intermediate::COMP_SIGNED_LE;
+    if(comparison == intermediate::COMP_SIGNED_GT)
+        return intermediate::COMP_SIGNED_LT;
+    if(comparison == intermediate::COMP_SIGNED_LE)
+        return intermediate::COMP_SIGNED_GE;
+    if(comparison == intermediate::COMP_SIGNED_LT)
+        return intermediate::COMP_SIGNED_GT;
+
+    throw CompilationError(CompilationStep::GENERAL, "Unhandled comparison operation to switch", comparison);
+}
+
 static void addIterationInformation(
     InductionVariable& inductionVar, const ControlFlowLoop& loop, InstructionWalker tailBranch, const CFGNode* tail)
 {
@@ -668,284 +694,55 @@ static void addIterationInformation(
         return;
     }
 
-    // NOTE: There may be two setting of repetition flags!
-    // - One: the flags from the condition, resulting in a boolean value
-    // - Second: the flags from consuming the boolean value to actually select the branch to take
-
-    // simple case, there exists an instruction, where the output of the step is directly used as branch condition
-    const intermediate::IntermediateInstruction* comparisonInstruction =
-        stepOperation->writesLocal(repeatConditionLocal) ? stepOperation : nullptr;
-    auto stepLocal = stepOperation->getOutput().value().local();
-    // whether the comparison does not use the result of the step, but the input induction variable (the result of
-    // the previous step)
-    bool compareInductionVariableBeforeStep = false;
-    if(!comparisonInstruction)
-    {
-        //"default" case, the iteration-variable is compared to something and the result of this comparison is
-        // used to branch e.g. "- = xor <iteration-variable>, <upper-bound> (setf)"
-
-        // find all setting of flags using the output of the induction step as input
-        FastSet<const intermediate::IntermediateInstruction*> inductionFlags;
-        stepLocal->forUsers(LocalUse::Type::READER,
-            [&](const LocalUser* reader) { addForwardFlagCandidates(inductionFlags, *reader, loop); });
-
-        if(inductionFlags.empty())
-        {
-            // in case the comparison is done on the induction variable before the step is applied (e.g. as result
-            // of an LLVM optimization, converting i < 8 to (i-1) < 7)
-            compareInductionVariableBeforeStep = true;
-            local->forUsers(LocalUse::Type::READER,
-                [&](const LocalUser* reader) { addForwardFlagCandidates(inductionFlags, *reader, loop); });
-        }
-
-        if(inductionFlags.empty())
-        {
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Failed to determine repeat condition flag setters for: " << local->to_string()
-                    << logging::endl);
-            return;
-        }
-
-        // search the setting of flags which decides which boolean value is set for the branch condition
-        // NOTE: There may be multiple setters for the repeat condition (e.g. one for true, one for false), but they
-        // depend on the same flags, so we only care about one
-        if(auto repeatCondSetter = tail->key->findWalkerForInstruction(
-               *repeatConditionLocal->getUsers(LocalUse::Type::WRITER).begin(), tailBranch))
-        {
-            if(auto repeatFlagSetter = tail->key->findLastSettingOfFlags(*repeatCondSetter))
-            {
-                // if the setting of flags for the branch condition is in the list of setting of flags derived from
-                // the induction variable, we have a match
-                auto it = inductionFlags.find(repeatFlagSetter->get());
-                if(it != inductionFlags.end())
-                {
-                    comparisonInstruction = *it;
-
-                    // need to adapt the repeat condition here, since the first flags could be inverted to the
-                    // second flags. We have:
-                    // comparison (setf) -> boolean values (ifxx) -> branch condition (setf) -> branch(es) (ifxx)
-                    //                                               ^ we can deduce from  ->   ^ we know from above
-                    // We need to calculate the flags of the comparison that decide repeat/cancel!
-                    if(repeatCondition != COND_ZERO_SET && repeatCondition != COND_ZERO_CLEAR)
-                    {
-                        // for now, we only handle the zero/not zero condition which is default for switching on
-                        // boolean flags
-                        CPPLOG_LAZY(logging::Level::DEBUG,
-                            log << "Non-zero flags are not supported for repeat condition for: " << local->to_string()
-                                << logging::endl);
-                        return;
-                    }
-                    // the flags (of the comparison) that causes the boolean value zero to be set
-                    ConditionCode zeroSetCondition = COND_NEVER;
-                    repeatConditionLocal->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) {
-                        if(writer->precalculate().first == INT_ZERO)
-                            zeroSetCondition = (check(dynamic_cast<const intermediate::ExtendedInstruction*>(writer)) &
-                                &intermediate::ExtendedInstruction::getCondition)
-                                                   .value_or(COND_ALWAYS);
-                    });
-
-                    /*
-                     * Example:
-                     * zeroSetCondition = ifnc, repeatCondition = ifzc
-                     * -> !n -> 0               -> 0 -> cancel
-                     * -> !n -> cancel -> n -> repeat
-                     *
-                     * zeroSetCondition = ifzs, repeatCondition = ifzs
-                     * -> 0 -> 0                -> 0 -> repeat
-                     * -> 0 -> repeat
-                     */
-                    repeatCondition = repeatCondition == COND_ZERO_SET ? zeroSetCondition : zeroSetCondition.invert();
-                }
-            }
-        }
-    }
-
-    if(!comparisonInstruction || repeatCondition == COND_ALWAYS || repeatCondition == COND_NEVER)
+    auto repeatComparison = getComparison(repeatConditionLocal, tail->key->walk());
+    if(!repeatComparison)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Failed to determine comparison instruction or repeat condition for: " << local->to_string()
+            log << "Failed to determine repeat comparison for boolean variable: " << repeatConditionLocal->to_string()
                 << logging::endl);
         return;
     }
 
-    inductionVar.conditionCheckedBeforeStep = compareInductionVariableBeforeStep;
+    auto stepLocal = stepOperation->getOutput().value().local();
+    auto leftOperand = intermediate::getSourceValue(repeatComparison->leftOperand);
+    leftOperand = leftOperand.getConstantValue().value_or(leftOperand);
+    auto rightOperand = intermediate::getSourceValue(repeatComparison->rightOperand);
+    rightOperand = rightOperand.getConstantValue().value_or(rightOperand);
 
-    // unary "comparison" compares implicitly with zero
-    if(comparisonInstruction->getMoveSource())
+    bool isLeftOperand = true;
+    if(leftOperand.checkLocal() == stepLocal || rightOperand.checkLocal() == stepLocal)
     {
-        // e.g. for comparison with zero, it could just set the flags for the value and check for zero
-        if(repeatCondition == COND_ZERO_CLEAR)
-            inductionVar.repeatCondition = RepeatCondition{intermediate::COMP_NEQ, INT_ZERO, repeatConditionLocal};
-        else if(repeatCondition == COND_ZERO_SET)
-            inductionVar.repeatCondition = RepeatCondition{intermediate::COMP_EQ, INT_ZERO, repeatConditionLocal};
-        if(repeatCondition == COND_NEGATIVE_CLEAR)
-            inductionVar.repeatCondition =
-                RepeatCondition{intermediate::COMP_SIGNED_GE, INT_ZERO, repeatConditionLocal};
-        if(repeatCondition == COND_NEGATIVE_SET)
-            inductionVar.repeatCondition =
-                RepeatCondition{intermediate::COMP_SIGNED_LT, INT_ZERO, repeatConditionLocal};
-        // we are done here if this is a simplified comparison to zero
+        isLeftOperand = leftOperand.checkLocal() == stepLocal;
+        inductionVar.conditionCheckedBeforeStep = false;
+    }
+    else if(leftOperand.checkLocal() == local || rightOperand.checkLocal() == local)
+    {
+        isLeftOperand = leftOperand.checkLocal() == local;
+        inductionVar.conditionCheckedBeforeStep = true;
+    }
+    else
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Failed to determine whether the induction or the step local is used in the comparison: "
+                << repeatComparison->to_string() << logging::endl);
         return;
     }
 
-    // check for binary comparison with direct constant
-    Optional<Value> comparisonValue{};
-    int comparisonArgumentIndex = -1;
-    if(comparisonInstruction->getArguments().size() > 1)
+    auto compName = repeatComparison->name;
+    if(!isLeftOperand)
+        // we expect the induction variable (or its derivative) to be on the left side of the comparison, so we need
+        // to switch the operands and the comparison function
+        compName = switchComparisonOperands(compName);
+    if(repeatCondition != COND_ZERO_CLEAR)
     {
-        if(auto arg0 = comparisonInstruction->getArgument(0))
-        {
-            if(arg0->getLiteralValue())
-                comparisonValue = *arg0;
-            else if(auto writer = arg0->getSingleWriter())
-            {
-                if(auto precalc = writer->precalculate().first)
-                    comparisonValue = precalc;
-                else if(writer->getArguments().size() == 1 && writer->readsRegister(REG_UNIFORM))
-                    comparisonValue = *arg0;
-            }
-            if(comparisonValue)
-                comparisonArgumentIndex = 0;
-        }
-        if(!comparisonValue)
-        {
-            if(auto arg1 = comparisonInstruction->getArgument(1))
-            {
-                if(arg1->getLiteralValue())
-                    comparisonValue = *arg1;
-                else if(auto writer = arg1->getSingleWriter())
-                {
-                    if(auto precalc = writer->precalculate().first)
-                        comparisonValue = precalc;
-                    else if(writer->getArguments().size() == 1 && writer->readsRegister(REG_UNIFORM))
-                        comparisonValue = *arg1;
-                }
-                if(comparisonValue)
-                    comparisonArgumentIndex = 1;
-            }
-        }
-    }
-    if(comparisonValue && comparisonArgumentIndex >= 0)
-    {
-        if(auto op = dynamic_cast<const intermediate::Operation*>(comparisonInstruction))
-        {
-            if(op->op == OP_XOR && (repeatCondition == COND_ZERO_CLEAR || repeatCondition == COND_ZERO_SET))
-                // xor induction, constant -> equality comparison
-                inductionVar.repeatCondition =
-                    RepeatCondition{repeatCondition == COND_ZERO_SET ? intermediate::COMP_EQ : intermediate::COMP_NEQ,
-                        *comparisonValue, repeatConditionLocal};
-            else if(has_flag(op->op.flagBehavior, FlagBehavior::CARRY_FIRST_GREATER_SECOND) &&
-                (repeatCondition == COND_CARRY_CLEAR || repeatCondition == COND_CARRY_SET))
-            {
-                bool isFloat = op->op.acceptsFloat;
-                // max induction, constant -> less/greater-than/equals comparison
-                // (f)min/max all set the carry flag if the first argument is greater than the second!
-                const char* comparison = nullptr;
-                if(comparisonArgumentIndex == 0)
-                {
-                    if(repeatCondition == COND_CARRY_SET)
-                        // repeat on "constant is greater than induction variable" -> induction < constant
-                        comparison = isFloat ? intermediate::COMP_ORDERED_LT : intermediate::COMP_SIGNED_LT;
-                    else if(repeatCondition == COND_CARRY_CLEAR)
-                        // repeat on "constant is not greater than induction variable" -> induction >= constant
-                        comparison = isFloat ? intermediate::COMP_ORDERED_GE : intermediate::COMP_SIGNED_GE;
-                }
-                else if(comparisonArgumentIndex == 1)
-                {
-                    if(repeatCondition == COND_CARRY_SET)
-                        // repeat on "induction variable is greater than constant" -> induction > constant
-                        comparison = isFloat ? intermediate::COMP_ORDERED_GT : intermediate::COMP_SIGNED_GT;
-                    else if(repeatCondition == COND_CARRY_CLEAR)
-                        // repeat on "induction variable is not greater than constant" -> induction <= constant
-                        comparison = isFloat ? intermediate::COMP_ORDERED_LE : intermediate::COMP_SIGNED_LE;
-                }
-                if(comparison)
-                    inductionVar.repeatCondition = RepeatCondition{comparison, *comparisonValue, repeatConditionLocal};
-            }
-            // TODO handle some more options/handle generally? Also combine with more complex version below!
-        }
-        // we are done here if this is a simplified comparison to a constant/parameter
+        // TODO need to heed the repeatCondition? E.g. if repeat branch is not on "true", need to invert comparison!
+        CPPLOG_LAZY(logging::Level::WARNING,
+            log << "Repetition branch on this flag is not yet supported: " << repeatCondition.to_string()
+                << logging::endl);
         return;
     }
-
-    // The comparison is usually more than 1 instruction, so handle this below
-    const auto stepValue = (compareInductionVariableBeforeStep ? local : stepLocal)->createReference();
-    if(auto otherArg = comparisonInstruction->findOtherArgument(stepValue))
-    {
-        // one of the inputs of the comparison instruction is the step local (the induction variable with the next
-        // step applied) or the induction local (the induction variable before the next step applied)
-
-        using namespace pattern;
-
-        Optional<Literal> constant;
-        Value constantValue = UNDEFINED_VALUE;
-
-        // Check for unsigned comparison < 2^x
-        Pattern andConstantPattern = {{
-
-            /* bool %icomp.38 = and i32 %inc, i32 %imm */
-            match(*otherArg) = (match(OP_AND), match(stepValue), capture(constantValue)),
-            /* - = xor bool %icomp.38, i32 %inc (setf) */
-            anyValue() = (match(OP_XOR), match(*otherArg), match(stepValue), match(SetFlag::SET_FLAGS))}};
-
-        if((repeatCondition == COND_ZERO_SET || repeatCondition == COND_ZERO_CLEAR) &&
-            !pattern::search(tail->key->walk(), andConstantPattern).isEndOfBlock() &&
-            (constant = constantValue.getConstantValue() & &Value::getLiteralValue) &&
-            isPowerTwo(constant->unsignedInt() + 1u))
-        {
-            // otherOp is an AND with a constant 2^x - 1
-            // (%step & (2^x - 1)) ^ %step -> 0 for %step < 2^x, !0 for %step >= 2^x
-            // %step < 2^x <=> %step <= (2^x - 1), %step >= 2^x <=> %step > (2^x -1)
-            auto comparison =
-                repeatCondition == COND_ZERO_SET ? intermediate::COMP_UNSIGNED_LE : intermediate::COMP_UNSIGNED_GT;
-            inductionVar.repeatCondition =
-                RepeatCondition{comparison, Value(*constant, constantValue.type), repeatConditionLocal};
-            // we are done for this case
-            return;
-        }
-
-        ConditionCode minCond = COND_NEVER;
-
-        // Check for general unsigned comparison
-        Pattern minMaxConstantPattern = {{
-
-            /* register - = xor i32 %inc, i32 %imm (setf ) */
-            anyValue() = (match(OP_XOR), match(stepValue), capture(constantValue), match(SetFlag::SET_FLAGS)),
-            /* i32 %icomp.53 = min i32 %inc, i32 %imm (ifn ) */
-            capture(pattern::V1) = (match(OP_MIN), match(stepValue), capture(constantValue), capture(minCond)),
-            /* i32 %icomp.53 = max i32 %inc, i32 %imm (ifnc ) */
-            capture(pattern::V1) = (match(OP_MAX), match(stepValue), capture(constantValue), captureInverse(minCond)),
-            /* - = xor i32 %icomp.53, i32 %inc (setf ) */
-            anyValue() = (match(OP_XOR), capture(pattern::V1), match(stepValue), match(SetFlag::SET_FLAGS))}};
-
-        if((repeatCondition == COND_ZERO_SET || repeatCondition == COND_ZERO_CLEAR) &&
-            !search(tail->key->walk(), minMaxConstantPattern).isEndOfBlock() && minCond != COND_NEVER &&
-            constantValue.getSingleWriter())
-        {
-            // XXX could improve:
-            // does not work for step being first argument on min/max, e.g. for gt comparison
-            if(auto realConstant = constantValue.getSingleWriter()->precalculate(1).first)
-            {
-                const char* comparison = nullptr;
-                // %step ^ min(%x, %step) -> 0 for %step <= %x <- special either MSB set case
-                // %step ^ max(%x, %step) -> 0 for %step >= %x <- default case
-                // %step ^ max(%x, %step) -> !0 for %step < %x
-                if(minCond == COND_NEGATIVE_SET)
-                    comparison = repeatCondition == COND_ZERO_CLEAR ? intermediate::COMP_UNSIGNED_LT :
-                                                                      intermediate::COMP_UNSIGNED_GE;
-
-                if(comparison)
-                {
-                    inductionVar.repeatCondition = RepeatCondition{comparison, *realConstant, repeatConditionLocal};
-                    // we are done for this case
-                    return;
-                }
-            }
-        }
-    }
-
-    CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Failed to determine repeat condition for: " << local->to_string() << logging::endl);
+    inductionVar.repeatCondition =
+        RepeatCondition{compName, isLeftOperand ? rightOperand : leftOperand, repeatConditionLocal};
 }
 
 Optional<InductionVariable> ControlFlowLoop::extractInductionVariable(
