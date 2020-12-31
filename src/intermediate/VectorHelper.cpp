@@ -1017,8 +1017,10 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
         auto newTmpResult = method.addNewLocal(dest.type.toVectorType(halfSize), "%vector_fold");
 
         it = insertVectorRotation(it, tmpResult, Value(SmallImmediate(halfSize), TYPE_INT8), tmpUp, Direction::DOWN);
-        if(auto rot = it.copy().previousInBlock().get<VectorRotation>())
-            rot->addDecorations(decorations);
+        auto decoIt = it.copy().previousInBlock();
+        // add decoration to the vector rotation inserted just now
+        if(decoIt.has() && decoIt->getVectorRotation())
+            decoIt->addDecorations(decorations);
 
         it.emplace(new Operation(foldingOp, newTmpResult, tmpResult, tmpUp));
         it->addDecorations(decorations);

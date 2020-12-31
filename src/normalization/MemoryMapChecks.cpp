@@ -227,7 +227,7 @@ static Optional<FastSet<const IntermediateInstruction*>> checkAllWritersArePhiNo
                 allWritersArePhiNodes = false;
             allWritersAreSelections = false;
         }
-        else if(dynamic_cast<const MoveOperation*>(writer) && writer->hasConditionalExecution())
+        else if(writer->getMoveSource() && writer->hasConditionalExecution())
         {
             // TODO more precise check? E.g. for same setting of flag?
             if(writer->assertArgument(0).checkLocal())
@@ -787,7 +787,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                     log << "Found reading of 64-bit integer bit-cast from struct pointer: " << memInstr->to_string()
                         << logging::endl);
                 bool canBeSplitUp = true;
-                FastSet<const MoveOperation*> movesToRewrite;
+                FastSet<const IntermediateInstruction*> movesToRewrite;
                 FastSet<const Operation*> shiftsToRewrite;
                 FastSet<const MemoryInstruction*> storesToRewrite;
 
@@ -795,18 +795,18 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                 // copy the whole value)
                 for(auto user : memInstr->getDestination().local()->getUsers(LocalUse::Type::READER))
                 {
-                    if(auto move = dynamic_cast<const MoveOperation*>(user))
+                    if(user->getMoveSource())
                     {
                         // check for truncation from 64 to 32 bits
-                        if(move->getOutput()->type.getScalarBitCount() != 32)
+                        if(user->getOutput()->type.getScalarBitCount() != 32)
                         {
                             CPPLOG_LAZY(logging::Level::DEBUG,
-                                log << "Unsupported move, aborting rewrite: " << move->to_string() << logging::endl);
+                                log << "Unsupported move, aborting rewrite: " << user->to_string() << logging::endl);
                             canBeSplitUp = false;
                             break;
                         }
                         // moves which truncate the 64 bit integer to 32 bit are accepted
-                        movesToRewrite.emplace(move);
+                        movesToRewrite.emplace(user);
                     }
                     else if(auto memAccess = dynamic_cast<const MemoryInstruction*>(user))
                     {
@@ -918,7 +918,8 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
 
                     for(auto move : movesToRewrite)
                         // replace all truncations with usage of lower word
-                        const_cast<MoveOperation*>(move)->replaceValue(origLocal, lowerLocal, LocalUse::Type::READER);
+                        const_cast<IntermediateInstruction*>(move)->replaceValue(
+                            origLocal, lowerLocal, LocalUse::Type::READER);
 
                     for(auto shift : shiftsToRewrite)
                     {

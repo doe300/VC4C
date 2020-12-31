@@ -304,7 +304,8 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
     {
         if(auto loc = arg.checkLocal())
         {
-            if(!loc->is<Parameter>())
+            if(!loc->is<Parameter>() &&
+                (check(loc->getSingleWriter()) & &IntermediateInstruction::getMoveSource) != UNIFORM_REGISTER)
                 scheduleForVectorization(loc, openInstructions, loop, true, vectorWidth);
         }
     }
@@ -629,7 +630,7 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
             vectorizeInstruction(it->get(), method, openInstructions, vectorizationFactor, loop, instIt->second);
             ++numVectorized;
         }
-        else if(inst->isSimpleMove() && inst->checkOutputLocal() && !inst->hasSideEffects())
+        else if(inst->isSimpleMove() && inst->checkOutputLocal())
         {
             // follow all simple moves to other locals (to find the instruction we really care about)
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -800,6 +801,10 @@ Optional<AccumulationInfo> determineAccumulation(const Local* loc, const Control
                 << "' outside of loop to be folded, aborting" << logging::endl);
         return {};
     }
+
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Local '" << loc->to_string() << "' is accumulated with operation '" << op->op.name
+            << "' in: " << vc4c::to_string<const LocalUser*>(toBeFolded) << logging::endl);
 
     return AccumulationInfo{loc, op->op, std::move(toBeFolded)};
 }

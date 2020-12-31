@@ -453,7 +453,7 @@ void normalization::lowerLongOperation(
             isDummyOutput = true;
         }
 
-        if(!move->hasSideEffects() && it.get<intermediate::VectorRotation>() && src)
+        if(!move->hasSideEffects() && it->getVectorRotation() && src)
         {
             auto rot = it->getVectorRotation();
             // split into 2 rotations

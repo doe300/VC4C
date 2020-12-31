@@ -109,7 +109,7 @@ namespace test_data
     {
         std::vector<R> result;
         result.reserve(arg0.size());
-        for(std::size_t i = 0; i < arg0.size(); i += GroupSize)
+        for(std::size_t i = 0; (i + GroupSize) <= arg0.size(); i += GroupSize)
         {
             auto tmp = func(arg0.data() + i, GroupSize);
             result.insert(result.end(), tmp.begin(), tmp.end());
@@ -124,7 +124,7 @@ namespace test_data
         auto numElements = std::min(arg0.size(), arg1.size());
         std::vector<R> result;
         result.reserve(numElements);
-        for(std::size_t i = 0; i < numElements; i += GroupSize)
+        for(std::size_t i = 0; (i + GroupSize) <= numElements; i += GroupSize)
         {
             auto tmp = func(arg0.data() + i, arg1.data() + i, GroupSize);
             result.insert(result.end(), tmp.begin(), tmp.end());

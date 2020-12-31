@@ -18,6 +18,7 @@
 using namespace vc4c;
 using namespace vc4c::analysis;
 
+LCOV_EXCL_START
 std::string InductionVariable::to_string() const
 {
     std::string condString = "(?)";
@@ -30,6 +31,7 @@ std::string InductionVariable::to_string() const
     return local->to_string() + " from " + initialAssignment->to_string() + ", step " + inductionStep->to_string() +
         ", while " + condString;
 }
+LCOV_EXCL_STOP
 
 Optional<Literal> InductionVariable::getLowerBound() const
 {
@@ -493,12 +495,14 @@ static void addForwardCandidates(SortedSet<const intermediate::IntermediateInstr
         return;
     // if the instruction is a move, recursively check all readers of the instruction's result that are inside of the
     // loop
-    if(auto move = dynamic_cast<const intermediate::MoveOperation*>(&inst))
+    if(inst.getVectorRotation())
+        return;
+    if(inst.getMoveSource())
     {
-        if(!move->isSimpleMove() || move->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
+        if(!inst.isSimpleMove() || inst.hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
             // allow phi-node only if it is directly the step operation candidate
             return;
-        if(auto loc = move->getOutput()->checkLocal())
+        if(auto loc = inst.checkOutputLocal())
         {
             loc->forUsers(LocalUse::Type::READER, [&](const LocalUser* reader) {
                 if(loop.findInLoop(reader))
@@ -512,49 +516,32 @@ static void addForwardCandidates(SortedSet<const intermediate::IntermediateInstr
 }
 
 static void addBackwardCandidates(SortedSet<const intermediate::IntermediateInstruction*>& candidates,
-    const intermediate::IntermediateInstruction& inst, const ControlFlowLoop& loop)
+    const intermediate::IntermediateInstruction& inst, const ControlFlowLoop& loop,
+    const tools::SmallSortedPointerSet<const Local*>& localsStack)
 {
+    if(inst.getVectorRotation())
+        return;
     // if the instruction is a move with a single writer, recursively check the writer of the source
-    if(auto move = dynamic_cast<const intermediate::MoveOperation*>(&inst))
+    if(auto moveSource = inst.getMoveSource())
     {
-        if(!move->isSimpleMove())
+        if(!inst.isSimpleMove())
             return;
-        if(auto loc = move->getSource().checkLocal())
+        auto loc = moveSource->checkLocal();
+        if(loc && localsStack.find(loc) == localsStack.end())
         {
+            // keep track of the currently processed locals to not run into a stack overflow for e.g. phi-nodes where
+            // two locals are always moved one to the other and vice versa.
+            tools::SmallSortedPointerSet<const Local*> subStack(localsStack);
+            subStack.emplace(loc);
             loc->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) {
                 if(loop.findInLoop(writer))
-                    addBackwardCandidates(candidates, *writer, loop);
+                    addBackwardCandidates(candidates, *writer, loop, subStack);
             });
         }
     }
     // if the instruction calculates something, it is a candidate
     if(auto op = dynamic_cast<const intermediate::Operation*>(&inst))
         candidates.emplace(op);
-}
-
-static void addForwardFlagCandidates(FastSet<const intermediate::IntermediateInstruction*>& candidates,
-    const intermediate::IntermediateInstruction& inst, const ControlFlowLoop& loop)
-{
-    // if the instruction is a phi-node, abort
-    if(inst.hasDecoration(intermediate::InstructionDecorations::PHI_NODE) || inst.hasConditionalExecution())
-        return;
-    // if the instruction sets the flags, it is a candidate
-    if(inst.doesSetFlag())
-        candidates.emplace(&inst);
-    // if the instruction is a move, recursively check all readers of the instruction's result that are inside of the
-    // loop
-    if(auto move = dynamic_cast<const intermediate::MoveOperation*>(&inst))
-    {
-        if(dynamic_cast<const intermediate::IntermediateInstruction*>(move))
-            return;
-        if(auto loc = move->getOutput()->checkLocal())
-        {
-            loc->forUsers(LocalUse::Type::READER, [&](const LocalUser* reader) {
-                if(loop.findInLoop(reader))
-                    addForwardFlagCandidates(candidates, *reader, loop);
-            });
-        }
-    }
 }
 
 static std::pair<const intermediate::IntermediateInstruction*,
@@ -577,7 +564,8 @@ findStepCandidates(const Local* local, const ControlFlowLoop& loop)
             // check for the write inside or outside of the loop
             if(it)
                 // inside of loop - add to list of step function candidates
-                addBackwardCandidates(backwardStepCandidates, *pair.first, loop);
+                addBackwardCandidates(
+                    backwardStepCandidates, *pair.first, loop, tools::SmallSortedPointerSet<const Local*>{});
             else
                 // outside of loop - writes initial value
                 initialAssignment = pair.first;
@@ -896,7 +884,7 @@ std::string LoopInclusionTreeNodeBase::to_string() const
 }
 LCOV_EXCL_STOP
 
-std::unique_ptr<LoopInclusionTree> analysis::createLoopInclusingTree(const FastAccessList<ControlFlowLoop>& loops)
+std::unique_ptr<LoopInclusionTree> analysis::createLoopInclusionTree(const FastAccessList<ControlFlowLoop>& loops)
 {
     std::unique_ptr<LoopInclusionTree> inclusionTree(new LoopInclusionTree());
     for(auto& loop1 : loops)

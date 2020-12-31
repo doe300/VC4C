@@ -362,8 +362,8 @@ static Optional<MemoryAccessRange> determineAccessRange(
         }
     }
     auto memInst = memIt.get<intermediate::MemoryInstruction>();
-    if(memInst && dynamic_cast<const intermediate::MoveOperation*>(&inst) && inst.assertArgument(0).checkLocal() &&
-        (inst.assertArgument(0).local()->is<Parameter>() || inst.assertArgument(0).local()->residesInMemory()))
+    auto moveSourceLocal = inst.getMoveSource() & &Value::checkLocal;
+    if(memInst && moveSourceLocal && (moveSourceLocal->is<Parameter>() || moveSourceLocal->residesInMemory()))
     {
         // direct write of address (e.g. all work items access the same location)
         MemoryAccessRange range;

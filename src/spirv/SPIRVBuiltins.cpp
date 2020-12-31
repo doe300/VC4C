@@ -60,9 +60,9 @@ static Optional<Value> getDimensionalArgument(const intermediate::IntrinsicOpera
         FastSet<uint8_t> rotationOffsets;
         for(const auto& reader : out->getUsers(LocalUse::Type::READER))
         {
-            if(auto rot = dynamic_cast<const intermediate::VectorRotation*>(reader))
+            if(auto rot = reader->getVectorRotation())
             {
-                auto offset = rot->getOffset();
+                auto offset = rot->offset;
                 rotationOffsets.emplace(offset.getRotationOffset().value_or(offset));
             }
             else if(reader->isSimpleMove() && reader->getOutput() && reader->getOutput()->type.isScalarType())

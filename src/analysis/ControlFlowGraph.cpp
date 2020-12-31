@@ -99,12 +99,7 @@ CFGNode& ControlFlowGraph::getEndOfControlFlow()
     for(auto& pair : nodes)
     {
         CFGNode& node = pair.second;
-        bool anyOutgoingEdges = false;
-        node.forAllOutgoingEdges([&anyOutgoingEdges](const CFGNode&, const CFGEdge&) -> bool {
-            anyOutgoingEdges = true;
-            return false;
-        });
-        if(!anyOutgoingEdges)
+        if(node.isSink())
         {
             if(candidate != nullptr)
             {

@@ -256,7 +256,7 @@ namespace vc4c
          * |D|   |B+-->+C|
          * +-+   +-+   +-+
          */
-        std::unique_ptr<LoopInclusionTree> createLoopInclusingTree(const FastAccessList<ControlFlowLoop>& loops);
+        std::unique_ptr<LoopInclusionTree> createLoopInclusionTree(const FastAccessList<ControlFlowLoop>& loops);
     } // namespace analysis
 } // namespace vc4c
 

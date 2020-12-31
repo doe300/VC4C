@@ -2115,6 +2115,14 @@ void TestInstructions::testInstructionEquality()
     }
 
     {
+        intermediate::CodeAddress inst(method.addNewLocal(TYPE_CODE_ADDRESS), method.addNewLocal(TYPE_LABEL).local());
+        op2.reset(inst.copyFor(method, "", mapping));
+        TEST_ASSERT_EQUALS(inst, *op2)
+        inst.setArgument(0, method.addNewLocal(TYPE_LABEL));
+        TEST_ASSERT(inst != *op2)
+    }
+
+    {
         intermediate::Nop inst(intermediate::DelayType::WAIT_SFU);
         op2.reset(inst.copyFor(method, "", mapping));
         TEST_ASSERT_EQUALS(inst, *op2)

@@ -292,7 +292,7 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
     auto loops = cfg.findLoops(true, true, dominatorTree.get());
 
     // 3. Generate inclusion relation of loops as trees
-    auto inclusionTree = createLoopInclusingTree(loops);
+    auto inclusionTree = createLoopInclusionTree(loops);
 
     // 4. Move constant load operations from root of trees
     std::map<LoopInclusionTreeNode*, std::vector<InstructionWalker>> instMapper;

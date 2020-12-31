@@ -98,7 +98,7 @@ void TestAnalyses::testControlFlowGraph()
         precompileAndParse(module, ss, "");
         normalize(module);
 
-        TEST_ASSERT_EQUALS(1, module.getKernels().size());
+        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
         auto kernel = module.getKernels()[0];
         auto& cfg = kernel->getCFG();
         auto numNodes = cfg.getNodes().size();
@@ -109,7 +109,7 @@ void TestAnalyses::testControlFlowGraph()
         // An end of the CFG
         TEST_ASSERT_EQUALS(BasicBlock::LAST_BLOCK, cfg.getEndOfControlFlow().key->getLabel()->getLabel()->name);
         // 10 nodes
-        TEST_ASSERT_EQUALS(10, numNodes);
+        TEST_ASSERT_EQUALS(10u, numNodes);
         FastSet<const CFGEdge*> backEdges;
         FastSet<const CFGEdge*> implicitEdges;
         FastSet<const CFGEdge*> workGroupEdges;
@@ -146,7 +146,7 @@ void TestAnalyses::testControlFlowGraph()
         // An end of the CFG
         TEST_ASSERT_EQUALS(BasicBlock::LAST_BLOCK, cfg.getEndOfControlFlow().key->getLabel()->getLabel()->name);
         // 10 nodes (some added for the work-group loop, some merged)
-        TEST_ASSERT_EQUALS(10, numNodes);
+        TEST_ASSERT_EQUALS(10u, numNodes);
         backEdges.clear();
         implicitEdges.clear();
         workGroupEdges.clear();
@@ -177,7 +177,7 @@ void TestAnalyses::testControlFlowGraph()
         precompileAndParse(module, ss, "");
         normalize(module);
 
-        TEST_ASSERT_EQUALS(1, module.getKernels().size());
+        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
         auto kernel = module.getKernels()[0];
         auto& cfg = kernel->getCFG();
         auto numNodes = cfg.getNodes().size();
@@ -188,7 +188,7 @@ void TestAnalyses::testControlFlowGraph()
         // An end of the CFG
         TEST_ASSERT_EQUALS(BasicBlock::LAST_BLOCK, cfg.getEndOfControlFlow().key->getLabel()->getLabel()->name);
         // 41 nodes
-        TEST_ASSERT_EQUALS(41, numNodes);
+        TEST_ASSERT_EQUALS(41u, numNodes);
         FastSet<const CFGEdge*> backEdges;
         FastSet<const CFGEdge*> implicitEdges;
         FastSet<const CFGEdge*> workGroupEdges;
@@ -225,7 +225,7 @@ void TestAnalyses::testControlFlowGraph()
         // An end of the CFG
         TEST_ASSERT_EQUALS(BasicBlock::LAST_BLOCK, cfg.getEndOfControlFlow().key->getLabel()->getLabel()->name);
         // 41 nodes (some added for the work-group loop, some merged)
-        TEST_ASSERT_EQUALS(41, numNodes);
+        TEST_ASSERT_EQUALS(41u, numNodes);
         backEdges.clear();
         implicitEdges.clear();
         workGroupEdges.clear();
@@ -265,7 +265,7 @@ void TestAnalyses::testControlFlowLoops()
         precompileAndParse(module, ss, "");
         normalize(module);
 
-        TEST_ASSERT_EQUALS(1, module.getKernels().size());
+        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
         auto kernel = module.getKernels()[0];
         auto loops = kernel->getCFG().findLoops(true, false);
         // 2 loops (2 for-loops)
@@ -314,7 +314,7 @@ void TestAnalyses::testControlFlowLoops()
         TEST_ASSERT_EQUALS(1u, innerLoop.size());
         TEST_ASSERT_EQUALS(innerLoop.getHeader(), innerLoop.getTail());
 
-        auto inclusionTree = createLoopInclusingTree(loops);
+        auto inclusionTree = createLoopInclusionTree(loops);
         TEST_ASSERT_EQUALS(2u, inclusionTree->getNodes().size());
         TEST_ASSERT_EQUALS(
             0u, inclusionTree->assertNode(&(firstLoopIsOuter ? loops.front() : loops.back())).getLongestPathToRoot());
@@ -330,10 +330,30 @@ void TestAnalyses::testControlFlowLoops()
         {
             auto inductionVars = loop.findInductionVariables(*dataDependencies, true);
             TEST_ASSERT_EQUALS(1u, inductionVars.size());
-            TEST_ASSERT(!!inductionVars[0].local);
-            TEST_ASSERT(!!inductionVars[0].initialAssignment);
-            TEST_ASSERT(!!inductionVars[0].inductionStep);
-            // TODO TEST_ASSERT(!!inductionVars[0].repeatCondition);
+            auto& inductionVar = inductionVars[0];
+            TEST_ASSERT(!!inductionVar.local);
+            TEST_ASSERT(!!inductionVar.initialAssignment);
+            TEST_ASSERT(!!inductionVar.inductionStep);
+            TEST_ASSERT(!!inductionVar.repeatCondition);
+            if(&loop == &innerLoop)
+            {
+                // for the inner loop we can't determine the range or iteration count, since the upper limit is
+                // non-constant
+                TEST_ASSERT_EQUALS(0_lit, inductionVar.getLowerBound());
+                TEST_ASSERT(!inductionVar.getUpperBound());
+                TEST_ASSERT(!inductionVar.getRange());
+                TEST_ASSERT(!inductionVar.getIterationCount());
+            }
+            else
+            {
+                // for the outer loop we should be able to determine the iteration count
+                TEST_ASSERT_EQUALS(0_lit, inductionVar.getLowerBound());
+                // The upper bound might be 63 or 64 (with <= or < comparison respectively), depending on the LLVM
+                // version
+                TEST_ASSERT(!!inductionVar.getUpperBound());
+                TEST_ASSERT(!!inductionVar.getRange());
+                TEST_ASSERT_EQUALS(64u, inductionVar.getIterationCount().value());
+            }
 
             // there are some constant address offset/index calculations
             auto invariants = loop.findLoopInvariants();
@@ -342,7 +362,7 @@ void TestAnalyses::testControlFlowLoops()
             // neither the initial assignment (is outside of the loop) nor the induction step (depends on induction
             // variable) are invariant
             TEST_ASSERT(std::find_if(invariants.begin(), invariants.end(), [&](InstructionWalker it) -> bool {
-                return it.get() == inductionVars[0].initialAssignment || it.get() == inductionVars[0].inductionStep;
+                return it.get() == inductionVar.initialAssignment || it.get() == inductionVar.inductionStep;
             }) == invariants.end());
 
             // any constant instruction in the loop is a loop-invariant instruction
@@ -362,12 +382,21 @@ void TestAnalyses::testControlFlowLoops()
         optimize(module);
 
         loops = kernel->getCFG().findLoops(true, false);
-        // 5 loops (2 for-loops, 3 for the work-group loop)
-        TEST_ASSERT_EQUALS(5, loops.size());
-        // the outer loops contains the inner, so we only have 1 innermost loop
+        // 6 loops (2 for-loops, 3 for the work-group loop, 1 for work-group barrier)
+        TEST_ASSERT_EQUALS(6u, loops.size());
+        // the outer loops contain the inner, so we only have 2 innermost loops
         innerLoops = kernel->getCFG().findLoops(false);
-        TEST_ASSERT_EQUALS(1u, innerLoops.size());
-        TEST_ASSERT_EQUALS(1u, innerLoops.begin()->size());
+        TEST_ASSERT_EQUALS(2u, innerLoops.size());
+        // work-group loop has 2 blocks, inner actual loop has 1, the order is nondeterministic
+        if(innerLoops.front().size() == 1)
+        {
+            TEST_ASSERT_EQUALS(2u, innerLoops.back().size());
+        }
+        else
+        {
+            TEST_ASSERT_EQUALS(2u, innerLoops.front().size());
+            TEST_ASSERT_EQUALS(1u, innerLoops.back().size());
+        }
 
         // sort by descending size, so we can easier handle includes
         std::sort(loops.begin(), loops.end(),
@@ -376,7 +405,7 @@ void TestAnalyses::testControlFlowLoops()
         {
             for(auto it2 = it1 + 1; it2 != loops.end(); ++it2)
             {
-                TEST_ASSERT(it1->includes(*it2));
+                TEST_ASSERT(!it1->isWorkGroupLoop() || it1->includes(*it2));
                 TEST_ASSERT(!it2->includes(*it1));
             }
         }
@@ -385,13 +414,13 @@ void TestAnalyses::testControlFlowLoops()
         for(std::size_t i = 0; i < loops.size(); ++i)
         {
             auto& loop = loops[i];
-            auto numPredecessors = 1;
+            auto numPredecessors = 1u;
             // the inner work-group loops have multiple predecessors (the start of CFG and the tails of the outer
             // work-group loops)
             if(i == 1) // second (y) work-group loop, has first (z) work-group loop as predecessor
-                numPredecessors = 2;
+                numPredecessors = 2u;
             if(i == 2) // third (x) work-group loop, as other two (z, y) work-group loops as predecessors
-                numPredecessors = 3;
+                numPredecessors = 3u;
 
             TEST_ASSERT_EQUALS(numPredecessors, loop.findPredecessors().size());
             TEST_ASSERT_EQUALS(numPredecessors == 1, !!loop.findPredecessor());
@@ -428,18 +457,15 @@ void TestAnalyses::testControlFlowLoops()
             }
         }
 
-        inclusionTree = createLoopInclusingTree(loops);
-        TEST_ASSERT_EQUALS(5u, inclusionTree->getNodes().size());
-        // since we sorted the loops in order of their inclusion, the longest path is their index
+        inclusionTree = createLoopInclusionTree(loops);
+        TEST_ASSERT_EQUALS(6u, inclusionTree->getNodes().size());
+        // since we sorted the loops in order of their inclusion, the longest path smaller than their index
         auto& base = inclusionTree->assertNode(&loops.front());
         for(unsigned i = 0; i < loops.size(); ++i)
         {
             auto& node = inclusionTree->assertNode(&loops[i]);
-            TEST_ASSERT_EQUALS(i, node.getLongestPathToRoot());
+            TEST_ASSERT(i >= node.getLongestPathToRoot());
             TEST_ASSERT_EQUALS(&base, node.findRoot(12));
-
-            if(i > 2)
-                TEST_ASSERT_EQUALS(&inclusionTree->assertNode(&loops[i - 2]), node.findRoot(2));
         }
 
         // both inner loops are simple enough so we should be able to detect the induction variable
@@ -449,12 +475,35 @@ void TestAnalyses::testControlFlowLoops()
         {
             if(loop.isWorkGroupLoop())
                 continue;
+            if(loop.size() == 2)
+                // TODO we can't yet determine the comparison for the barrier loop
+                continue;
             auto inductionVars = loop.findInductionVariables(*dataDependencies, true);
-            TEST_ASSERT_EQUALS(1u, inductionVars.size());
-            TEST_ASSERT(!!inductionVars[0].local);
-            TEST_ASSERT(!!inductionVars[0].initialAssignment);
-            TEST_ASSERT(!!inductionVars[0].inductionStep);
-            // TODO TEST_ASSERT(!!inductionVars[0].repeatCondition);
+            if(inductionVars.size() != 1)
+                continue;
+            auto& inductionVar = inductionVars[0];
+            TEST_ASSERT(!!inductionVar.local);
+            TEST_ASSERT(!!inductionVar.initialAssignment);
+            TEST_ASSERT(!!inductionVar.inductionStep);
+            if(loop.size() == 1)
+            {
+                // for the inner loop we can't determine the range or iteration count, since the upper limit is
+                // non-constant
+                TEST_ASSERT_EQUALS(0_lit, inductionVar.getLowerBound());
+                TEST_ASSERT(!inductionVar.getUpperBound());
+                TEST_ASSERT(!inductionVar.getRange());
+                TEST_ASSERT(!inductionVar.getIterationCount());
+            }
+            else
+            {
+                // for the outer loop we should be able to determine the iteration count
+                TEST_ASSERT_EQUALS(0_lit, inductionVar.getLowerBound());
+                // The upper bound might be 63 or 64 (with <= or < comparison respectively), depending on the LLVM
+                // version
+                TEST_ASSERT(!!inductionVar.getUpperBound());
+                TEST_ASSERT(!!inductionVar.getRange());
+                TEST_ASSERT_EQUALS(64u, inductionVar.getIterationCount().value());
+            }
 
             // there are some constant address offset/index calculations
             auto invariants = loop.findLoopInvariants();
@@ -463,7 +512,7 @@ void TestAnalyses::testControlFlowLoops()
             // neither the initial assignment (is outside of the loop) nor the induction step (depends on induction
             // variable) are invariant
             TEST_ASSERT(std::find_if(invariants.begin(), invariants.end(), [&](InstructionWalker it) -> bool {
-                return it.get() == inductionVars[0].initialAssignment || it.get() == inductionVars[0].inductionStep;
+                return it.get() == inductionVar.initialAssignment || it.get() == inductionVar.inductionStep;
             }) == invariants.end());
 
             // any constant instruction in the loop is a loop-invariant instruction
@@ -487,7 +536,7 @@ void TestAnalyses::testControlFlowLoops()
         precompileAndParse(module, ss, "");
         normalize(module);
 
-        TEST_ASSERT_EQUALS(1, module.getKernels().size());
+        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
         auto kernel = module.getKernels()[0];
         auto loops = kernel->getCFG().findLoops(true, false);
         // 2 loops (2 for-loops)
@@ -520,7 +569,7 @@ void TestAnalyses::testControlFlowLoops()
         TEST_ASSERT(loops.back() != loops.front());
         TEST_ASSERT(loops.front() != loops.back());
 
-        auto inclusionTree = createLoopInclusingTree(loops);
+        auto inclusionTree = createLoopInclusionTree(loops);
         TEST_ASSERT_EQUALS(2u, inclusionTree->getNodes().size());
         TEST_ASSERT_EQUALS(0u, inclusionTree->assertNode(&loops.front()).getLongestPathToRoot());
         TEST_ASSERT_EQUALS(0u, inclusionTree->assertNode(&loops.back()).getLongestPathToRoot());
@@ -529,11 +578,11 @@ void TestAnalyses::testControlFlowLoops()
         optimize(module);
 
         loops = kernel->getCFG().findLoops(true, false);
-        // 5 loops (2 for-loops, 3 for the work-group loop)
-        TEST_ASSERT_EQUALS(5, loops.size());
-        // the 2 non work-group loops do not contain each other
+        // 6 loops (2 for-loops, 3 for the work-group loop, 1 for work-group synchronization)
+        TEST_ASSERT_EQUALS(6u, loops.size());
+        // the 3 non work-group loops do not contain each other
         innerLoops = kernel->getCFG().findLoops(false);
-        TEST_ASSERT_EQUALS(2u, innerLoops.size());
+        TEST_ASSERT_EQUALS(3u, innerLoops.size());
 
         // sort by descending size, so we can easier handle includes
         std::sort(loops.begin(), loops.end(),
@@ -558,13 +607,13 @@ void TestAnalyses::testControlFlowLoops()
         for(std::size_t i = 0; i < loops.size(); ++i)
         {
             auto& loop = loops[i];
-            auto numPredecessors = 1;
+            auto numPredecessors = 1u;
             // the inner work-group loops have multiple predecessors (the start of CFG and the tails of the outer
             // work-group loops)
             if(i == 1) // second (y) work-group loop, has first (z) work-group loop as predecessor
-                numPredecessors = 2;
+                numPredecessors = 2u;
             if(i == 2) // third (x) work-group loop, as other two (z, y) work-group loops as predecessors
-                numPredecessors = 3;
+                numPredecessors = 3u;
 
             TEST_ASSERT_EQUALS(numPredecessors, loop.findPredecessors().size());
             TEST_ASSERT_EQUALS(numPredecessors == 1, !!loop.findPredecessor());
@@ -602,14 +651,14 @@ void TestAnalyses::testControlFlowLoops()
             }
         }
 
-        inclusionTree = createLoopInclusingTree(loops);
-        TEST_ASSERT_EQUALS(5u, inclusionTree->getNodes().size());
+        inclusionTree = createLoopInclusionTree(loops);
+        TEST_ASSERT_EQUALS(6u, inclusionTree->getNodes().size());
         auto& base = inclusionTree->assertNode(&loops.front());
         for(unsigned i = 0; i < loops.size(); ++i)
         {
             auto& node = inclusionTree->assertNode(&loops[i]);
             auto longestPath =
-                loops[i].isWorkGroupLoop() ? i : 3u /* both for-loops are contained in the 3 work-group loops */;
+                loops[i].isWorkGroupLoop() ? i : 3u /* all for-loops are contained in the 3 work-group loops */;
             TEST_ASSERT_EQUALS(longestPath, node.getLongestPathToRoot());
             TEST_ASSERT_EQUALS(&base, node.findRoot(12));
         }
@@ -625,7 +674,7 @@ void TestAnalyses::testDataDependency()
         precompileAndParse(module, ss, "");
         normalize(module);
 
-        TEST_ASSERT_EQUALS(1, module.getKernels().size());
+        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
         auto kernel = module.getKernels()[0];
         auto& cfg = kernel->getCFG();
 
@@ -634,7 +683,7 @@ void TestAnalyses::testDataDependency()
 
         // The start of control flow has no incoming dependencies
         auto& start = dataDependencies->assertNode(cfg.getStartOfControlFlow().key);
-        TEST_ASSERT_EQUALS(0, start.getAllIncomingDependencies().size());
+        TEST_ASSERT_EQUALS(0u, start.getAllIncomingDependencies().size());
         TEST_ASSERT(!start.getAllOutgoingDependencies().empty());
         // The end of control flow has no incoming or outgoing dependencies, so it has no dependency node at all
         TEST_ASSERT_EQUALS(nullptr, dataDependencies->findNode(cfg.getEndOfControlFlow().key));
@@ -697,7 +746,7 @@ void TestAnalyses::testDataDependency()
         precompileAndParse(module, ss, "");
         normalize(module);
 
-        TEST_ASSERT_EQUALS(1, module.getKernels().size());
+        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
         auto kernel = module.getKernels()[0];
         auto& cfg = kernel->getCFG();
 
@@ -706,7 +755,7 @@ void TestAnalyses::testDataDependency()
 
         // The start of control flow has no incoming dependencies
         auto& start = dataDependencies->assertNode(cfg.getStartOfControlFlow().key);
-        TEST_ASSERT_EQUALS(0, start.getAllIncomingDependencies().size());
+        TEST_ASSERT_EQUALS(0u, start.getAllIncomingDependencies().size());
         TEST_ASSERT(!start.getAllOutgoingDependencies().empty());
         // The end of control flow has no incoming or outgoing dependencies, so it has no dependency node at all
         TEST_ASSERT_EQUALS(nullptr, dataDependencies->findNode(cfg.getEndOfControlFlow().key));
@@ -790,7 +839,7 @@ void TestAnalyses::testDominatorTree()
         precompileAndParse(module, ss, "");
         normalize(module);
 
-        TEST_ASSERT_EQUALS(1, module.getKernels().size());
+        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
         auto kernel = module.getKernels()[0];
         auto& cfg = kernel->getCFG();
         auto numNodes = cfg.getNodes().size();
@@ -799,21 +848,43 @@ void TestAnalyses::testDominatorTree()
         TEST_ASSERT(!!tree);
         TEST_ASSERT_EQUALS(numNodes, tree->getNodes().size());
 
-        // // the start of the control flow dominates all nodes (except itself)
-        auto& start = tree->assertNode(&cfg.getStartOfControlFlow());
-        TEST_ASSERT_EQUALS(0, start.getDominators().size());
-        TEST_ASSERT_EQUALS(numNodes - 1, start.getDominatedNodes().size());
+        // the start of the control flow dominates all nodes (except itself)
+        auto* start = &tree->assertNode(&cfg.getStartOfControlFlow());
+        TEST_ASSERT_EQUALS(0u, start->getDominators().size());
+        TEST_ASSERT_EQUALS(numNodes - 1, start->getDominatedNodes().size());
         // the end of the control flow dominates no nodes
-        auto& end = tree->assertNode(&cfg.getEndOfControlFlow());
-        TEST_ASSERT(end.getDominators().size() > 4);
-        TEST_ASSERT_EQUALS(0, end.getDominatedNodes().size());
+        auto* end = &tree->assertNode(&cfg.getEndOfControlFlow());
+        TEST_ASSERT(end->getDominators().size() > 4);
+        TEST_ASSERT_EQUALS(0u, end->getDominatedNodes().size());
 
         for(auto& node : tree->getNodes())
         {
-            if(&node.second != &start)
+            if(&node.second != start)
             {
-                TEST_ASSERT(start.dominates(node.second));
-                TEST_ASSERT(!start.isDominatedBy(node.second));
+                TEST_ASSERT(start->dominates(node.second));
+                TEST_ASSERT(!start->isDominatedBy(node.second));
+            }
+        }
+
+        tree = DominatorTree::createPostdominatorTree(cfg);
+        TEST_ASSERT(!!tree);
+        TEST_ASSERT_EQUALS(numNodes, tree->getNodes().size());
+
+        // the start of the control flow post-dominates no nodes
+        start = &tree->assertNode(&cfg.getStartOfControlFlow());
+        TEST_ASSERT(start->getDominators().size() > 4);
+        TEST_ASSERT_EQUALS(0u, start->getDominatedNodes().size());
+        // the end of the control flow post-dominates all nodes (except itself)
+        end = &tree->assertNode(&cfg.getEndOfControlFlow());
+        TEST_ASSERT_EQUALS(0u, end->getDominators().size());
+        TEST_ASSERT_EQUALS(numNodes - 1, end->getDominatedNodes().size());
+
+        for(auto& node : tree->getNodes())
+        {
+            if(&node.second != end)
+            {
+                TEST_ASSERT(end->dominates(node.second));
+                TEST_ASSERT(!end->isDominatedBy(node.second));
             }
         }
 
@@ -822,6 +893,9 @@ void TestAnalyses::testDominatorTree()
 
         numNodes = cfg.getNodes().size();
         tree = DominatorTree::createDominatorTree(cfg);
+        TEST_ASSERT(!!tree);
+        TEST_ASSERT_EQUALS(numNodes, tree->getNodes().size());
+        tree = DominatorTree::createPostdominatorTree(cfg);
         TEST_ASSERT(!!tree);
         TEST_ASSERT_EQUALS(numNodes, tree->getNodes().size());
     }
@@ -833,7 +907,7 @@ void TestAnalyses::testDominatorTree()
         precompileAndParse(module, ss, "");
         normalize(module);
 
-        TEST_ASSERT_EQUALS(1, module.getKernels().size());
+        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
         auto kernel = module.getKernels()[0];
         auto& cfg = kernel->getCFG();
         auto numNodes = cfg.getNodes().size();
@@ -843,20 +917,42 @@ void TestAnalyses::testDominatorTree()
         TEST_ASSERT_EQUALS(numNodes, tree->getNodes().size());
 
         // // the start of the control flow dominates all nodes (except itself)
-        auto& start = tree->assertNode(&cfg.getStartOfControlFlow());
-        TEST_ASSERT_EQUALS(0, start.getDominators().size());
-        TEST_ASSERT_EQUALS(numNodes - 1, start.getDominatedNodes().size());
+        auto* start = &tree->assertNode(&cfg.getStartOfControlFlow());
+        TEST_ASSERT_EQUALS(0u, start->getDominators().size());
+        TEST_ASSERT_EQUALS(numNodes - 1, start->getDominatedNodes().size());
         // the end of the control flow dominates no nodes
-        auto& end = tree->assertNode(&cfg.getEndOfControlFlow());
-        TEST_ASSERT(end.getDominators().size() > 4);
-        TEST_ASSERT_EQUALS(0, end.getDominatedNodes().size());
+        auto* end = &tree->assertNode(&cfg.getEndOfControlFlow());
+        TEST_ASSERT(end->getDominators().size() > 4);
+        TEST_ASSERT_EQUALS(0u, end->getDominatedNodes().size());
 
         for(auto& node : tree->getNodes())
         {
-            if(&node.second != &start)
+            if(&node.second != start)
             {
-                TEST_ASSERT(start.dominates(node.second));
-                TEST_ASSERT(!start.isDominatedBy(node.second));
+                TEST_ASSERT(start->dominates(node.second));
+                TEST_ASSERT(!start->isDominatedBy(node.second));
+            }
+        }
+
+        tree = DominatorTree::createPostdominatorTree(cfg);
+        TEST_ASSERT(!!tree);
+        TEST_ASSERT_EQUALS(numNodes, tree->getNodes().size());
+
+        // the start of the control flow post-dominates no nodes
+        start = &tree->assertNode(&cfg.getStartOfControlFlow());
+        TEST_ASSERT(start->getDominators().size() > 4);
+        TEST_ASSERT_EQUALS(0u, start->getDominatedNodes().size());
+        // the end of the control flow post-dominates all nodes (except itself)
+        end = &tree->assertNode(&cfg.getEndOfControlFlow());
+        TEST_ASSERT_EQUALS(0u, end->getDominators().size());
+        TEST_ASSERT_EQUALS(numNodes - 1, end->getDominatedNodes().size());
+
+        for(auto& node : tree->getNodes())
+        {
+            if(&node.second != end)
+            {
+                TEST_ASSERT(end->dominates(node.second));
+                TEST_ASSERT(!end->isDominatedBy(node.second));
             }
         }
 
@@ -865,6 +961,9 @@ void TestAnalyses::testDominatorTree()
 
         numNodes = cfg.getNodes().size();
         tree = DominatorTree::createDominatorTree(cfg);
+        TEST_ASSERT(!!tree);
+        TEST_ASSERT_EQUALS(numNodes, tree->getNodes().size());
+        tree = DominatorTree::createPostdominatorTree(cfg);
         TEST_ASSERT(!!tree);
         TEST_ASSERT_EQUALS(numNodes, tree->getNodes().size());
     }

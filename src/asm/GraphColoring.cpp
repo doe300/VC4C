@@ -508,10 +508,10 @@ void GraphColoring::createGraph()
         {
             auto writer = pair.first->getSingleWriter();
             auto load = dynamic_cast<const intermediate::LoadImmediate*>(writer);
-            auto move = dynamic_cast<const intermediate::MoveOperation*>(writer);
+            auto movesSplatValue =
+                check(writer) & &intermediate::IntermediateInstruction::getMoveSource & &Value::isAllSame;
             // TODO can we use the splat value decoration here? First test seem to fail for some reason...
-            if(!(load && load->type == intermediate::LoadType::REPLICATE_INT32) &&
-                !(move && !move->getVectorRotation() && move->getSource().isAllSame()))
+            if(!(load && load->type == intermediate::LoadType::REPLICATE_INT32) && !movesSplatValue)
                 // Since writing to r5 automatically replicates, we only use it for values we know to be the same across
                 // all SIMD elements
                 node.blockR5();

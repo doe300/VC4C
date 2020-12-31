@@ -306,6 +306,7 @@ CodeAddress::CodeAddress(const Value& dest, const Local* label, ConditionCode co
     addDecorations(InstructionDecorations::UNSIGNED_RESULT);
 }
 
+LCOV_EXCL_START
 std::string CodeAddress::to_string() const
 {
     std::string address = "(self)";
@@ -313,6 +314,7 @@ std::string CodeAddress::to_string() const
         address = label->to_string();
     return (getOutput()->to_string(true) + " = addressof ") + std::move(address) + createAdditionalInfoString();
 }
+LCOV_EXCL_STOP
 
 IntermediateInstruction* CodeAddress::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
