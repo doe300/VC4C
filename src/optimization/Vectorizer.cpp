@@ -60,8 +60,7 @@ static InductionVariable extractLoopControl(const ControlFlowLoop& loop, const D
  * - checks the maximum vector-width used inside the loop
  * - tries to find an optimal factor, which never exceeds 16 elements and divides the number of iterations equally
  */
-static Optional<unsigned> determineVectorizationFactor(
-    const ControlFlowLoop& loop, const InductionVariable& inductionVariable)
+static unsigned determineVectorizationFactor(const ControlFlowLoop& loop, Optional<unsigned> iterationCount)
 {
     unsigned char maxTypeWidth = 1;
     for(const auto& node : loop)
@@ -78,24 +77,14 @@ static Optional<unsigned> determineVectorizationFactor(
         log << "Found maximum used vector-width of " << static_cast<unsigned>(maxTypeWidth) << " elements"
             << logging::endl);
 
-    // the number of iterations from the bounds depends on the iteration operation
-    auto iterations = inductionVariable.getIterationCount();
-    if(!iterations)
-        return {};
-
-    CPPLOG_LAZY(logging::Level::DEBUG, log << "Determined iteration count of " << *iterations << logging::endl);
-
     // find the biggest factor fitting into 16 SIMD-elements
-    unsigned factor = 16 / maxTypeWidth;
-    while(factor > 0)
+    unsigned factor = NATIVE_VECTOR_SIZE / maxTypeWidth;
+    while(iterationCount && factor > 0)
     {
-        // TODO factors not in [1,2,3,4,8,16] possible?? Should be from hardware-specification side
-        if((*iterations % factor) == 0)
+        if((*iterationCount % factor) == 0)
             break;
         --factor;
     }
-    CPPLOG_LAZY(
-        logging::Level::DEBUG, log << "Determined possible vectorization-factor of " << factor << logging::endl);
     return factor;
 }
 
@@ -105,13 +94,17 @@ static Optional<unsigned> determineVectorizationFactor(
  * - additional delay for writing larger vectors through VPM
  * - memory address is read and written from within loop -> abort
  * - vector rotations -> for now abort
+ * - vector foldings after loop
  *
  * On the benefit-side, we have (as factors):
  * - the iterations saved (times the number of instructions in an iteration)
  */
 static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const InductionVariable& inductionVariable,
-    const DataDependencyGraph& dependencyGraph, unsigned vectorizationFactor)
+    const DataDependencyGraph& dependencyGraph, unsigned vectorizationFactor, unsigned numFoldings,
+    bool isDynamicIterationCount)
 {
+    // TODO benefits are way off, e.g. for test_vectorization.cl#test4, vectorized version uses 1.5k instead of 29k
+    // cycles where this calculation estimates a win of ~400cycles!
     int costs = 0;
 
     SortedSet<const Local*> readAddresses;
@@ -123,11 +116,13 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
         {
             if(it)
             {
-                if(it->getOutput() & [](const Value& out) -> bool {
-                       return out.hasRegister(REG_VPM_DMA_LOAD_ADDR) || out.hasRegister(REG_TMU0_ADDRESS) ||
-                           out.hasRegister(REG_TMU1_ADDRESS);
-                   })
+                if(it->writesRegister(REG_VPM_DMA_LOAD_ADDR) || it->writesRegister(REG_TMU0_ADDRESS) ||
+                    it->writesRegister(REG_TMU1_ADDRESS))
                 {
+                    // for dynamic iteration counts, we need to insert a mask/dynamic element calculation per memory
+                    // access
+                    // XXX actually per loop iteration
+                    costs += isDynamicIterationCount * (it->writesRegister(REG_VPM_DMA_LOAD_ADDR) ? 5 : 3);
                     for(const Value& arg : it->getArguments())
                     {
                         if(auto loc = arg.checkLocal())
@@ -138,8 +133,12 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
                         }
                     }
                 }
-                else if(it->getOutput() && it->getOutput()->hasRegister(REG_VPM_DMA_STORE_ADDR))
+                else if(it->writesRegister(REG_VPM_DMA_STORE_ADDR))
                 {
+                    // for dynamic iteration counts, we need to insert a mask/dynamic element calculation per memory
+                    // access
+                    // XXX actually per loop iteration
+                    costs += isDynamicIterationCount * 4;
                     for(const Value& arg : it->getArguments())
                     {
                         if(auto loc = arg.checkLocal())
@@ -192,6 +191,21 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
     // immediate)
     if(inductionVariable.inductionStep->getOutput()->type.getVectorWidth() * vectorizationFactor > 15)
         ++costs;
+    // single insertion of element selection for repetition branch
+    ++costs;
+    // our folding implementation takes 3 * ceil(log2(vector-width)) instructions per folding
+    auto foldCosts = 3u * static_cast<unsigned>(std::ceil(std::log2(static_cast<double>(vectorizationFactor))));
+    costs += foldCosts * numFoldings;
+    // additional calculation of the dynamic element mask
+    if(isDynamicIterationCount)
+    {
+        // replication for non-splat initial assignment
+        costs += 2;
+        // calculation of dynamic active element count
+        costs += 4; // XXX actually per loop iteration
+        // additional 1 instruction for masking the LCSSA variable with the element number per folding
+        costs += numFoldings;
+    }
 
     FastSet<const Local*> readAndWrittenAddresses;
     // NOTE: Cannot pass unordered_set into set_intersection, since it requires its inputs to be sorted!
@@ -211,14 +225,10 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
         return std::numeric_limits<int>::min();
     }
 
-    int numInstructions = 0;
-    for(const CFGNode* node : loop)
-    {
-        // XXX to be exact, would need to include delays here too
-        numInstructions += static_cast<int>(node->key->size());
-    }
     // the number of instructions/cycles saved
-    int benefits = numInstructions * static_cast<int>(vectorizationFactor);
+    auto numInstructions = std::accumulate(loop.begin(), loop.end(), std::size_t{0},
+        [](std::size_t sum, const CFGNode* node) -> std::size_t { return sum + node->key->size(); });
+    auto benefits = static_cast<int>(numInstructions * vectorizationFactor);
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Calculated an cost-vs-benefit rating of " << (benefits - costs)
@@ -272,7 +282,7 @@ static uint8_t getVectorWidth(DataType type)
 
 static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Method& method,
     FastMap<const intermediate::IntermediateInstruction*, uint8_t>& openInstructions, unsigned vectorizationFactor,
-    ControlFlowLoop& loop, uint8_t minVectorWidth)
+    ControlFlowLoop& loop, uint8_t minVectorWidth, const Optional<Value>& dynamicElementCount)
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Vectorizing instruction: " << inst->to_string() << logging::endl);
 
@@ -339,13 +349,13 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
     {
         // if we write to a TMU address register, we need to adapt the setting of valid TMU address elements (vs.
         // zeroing out) to match the new vector width
-        auto optIt = loop.findInLoop(inst);
-        if(!optIt)
+        auto addressIt = loop.findInLoop(inst);
+        if(!addressIt)
             // TODO not actually a problem, we just have to find the instruction walker
             throw CompilationError(
                 CompilationStep::OPTIMIZER, "Cannot vectorize setting TMU address outside of loop", inst->to_string());
 
-        optIt = optIt->getBasicBlock()->findLastSettingOfFlags(*optIt);
+        auto optIt = addressIt->getBasicBlock()->findLastSettingOfFlags(*addressIt);
         if(!optIt)
             throw CompilationError(CompilationStep::OPTIMIZER,
                 "Failed to find setting of element-wise flags for setting of TMU address", inst->to_string());
@@ -385,6 +395,32 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
             // TODO make more robust!
             throw CompilationError(
                 CompilationStep::OPTIMIZER, "Unhandled instruction setting TMU address elements", inst->to_string());
+
+        if(dynamicElementCount)
+        {
+            /*
+             * If we have a dynamic active element count, we need to mask off the elements not actually used, since
+             * otherwise we might read memory which is not mapped at all.
+             *
+             * So we need to set all non-active elements to zero to tell the TMU to not load anything into there.
+             *
+             * NOTE: This code requires the dynamicElementCount value to be a splat value!
+             */
+            auto it = *addressIt;
+            auto maskedAddress = assign(it, inst->assertArgument(0).type, "%masked_address") = INT_ZERO;
+            auto cond = assignNop(it) = as_signed{ELEMENT_NUMBER_REGISTER} < as_signed{*dynamicElementCount};
+            if(auto source = inst->getMoveSource())
+                assign(it, maskedAddress) = (*source, cond);
+            else if(dynamic_cast<Operation*>(inst) && dynamic_cast<Operation*>(inst)->op == OP_ADD)
+                assign(it, maskedAddress) = (inst->assertArgument(0) + inst->assertArgument(1), cond);
+            else
+                throw CompilationError(CompilationStep::OPTIMIZER,
+                    "Masking off TMU addresses dynamically for this kind of calculation is not yet implemented",
+                    inst->to_string());
+            it.reset((new MoveOperation(inst->getOutput().value(), maskedAddress))->copyExtrasFrom(inst));
+            openInstructions.erase(inst);
+            inst = it.get();
+        }
     }
 
     // TODO need to adapt types of some registers/output of load, etc.?
@@ -396,7 +432,8 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
     openInstructions.erase(inst);
 }
 
-static std::size_t fixVPMSetups(ControlFlowLoop& loop, unsigned vectorizationFactor)
+static std::size_t fixVPMSetups(
+    Method& method, ControlFlowLoop& loop, unsigned vectorizationFactor, const Optional<Value>& dynamicElementCount)
 {
     std::size_t numVectorized = 0;
 
@@ -421,10 +458,30 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, unsigned vectorizationFac
                     (*vpmWrite)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
                 {
                     // Since this is only true for values actually vectorized, the corresponding VPM-write is checked
-                    vpwSetup.dmaSetup.setDepth(
-                        static_cast<uint8_t>(vpwSetup.dmaSetup.getDepth() * vectorizationFactor));
-                    ++numVectorized;
-                    it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+                    if(dynamicElementCount)
+                    {
+                        // need to dynamically calculate the number of elements
+                        auto oldDepth = vpwSetup.dmaSetup.getDepth();
+                        vpwSetup.dmaSetup.setDepth(0);
+                        auto tmpSetup = method.addNewLocal(TYPE_INT32, "%vpm_setup");
+                        it->replaceValue(VPM_OUT_SETUP_REGISTER, tmpSetup, LocalUse::Type::WRITER);
+                        it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+                        it.nextInBlock();
+                        auto numElements = assign(it, TYPE_INT32, "%dynamic_depth") =
+                            (*dynamicElementCount * Literal(oldDepth), InstructionDecorations::AUTO_VECTORIZED);
+                        auto dynamicDepth = assign(it, TYPE_INT32, "%dynamic_depth") =
+                            (numElements << 16_val, InstructionDecorations::AUTO_VECTORIZED);
+                        it.emplace(new Operation(OP_ADD, VPM_OUT_SETUP_REGISTER, tmpSetup, dynamicDepth));
+                        it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+                        numVectorized += 4;
+                    }
+                    else
+                    {
+                        vpwSetup.dmaSetup.setDepth(
+                            static_cast<uint8_t>(vpwSetup.dmaSetup.getDepth() * vectorizationFactor));
+                        ++numVectorized;
+                        it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+                    }
                 }
             }
             else if(it->writesRegister(REG_VPM_IN_SETUP))
@@ -443,10 +500,33 @@ static std::size_t fixVPMSetups(ControlFlowLoop& loop, unsigned vectorizationFac
                     (*vpmRead)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
                 {
                     // See VPM write
-                    vprSetup.dmaSetup.setRowLength(
-                        (vprSetup.dmaSetup.getRowLength() * vectorizationFactor) % 16 /* 0 => 16 */);
-                    ++numVectorized;
-                    it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+                    if(dynamicElementCount)
+                    {
+                        // need to dynamically calculate the number of elements
+                        auto oldRowLength = vprSetup.dmaSetup.getRowLength();
+                        vprSetup.dmaSetup.setRowLength(0);
+                        auto tmpSetup = method.addNewLocal(TYPE_INT32, "%vpm_setup");
+                        it->replaceValue(VPM_IN_SETUP_REGISTER, tmpSetup, LocalUse::Type::WRITER);
+                        it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+                        it.nextInBlock();
+                        auto numElements = assign(it, TYPE_INT32, "%dynamic_rowlength") =
+                            (*dynamicElementCount * Literal(oldRowLength), InstructionDecorations::AUTO_VECTORIZED);
+                        // 0 => 16, so we need to truncate to not override some other bit by accident
+                        numElements = assign(it, TYPE_INT32, "%dynamic_rowlength") =
+                            (numElements & 15_val, InstructionDecorations::AUTO_VECTORIZED);
+                        auto dynamicRowLength = assign(it, TYPE_INT32, "%dynamic_rowlength") =
+                            (numElements << 20_val, InstructionDecorations::AUTO_VECTORIZED);
+                        it.emplace(new Operation(OP_ADD, VPM_IN_SETUP_REGISTER, tmpSetup, dynamicRowLength));
+                        it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+                        numVectorized += 5;
+                    }
+                    else
+                    {
+                        vprSetup.dmaSetup.setRowLength(
+                            (vprSetup.dmaSetup.getRowLength() * vectorizationFactor) % 16 /* 0 => 16 */);
+                        ++numVectorized;
+                        it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+                    }
                 }
             }
 
@@ -466,8 +546,8 @@ static Optional<InstructionWalker> findWalker(const CFGNode* node, const interme
                              Optional<InstructionWalker>{};
 }
 
-static void fixInitialValueAndStep(
-    ControlFlowLoop& loop, InductionVariable& inductionVariable, Literal stepValue, unsigned vectorizationFactor)
+static void fixInitialValueAndStep(Method& method, ControlFlowLoop& loop, InductionVariable& inductionVariable,
+    Literal stepValue, unsigned vectorizationFactor)
 {
     auto stepOp = const_cast<intermediate::Operation*>(inductionVariable.inductionStep);
     const_cast<DataType&>(inductionVariable.initialAssignment->getOutput()->type) =
@@ -511,6 +591,28 @@ static void fixInitialValueAndStep(
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Changed initial value: " << inductionVariable.initialAssignment->to_string() << logging::endl);
     }
+    else if(isStepPlusOne && inductionVariable.initialAssignment->isSimpleMove() &&
+        (initialValueWalker = findWalker(loop.findPredecessor(), inductionVariable.initialAssignment)))
+    {
+        // more general case: arbitrary initial value and step is +1
+        auto source = inductionVariable.initialAssignment->getMoveSource().value();
+        if(!inductionVariable.initialAssignment->hasDecoration(InstructionDecorations::IDENTICAL_ELEMENTS))
+        {
+            // need to replicate initial value across all elements
+            auto tmp = method.addNewLocal(inductionVariable.initialAssignment->getOutput()->type, "%induction.start");
+            ignoreReturnValue(intermediate::insertReplication(*initialValueWalker, source, tmp));
+            (*initialValueWalker)->replaceValue(source, tmp, LocalUse::Type::READER);
+            source = tmp;
+        }
+        initialValueWalker->reset(
+            (new intermediate::Operation(
+                 OP_ADD, inductionVariable.initialAssignment->getOutput().value(), source, ELEMENT_NUMBER_REGISTER))
+                ->copyExtrasFrom(inductionVariable.initialAssignment));
+        (*initialValueWalker)->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+        inductionVariable.initialAssignment = initialValueWalker->get();
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Changed initial value: " << inductionVariable.initialAssignment->to_string() << logging::endl);
+    }
     else
         throw CompilationError(
             CompilationStep::OPTIMIZER, "Unhandled initial value", inductionVariable.initialAssignment->to_string());
@@ -550,11 +652,11 @@ static void fixInitialValueAndStep(
         throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled iteration step operation", stepOp->to_string());
 }
 
-static unsigned fixRepetitionBranch(
-    Method& method, ControlFlowLoop& loop, InductionVariable& inductionVariable, unsigned vectorizationFactor)
+static unsigned fixRepetitionBranch(Method& method, ControlFlowLoop& loop, InductionVariable& inductionVariable,
+    unsigned vectorizationFactor, const Optional<Value>& dynamicElementCount)
 {
     // If the branch is on scalar, it usually is converted to flags via "register - = or %cond, element_number", which
-    // will mask the zero/non-zero flags for all upper elements. This needs to be fixes
+    // will hide the zero/non-zero flags for all upper elements. This needs to be fixed.
 
     auto repeatConditionLocal =
         inductionVariable.repeatCondition ? inductionVariable.repeatCondition->conditionResult : nullptr;
@@ -580,12 +682,52 @@ static unsigned fixRepetitionBranch(
                 CompilationStep::OPTIMIZER, "Unhandled usage of repeat condition", reader->to_string());
         auto it = *opIt;
         auto mask = method.addNewLocal(TYPE_INT8.toVectorType(16), "%cond_mask");
-        // Since the uppermost (used) element will cross the limit first, we move the check to that element. This
-        // removes the need to rewrite the actual repetition branch, since we retain the (zero/not-zero) flag behavior.
-        // TODO is this correct in all cases?
-        it.emplace(new LoadImmediate(mask, 0xFFFF ^ (1u << (vectorizationFactor - 1)), LoadType::PER_ELEMENT_UNSIGNED));
-        it->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
-        it.nextInBlock();
+        if(dynamicElementCount)
+        {
+            /*
+             * Since we have a dynamic active element number per iteration, we do not statically know the highest active
+             * element to cross the boundary first (see below), so we need to determine this dynamically.
+             *
+             * Depending on the compared value (induction variable or step variable), we need to either check the flags
+             * for the highest used element or for the 0th element.
+             */
+            auto tmp = method.addNewLocal(mask.type, "%cond_mask");
+            it.emplace(new LoadImmediate(tmp, 0xFFFE, LoadType::PER_ELEMENT_UNSIGNED));
+            it->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+            it.nextInBlock();
+            if(inductionVariable.conditionCheckedBeforeStep)
+            {
+                /*
+                 * Comparison before the step, thus we need to check the current dynamic highest active element
+                 */
+                // we have the number of elements, but need the highest element offset
+                auto tmpOffset = assign(it, dynamicElementCount->type, "%mask_offset") = (*dynamicElementCount - 1_val);
+                it = insertVectorRotation(it, tmp, tmpOffset, mask);
+                auto decoIt = it.copy().previousInBlock();
+                // add decoration to the vector rotation inserted just now
+                if(decoIt.has() && decoIt->getVectorRotation())
+                    decoIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+            }
+            else
+                /*
+                 * Comparison after the step. Our active element count of the current iteration is already invalid now,
+                 * since the number of active elements might change from iteration to iteration. We want to go to the
+                 * next iteration if we have at least one (the 0th) element matching the condition, which is the same
+                 * behavior as before the vectorization.
+                 */
+                mask = ELEMENT_NUMBER_REGISTER;
+        }
+        else
+        {
+            // Since the uppermost (used) element will cross the limit first, we move the check to that element. This
+            // removes the need to rewrite the actual repetition branch, since we retain the (zero/not-zero) flag
+            // behavior.
+            // TODO is this correct in all cases?
+            it.emplace(
+                new LoadImmediate(mask, 0xFFFF ^ (1u << (vectorizationFactor - 1)), LoadType::PER_ELEMENT_UNSIGNED));
+            it->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+            it.nextInBlock();
+        }
         it->replaceValue(ELEMENT_NUMBER_REGISTER, mask, LocalUse::Type::READER);
         it->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
         ++numRewritten;
@@ -594,12 +736,118 @@ static unsigned fixRepetitionBranch(
     return numRewritten;
 }
 
+/**
+ * Calculate the dynamic active element count for this iteration at the very top of the loop head to make sure it is
+ * available throughout the loop.
+ */
+static unsigned calculateDynamicElementCount(Method& method, ControlFlowLoop& loop,
+    InductionVariable& inductionVariable, unsigned vectorizationFactor, const Value& dynamicElementCount)
+{
+    auto head = loop.getHeader();
+    if(!head)
+        throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find head for loop", loop.to_string());
+
+    auto it = head->key->walk().nextInBlock();
+    // TODO need to invert for decrementing step??
+    auto tmp = assign(it, dynamicElementCount.type, std::string{dynamicElementCount.local()->name}) =
+        (inductionVariable.repeatCondition.value().comparisonValue - inductionVariable.local->createReference(),
+            InstructionDecorations::AUTO_VECTORIZED);
+    tmp = assign(it, dynamicElementCount.type, std::string{dynamicElementCount.local()->name}) =
+        (min(as_signed{Value(Literal(vectorizationFactor), TYPE_INT8)}, as_signed{tmp}),
+            InstructionDecorations::AUTO_VECTORIZED);
+    it = insertReplication(it, tmp, dynamicElementCount);
+
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Inserted calculation of dynamic active element count into: " << dynamicElementCount.to_string()
+            << logging::endl);
+
+    return 2;
+}
+
 struct AccumulationInfo
 {
     const Local* local;
     OpCode op;
     tools::SmallSortedPointerSet<const LocalUser*> toBeFolded;
+    tools::SmallSortedPointerSet<const Local*> toBeMasked;
 };
+
+/**
+ * LLVM only writes the LCSSA local on loop exit (with inverted condition of the loop repetition
+ * branch), since before the last iteration this local is not used and overwritten anyway. Since the
+ * last iteration might have an active element mask with not all elements set, we do not write the
+ * previous accumulated values of the previous iterations in the higher elements.
+ *
+ * Similarly, the default value of the LCSSA local is only set if the loop is not taken at all (for similar reason, if
+ * the loop is taken, it is overwritten anyway). If now we run for a single iteration with an active element mask not
+ * covering all elements, we have some undefined values.
+ *
+ * To fix this we need to rewrite the conditional assignments to not use the branch condition but always write all
+ * active elements (or always initialize the default value).
+ */
+static unsigned fixLCSSAElementMask(Method& method, ControlFlowLoop& loop,
+    const FastMap<const Local*, AccumulationInfo>& accumulationsToFold, const Value& dynamicElementCount)
+{
+    unsigned numModified = 0;
+    for(auto& acc : accumulationsToFold)
+    {
+        for(auto& toBeMasked : acc.second.toBeMasked)
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Rewriting LCSSA to heed active element mask: " << toBeMasked->to_string() << logging::endl);
+
+            auto writers = toBeMasked->getUsers(LocalUse::Type::WRITER);
+            if(writers.size() != 2)
+                throw CompilationError(
+                    CompilationStep::OPTIMIZER, "LCSAA local has not exactly 2 writers", toBeMasked->to_string());
+
+            ExtendedInstruction* outOfLoopInst = nullptr;
+            auto inLoopIt = loop.findInLoop(*writers.begin());
+            if(inLoopIt)
+                outOfLoopInst =
+                    dynamic_cast<ExtendedInstruction*>(const_cast<IntermediateInstruction*>(*(++writers.begin())));
+            else
+            {
+                inLoopIt = loop.findInLoop(*(++writers.begin()));
+                outOfLoopInst =
+                    dynamic_cast<ExtendedInstruction*>(const_cast<IntermediateInstruction*>(*writers.begin()));
+            }
+
+            if(!outOfLoopInst)
+                throw CompilationError(CompilationStep::OPTIMIZER,
+                    "Failed to find default value assignment for LCSSA local", toBeMasked->to_string());
+            if(!inLoopIt)
+                throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find instruction walker in loop for",
+                    toBeMasked->to_string());
+            auto lastSettingIt = inLoopIt->getBasicBlock()->findLastSettingOfFlags(*inLoopIt);
+            if(!lastSettingIt)
+                throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find last setting of flags in loop for",
+                    toBeMasked->to_string());
+
+            // TODO need to make sure the read variable is not written between the current and new position!
+
+            // The instruction itself is conditional on the branch condition. Since we want to rewrite the condition of
+            // the instruction, we need to move it before the current set-flags instruction
+            auto insertIt = lastSettingIt->emplace(inLoopIt->release());
+            inLoopIt->erase();
+
+            auto cond = assignNop(insertIt) = (as_signed{ELEMENT_NUMBER_REGISTER} < as_signed{dynamicElementCount},
+                InstructionDecorations::AUTO_VECTORIZED);
+            insertIt.get<ExtendedInstruction>()->setCondition(cond);
+
+            // The instruction itself is conditional, so it is only assigned if the loop is not entered. We need to
+            // change that to always assign the default value
+            // TODO is this true for a different initial value than the unit of the accumulation operation?
+            // TODO if initial value is not splat, need to replicate it!
+            outOfLoopInst->setCondition(COND_ALWAYS);
+            outOfLoopInst->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+
+            numModified += 3;
+        }
+    }
+
+    return numModified;
+}
 
 /*
  * Approach:
@@ -610,7 +858,8 @@ struct AccumulationInfo
  * - fix initial iteration value and step
  */
 static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariable, Method& method,
-    unsigned vectorizationFactor, Literal stepValue, const FastMap<const Local*, AccumulationInfo>& accumulationsToFold)
+    unsigned vectorizationFactor, Literal stepValue, const FastMap<const Local*, AccumulationInfo>& accumulationsToFold,
+    const Optional<Value>& dynamicElementCount)
 {
     FastMap<const intermediate::IntermediateInstruction*, uint8_t> openInstructions;
 
@@ -627,7 +876,8 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
         auto inst = instIt->first;
         if(auto it = loop.findInLoop(inst))
         {
-            vectorizeInstruction(it->get(), method, openInstructions, vectorizationFactor, loop, instIt->second);
+            vectorizeInstruction(
+                it->get(), method, openInstructions, vectorizationFactor, loop, instIt->second, dynamicElementCount);
             ++numVectorized;
         }
         else if(inst->isSimpleMove() && inst->checkOutputLocal())
@@ -636,7 +886,7 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Local is accessed outside of loop: " << inst->to_string() << logging::endl);
             vectorizeInstruction(const_cast<intermediate::IntermediateInstruction*>(inst), method, openInstructions,
-                vectorizationFactor, loop, instIt->second);
+                vectorizationFactor, loop, instIt->second, dynamicElementCount);
             ++numVectorized;
         }
         else
@@ -690,12 +940,19 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
         }
     }
 
-    numVectorized += fixVPMSetups(loop, vectorizationFactor);
+    numVectorized += fixVPMSetups(method, loop, vectorizationFactor, dynamicElementCount);
 
-    fixInitialValueAndStep(loop, inductionVariable, stepValue, vectorizationFactor);
+    fixInitialValueAndStep(method, loop, inductionVariable, stepValue, vectorizationFactor);
     numVectorized += 2;
 
-    numVectorized += fixRepetitionBranch(method, loop, inductionVariable, vectorizationFactor);
+    numVectorized += fixRepetitionBranch(method, loop, inductionVariable, vectorizationFactor, dynamicElementCount);
+
+    if(dynamicElementCount)
+    {
+        numVectorized +=
+            calculateDynamicElementCount(method, loop, inductionVariable, vectorizationFactor, *dynamicElementCount);
+        numVectorized += fixLCSSAElementMask(method, loop, accumulationsToFold, *dynamicElementCount);
+    }
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Vectorization done, changed " << numVectorized << " instructions!" << logging::endl);
@@ -726,12 +983,18 @@ Optional<AccumulationInfo> determineAccumulation(const Local* loc, const Control
     const LocalUser* loopOperationRead = nullptr;
     const LocalUser* loopWrite = nullptr;
     tools::SmallSortedPointerSet<const Local*> loopTemporaries;
+    auto predecessor = loop.findPredecessor();
     for(auto& user : loc->getUsers())
     {
         auto loopIt = loop.findInLoop(user.first);
         if(user.second.writesLocal())
         {
             if(!loopIt && !user.first->hasConditionalExecution())
+                initialWrite = user.first;
+            else if(!loopIt && user.first->hasDecoration(InstructionDecorations::PHI_NODE) && predecessor &&
+                predecessor->key->findWalkerForInstruction(user.first, predecessor->key->walkEnd()))
+                // initial write where the conditionality of the phi-node could not be removed, e.g. for dynamical loop
+                // iteration bounds
                 initialWrite = user.first;
             else if(loopIt && user.first->hasDecoration(InstructionDecorations::PHI_NODE))
             {
@@ -785,12 +1048,48 @@ Optional<AccumulationInfo> determineAccumulation(const Local* loc, const Control
     }
 
     tools::SmallSortedPointerSet<const LocalUser*> toBeFolded;
+    tools::SmallSortedPointerSet<const Local*> toBeMasked;
     for(auto local : loopTemporaries)
     {
         for(auto reader : local->getUsers(LocalUse::Type::READER))
         {
             if(!loop.findInLoop(reader))
                 toBeFolded.emplace(reader);
+            else if(reader->isSimpleMove() && reader->checkOutputLocal() &&
+                reader->hasDecoration(InstructionDecorations::PHI_NODE))
+            {
+                /*
+                 * Support for LLVM LCSSA (Loop Closed SSA), see
+                 * https://github.com/llvm/llvm-project/blob/master/llvm/docs/LoopTerminology.rst#loop-closed-ssa-lcssa
+                 *
+                 * Basically, LLVM creates a copy of the accumulation local, which is initialized to the same value
+                 * before the loop, set parallel to the accumulation local inside the loop and used after the loop exit
+                 * instead of the accumulation local.
+                 */
+                auto candidate = reader->checkOutputLocal();
+                auto writers = candidate->getUsers(LocalUse::Type::WRITER);
+                auto readers = candidate->getUsers(LocalUse::Type::READER);
+                if(writers.size() != 2)
+                    // check only 2 writers (one for initial value, one for value update in loop)
+                    continue;
+                auto firstWriter = *writers.begin();
+                auto secondWriter = *(++writers.begin());
+                if((firstWriter == reader && secondWriter->getMoveSource() != initialWrite->getMoveSource()) ||
+                    (secondWriter == reader && firstWriter->getMoveSource() != initialWrite->getMoveSource()))
+                    // check same initial value set
+                    continue;
+                if(std::any_of(readers.begin(), readers.end(),
+                       [&](const LocalUser* user) -> bool { return loop.findInLoop(user).has_value(); }))
+                    // XXX would need better check to make sure all reads are after the loop
+                    continue;
+                if(!readers.empty() && firstWriter->hasConditionalExecution() &&
+                    secondWriter->hasConditionalExecution())
+                    // see #fixLCSSAElementMask for documentation
+                    toBeMasked.emplace(candidate);
+
+                for(auto user : readers)
+                    toBeFolded.emplace(user);
+            }
         }
     }
 
@@ -806,7 +1105,7 @@ Optional<AccumulationInfo> determineAccumulation(const Local* loc, const Control
         log << "Local '" << loc->to_string() << "' is accumulated with operation '" << op->op.name
             << "' in: " << vc4c::to_string<const LocalUser*>(toBeFolded) << logging::endl);
 
-    return AccumulationInfo{loc, op->op, std::move(toBeFolded)};
+    return AccumulationInfo{loc, op->op, std::move(toBeFolded), std::move(toBeMasked)};
 }
 
 bool optimizations::vectorizeLoops(const Module& module, Method& method, const Configuration& config)
@@ -840,19 +1139,24 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
             continue;
         }
 
-        if(!inductionVariable.getLowerBound() || !inductionVariable.getUpperBound())
-        {
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Upper or lower bound is not a literal value, aborting vectorization!" << logging::endl);
-            continue;
-        }
-
         auto stepConstant = inductionVariable.getStep();
         if(!stepConstant)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Iteration step increment is not a literal value, aborting vectorization!" << logging::endl);
             continue;
+        }
+
+        auto iterations = inductionVariable.getIterationCount();
+        auto dynamicElementCount = NO_VALUE;
+        if(iterations)
+            CPPLOG_LAZY(logging::Level::DEBUG, log << "Determined iteration count of " << *iterations << logging::endl);
+        else
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Could not determine integral iteration count, using dynamic active element mask"
+                    << logging::endl);
+            dynamicElementCount = method.addNewLocal(TYPE_INT8.toVectorType(NATIVE_VECTOR_SIZE), "%active_elements");
         }
 
         auto writeDependencies = loop.findLocalDependencies(*dependencyGraph);
@@ -890,14 +1194,10 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
         }
 
         // 4. determine vectorization factor
-        Optional<unsigned> vectorizationFactor = determineVectorizationFactor(loop, inductionVariable);
-        if(!vectorizationFactor)
-        {
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Failed to determine a vectorization factor for the loop, aborting!" << logging::endl);
-            continue;
-        }
-        if(vectorizationFactor.value() == 1)
+        auto vectorizationFactor = determineVectorizationFactor(loop, iterations);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Determined possible vectorization-factor of " << vectorizationFactor << logging::endl);
+        if(vectorizationFactor <= 1)
         {
             // nothing to do
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -906,7 +1206,8 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
         }
 
         // 5. cost-benefit calculation
-        int rating = calculateCostsVsBenefits(loop, inductionVariable, *dependencyGraph, *vectorizationFactor);
+        int rating = calculateCostsVsBenefits(loop, inductionVariable, *dependencyGraph, vectorizationFactor,
+            static_cast<unsigned>(accumulationsToFold.size()), dynamicElementCount.has_value());
         if(rating < 0 /* TODO some positive factor to be required before vectorizing loops? */)
         {
             // vectorization (probably) doesn't pay off
@@ -917,13 +1218,17 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
         }
 
         // 6. run vectorization
-        vectorize(loop, inductionVariable, method, *vectorizationFactor, *stepConstant, accumulationsToFold);
+        vectorize(loop, inductionVariable, method, vectorizationFactor, *stepConstant, accumulationsToFold,
+            dynamicElementCount);
         // increasing the iteration step might create a value not fitting into small immediate
         normalization::handleImmediate(
             module, method, loop.findInLoop(inductionVariable.inductionStep).value(), config);
         hasChanged = true;
 
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + 334, "Vectorization factors", *vectorizationFactor);
+        if(dynamicElementCount)
+            PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + 335, "Dynamic-sized vectorizations", 1);
+        else
+            PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + 334, "Vectorization factors", vectorizationFactor);
     }
 
     return hasChanged;

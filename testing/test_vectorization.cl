@@ -91,3 +91,31 @@ kernel void test11(global struct Foo *out) {
     f.A[i] = f.B[i] + 100;
   *out = f;
 }
+
+//following samples adapted from https://llvm.org/docs/Vectorizers.html
+kernel void test12(global float *A, global float* B, float K, int start, int end) {
+  //Expected: cannot be vectorized, since iteration count is unknown
+  //Actual: loop is recognized and vectorized with dynamic active element count, calculates correctly
+  for (int i = start; i < end; ++i)
+    A[i] = B[i] + K;
+}
+
+kernel void test13(global int *A, global int *B, int count) {
+  unsigned sum = 0;
+  //Expected: should be able to vectorize
+  //Attention: need to make sure, i is recognized as iteration-variable, not sum
+  //Actual: loop is recognized and vectorized with dynamic active element count, calculates correctly
+  for (int i = 0; i < count; ++i)
+    sum += A[i] + 5;
+  *B = sum;
+}
+
+kernel void test14(global int *A, global int *B, int count) {
+  unsigned sum = 0;
+  //Expected: should be able to vectorize
+  //Actual: loop is recognized and vectorized with dynamic active element count, XXX result
+  for (int i = 0; i < count; ++i)
+    if (A[i] > B[i])
+      sum += A[i] + 5;
+  *B = sum;
+}

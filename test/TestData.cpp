@@ -8,6 +8,7 @@
 #include "TestEntries.h"
 #include "test_files.h"
 
+#include <algorithm>
 #include <regex>
 #include <stdexcept>
 
@@ -380,6 +381,43 @@ void test_data::registerGeneralTests()
     registerTest(TestData{"vectorization11", DataFilter::CONTROL_FLOW | DataFilter::TYPE_HANDLING,
         &test_vectorization_cl_string, "", "test11", {toBufferParameter(toRange<int>(0, 256))}, toDimensions(1),
         {checkParameterEquals(0, std::vector<uint32_t>{100, 100, 100, 100, 100, 100, 100, 100, 100})}});
+
+    auto vectorization12Result = toRange<float>(0.0f + 42.0f, 1024.0f + 42.0f);
+    // only elements 200 to 500 are modified
+    std::fill_n(vectorization12Result.begin(), 200, 17.0f);
+    std::fill_n(vectorization12Result.begin() + 500, vectorization12Result.size() - 500, 17.0f);
+    registerTest(
+        TestData{"vectorization12_partial", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test12",
+            {toBufferParameter(std::vector<float>(1024, 17.0f)), toBufferParameter(toRange<float>(0.0f, 1024.0f)),
+                toScalarParameter<float>(42.0f), toScalarParameter(200), toScalarParameter(500)},
+            toDimensions(1), {checkParameterEquals(0, std::move(vectorization12Result))}});
+
+    registerTest(TestData{"vectorization12", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test12",
+        {toBufferParameter(std::vector<float>(1024, 17.0f)), toBufferParameter(toRange<float>(0.0f, 1024.0f)),
+            toScalarParameter<float>(42.0f), toScalarParameter(0), toScalarParameter(1024)},
+        toDimensions(1), {checkParameterEquals(0, toRange<float>(0.0f + 42.0f, 1024.0f + 42.0f))}});
+
+    registerTest(TestData{"vectorization13", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test13",
+        {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(std::vector<uint32_t>(1)),
+            toScalarParameter(1000)},
+        toDimensions(1), {checkParameterEquals(1, std::vector<uint32_t>{(999 * 1000) / 2 + (5 * 1000)})}});
+
+    // Tests less than a full loop iteration used
+    registerTest(
+        TestData{"vectorization13_partial", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test13",
+            {toBufferParameter(toRange<int>(0, 5)), toBufferParameter(std::vector<uint32_t>(1)), toScalarParameter(5)},
+            toDimensions(1), {checkParameterEquals(1, std::vector<uint32_t>{(4 * 5) / 2 + (5 * 5)})}});
+
+    registerTest(TestData{"vectorization14", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test14",
+        {toBufferParameter(std::vector<int32_t>(1024, 2)), toBufferParameter(toRange(-510, 514)),
+            toScalarParameter(1024)},
+        toDimensions(1), {checkParameterEquals(1, std::vector<int32_t>{512 * (2 + 5)})}});
+
+    // Tests less than a full loop iteration used
+    registerTest(
+        TestData{"vectorization14_partial", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test14",
+            {toBufferParameter(std::vector<int32_t>(5, 2)), toBufferParameter(toRange(0, 5)), toScalarParameter(5)},
+            toDimensions(1), {checkParameterEquals(1, std::vector<int32_t>{2 * (2 + 5)})}});
 
     registerTest(TestData{"work_item", DataFilter::WORK_GROUP, &test_work_item_cl_string, "", "test_work_item",
         {toBufferParameter(std::vector<uint32_t>(24 * 8 * 4, 0x42))}, toDimensions(8, 1, 1, 4, 1, 1),

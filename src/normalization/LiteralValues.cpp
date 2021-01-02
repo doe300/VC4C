@@ -118,7 +118,7 @@ static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker 
     Value realOut = out;
     if(!out.checkLocal())
     {
-        realOut = method.addNewLocal(TYPE_UNKNOWN, "%container");
+        realOut = method.addNewLocal(in.type, "%container");
     }
     if(!out.checkRegister() && !out.type.isUnknown() && in.type.getVectorWidth() > out.type.getVectorWidth())
     {
