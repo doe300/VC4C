@@ -287,6 +287,70 @@ tools::SmallSortedPointerSet<const Local*> ControlFlowLoop::findLocalDependencie
     return intersection;
 }
 
+tools::SmallSortedPointerSet<const Local*> ControlFlowLoop::findInputDependencies(
+    const DataDependencyGraph& dependencyGraph) const
+{
+    tools::SmallSortedPointerSet<const Local*> dependencies;
+    for(auto& node : *this)
+    {
+        // not all basic blocks have an entry in the dependency graph (e.g. if they have no dependency)
+        if(auto dependencyNode = dependencyGraph.findNode(node->key))
+        {
+            dependencyNode->forAllIncomingEdges(
+                [&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
+                    if(std::find_if(begin(), end(),
+                           [&neighbor](const CFGNode* node) -> bool { return node->key == neighbor.key; }) != end())
+                        // skip all nodes within the loop
+                        return true;
+                    auto it = edge.data.find(neighbor.key);
+                    if(it != edge.data.end())
+                    {
+                        for(auto& dependency : it->second)
+                        {
+                            if(has_flag(dependency.second, DataDependencyType::FLOW))
+                                dependencies.emplace(dependency.first);
+                        }
+                    }
+                    return true;
+                });
+        }
+    }
+
+    return dependencies;
+}
+
+tools::SmallSortedPointerSet<const Local*> ControlFlowLoop::findOutputDependencies(
+    const DataDependencyGraph& dependencyGraph) const
+{
+    tools::SmallSortedPointerSet<const Local*> dependencies;
+    for(auto& node : *this)
+    {
+        // not all basic blocks have an entry in the dependency graph (e.g. if they have no dependency)
+        if(auto dependencyNode = dependencyGraph.findNode(node->key))
+        {
+            dependencyNode->forAllOutgoingEdges(
+                [&](const DataDependencyNode& neighbor, const DataDependencyEdge& edge) -> bool {
+                    if(std::find_if(begin(), end(),
+                           [&neighbor](const CFGNode* node) -> bool { return node->key == neighbor.key; }) != end())
+                        // skip all nodes within the loop
+                        return true;
+                    auto it = edge.data.find(node->key);
+                    if(it != edge.data.end())
+                    {
+                        for(auto& dependency : it->second)
+                        {
+                            if(has_flag(dependency.second, DataDependencyType::FLOW))
+                                dependencies.emplace(dependency.first);
+                        }
+                    }
+                    return true;
+                });
+        }
+    }
+
+    return dependencies;
+}
+
 FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
     const DataDependencyGraph& dependencyGraph, bool includeIterationInformation) const
 {

@@ -146,6 +146,26 @@ namespace vc4c
             tools::SmallSortedPointerSet<const Local*> findLocalDependencies(
                 const DataDependencyGraph& dependencyGraph) const;
 
+            /**
+             * Returns the list of all locals read in this loop which are written outside of the loop.
+             *
+             * The list of these locals most likely includes the locals reported by #findLocalDependencies(). Locals
+             * returned here, but not in #findLocalDependencies() might prevent some loop rewriting optimizations, e.g.
+             * vectorization.
+             */
+            tools::SmallSortedPointerSet<const Local*> findInputDependencies(
+                const DataDependencyGraph& dependencyGraph) const;
+
+            /**
+             * Returns the list of all locals written in this loop which are read outside of the loop.
+             *
+             * The list of these locals most likely includes the locals reported by #findLocalDependencies(). Locals
+             * returned here, but not in #findLocalDependencies() might prevent some loop rewriting optimizations, e.g.
+             * vectorization.
+             */
+            tools::SmallSortedPointerSet<const Local*> findOutputDependencies(
+                const DataDependencyGraph& dependencyGraph) const;
+
             /*
              * Returns the list of induction variables of this loop.
              *

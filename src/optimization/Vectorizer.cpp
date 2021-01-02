@@ -100,8 +100,7 @@ static unsigned determineVectorizationFactor(const ControlFlowLoop& loop, Option
  * - the iterations saved (times the number of instructions in an iteration)
  */
 static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const InductionVariable& inductionVariable,
-    const DataDependencyGraph& dependencyGraph, unsigned vectorizationFactor, unsigned numFoldings,
-    bool isDynamicIterationCount)
+    unsigned vectorizationFactor, unsigned numFoldings, bool isDynamicIterationCount)
 {
     // TODO benefits are way off, e.g. for test_vectorization.cl#test4, vectorized version uses 1.5k instead of 29k
     // cycles where this calculation estimates a win of ~400cycles!
@@ -130,6 +129,15 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
                             readAddresses.emplace(loc);
                             if(auto data = loc->get<ReferenceData>())
                                 readAddresses.emplace(data->base);
+                            if(loc->residesInMemory())
+                            {
+                                // we directly read an absolute memory address (without any dynamic offset) inside the
+                                // loop, we cannot vectorize this
+                                CPPLOG_LAZY(logging::Level::DEBUG,
+                                    log << "Cannot vectorize loops reading from absolute memory location: "
+                                        << it->to_string() << logging::endl);
+                                return std::numeric_limits<int>::min();
+                            }
                         }
                     }
                 }
@@ -146,6 +154,15 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
                             writtenAddresses.emplace(loc);
                             if(auto data = loc->get<ReferenceData>())
                                 writtenAddresses.emplace(data->base);
+                            if(loc->residesInMemory())
+                            {
+                                // we directly write an absolute memory address (without any dynamic offset) inside the
+                                // loop, we cannot vectorize this
+                                CPPLOG_LAZY(logging::Level::DEBUG,
+                                    log << "Cannot vectorize loops writing to absolute memory location: "
+                                        << it->to_string() << logging::endl);
+                                return std::numeric_limits<int>::min();
+                            }
                         }
                     }
                 }
@@ -453,9 +470,12 @@ static std::size_t fixVPMSetups(
                     throw CompilationError(CompilationStep::OPTIMIZER,
                         "Unsupported instruction to write VPM for vectorized value", it->to_string());
 
-                auto vpmWrite = periphery::findRelatedVPMInstructions(it, false).vpmAccess;
-                if(vpwSetup.isDMASetup() && vpmWrite &&
-                    (*vpmWrite)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
+                auto relatedInstructions = periphery::findRelatedVPMInstructions(it, false);
+                bool isVPMWriteVectorized = relatedInstructions.vpmAccess &&
+                    (*relatedInstructions.vpmAccess)->hasDecoration(InstructionDecorations::AUTO_VECTORIZED);
+                bool isDMAAddressVectorized = relatedInstructions.addressWrite &&
+                    (*relatedInstructions.addressWrite)->hasDecoration(InstructionDecorations::AUTO_VECTORIZED);
+                if(vpwSetup.isDMASetup() && (isVPMWriteVectorized || isDMAAddressVectorized))
                 {
                     // Since this is only true for values actually vectorized, the corresponding VPM-write is checked
                     if(dynamicElementCount)
@@ -495,9 +515,12 @@ static std::size_t fixVPMSetups(
                     throw CompilationError(CompilationStep::OPTIMIZER,
                         "Unsupported instruction to write VPM for vectorized value", it->to_string());
 
-                auto vpmRead = periphery::findRelatedVPMInstructions(it, true).vpmAccess;
-                if(vprSetup.isDMASetup() && vpmRead &&
-                    (*vpmRead)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
+                auto relatedInstructions = periphery::findRelatedVPMInstructions(it, true);
+                bool isVPMReadVectorized = relatedInstructions.vpmAccess &&
+                    (*relatedInstructions.vpmAccess)->hasDecoration(InstructionDecorations::AUTO_VECTORIZED);
+                bool isDMAAddressVectorized = relatedInstructions.addressWrite &&
+                    (*relatedInstructions.addressWrite)->hasDecoration(InstructionDecorations::AUTO_VECTORIZED);
+                if(vprSetup.isDMASetup() && (isVPMReadVectorized || isDMAAddressVectorized))
                 {
                     // See VPM write
                     if(dynamicElementCount)
@@ -512,10 +535,26 @@ static std::size_t fixVPMSetups(
                         auto numElements = assign(it, TYPE_INT32, "%dynamic_rowlength") =
                             (*dynamicElementCount * Literal(oldRowLength), InstructionDecorations::AUTO_VECTORIZED);
                         // 0 => 16, so we need to truncate to not override some other bit by accident
-                        numElements = assign(it, TYPE_INT32, "%dynamic_rowlength") =
+                        auto finalNumElements = assign(it, TYPE_INT32, "%dynamic_rowlength") =
                             (numElements & 15_val, InstructionDecorations::AUTO_VECTORIZED);
+                        if(vprSetup.dmaSetup.getMode() > 1 && oldRowLength > 1)
+                        {
+                            // if we end up with more than 16 elements in a row, we truncate back (see above). To fix
+                            // this, we need to switch to a higher element size
+                            // TODO correct in general or only for byte-wise copy? Even applicable for anything except
+                            // byte-wise copy? Does anywhere else have a row length of more than 1 while still not
+                            // accessing vectors?
+                            auto modeChange = assign(it, TYPE_INT32, "%dynamic_mode") =
+                                (as_unsigned{numElements} >> 4_val, InstructionDecorations::AUTO_VECTORIZED);
+                            modeChange = assign(it, TYPE_INT32, "%dynamic_mode") =
+                                (0_val - modeChange, InstructionDecorations::AUTO_VECTORIZED);
+                            modeChange = assign(it, TYPE_INT32, "%dynamic_mode") =
+                                (modeChange << 8_val, InstructionDecorations::AUTO_VECTORIZED);
+                            finalNumElements = assign(it, TYPE_INT32, "%dynamic_setup") =
+                                (modeChange | finalNumElements, InstructionDecorations::AUTO_VECTORIZED);
+                        }
                         auto dynamicRowLength = assign(it, TYPE_INT32, "%dynamic_rowlength") =
-                            (numElements << 20_val, InstructionDecorations::AUTO_VECTORIZED);
+                            (finalNumElements << 20_val, InstructionDecorations::AUTO_VECTORIZED);
                         it.emplace(new Operation(OP_ADD, VPM_IN_SETUP_REGISTER, tmpSetup, dynamicRowLength));
                         it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
                         numVectorized += 5;
@@ -768,6 +807,7 @@ struct AccumulationInfo
 {
     const Local* local;
     OpCode op;
+    tools::SmallSortedPointerSet<const Local*> outputLocals;
     tools::SmallSortedPointerSet<const LocalUser*> toBeFolded;
     tools::SmallSortedPointerSet<const Local*> toBeMasked;
 };
@@ -861,6 +901,9 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
     unsigned vectorizationFactor, Literal stepValue, const FastMap<const Local*, AccumulationInfo>& accumulationsToFold,
     const Optional<Value>& dynamicElementCount)
 {
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Vectorizing loop '" << loop.to_string() << "' with factor of " << vectorizationFactor
+            << (dynamicElementCount ? " and dynamic element count" : "") << "..." << logging::endl);
     FastMap<const intermediate::IntermediateInstruction*, uint8_t> openInstructions;
 
     const_cast<DataType&>(inductionVariable.local->type) = inductionVariable.local->type.toVectorType(
@@ -880,7 +923,7 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
                 it->get(), method, openInstructions, vectorizationFactor, loop, instIt->second, dynamicElementCount);
             ++numVectorized;
         }
-        else if(inst->isSimpleMove() && inst->checkOutputLocal())
+        else if((inst->isSimpleMove() || dynamic_cast<const LoadImmediate*>(inst)) && inst->checkOutputLocal())
         {
             // follow all simple moves to other locals (to find the instruction we really care about)
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -958,7 +1001,27 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
         log << "Vectorization done, changed " << numVectorized << " instructions!" << logging::endl);
 }
 
-/*
+static bool readsOutput(const Local* input, const Local* output, OpCode op)
+{
+    if(input == output)
+        return true;
+    auto writers = input->getUsers(LocalUse::Type::WRITER);
+    if(std::any_of(writers.begin(), writers.end(), [&](const LocalUser* writer) -> bool {
+           if(auto loc = writer->getMoveSource() & &Value::checkLocal)
+               return readsOutput(loc, output, op);
+           auto writeOp = dynamic_cast<const Operation*>(writer);
+           if(writeOp && writeOp->op == op)
+               // For now we only check whether the read is with the same operation. TODO is this required? If we remove
+               // this though, we need to make sure, we don't run into some stack overflow
+               return std::any_of(writer->getArguments().begin(), writer->getArguments().end(),
+                   [&](const Value& arg) -> bool { return arg.checkLocal() && readsOutput(arg.local(), output, op); });
+           return false;
+       }))
+        return true;
+    return false;
+}
+
+/**
  * Allow for accumulations in the style:
  *
  * <outside of loop>
@@ -972,7 +1035,6 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
  * <outside of loop>
  * <...> = %loc
  */
-
 Optional<AccumulationInfo> determineAccumulation(const Local* loc, const ControlFlowLoop& loop)
 {
     // Local has (directly or indirectly via simple moves):
@@ -1047,8 +1109,27 @@ Optional<AccumulationInfo> determineAccumulation(const Local* loc, const Control
         return {};
     }
 
+    if(initialWrite->precalculate().first != OpCode::getLeftIdentity(op->op))
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Accumulation with non-identity initial value is not yet supported: " << initialWrite->to_string()
+                << logging::endl);
+        return {};
+    }
+
+    // make sure the input of the loop read is actually at some point the loop write output
+    if(std::none_of(loopWrite->getArguments().begin(), loopWrite->getArguments().end(),
+           [&](const Value& arg) -> bool { return arg.checkLocal() && readsOutput(arg.local(), loc, op->op); }))
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "In-loop write '" << loopWrite->to_string()
+                << "' does not read accumulation candidate: " << loc->to_string() << logging::endl);
+        return {};
+    }
+
     tools::SmallSortedPointerSet<const LocalUser*> toBeFolded;
     tools::SmallSortedPointerSet<const Local*> toBeMasked;
+    auto outputLocals = loopTemporaries;
     for(auto local : loopTemporaries)
     {
         for(auto reader : local->getUsers(LocalUse::Type::READER))
@@ -1089,6 +1170,7 @@ Optional<AccumulationInfo> determineAccumulation(const Local* loc, const Control
 
                 for(auto user : readers)
                     toBeFolded.emplace(user);
+                outputLocals.emplace(candidate);
             }
         }
     }
@@ -1105,7 +1187,7 @@ Optional<AccumulationInfo> determineAccumulation(const Local* loc, const Control
         log << "Local '" << loc->to_string() << "' is accumulated with operation '" << op->op.name
             << "' in: " << vc4c::to_string<const LocalUser*>(toBeFolded) << logging::endl);
 
-    return AccumulationInfo{loc, op->op, std::move(toBeFolded), std::move(toBeMasked)};
+    return AccumulationInfo{loc, op->op, std::move(outputLocals), std::move(toBeFolded), std::move(toBeMasked)};
 }
 
 bool optimizations::vectorizeLoops(const Module& module, Method& method, const Configuration& config)
@@ -1160,8 +1242,10 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
         }
 
         auto writeDependencies = loop.findLocalDependencies(*dependencyGraph);
+        auto outputDependencies = loop.findOutputDependencies(*dependencyGraph);
+        auto inputDependencies = loop.findInputDependencies(*dependencyGraph);
         FastMap<const Local*, AccumulationInfo> accumulationsToFold;
-        if(writeDependencies.size() > 1)
+        if(!writeDependencies.empty())
         {
             /*
              * There are multiple locals which are written inside and before the loop. Thus, their value is dependent on
@@ -1181,6 +1265,10 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
                     continue;
                 if(auto info = determineAccumulation(candidate, loop))
                 {
+                    outputDependencies.erase(candidate);
+                    for(auto otherLoc : info->outputLocals)
+                        outputDependencies.erase(otherLoc);
+                    inputDependencies.erase(candidate);
                     accumulationsToFold.emplace(candidate, std::move(info).value());
                     continue;
                 }
@@ -1191,6 +1279,27 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
             }
             if(unknownDependency)
                 continue;
+        }
+        inputDependencies.erase(inductionVariable.local);
+        if(std::any_of(inputDependencies.begin(), inputDependencies.end(),
+               [](const Local* loc) -> bool { return !loc->createReference().isAllSame(); }))
+        {
+            // These are locals written before the loop and used inside the loop. Since there are locals in this set
+            // which are not explicitly handled by the vectorization nor splat values and therefore already vectorized,
+            // we don't know how to handle them
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Skipping loop with unknown type of input dependencies: "
+                    << vc4c::to_string<const Local*>(inputDependencies) << logging::endl);
+            continue;
+        }
+        if(!outputDependencies.empty())
+        {
+            // These are locals written in the loop and read afterwards. Since the remaining locals in this set are
+            // not accumulated, we don't know how to handle them
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Skipping loop with unknown type of output dependencies: "
+                    << vc4c::to_string<const Local*>(outputDependencies) << logging::endl);
+            continue;
         }
 
         // 4. determine vectorization factor
@@ -1206,7 +1315,7 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
         }
 
         // 5. cost-benefit calculation
-        int rating = calculateCostsVsBenefits(loop, inductionVariable, *dependencyGraph, vectorizationFactor,
+        int rating = calculateCostsVsBenefits(loop, inductionVariable, vectorizationFactor,
             static_cast<unsigned>(accumulationsToFold.size()), dynamicElementCount.has_value());
         if(rating < 0 /* TODO some positive factor to be required before vectorizing loops? */)
         {

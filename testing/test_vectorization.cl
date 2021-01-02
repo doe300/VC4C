@@ -10,8 +10,8 @@ kernel void test1 (global float a[], global float b[]) {
 
 //following samples taken (slightly modified) from https://llvm.org/docs/Vectorizers.html
 kernel void test2(global float *A, global float* B, float K, int start, int end) {
-  //Expected: cannot be vectorized, since iteration count is unknown
-  //Actual: loop is recognized but skipped, bounds are not constant values
+  //Expected: cannot be vectorized for now
+  //Actual: declines vectorization for reading and writing same memory address
   for (int i = start; i < end; ++i)
     A[i] *= B[i] + K;
 }
@@ -94,7 +94,7 @@ kernel void test11(global struct Foo *out) {
 
 //following samples adapted from https://llvm.org/docs/Vectorizers.html
 kernel void test12(global float *A, global float* B, float K, int start, int end) {
-  //Expected: cannot be vectorized, since iteration count is unknown
+  //Expected: should be able to vectorize
   //Actual: loop is recognized and vectorized with dynamic active element count, calculates correctly
   for (int i = start; i < end; ++i)
     A[i] = B[i] + K;
@@ -113,9 +113,30 @@ kernel void test13(global int *A, global int *B, int count) {
 kernel void test14(global int *A, global int *B, int count) {
   unsigned sum = 0;
   //Expected: should be able to vectorize
-  //Actual: loop is recognized and vectorized with dynamic active element count, XXX result
+  //Actual: loop is recognized and vectorized with dynamic active element count, calculates correctly
   for (int i = 0; i < count; ++i)
     if (A[i] > B[i])
       sum += A[i] + 5;
   *B = sum;
+}
+
+kernel void test15(global int *A, global int *B) {
+  unsigned sum = 17;
+  //Expected: should be able to vectorize
+  //Attention: need to make sure the initial sum value is vectorized correctly
+  //Actual: loop is recognized with correct iteration variable, vectorized version calculates correctly
+  for (int i = 0; i < 1024; ++i)
+    sum += A[i] + 5;
+  *B = sum;
+}
+
+
+kernel void test16(global int *A, global float *B) {
+  int sum = 0;
+  //Expected: should be able to vectorize
+  //Attention: need to make sure, operation on accumulated value is handled correctly
+  //Actual: loop is recognized with correct iteration variable, not vectorized due to non-identity initial accumulation value
+  for (int i = 0; i < 1024; ++i)
+    sum += A[i] + 5;
+  *B = (float)sum;
 }
