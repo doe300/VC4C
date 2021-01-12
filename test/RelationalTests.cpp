@@ -85,7 +85,7 @@ void test_data::registerOpenCLRelationalFunctionTests()
     using limits = std::numeric_limits<float>;
     const std::vector<float> values = {0.0f, -0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 6666.6f, -6666.6f, limits::min(),
         -limits::min(), limits::max(), limits::lowest(), limits::infinity(), -limits::infinity(), limits::quiet_NaN(),
-        limits::signaling_NaN()};
+        -limits::quiet_NaN()};
 
     // put together input vectors by creating a cartesian product of the input set
     std::vector<float> productLeft(values.size() * values.size());

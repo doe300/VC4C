@@ -647,10 +647,6 @@ bool optimizations::reorderBasicBlocks(const Module& module, Method& method, con
         if(blockIt->getLabel()->getLabel()->name != BasicBlock::LAST_BLOCK && predecessor != nullptr &&
             predecessor->key != &(*prevIt) && !prevIt->fallsThroughToNextBlock())
         {
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Reordering block with single predecessor not being the previous block: " << blockIt->to_string()
-                    << logging::endl);
-
             auto predecessorIt = method.begin();
             while(predecessorIt != method.end())
             {
@@ -665,6 +661,29 @@ bool optimizations::reorderBasicBlocks(const Module& module, Method& method, con
 
             // we insert before the iteration, so we need to set the iterator after the predecessor
             ++predecessorIt;
+
+            // don't insert if the block after the predecessor is also a successor of the predecessor
+            bool predecessorAlreadyFollowedBySuccessor = false;
+            predecessor->forAllOutgoingEdges(
+                [&, successorKey(&*predecessorIt)](const CFGNode& successor, const CFGEdge& edge) -> bool {
+                    if(successor.key == successorKey)
+                    {
+                        predecessorAlreadyFollowedBySuccessor = true;
+                        return false;
+                    }
+                    return true;
+                });
+            if(predecessorAlreadyFollowedBySuccessor)
+            {
+                ++blockIt;
+                ++prevIt;
+                continue;
+            }
+
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Reordering block with single predecessor not being the previous block: " << blockIt->to_string()
+                    << logging::endl);
+
             method.moveBlock(blockIt, predecessorIt);
             // prevIt stays the same, since we removed the block and the next blockIt now follows prevIt
             blockIt = prevIt;

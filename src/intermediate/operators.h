@@ -676,8 +676,15 @@ namespace vc4c
         NODISCARD inline ComparisonWrapper isnan(as_float&& val)
         {
             // VideoCore IV considers NaN > Inf for min/fmax/fminabs/fmaxabs
-            // isnan(a) <=> a > Inf
-            return std::forward<as_float>(val) > as_float{FLOAT_INF};
+            // isnan(a) <=> fmaxabs(a, Inf) -> sets carry
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
+                it.emplace((new intermediate::Operation(OP_FMAXABS, out, arg0, FLOAT_INF))
+                               ->setSetFlags(SetFlag::SET_FLAGS)
+                               ->addDecorations(deco));
+                it.nextInBlock();
+            };
+            return ComparisonWrapper{COND_CARRY_SET, val.val, UNDEFINED_VALUE, func};
         }
 
         NODISCARD inline ComparisonWrapper isnaninf(as_float&& val)

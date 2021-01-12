@@ -23,13 +23,24 @@ const TMU periphery::TMU1{REG_TMU1_COORD_S_U_X, REG_TMU1_COORD_T_V_Y, REG_TMU1_C
 static NODISCARD InstructionWalker insertCalculateAddressOffsets(
     Method& method, InstructionWalker it, const Value& baseAddress, DataType type, Value& outputAddress)
 {
+    // since the base address might be a single pointer, we need to replicate it for the upper vector elements to read
+    // the correct address
+    Value replicatedAddress = baseAddress;
+    if(!baseAddress.isAllSame())
+    {
+        replicatedAddress = method.addNewLocal(
+            method.createPointerType(type.getElementType().toVectorType(type.getVectorWidth())), "%replicated_address");
+        it = intermediate::insertReplication(it, baseAddress, replicatedAddress);
+    }
+
     if(type.isScalarType() || type.getPointerType())
     {
-        // for scalar loads, we can save us all that effort, since we already have the address in element 0 and there is
-        // no offset for element zero. So just set the address for all other elements to 0 to not load anything there.
-        outputAddress = assign(it, method.createPointerType(type), "%tmu_address") = 0_val;
-        auto cond = assignNop(it) = selectSIMDElement(0);
-        assign(it, outputAddress) = (baseAddress, cond);
+        // We don't actually need to load anything into the upper SIMD vector elements. But since we cannot "not load
+        // anything" for single elements, we just load the same data into all elements, which at least requires only a
+        // single TMU cache miss.
+        // To guarantee that we actually load the same address (and not some random value which happened to be in the
+        // address register), we also use the replicated address for the scalar loads.
+        outputAddress = assign(it, method.createPointerType(type), "%tmu_address") = replicatedAddress;
         return it;
     }
     /*
@@ -46,23 +57,13 @@ static NODISCARD InstructionWalker insertCalculateAddressOffsets(
     // NOTE: actually this is baseAddr.type * type.num, but we can't have vectors of pointers
     outputAddress = method.addNewLocal(TYPE_INT32.toVectorType(type.getVectorWidth()), "%tmu_address");
 
-    // since the base address might be a single pointer, we need to replicate it for the upper vector elements to read
-    // the correct address
-    Value replicatedAddress = method.addNewLocal(
-        method.createPointerType(type.getElementType().toVectorType(type.getVectorWidth())), "%replicated_address");
-    it = intermediate::insertReplication(it, baseAddress, replicatedAddress);
-
     // addressOffsets = sizeof(type) * elem_num
     assign(it, addressOffsets) = ELEMENT_NUMBER_REGISTER * Literal(static_cast<uint32_t>(type.getScalarBitCount()) / 8);
-    // outputAddress = (elem_num < type.num) ? baseAddress + addressOffsets : 0
-    assign(it, NOP_REGISTER) =
-        (ELEMENT_NUMBER_REGISTER - Value(Literal(static_cast<int32_t>(type.getVectorWidth())), TYPE_INT8),
-            SetFlag::SET_FLAGS);
-    // XXX rewrite, so it can be combined with next instruction
-    // TODO or generally check if we can rewrite "mov out, 0" in way so we can combine it with next/previous instruction
-    // (e.g. by using "xor out, x, x" or "v8subs out, x, x")
-    assign(it, outputAddress) = (0_val, COND_NEGATIVE_CLEAR);
-    assign(it, outputAddress) = (replicatedAddress + addressOffsets, COND_NEGATIVE_SET);
+    // We don't actually need to load anything into the upper SIMD vector elements. But since we cannot "not load
+    // anything" for single elements, we just load the successive data into the upper elements. Since the data is most
+    // likely anyway on the same TMU cache line and/or will be queried in a successive (work-group) loop iteration, this
+    // gives us little overhead.
+    assign(it, outputAddress) = replicatedAddress + addressOffsets;
     return it;
 }
 

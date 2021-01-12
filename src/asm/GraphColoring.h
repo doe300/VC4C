@@ -37,7 +37,7 @@ namespace vc4c
             FastSet<InstructionWalker> associatedInstructions;
             // whether this local is read in a vector rotation and is therefore additionally limited at the possible
             // mapped registers
-            bool isFullVectorRotated;
+            bool isFullVectorRotated = false;
 
             LocalUsage(InstructionWalker first, InstructionWalker last);
         };

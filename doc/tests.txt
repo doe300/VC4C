@@ -73,9 +73,9 @@ test_functional_unpack			PASSED
 test_gather						PASSED
 test_generate					PASSED
 test_image1d					SKIPPED
-test_image2d					FAILED ("Invalid Operation")
+test_image2d					SKIPPED (fixed test case!!)
 test_image3d					SKIPPED
-test_image_sampler				FAILED (nullptr access, ICD dispatch of clCreateSamplerWithProperties functions)
+test_image_sampler				SKIPPED (fixed test case!!)
 test_includes					PASSED
 test_inner_product				PASSED (fixed test case!!)
 test_inplace_merge				PASSED
@@ -86,7 +86,7 @@ test_iota						PASSED
 test_is_permutation				PASSED
 test_is_sorted					PASSED
 test_kernel						PASSED
-test_lambda						result mismatch ("lambda_tenary_function_with_pointer_remquo")
+test_lambda						PASSED
 test_lexicographical_compare	PASSED
 test_linear_congruential_engine	PASSED
 test_literal_conversion			PASSED
@@ -94,13 +94,13 @@ test_local_buffer				SKIPPED ("device does not support local memory")
 test_malloc						PASSED
 test_mapped_view				PASSED (fixed test case!!)
 test_merge						PASSED
-test_merge_sort_gpu				Invalid Value error (get_object_info.hpp:104, trying to read CL_DEVICE_PARENT_DEVICE? does not happen on host emulation), double test skipped
+test_merge_sort_gpu				PASSED (fixed test case!!)
 test_mersenne_twister_engine	PASSED
 test_mismatch					PASSED
 test_multiple_objects			PASSED
 test_next_permutation			PASSED
 test_no_device_found			PASSED
-test_normal_distribution		result value mismatch ("normal_distribution_statistics", got inf/nan, expected 10/2), reads 1-after-bounds of allocated buffer
+test_normal_distribution		result value mismatch ("normal_distribution_statistics", got inf/nan, expected 10/2)
 test_nth_element				PASSED
 test_opencl_error				PASSED
 test_pair						PASSED
@@ -115,7 +115,7 @@ test_prev_permutation			PASSED
 test_program					PASSED
 test_program_cache				PASSED/SKIPPED
 test_radix_sort					PASSED (fixed test case!!)
-test_radix_sort_by_key			result mismatches, reads 1-after-bounds of allocated buffer
+test_radix_sort_by_key			PASSED (fixed test case!!)
 test_random_fill				PASSED
 test_random_shuffle				PASSED
 test_reduce						PASSED (fixed test case!!)
@@ -126,7 +126,7 @@ test_result_of					PASSED
 test_reverse					PASSED
 test_rotate						PASSED
 test_rotate_copy				PASSED
-test_scan						result mismatch (passes with mismatches on emulator)
+test_scan						result mismatch
 test_scatter					PASSED
 test_scatter_if					PASSED
 test_search						PASSED
@@ -135,8 +135,8 @@ test_set_difference				PASSED
 test_set_intersection			PASSED
 test_set_symmetric_difference   PASSED
 test_set_union					PASSED
-test_sort						Invalid Value error (get_object_info.hpp:104)
-test_sort_by_key				result mismatch
+test_sort						PASSED (fixed test case!!)
+test_sort_by_key				PASSED (fixed test case!!)
 test_sort_by_transform			PASSED
 test_stable_partition			PASSED (reads 1-after-bounds of allocated buffer)
 test_stable_sort				PASSED (fixed test case!!)
@@ -149,7 +149,7 @@ test_svm_ptr					PASSED
 test_system						PASSED
 test_tabulate					PASSED
 test_threefry_engine			result mismatch (TODO fix + retest)
-test_transform					result mismatch
+test_transform					result mismatch ("transform_custom_function")
 test_transform_if				PASSED
 test_transform_iterator			PASSED
 test_transform_reduce			result mismatch ("mean_and_std_dev")
