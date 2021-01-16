@@ -18,7 +18,10 @@
 #include <atomic>
 #include <bitset>
 #include <cstdint>
+#include <deque>
+#include <future>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <queue>
 
@@ -34,7 +37,23 @@ namespace vc4c
 
     namespace tools
     {
+        class Slice;
         class QPU;
+        class EmulationClock;
+
+        template <typename T>
+        using AsynchronousHandle = std::shared_ptr<std::promise<T>>;
+
+        struct AsynchronousExecution
+        {
+            std::string name;
+            std::function<bool(uint32_t)> func;
+
+            bool operator()(uint32_t currentCycle) const
+            {
+                return func(currentCycle);
+            }
+        };
 
         using MemoryAddress = uint32_t;
         using Word = uint32_t;
@@ -61,6 +80,7 @@ namespace vc4c
             const Word* getWordAddress(MemoryAddress address) const;
 
             Word readWord(MemoryAddress address) const;
+            AsynchronousExecution startMemoryRead(AsynchronousHandle<Word>&& handle, MemoryAddress address) const;
             MemoryAddress incrementAddress(MemoryAddress address, DataType typeSize) const;
 
             MemoryAddress getMaximumAddress() const;
@@ -108,31 +128,35 @@ namespace vc4c
             NODISCARD SortedMap<Register, SIMDVector>::iterator setReadCache(Register reg, const SIMDVector& val);
         };
 
-        class UniformCache : private NonCopyable
+        class UniformFifo : private NonCopyable
         {
         public:
-            UniformCache(QPU& qpu, Memory& memory, MemoryAddress uniformAddress) :
-                qpu(qpu), memory(memory), uniformAddress(uniformAddress), lastAddressSetCycle(0)
+            UniformFifo(EmulationClock& clock, QPU& qpu, Slice& slice, MemoryAddress uniformAddress) :
+                clock(clock), qpu(qpu), slice(slice), uniformAddress(uniformAddress), lastAddressSetCycle(0), fifo()
             {
             }
 
-            SIMDVector readUniform();
+            std::pair<SIMDVector, bool> readUniform();
             void setUniformAddress(const SIMDVector& val);
 
+            void triggerFifoFill();
+
         private:
+            EmulationClock& clock;
             QPU& qpu;
-            Memory& memory;
+            Slice& slice;
             MemoryAddress uniformAddress;
             uint32_t lastAddressSetCycle;
+            std::deque<std::future<Word>> fifo;
         };
 
         class TMUs : private NonCopyable
         {
         public:
-            TMUs(QPU& qpu, Memory& memory) : qpu(qpu), tmuNoSwap(false), lastTMUNoSwap(0), memory(memory) {}
-
-            SIMDVector readTMU();
-            bool hasValueOnR4() const;
+            TMUs(EmulationClock& clock, QPU& qpu, Slice& slice) :
+                clock(clock), qpu(qpu), tmuNoSwap(false), lastTMUNoSwap(0), slice(slice)
+            {
+            }
 
             void setTMUNoSwap(const SIMDVector& swapVal);
             void setTMURegisterS(uint8_t tmu, const SIMDVector& val);
@@ -140,52 +164,46 @@ namespace vc4c
             void setTMURegisterR(uint8_t tmu, const SIMDVector& val);
             void setTMURegisterB(uint8_t tmu, const SIMDVector& val);
 
-            NODISCARD bool triggerTMURead(uint8_t tmu);
+            NODISCARD bool triggerTMURead(uint8_t tmu, SIMDVector& r4Register);
 
         private:
+            EmulationClock& clock;
             QPU& qpu;
             bool tmuNoSwap;
             uint32_t lastTMUNoSwap;
-            Memory& memory;
+            Slice& slice;
             // Technically there are 2 FIFOs per TMU (request and response), but from a functional view, this makes no
             // difference, since we provide the response for a request immediately in the emulator
-            std::queue<std::pair<SIMDVector, uint32_t>> tmu0Queue;
-            std::queue<std::pair<SIMDVector, uint32_t>> tmu1Queue;
-            Optional<SIMDVector> outputValue;
+            std::queue<std::future<SIMDVector>> tmu0Queue;
+            std::queue<std::future<SIMDVector>> tmu1Queue;
 
             void checkTMUWriteCycle() const;
-            SIMDVector readMemoryAddress(const SIMDVector& address) const;
+            std::future<SIMDVector> readMemoryAddress(const SIMDVector& address) const;
             uint8_t toRealTMU(uint8_t tmu) const;
         };
 
         class SFU : private NonCopyable
         {
         public:
-            SIMDVector readSFU();
-            bool hasValueOnR4() const;
+            SFU(EmulationClock& clock) : clock(clock) {}
 
-            void startRecip(const SIMDVector& val);
-            void startRecipSqrt(const SIMDVector& val);
-            void startExp2(const SIMDVector& val);
-            void startLog2(const SIMDVector& val);
-
-            void incrementCycle();
+            void startRecip(const SIMDVector& val, SIMDVector& r4Register);
+            void startRecipSqrt(const SIMDVector& val, SIMDVector& r4Register);
+            void startExp2(const SIMDVector& val, SIMDVector& r4Register);
+            void startLog2(const SIMDVector& val, SIMDVector& r4Register);
 
         private:
-            // FIXME is SFU calculation per QPU? Or do QPUs need to lock the SFU access?
-            // XXX per QPU cycle??
-            uint32_t lastSFUWrite{0};
-            uint32_t currentCycle{0};
-            Optional<SIMDVector> sfuResult{};
+            EmulationClock& clock;
+
+            void startOperation(SIMDVector&& result, SIMDVector& r4Register);
         };
 
         class VPM : private NonCopyable
         {
         public:
-            explicit VPM(Memory& memory) :
-                memory(memory), vpmReadSetup(0), vpmWriteSetup(0), dmaReadSetup(0), dmaWriteSetup(0),
-                readStrideSetup(0), writeStrideSetup(0), lastDMAReadTrigger(0), lastDMAWriteTrigger(0), currentCycle(0),
-                cache({})
+            explicit VPM(EmulationClock& clock, Memory& memory) :
+                clock(clock), memory(memory), vpmReadSetup(0), vpmWriteSetup(0), dmaReadSetup(0), dmaWriteSetup(0),
+                readStrideSetup(0), writeStrideSetup(0), lastDMAReadTrigger(0), lastDMAWriteTrigger(0), cache({})
             {
                 // just some dummy data to simulate previous values
                 std::for_each(cache.begin(), cache.end(), [](auto& entry) { entry.fill(0xDEADDEAD); });
@@ -203,11 +221,10 @@ namespace vc4c
             NODISCARD bool waitDMAWrite() const;
             NODISCARD bool waitDMARead() const;
 
-            void incrementCycle();
-
             void dumpContents() const;
 
         private:
+            EmulationClock& clock;
             Memory& memory;
             uint32_t vpmReadSetup;
             uint32_t vpmWriteSetup;
@@ -217,7 +234,6 @@ namespace vc4c
             uint32_t writeStrideSetup;
             uint32_t lastDMAReadTrigger;
             uint32_t lastDMAWriteTrigger;
-            uint32_t currentCycle;
 
             std::array<std::array<Word, 16>, 64> cache;
         };
@@ -225,7 +241,10 @@ namespace vc4c
         class Semaphores : private NonCopyable
         {
         public:
-            explicit Semaphores() : counter{0}, blockedQPUs{}, releasedQPUs{} {}
+            explicit Semaphores() : counter{}
+            {
+                counter.fill(0);
+            }
 
             std::pair<SIMDVector, bool> increment(uint8_t index, uint8_t qpu);
             std::pair<SIMDVector, bool> decrement(uint8_t index, uint8_t qpu);
@@ -235,36 +254,115 @@ namespace vc4c
         private:
             std::mutex counterLock;
             std::array<uint8_t, 16> counter;
-            std::array<std::deque<uint8_t>, 16> blockedQPUs;
-            std::array<std::deque<uint8_t>, 16> releasedQPUs;
         };
 
         using ProgramCounter = uint32_t;
+
+        template <unsigned NumElements, typename Element = Word>
+        struct CacheLine
+        {
+            MemoryAddress baseAddress = 0;
+            bool isSet = false;
+            bool isBeingFilled = false;
+            uint16_t lineNum;
+            std::array<Element, NumElements> data{};
+            uint32_t cycleWritten = 0;
+
+            static constexpr auto LINE_SIZE = NumElements * sizeof(Element);
+
+            constexpr bool containsAddress(MemoryAddress address) const noexcept
+            {
+                return isSet && baseAddress <= address && (baseAddress + LINE_SIZE) > address;
+            }
+
+            Element readElement(MemoryAddress address) const
+            {
+                return data.at((address - baseAddress) / sizeof(Element));
+            }
+        };
+
+        class L2Cache
+        {
+        public:
+            L2Cache(EmulationClock& clock, Memory& memory,
+                std::vector<qpu_asm::Instruction>::const_iterator firstInstruction) :
+                clock(clock),
+                memory(memory), firstInstruction(firstInstruction)
+            {
+                cache.fill(CacheLine<16>{});
+                for(uint16_t i = 0; i < cache.size(); ++i)
+                    cache[i].lineNum = i;
+            }
+
+            AsynchronousExecution startCacheLineRead(
+                AsynchronousHandle<std::array<Word, 16>>&& handle, MemoryAddress address);
+            AsynchronousExecution startCacheLineRead(
+                AsynchronousHandle<std::array<uint64_t, 8>>&& handle, ProgramCounter pc);
+
+            void validateMemoryWord(MemoryAddress address, Word word) const;
+            void validateInstruction(ProgramCounter pc, uint64_t instruction) const;
+
+        private:
+            EmulationClock& clock;
+            Memory& memory;
+            std::vector<qpu_asm::Instruction>::const_iterator firstInstruction;
+            std::array<CacheLine<64 / 4>, 512> cache;
+
+            // TODO remove after test
+            friend class Slice;
+        };
+
+        class Slice
+        {
+        public:
+            Slice(uint8_t id, EmulationClock& clock, L2Cache& l2Cache) : id(id), clock(clock), l2Cache(l2Cache)
+            {
+                tmuCache.fill(CacheLine<16>{});
+                uniformCache.fill(CacheLine<16>{});
+                instructionCache.fill(CacheLine<8, uint64_t>{});
+                for(uint16_t i = 0; i < tmuCache.size(); ++i)
+                    tmuCache[i].lineNum = uniformCache[i].lineNum = instructionCache[i].lineNum = i;
+            }
+
+            AsynchronousExecution startUniformRead(AsynchronousHandle<MemoryAddress>&& handle, MemoryAddress address);
+            AsynchronousExecution startTMURead(AsynchronousHandle<Word>&& handle, MemoryAddress address);
+            std::pair<qpu_asm::Instruction, bool> readInstruction(ProgramCounter pc);
+
+        private:
+            uint8_t id;
+            EmulationClock& clock;
+            L2Cache& l2Cache;
+
+            std::array<CacheLine<64 / 4>, 64> tmuCache;
+            std::array<CacheLine<64 / 8, uint64_t>, 64> instructionCache;
+            std::array<CacheLine<64 / 4>, 64> uniformCache;
+        };
 
         using InstrumentationResults = FastAccessList<InstrumentationResult>;
 
         class QPU : private NonCopyable
         {
         public:
-            QPU(uint8_t id, Mutex& mutex, SFU& sfu, VPM& vpm, Semaphores& semaphores, Memory& memory,
-                MemoryAddress uniformAddress, InstrumentationResults& instrumentation) :
+            QPU(uint8_t id, EmulationClock& clock, Slice& slice, Mutex& mutex, SFU& sfu, VPM& vpm,
+                Semaphores& semaphores, MemoryAddress uniformAddress, InstrumentationResults& instrumentation) :
                 ID(id),
-                mutex(mutex), registers(*this), uniforms(*this, memory, uniformAddress), tmus(*this, memory), sfu(sfu),
-                vpm(vpm), semaphores(semaphores), currentCycle(0), pc(0), instrumentation(instrumentation)
+                clock(clock), slice(slice), mutex(mutex), registers(*this),
+                uniforms(clock, *this, slice, uniformAddress), tmus(clock, *this, slice), sfu(sfu), vpm(vpm),
+                semaphores(semaphores), pc(0), lastInstruction{0xDEADDEAD, 0}, instrumentation(instrumentation),
+                stopExecution(false)
             {
+                // initially trigger the loading of the first UNIFORM values into the FIFO
+                uniforms.triggerFifoFill();
             }
 
             const uint8_t ID;
 
             uint32_t getCurrentCycle() const;
-            std::pair<SIMDVector, bool> readR4();
 
-            NODISCARD bool execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction);
+            NODISCARD bool execute();
 
-            const qpu_asm::Instruction* getCurrentInstruction(
-                std::vector<qpu_asm::Instruction>::const_iterator firstInstruction) const;
-            uint32_t getCurrentInstructionIndex(
-                std::vector<qpu_asm::Instruction>::const_iterator firstInstruction) const;
+            qpu_asm::Instruction getCurrentInstruction() const;
+            uint32_t getCurrentInstructionIndex() const;
 
             inline bool operator<(const QPU& other) const noexcept
             {
@@ -272,21 +370,24 @@ namespace vc4c
             }
 
         private:
+            EmulationClock& clock;
+            Slice& slice;
             Mutex& mutex;
             Registers registers;
-            UniformCache uniforms;
+            UniformFifo uniforms;
             TMUs tmus;
             SFU& sfu;
             VPM& vpm;
             Semaphores& semaphores;
-            uint32_t currentCycle;
             VectorFlags flags;
             ProgramCounter pc;
+            std::pair<ProgramCounter, uint64_t> lastInstruction;
             InstrumentationResults& instrumentation;
             SIMDVector lastR4Value;
+            bool stopExecution;
 
             friend class Registers;
-            friend class UniformCache;
+            friend class UniformFifo;
             friend class TMUs;
             friend class SFU;
             friend class VPM;

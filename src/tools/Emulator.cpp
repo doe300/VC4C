@@ -25,6 +25,7 @@
 #include <cstring>
 #include <fstream>
 #include <iomanip>
+#include <memory>
 #include <numeric>
 #include <random>
 
@@ -33,8 +34,73 @@ using namespace vc4c::tools;
 
 static std::mutex instrumentationLock;
 
+static constexpr MemoryAddress INSTRUCTION_BASE_ADDRESS{0x10000000};
+
 extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, StableList<Global>& globals,
     std::vector<qpu_asm::Instruction>& instructions);
+
+class vc4c::tools::EmulationClock
+{
+public:
+    uint32_t currentCycle = 0;
+
+    void schedule(AsynchronousExecution&& execution)
+    {
+        executions.emplace_back(std::move(execution));
+    }
+
+    void executeClockCycle()
+    {
+        ++currentCycle;
+
+        for(auto it = executions.begin(); it != executions.end();)
+        {
+            if((*it)(currentCycle))
+                it = executions.erase(it);
+            else
+                ++it;
+        }
+    }
+
+    bool hasAsynchronousExecutions()
+    {
+        return !executions.empty();
+    }
+
+    LCOV_EXCL_START
+    void logPendingExecutions()
+    {
+        if(hasAsynchronousExecutions())
+        {
+            CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
+                logging::debug() << "Pending asynchronous executions:" << logging::endl;
+                for(auto& exec : executions)
+                    logging::debug() << '\t' << exec.name << logging::endl;
+            });
+        }
+    }
+    LCOV_EXCL_STOP
+
+private:
+    std::list<AsynchronousExecution> executions;
+};
+
+template <typename T>
+static std::pair<T, bool> extractValue(std::future<T>& future)
+{
+    switch(future.wait_for(std::chrono::nanoseconds{}))
+    {
+    case std::future_status::timeout:
+        return std::make_pair(T{}, false);
+    case std::future_status::ready:
+        return std::make_pair(future.get(), true);
+    default:
+        throw CompilationError(CompilationStep::GENERAL, "Invalid future status for asynchronous result");
+    }
+}
+
+template <typename T>
+static auto createHandle = std::make_shared<typename T::element_type>;
 
 std::size_t EmulationData::calcParameterSize() const
 {
@@ -55,6 +121,21 @@ static std::string toAddressString(std::size_t address)
 {
     std::stringstream ss;
     ss << "0x" << std::hex << std::setfill('0') << std::setw(8) << address;
+    return ss.str();
+}
+
+template <typename Container>
+static std::string toDataString(const Container& container)
+{
+    using Element = typename Container::value_type;
+
+    std::stringstream ss;
+    for(unsigned i = 0; i < container.size(); ++i)
+    {
+        if(i != 0)
+            ss << ", ";
+        ss << "0x" << std::hex << std::setfill('0') << std::setw(sizeof(Element) * 2) << container[i];
+    }
     return ss.str();
 }
 
@@ -175,7 +256,6 @@ void Memory::assertAddressInMemory(MemoryAddress address, std::size_t numBytes) 
 
 void Memory::setUniforms(const std::vector<Word>& uniforms, MemoryAddress address)
 {
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 10, "setUniforms", 1);
     std::size_t offset = address / sizeof(Word);
     std::copy_n(uniforms.begin(), uniforms.size(),
         VariantNamespace::get<DirectBuffer>(data).begin() + static_cast<std::vector<Word>::difference_type>(offset));
@@ -273,13 +353,13 @@ void Registers::writeRegister(Register reg, const SIMDVector& val, std::bitset<1
     else if(reg.num == REG_MUTEX.num)
         qpu.mutex.unlock(qpu.ID);
     else if(reg.num == REG_SFU_RECIP.num)
-        qpu.sfu.startRecip(val);
+        qpu.sfu.startRecip(val, qpu.lastR4Value);
     else if(reg.num == REG_SFU_RECIP_SQRT.num)
-        qpu.sfu.startRecipSqrt(val);
+        qpu.sfu.startRecipSqrt(val, qpu.lastR4Value);
     else if(reg.num == REG_SFU_EXP2.num)
-        qpu.sfu.startExp2(val);
+        qpu.sfu.startExp2(val, qpu.lastR4Value);
     else if(reg.num == REG_SFU_LOG2.num)
-        qpu.sfu.startLog2(val);
+        qpu.sfu.startLog2(val, qpu.lastR4Value);
     else if(reg.num == REG_TMU0_COORD_S_U_X.num)
         qpu.tmus.setTMURegisterS(0, val);
     else if(reg.num == REG_TMU0_COORD_T_V_Y.num)
@@ -314,19 +394,17 @@ std::pair<SIMDVector, bool> Registers::readRegister(Register reg, bool anyElemen
     switch(reg.num)
     {
     case REG_SFU_OUT.num:
-    {
-        auto it = readCache.find(REG_SFU_OUT);
-        if(it != readCache.end())
-            return std::make_pair(it->second, true);
-        auto pair = qpu.readR4();
-        ignoreReturnValue(setReadCache(REG_SFU_OUT, pair.first));
-        return pair;
-    }
+        return std::make_pair(qpu.lastR4Value, true);
     case REG_UNIFORM.num:
     {
         auto it = readCache.find(REG_UNIFORM);
         if(it == readCache.end())
-            it = setReadCache(REG_UNIFORM, qpu.uniforms.readUniform());
+        {
+            auto res = qpu.uniforms.readUniform();
+            if(!res.second)
+                return std::make_pair(SIMDVector{}, false);
+            it = setReadCache(REG_UNIFORM, res.first);
+        }
         return std::make_pair(it->second, true);
     }
     case REG_VARYING.num:
@@ -433,7 +511,7 @@ SIMDVector Registers::readStorageRegister(Register reg, bool anyElementUsed)
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Reading from register '" << reg.to_string(true, true) << "': " << vec.first.to_string(true)
             << logging::endl);
-    if(reg.isGeneralPurpose() && qpu.currentCycle - 1 <= vec.second)
+    if(reg.isGeneralPurpose() && qpu.getCurrentCycle() - 1 <= vec.second)
         throw CompilationError(CompilationStep::GENERAL,
             "Physical register cannot be read in the next instruction after it was written", reg.to_string());
     return vec.first;
@@ -471,7 +549,7 @@ void Registers::writeStorageRegister(Register reg, SIMDVector&& val, std::bitset
         val = SIMDVector(Literal(val[0].unsignedInt() & 1));
     }
     auto& vec = storageRegisters.at(toIndex(reg)) = std::make_pair(
-        toStorageValue(storageRegisters.at(toIndex(reg)).first, val, elementMask, bitMask), qpu.currentCycle);
+        toStorageValue(storageRegisters.at(toIndex(reg)).first, val, elementMask, bitMask), qpu.getCurrentCycle());
     if(reg.num == REG_REPLICATE_ALL.num)
     {
         if(!elementMask.test(0))
@@ -508,45 +586,57 @@ SortedMap<Register, SIMDVector>::iterator Registers::setReadCache(Register reg, 
     return it;
 }
 
-SIMDVector UniformCache::readUniform()
+std::pair<SIMDVector, bool> UniformFifo::readUniform()
 {
     if(lastAddressSetCycle != 0 && lastAddressSetCycle + 2 > qpu.getCurrentCycle())
         // see Broadcom specification, page 22
         throw CompilationError(CompilationStep::GENERAL, "Reading UNIFORM within 2 cycles of last UNIFORM reset!");
-    SIMDVector val(Literal(memory.readWord(uniformAddress)));
-    // do not increment UNIFORM pointer for multiple reads in same instruction
-    uniformAddress = memory.incrementAddress(uniformAddress, TYPE_INT32);
+
+    auto data = extractValue(fifo.front());
+    if(!data.second)
+    {
+        // UNIFORM not yet ready
+        // a single emulation cycle is 4 HW clock cycles, due to 4-way serial SIMD
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 43, "UNIFORM stall cycles", 4);
+        return std::make_pair(SIMDVector{}, false);
+    }
+    fifo.pop_front();
+    SIMDVector val(Literal(data.first));
+
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading UNIFORM value: " << val.to_string(true) << logging::endl);
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 40, "UNIFORM read", 1);
-    return val;
+
+    // load next entry into FIFO
+    triggerFifoFill();
+
+    return std::make_pair(std::move(val), true);
 }
 
-void UniformCache::setUniformAddress(const SIMDVector& val)
+void UniformFifo::setUniformAddress(const SIMDVector& val)
 {
     // only first element is used, see Broadcom specification, page 22
     uniformAddress = val[0].toImmediate();
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Reset UNIFORM address to: " << uniformAddress << logging::endl);
     lastAddressSetCycle = qpu.getCurrentCycle();
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 50, "write UNIFORM address", 1);
+    fifo.clear();
+    // preload next UNIFORM values into FIFO
+    triggerFifoFill();
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 41, "write UNIFORM address", 1);
 }
 
-SIMDVector TMUs::readTMU()
+void UniformFifo::triggerFifoFill()
 {
-    if(!outputValue)
-        throw CompilationError(CompilationStep::GENERAL, "Cannot read from empty TMU queue!");
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 68, "TMU read", 1);
-    CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading from TMU: " << outputValue->to_string(true) << logging::endl);
-    auto result = *outputValue;
-    // NOTE: This is technically not correct (the previous value stays in r4 just like in any other register), but it is
-    // required for our current structure (2 different values for TMU/SFU) to work. Otherwise the value would always be
-    // taken from the component first read.
-    outputValue = {};
-    return result;
-}
-
-bool TMUs::hasValueOnR4() const
-{
-    return outputValue.has_value();
+    while(fifo.size() < 2)
+    {
+        // initial load of UNIFORM values
+        auto handle = createHandle<AsynchronousHandle<Word>>();
+        fifo.emplace_back(handle->get_future());
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Triggering read of UNIFORM into FIFO for QPU " << static_cast<unsigned>(qpu.ID)
+                << " from address: " << toAddressString(uniformAddress) << logging::endl);
+        clock.schedule(slice.startUniformRead(std::move(handle), uniformAddress));
+        uniformAddress = uniformAddress + sizeof(Word);
+    }
 }
 
 void TMUs::setTMUNoSwap(const SIMDVector& swapVal)
@@ -565,7 +655,7 @@ void TMUs::setTMURegisterS(uint8_t tmu, const SIMDVector& val)
 
     if(requestQueue.size() >= 8)
         throw CompilationError(CompilationStep::GENERAL, "TMU request queue is full!");
-    requestQueue.push(std::make_pair(readMemoryAddress(val), qpu.getCurrentCycle()));
+    requestQueue.emplace(readMemoryAddress(val));
 }
 
 void TMUs::setTMURegisterT(uint8_t tmu, const SIMDVector& val)
@@ -586,7 +676,7 @@ void TMUs::setTMURegisterB(uint8_t tmu, const SIMDVector& val)
     throw CompilationError(CompilationStep::GENERAL, "Image reads via TMU are currently not supported!");
 }
 
-bool TMUs::triggerTMURead(uint8_t tmu)
+bool TMUs::triggerTMURead(uint8_t tmu, SIMDVector& r4Register)
 {
     tmu = toRealTMU(tmu);
 
@@ -595,23 +685,24 @@ bool TMUs::triggerTMURead(uint8_t tmu)
     if(requestQueue.empty())
         throw CompilationError(CompilationStep::GENERAL, "No data in TMU request queue to be read!");
 
-    auto val = requestQueue.front();
-    if(tmu == 0)
-        PROFILE_COUNTER(
-            vc4c::profiler::COUNTER_EMULATOR + 65, "TMU0 read trigger", val.second + 9 <= qpu.getCurrentCycle());
-    else
-        PROFILE_COUNTER(
-            vc4c::profiler::COUNTER_EMULATOR + 66, "TMU1 read trigger", val.second + 9 <= qpu.getCurrentCycle());
-    if(val.second + 9 > qpu.getCurrentCycle())
-        // block for at least 9 cycles
+    auto val = extractValue(requestQueue.front());
+    if(!val.second)
+    {
+        // still loading
+        // a single emulation cycle is 4 HW clock cycles, due to 4-way serial SIMD
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 68, "TMU stall cycles", 4);
         return false;
-    else if(val.second + 20 > qpu.getCurrentCycle())
-        // blocks up to 20 cycles when reading from RAM
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Distance between triggering of TMU read and read is " << (qpu.getCurrentCycle() - val.second)
-                << ", additional stalls may be introduced" << logging::endl);
+    }
+
+    if(tmu == 0)
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 65, "TMU0 read trigger", 1);
+    else
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 66, "TMU1 read trigger", 1);
+
     requestQueue.pop();
-    outputValue = val.first;
+    CPPLOG_LAZY(
+        logging::Level::DEBUG, log << "Reading from TMU into r4: " << val.first.to_string(true) << logging::endl);
+    r4Register = val.first;
     return true;
 }
 
@@ -622,57 +713,55 @@ void TMUs::checkTMUWriteCycle() const
         throw CompilationError(CompilationStep::GENERAL, "Writing to TMU within 3 cycles of last TMU no-swap change!");
 }
 
-SIMDVector TMUs::readMemoryAddress(const SIMDVector& address) const
+std::future<SIMDVector> TMUs::readMemoryAddress(const SIMDVector& address) const
 {
-    SIMDVector res;
+    auto handle = createHandle<AsynchronousHandle<SIMDVector>>();
+    auto future = handle->get_future();
+    std::vector<std::shared_ptr<std::future<Word>>> wordResults;
+    std::vector<AsynchronousExecution> pendingLoads;
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
-        // NOTE: For real TMU, a value of zero means to not load anything (for that vector element), but we allow the
-        // offset of zero in the emulator
         if(address[i].isUndefined())
             throw CompilationError(
                 CompilationStep::GENERAL, "Cannot read from undefined TMU address", address.to_string());
         else
-            res[i] = Literal(memory.readWord(address[i].toImmediate()));
+        {
+            auto wordHandle = createHandle<AsynchronousHandle<Word>>();
+            wordResults.emplace_back(std::make_shared<std::future<Word>>(wordHandle->get_future()));
+            pendingLoads.emplace_back(slice.startTMURead(std::move(wordHandle), address[i].toImmediate()));
+        }
     }
-    // XXX for cosmetic/correctness, this should print the rounded-down (to word boundaries) addresses
-    CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Reading via TMU from memory address " << address.to_string(true) << ": " << res.to_string(true)
-            << logging::endl);
-    return res;
+    clock.schedule({"TMU read",
+        [handle, address, results{std::move(wordResults)}, pending{std::move(pendingLoads)}](
+            uint32_t currentCycle) mutable -> bool {
+            // wait until all elements are loaded from cache/memory
+            for(auto it = pending.begin(); it != pending.end();)
+            {
+                if((*it)(currentCycle))
+                    it = pending.erase(it);
+                else
+                    ++it;
+            }
+            if(!pending.empty())
+                return false;
+
+            SIMDVector res;
+            for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+                res[i] = Literal(results[i]->get());
+            // XXX for cosmetic/correctness, this should print the rounded-down (to word boundaries) addresses
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Reading via TMU from memory address " << address.to_string(true) << ": " << res.to_string(true)
+                    << logging::endl);
+            handle->set_value(res);
+            return true;
+        }});
+    return future;
 }
 
 uint8_t TMUs::toRealTMU(uint8_t tmu) const
 {
     bool upperHalf = (qpu.ID % 4) >= 2;
     return (upperHalf && !tmuNoSwap) ? tmu ^ 1 : tmu;
-}
-
-SIMDVector SFU::readSFU()
-{
-    if(lastSFUWrite + 2 > currentCycle)
-        throw CompilationError(
-            CompilationStep::GENERAL, "Reading of SFU result within 2 cycles of triggering SFU calculation!");
-    if(!sfuResult)
-        throw CompilationError(CompilationStep::GENERAL, "Cannot read empty SFU result!");
-    auto val = sfuResult.value();
-    // NOTE: This is technically not correct (the previous value stays in r4 just like in any other register), but it is
-    // required for our current structure (2 different values for TMU/SFU) to work. Otherwise the value would always be
-    // taken from the component first read.
-    sfuResult = {};
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 70, "SFU read", 1);
-    CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading from SFU: " << val.to_string(true) << logging::endl);
-    return val;
-}
-
-bool SFU::hasValueOnR4() const
-{
-    return sfuResult.has_value();
-}
-
-static SIMDVector calcSFU(const SIMDVector& in, const std::function<Literal(Literal)>& func)
-{
-    return in.transform(func);
 }
 
 static Literal addSFUError(Literal val)
@@ -682,33 +771,45 @@ static Literal addSFUError(Literal val)
     return Literal(val.unsignedInt() & 0xFFFFFC00);
 }
 
-void SFU::startRecip(const SIMDVector& val)
+void SFU::startRecip(const SIMDVector& val, SIMDVector& r4Register)
 {
-    sfuResult = calcSFU(val, [](Literal f) -> Literal { return addSFUError(periphery::precalculateSFURecip(f)); });
-    lastSFUWrite = currentCycle;
+    auto result = val.transform([](Literal f) -> Literal { return addSFUError(periphery::precalculateSFURecip(f)); });
+    startOperation(std::move(result), r4Register);
 }
 
-void SFU::startRecipSqrt(const SIMDVector& val)
+void SFU::startRecipSqrt(const SIMDVector& val, SIMDVector& r4Register)
 {
-    sfuResult = calcSFU(val, [](Literal f) -> Literal { return addSFUError(periphery::precalculateSFURecipSqrt(f)); });
-    lastSFUWrite = currentCycle;
+    auto result =
+        val.transform([](Literal f) -> Literal { return addSFUError(periphery::precalculateSFURecipSqrt(f)); });
+    startOperation(std::move(result), r4Register);
 }
 
-void SFU::startExp2(const SIMDVector& val)
+void SFU::startExp2(const SIMDVector& val, SIMDVector& r4Register)
 {
-    sfuResult = calcSFU(val, [](Literal f) -> Literal { return addSFUError(periphery::precalculateSFUExp2(f)); });
-    lastSFUWrite = currentCycle;
+    auto result = val.transform([](Literal f) -> Literal { return addSFUError(periphery::precalculateSFUExp2(f)); });
+    startOperation(std::move(result), r4Register);
 }
 
-void SFU::startLog2(const SIMDVector& val)
+void SFU::startLog2(const SIMDVector& val, SIMDVector& r4Register)
 {
-    sfuResult = calcSFU(val, [](Literal f) -> Literal { return addSFUError(periphery::precalculateSFULog2(f)); });
-    lastSFUWrite = currentCycle;
+    auto result = val.transform([](Literal f) -> Literal { return addSFUError(periphery::precalculateSFULog2(f)); });
+    startOperation(std::move(result), r4Register);
 }
 
-void SFU::incrementCycle()
+void SFU::startOperation(SIMDVector&& result, SIMDVector& r4Register)
 {
-    ++currentCycle;
+    clock.schedule({"SFU calculation",
+        [remainingCycles{2}, &r4Register, output{std::move(result)}](uint32_t currentCycle) mutable -> bool {
+            if(remainingCycles > 0)
+            {
+                --remainingCycles;
+                return false;
+            }
+            CPPLOG_LAZY(
+                logging::Level::DEBUG, log << "Reading from SFU into r4: " << output.to_string(true) << logging::endl);
+            r4Register = output;
+            return true;
+        }});
 }
 
 template <typename T>
@@ -963,9 +1064,7 @@ void VPM::setDMAWriteAddress(const SIMDVector& val)
             memcpy(reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
                 reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first).at(vpmBaseAddress.second)) + byteOffset,
                 typeSize * sizes.second);
-            logging::debug() << "\tVPM row: "
-                             << to_string<unsigned, std::array<unsigned, 16>>(cache.at(vpmBaseAddress.first))
-                             << logging::endl;
+            logging::debug() << "\tVPM row: " << toDataString(cache.at(vpmBaseAddress.first)) << logging::endl;
             vpmBaseAddress.first += 1;
             // write stride is end-to-start, so add size of vector
             address += stride + (typeSize * sizes.second);
@@ -989,13 +1088,11 @@ void VPM::setDMAWriteAddress(const SIMDVector& val)
 
         for(uint32_t i = 0; i < sizes.first; ++i)
         {
-            logging::debug() << "\tVPM row: "
-                             << to_string<unsigned, std::array<unsigned, 16>>(cache.at(vpmBaseAddress.first + i))
-                             << logging::endl;
+            logging::debug() << "\tVPM row: " << toDataString(cache.at(vpmBaseAddress.first + i)) << logging::endl;
         }
     }
 
-    lastDMAWriteTrigger = currentCycle;
+    lastDMAWriteTrigger = clock.currentCycle;
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 100, "write DMA write address", 1);
 }
 
@@ -1061,9 +1158,7 @@ void VPM::setDMAReadAddress(const SIMDVector& val)
 
         for(uint32_t i = 0; i < sizes.first; ++i)
         {
-            logging::debug() << "\tVPM row: "
-                             << to_string<unsigned, std::array<unsigned, 16>>(cache.at(vpmBaseAddress.first + i))
-                             << logging::endl;
+            logging::debug() << "\tVPM row: " << toDataString(cache.at(vpmBaseAddress.first + i)) << logging::endl;
         }
     }
     else
@@ -1074,9 +1169,7 @@ void VPM::setDMAReadAddress(const SIMDVector& val)
             memcpy(reinterpret_cast<uint8_t*>(&cache.at(vpmBaseAddress.first).at(vpmBaseAddress.second)) + byteOffset,
                 reinterpret_cast<uint8_t*>(memory.getWordAddress(address)) + address % sizeof(Word),
                 typeSize * sizes.second);
-            logging::debug() << "\tVPM row: "
-                             << to_string<unsigned, std::array<unsigned, 16>>(cache.at(vpmBaseAddress.first))
-                             << logging::endl;
+            logging::debug() << "\tVPM row: " << toDataString(cache.at(vpmBaseAddress.first)) << logging::endl;
             vpmBaseAddress.first += static_cast<uint32_t>((vpitch * typeSize) / sizeof(Word));
             vpmBaseAddress.second += static_cast<uint32_t>((vpitch * typeSize) % sizeof(Word));
             // read pitch is start-to-start, so we don't have to add anything
@@ -1084,27 +1177,45 @@ void VPM::setDMAReadAddress(const SIMDVector& val)
         }
     }
 
-    lastDMAReadTrigger = currentCycle;
+    lastDMAReadTrigger = clock.currentCycle;
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 110, "write DMA read address", 1);
 }
 
 bool VPM::waitDMAWrite() const
 {
     // XXX how many cycles?
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 120, "wait DMA write", lastDMAWriteTrigger + 12 < currentCycle);
-    return lastDMAWriteTrigger + 12 < currentCycle;
+    auto numCyclesLeft = static_cast<int>(lastDMAWriteTrigger) + 12 - static_cast<int>(clock.currentCycle);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 120, "wait DMA write", numCyclesLeft > 0);
+    if(numCyclesLeft > 0)
+        // TODO remove this dummy asynchronous execution once we move DMA access to the new schema
+        clock.schedule({"DMA write wait", [remainingCycles{numCyclesLeft}](uint32_t currentClock) mutable -> bool {
+                            if(remainingCycles > 0)
+                            {
+                                --remainingCycles;
+                                return false;
+                            }
+                            return true;
+                        }});
+    return numCyclesLeft <= 0;
 }
 
 bool VPM::waitDMARead() const
 {
     // XXX how many cycles?
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 130, "wait DMA read", lastDMAReadTrigger + 12 < currentCycle);
-    return lastDMAReadTrigger + 12 < currentCycle;
-}
-
-void VPM::incrementCycle()
-{
-    ++currentCycle;
+    auto numCyclesLeft = static_cast<int>(lastDMAReadTrigger) + 12 - static_cast<int>(clock.currentCycle);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 130, "wait DMA read", numCyclesLeft > 0);
+    if(numCyclesLeft > 0)
+        // TODO remove this dummy asynchronous execution once we move DMA access to the new schema
+        clock.schedule({"DMA read wait",
+            [remainingCycles{lastDMAReadTrigger + 12 - clock.currentCycle}](uint32_t currentClock) mutable -> bool {
+                if(remainingCycles > 0)
+                {
+                    --remainingCycles;
+                    return false;
+                }
+                return true;
+            }});
+    return numCyclesLeft <= 0;
 }
 
 LCOV_EXCL_START
@@ -1130,38 +1241,16 @@ std::pair<SIMDVector, bool> Semaphores::increment(uint8_t index, uint8_t qpu)
 {
     std::lock_guard<std::mutex> guard(counterLock);
     auto& cnt = counter.at(index);
-    auto& blocked = blockedQPUs.at(index);
-    auto& released = releasedQPUs.at(index);
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 140, "semaphore increment",
-        cnt < 15 || (!released.empty() && released.front() == qpu));
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 140, "semaphore increment", cnt < 15);
     if(cnt == 15)
     {
-        if(!released.empty() && released.front() == qpu)
-        {
-            released.pop_front();
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Semaphore " << static_cast<unsigned>(index) << " released QPU: " << static_cast<unsigned>(qpu)
-                    << logging::endl);
-            return std::make_pair(SIMDVector(Literal(15)), true);
-        }
-        auto it = std::find(blocked.begin(), blocked.end(), qpu);
-        if(it == blocked.end())
-            blocked.push_back(qpu);
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Semaphore " << static_cast<unsigned>(index) << " blocked QPU: " << static_cast<unsigned>(qpu)
                 << logging::endl);
         return std::make_pair(SIMDVector(Literal(15)), false);
     }
-    else if(cnt == 0 && !blocked.empty())
-    {
-        released.push_back(blocked.front());
-        blocked.pop_front();
-    }
-    else
-        ++cnt;
-    auto it = std::find(released.begin(), released.end(), qpu);
-    if(it != released.end())
-        released.erase(it);
+
+    ++cnt;
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Semaphore " << static_cast<unsigned>(index) << " increased to: " << static_cast<unsigned>(cnt)
             << logging::endl);
@@ -1174,38 +1263,16 @@ std::pair<SIMDVector, bool> Semaphores::decrement(uint8_t index, uint8_t qpu)
 {
     std::lock_guard<std::mutex> guard(counterLock);
     auto& cnt = counter.at(index);
-    auto& blocked = blockedQPUs.at(index);
-    auto& released = releasedQPUs.at(index);
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 150, "semaphore decrement",
-        cnt > 0 || (!released.empty() && released.front() == qpu));
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 150, "semaphore decrement", cnt > 0);
     if(cnt == 0)
     {
-        if(!released.empty() && released.front() == qpu)
-        {
-            released.pop_front();
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Semaphore " << static_cast<unsigned>(index) << " released QPU: " << static_cast<unsigned>(qpu)
-                    << logging::endl);
-            return std::make_pair(SIMDVector(Literal(0u)), true);
-        }
-        auto it = std::find(blocked.begin(), blocked.end(), qpu);
-        if(it == blocked.end())
-            blocked.push_back(qpu);
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Semaphore " << static_cast<unsigned>(index) << " blocked QPU: " << static_cast<unsigned>(qpu)
                 << logging::endl);
         return std::make_pair(SIMDVector(Literal(0u)), false);
     }
-    else if(cnt == 15 && !blocked.empty())
-    {
-        released.push_back(blocked.front());
-        blocked.pop_front();
-    }
-    else
-        --cnt;
-    auto it = std::find(released.begin(), released.end(), qpu);
-    if(it != released.end())
-        released.erase(it);
+
+    --cnt;
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Semaphore " << static_cast<unsigned>(index) << " decreased to: " << static_cast<unsigned>(cnt)
             << logging::endl);
@@ -1225,38 +1292,410 @@ void Semaphores::checkAllZero() const
             CPPLOG_LAZY(logging::Level::ERROR,
                 log << "Semaphore " << i << " (" << counter[i] << ") is not reset to zero!" << logging::endl);
         }
-        if(!blockedQPUs[i].empty())
-        {
-            anyError = true;
-            CPPLOG_LAZY(logging::Level::ERROR,
-                log << "There are blocked QPUs for semaphore " << i << ": " << to_string<uint8_t>(blockedQPUs[i])
-                    << logging::endl);
-        }
-        if(!releasedQPUs[i].empty())
-        {
-            anyError = true;
-            CPPLOG_LAZY(logging::Level::ERROR,
-                log << "There are released but not yet checked QPUs for semaphore " << i << ": "
-                    << to_string<uint8_t>(releasedQPUs[i]) << logging::endl);
-        }
     }
     if(anyError)
         throw CompilationError(CompilationStep::GENERAL, "Semaphores are not in a good state!");
 }
 
-uint32_t QPU::getCurrentCycle() const
+template <typename Cache>
+constexpr static std::size_t getCacheLineSize(const Cache& cache = {})
 {
-    return currentCycle;
+    return Cache::value_type::LINE_SIZE;
 }
 
-std::pair<SIMDVector, bool> QPU::readR4()
+template <unsigned NumElements, typename Element, std::size_t CacheEntries>
+static CacheLine<NumElements, Element>& getDirectAssociatedCacheLine(
+    std::array<CacheLine<NumElements, Element>, CacheEntries>& cache, MemoryAddress address)
 {
-    // TODO this does not heed elements being masked out from writing!
-    if(tmus.hasValueOnR4())
-        lastR4Value = tmus.readTMU();
-    if(sfu.hasValueOnR4())
-        lastR4Value = sfu.readSFU();
-    return std::make_pair(lastR4Value, true);
+    return cache.at((address / getCacheLineSize(cache)) % cache.size());
+}
+
+template <unsigned NumElements, typename Element, std::size_t CacheEntries>
+static MemoryAddress getBaseCacheLineAddress(
+    const std::array<CacheLine<NumElements, Element>, CacheEntries>& cache, MemoryAddress address)
+{
+    return address & static_cast<MemoryAddress>(~(getCacheLineSize(cache) - 1));
+}
+
+template <unsigned NumElements, typename Element, std::size_t CacheEntries>
+static std::pair<std::reference_wrapper<CacheLine<NumElements, Element>>, uint16_t> get4WayAssociatedCacheLine(
+    std::array<CacheLine<NumElements, Element>, CacheEntries>& cache, MemoryAddress address)
+{
+    auto numSets = cache.size() / 4;
+    auto setIndex = (address / getCacheLineSize(cache)) % numSets;
+    auto baseAddress = getBaseCacheLineAddress(cache, address);
+    auto baseLine = setIndex * 4;
+    auto candidateLines = {baseLine, baseLine + 1, baseLine + 2, baseLine + 3};
+    // 1. select cache line already containing the requested address
+    for(auto line : candidateLines)
+    {
+        if(cache.at(line).baseAddress == baseAddress)
+            return std::make_pair(std::ref(cache.at(line)), setIndex);
+    }
+    // 2. select empty cache line
+    for(auto line : candidateLines)
+    {
+        if(!cache.at(line).isSet)
+            return std::make_pair(std::ref(cache.at(line)), setIndex);
+    }
+    // 3. fall back to evicting the oldest cache line
+    auto oldestLineIndex = baseLine;
+    for(auto line : candidateLines)
+    {
+        if(cache.at(oldestLineIndex).isBeingFilled ||
+            (!cache.at(line).isBeingFilled && cache.at(line).cycleWritten < cache.at(oldestLineIndex).cycleWritten))
+            oldestLineIndex = line;
+    }
+    return std::make_pair(std::ref(cache.at(oldestLineIndex)), setIndex);
+}
+
+AsynchronousExecution L2Cache::startCacheLineRead(
+    AsynchronousHandle<std::array<Word, 16>>&& handle, MemoryAddress address)
+{
+    auto cacheEntry = get4WayAssociatedCacheLine(cache, address);
+    auto& cacheLine = cacheEntry.first.get();
+    // Since we run the QPUs serially (and have no memory access delay so far), one QPU might already load some value
+    // into cache read by the other QPU in the same cycle. Thus, we need to pretend anything loaded in the current cycle
+    // was not loaded yet.
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 51, "L2 cache hits/reads",
+        cacheLine.containsAddress(address) && cacheLine.cycleWritten <= clock.currentCycle);
+    if(!cacheLine.containsAddress(address))
+    {
+        // we read the values now...
+        decltype(cacheLine.data) tmpData;
+        auto baseAddress = getBaseCacheLineAddress(cache, address);
+        for(uint32_t i = 0; i < cacheLine.data.size(); ++i)
+            tmpData[i] = memory.readWord(baseAddress + i * sizeof(Word));
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Read L2 cache line from memory at address " << toAddressString(baseAddress) << ": "
+                << toDataString(tmpData) << logging::endl);
+
+        if(cacheLine.isSet)
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Evicting L2 cache line " << static_cast<unsigned>(cacheLine.lineNum)
+                    << " mapping memory address " << toAddressString(cacheLine.baseAddress) << logging::endl);
+
+        cacheLine.baseAddress = baseAddress;
+        cacheLine.isSet = true;
+        cacheLine.isBeingFilled = true;
+
+        // XXX Since TMU and UNIFORM have similar cache access timings, we for now assume the load speed memory into L2
+        // cache and L2 cache into the L1 caches to be identical
+        clock.schedule({"Memory read",
+            [remainingCycles{8}, &cacheLine, data{std::move(tmpData)}, setIndex{cacheEntry.second}](
+                uint32_t currentCycle) mutable -> bool {
+                if(remainingCycles > 0)
+                {
+                    --remainingCycles;
+                    return false;
+                }
+                // ... but insert them into the cache after the delay
+
+                cacheLine.data = std::move(data);
+                cacheLine.isBeingFilled = false;
+                cacheLine.cycleWritten = currentCycle;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Written into L2 cache line " << static_cast<unsigned>(cacheLine.lineNum) << " (set "
+                        << setIndex << "): " << toDataString(cacheLine.data) << logging::endl);
+                return true;
+            }});
+    }
+    // XXX Since TMU and UNIFORM have similar cache access timings, we for now assume the load speed memory into L2
+    // cache and L2 cache into the L1 caches to be identical
+    return {"L2 read", [remainingCycles{3}, &cacheLine, handle](uint32_t currentCycle) mutable -> bool {
+                if(cacheLine.isBeingFilled)
+                    return false;
+
+                if(remainingCycles > 0)
+                {
+                    --remainingCycles;
+                    return false;
+                }
+                handle->set_value(cacheLine.data);
+                return true;
+            }};
+}
+
+AsynchronousExecution L2Cache::startCacheLineRead(
+    AsynchronousHandle<std::array<uint64_t, 8>>&& handle, ProgramCounter pc)
+{
+    // to not have the instructions also conflicting with the data which is located close to "address" 0, we add some
+    // base address offset for the instruction buffer
+    MemoryAddress address = INSTRUCTION_BASE_ADDRESS + pc * sizeof(uint64_t);
+    auto cacheEntry = get4WayAssociatedCacheLine(cache, address);
+    auto& cacheLine = cacheEntry.first.get();
+    // Since we run the QPUs serially (and have no memory access delay so far), one QPU might already load some value
+    // into cache read by the other QPU in the same cycle. Thus, we need to pretend anything loaded in the current cycle
+    // was not loaded yet.
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 51, "L2 cache hits/reads",
+        cacheLine.containsAddress(address) && cacheLine.cycleWritten <= clock.currentCycle);
+    if(!cacheLine.containsAddress(address))
+    {
+        // we read the values now...
+        std::array<uint64_t, 8> tmpData;
+        auto baseAddress = getBaseCacheLineAddress(cache, address);
+        auto baseProgramCounter = (pc / tmpData.size()) * tmpData.size();
+        for(uint32_t i = 0; i < tmpData.size(); ++i)
+            tmpData[i] = (firstInstruction + static_cast<ssize_t>(baseProgramCounter + i))->toBinaryCode();
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Read L2 cache line from memory at address " << toAddressString(baseAddress) << ": "
+                << toDataString(tmpData) << logging::endl);
+
+        if(cacheLine.isSet)
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Evicting L2 cache line " << static_cast<unsigned>(cacheLine.lineNum)
+                    << " mapping memory address " << toAddressString(cacheLine.baseAddress) << logging::endl);
+
+        cacheLine.baseAddress = baseAddress;
+        cacheLine.isSet = true;
+        cacheLine.isBeingFilled = true;
+
+        // XXX Since TMU and UNIFORM have similar cache access timings, we for now assume the load speed memory into L2
+        // cache and L2 cache into the L1 caches to be identical
+        clock.schedule({"Memory read",
+            [remainingCycles{8}, &cacheLine, data{std::move(tmpData)}, setIndex{cacheEntry.second}](
+                uint32_t currentCycle) mutable -> bool {
+                if(remainingCycles > 0)
+                {
+                    --remainingCycles;
+                    return false;
+                }
+                // ... but insert them into the cache after the delay
+                std::memcpy(cacheLine.data.data(), data.data(), sizeof(data));
+                cacheLine.isBeingFilled = false;
+                cacheLine.cycleWritten = currentCycle;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Written into L2 cache line " << static_cast<unsigned>(cacheLine.lineNum) << " (set "
+                        << setIndex << "): " << toDataString(cacheLine.data) << logging::endl);
+                return true;
+            }});
+    }
+    // XXX Since TMU and UNIFORM have similar cache access timings, we for now assume the load speed memory into L2
+    // cache and L2 cache into the L1 caches to be identical
+    return {"L2 read", [remainingCycles{3}, &cacheLine, handle](uint32_t currentCycle) mutable -> bool {
+                if(cacheLine.isBeingFilled)
+                    return false;
+
+                if(remainingCycles > 0)
+                {
+                    --remainingCycles;
+                    return false;
+                }
+                std::array<uint64_t, 8> tmpData;
+                std::memcpy(tmpData.data(), cacheLine.data.data(), sizeof(tmpData));
+                handle->set_value(tmpData);
+                return true;
+            }};
+}
+
+void L2Cache::validateMemoryWord(MemoryAddress address, Word word) const
+{
+    if(memory.readWord(address) != word)
+    {
+        CPPLOG_LAZY_BLOCK(logging::Level::WARNING, {
+            logging::warn() << "Content of memory does not match word read from cache, this might be an error in the "
+                               "emulator or due to aliasing!"
+                            << logging::endl;
+            logging::warn() << "Word in memory at address " << toAddressString(address) << ": "
+                            << memory.readWord(address) << logging::endl;
+            logging::warn() << "Word read from cache for address " << toAddressString(address) << ": " << word
+                            << logging::endl;
+        });
+    }
+}
+
+void L2Cache::validateInstruction(ProgramCounter pc, uint64_t instruction) const
+{
+    if((firstInstruction + pc)->toBinaryCode() != instruction)
+    {
+        logging::error() << "Instruction at program counter " << pc << ": " << (firstInstruction + pc)->toASMString()
+                         << logging::endl;
+        logging::error() << "Instruction read from cache: " << (qpu_asm::Instruction{instruction}).toASMString()
+                         << logging::endl;
+        throw CompilationError(
+            CompilationStep::GENERAL, "Instruction at current PC does not match instruction read from cache!");
+    }
+}
+
+AsynchronousExecution Slice::startUniformRead(AsynchronousHandle<Word>&& handle, MemoryAddress address)
+{
+    // TODO UNIFORM cache, which properties (size, associativity, row length, lookup timings)?
+    auto& cacheLine = getDirectAssociatedCacheLine(uniformCache, address);
+    // Since we run the QPUs serially (and have no memory access delay so far), one QPU might already load some value
+    // into cache read by the other QPU in the same cycle. Thus, we need to pretend anything loaded in the current cycle
+    // was not loaded yet.
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 42, "UNIFORM cache hits/reads",
+        cacheLine.containsAddress(address) && cacheLine.cycleWritten <= clock.currentCycle);
+    if(!cacheLine.containsAddress(address))
+    {
+        auto handle = createHandle<AsynchronousHandle<std::array<Word, 16>>>();
+        auto fut = std::make_shared<std::future<std::array<Word, 16>>>(handle->get_future());
+        auto l2Read = l2Cache.startCacheLineRead(std::move(handle), address);
+        auto baseAddress = getBaseCacheLineAddress(uniformCache, address);
+
+        if(cacheLine.isSet)
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Evicting UNIFORM cache line " << static_cast<unsigned>(cacheLine.lineNum) << " of slice "
+                    << static_cast<unsigned>(id) << " mapping memory address " << toAddressString(cacheLine.baseAddress)
+                    << logging::endl);
+
+        cacheLine.baseAddress = baseAddress;
+        cacheLine.isSet = true;
+        cacheLine.isBeingFilled = true;
+
+        clock.schedule({"UNIFORM cache fill",
+            [id{id}, &cacheLine, memoryRead{std::move(l2Read)}, loadedData{fut}](
+                uint32_t currentCycle) mutable -> bool {
+                if(!memoryRead(currentCycle))
+                    return false;
+
+                cacheLine.data = loadedData->get();
+                cacheLine.isBeingFilled = false;
+                cacheLine.cycleWritten = currentCycle;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Written into UNIFORM cache line " << static_cast<unsigned>(cacheLine.lineNum)
+                        << " of slice " << static_cast<unsigned>(id) << ": " << toDataString(cacheLine.data)
+                        << logging::endl);
+                return true;
+            }});
+    }
+    // XXX tests suggest the lookup times are similar than for TMU
+    return {"UNIFORM cache read",
+        [remainingCycles{9}, &cacheLine, this, address, handle](uint32_t currentCycle) mutable -> bool {
+            if(cacheLine.isBeingFilled)
+                return false;
+
+            if(remainingCycles > 0)
+            {
+                --remainingCycles;
+                return false;
+            }
+            auto result = cacheLine.readElement(address);
+            l2Cache.validateMemoryWord(address, result);
+            handle->set_value(result);
+            return true;
+        }};
+}
+
+AsynchronousExecution Slice::startTMURead(AsynchronousHandle<Word>&& handle, MemoryAddress address)
+{
+    // According to http://imrc.noip.me/blog/vc4/QT31/, the TMU cache is direct associative (see
+    // https://en.wikipedia.org/wiki/CPU_cache#Associativity), meaning any cache miss overwrites the previous cached
+    // value (if any)
+    auto& cacheLine = getDirectAssociatedCacheLine(tmuCache, address);
+    // Since we run the QPUs serially (and have no memory access delay so far), one QPU might already load some value
+    // into cache read by the other QPU in the same cycle. Thus, we need to pretend anything loaded in the current cycle
+    // was not loaded yet.
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 67, "TMU cache hits/reads (elements)",
+        cacheLine.containsAddress(address) && cacheLine.cycleWritten <= clock.currentCycle);
+    if(!cacheLine.containsAddress(address))
+    {
+        auto handle = createHandle<AsynchronousHandle<std::array<Word, 16>>>();
+        auto fut = std::make_shared<std::future<std::array<Word, 16>>>(handle->get_future());
+        auto l2Read = l2Cache.startCacheLineRead(std::move(handle), address);
+        auto baseAddress = getBaseCacheLineAddress(tmuCache, address);
+
+        if(cacheLine.isSet)
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Evicting TMU cache line " << static_cast<unsigned>(cacheLine.lineNum) << " of slice "
+                    << static_cast<unsigned>(id) << " mapping memory address " << toAddressString(cacheLine.baseAddress)
+                    << logging::endl);
+
+        cacheLine.baseAddress = baseAddress;
+        cacheLine.isSet = true;
+        cacheLine.isBeingFilled = true;
+
+        clock.schedule({"TMU cache fill",
+            [id{id}, &cacheLine, memoryRead{std::move(l2Read)}, loadedData{fut}](
+                uint32_t currentCycle) mutable -> bool {
+                if(!memoryRead(currentCycle))
+                    return false;
+
+                cacheLine.data = loadedData->get();
+                cacheLine.isBeingFilled = false;
+                cacheLine.cycleWritten = currentCycle;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Written into TMU cache line " << static_cast<unsigned>(cacheLine.lineNum) << " of slice "
+                        << static_cast<unsigned>(id) << ": " << toDataString(cacheLine.data) << logging::endl);
+                return true;
+            }});
+    }
+    // read from cache, takes 9 cycles
+    return {"TMU cache read",
+        [remainingCycles{9}, &cacheLine, this, address, handle](uint32_t currentCycle) mutable -> bool {
+            if(cacheLine.isBeingFilled)
+                return false;
+
+            if(remainingCycles > 0)
+            {
+                --remainingCycles;
+                return false;
+            }
+            auto result = cacheLine.readElement(address);
+            l2Cache.validateMemoryWord(address, result);
+            handle->set_value(result);
+            return true;
+        }};
+}
+
+std::pair<qpu_asm::Instruction, bool> Slice::readInstruction(ProgramCounter pc)
+{
+    // to not have the instructions also conflicting with the data which is located close to "address" 0, we add some
+    // base address offset for the instruction buffer
+    MemoryAddress instructionAddress = INSTRUCTION_BASE_ADDRESS + pc * sizeof(uint64_t);
+    auto cacheEntry = get4WayAssociatedCacheLine(instructionCache, instructionAddress);
+    auto& cacheLine = cacheEntry.first.get();
+
+    if(!cacheLine.containsAddress(instructionAddress))
+    {
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 57, "Instruction cache hits/reads", 0);
+
+        auto handle = createHandle<AsynchronousHandle<std::array<uint64_t, 8>>>();
+        auto fut = std::make_shared<std::future<std::array<uint64_t, 8>>>(handle->get_future());
+        auto l2Read = l2Cache.startCacheLineRead(std::move(handle), pc);
+        auto baseAddress = getBaseCacheLineAddress(instructionCache, instructionAddress);
+
+        if(cacheLine.isSet)
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Evicting Instruction cache line " << static_cast<unsigned>(cacheLine.lineNum) << " of slice "
+                    << static_cast<unsigned>(id) << " mapping memory address " << toAddressString(cacheLine.baseAddress)
+                    << logging::endl);
+
+        cacheLine.baseAddress = baseAddress;
+        cacheLine.isSet = true;
+        cacheLine.isBeingFilled = true;
+
+        clock.schedule({"Instruction cache fill",
+            [id{id}, &cacheLine, memoryRead{std::move(l2Read)}, loadedData{fut}, setIndex{cacheEntry.second}](
+                uint32_t currentCycle) mutable -> bool {
+                if(!memoryRead(currentCycle))
+                    return false;
+
+                cacheLine.data = loadedData->get();
+                cacheLine.isBeingFilled = false;
+                cacheLine.cycleWritten = currentCycle;
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Written into Instruction cache line " << static_cast<unsigned>(cacheLine.lineNum)
+                        << " (set " << setIndex << ") of slice " << static_cast<unsigned>(id) << ": "
+                        << toDataString(cacheLine.data) << logging::endl);
+                return true;
+            }});
+    }
+
+    if(cacheLine.isBeingFilled)
+    {
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 58, "Instruction stall cycles", 1);
+        return std::make_pair(qpu_asm::Instruction{}, false);
+    }
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 57, "Instruction cache hits/reads", 1);
+    auto result = cacheLine.readElement(instructionAddress);
+    l2Cache.validateInstruction(pc, result);
+    return std::make_pair(qpu_asm::Instruction{result}, true);
+}
+
+uint32_t QPU::getCurrentCycle() const
+{
+    return clock.currentCycle;
 }
 
 static Register toRegister(Address addr, bool isfileB)
@@ -1298,29 +1737,41 @@ static void checkValidPackTarget(Pack packMode, const qpu_asm::Instruction& inst
     throw CompilationError(CompilationStep::GENERAL, "Cannot pack to invalid target", inst.toASMString());
 }
 
-bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction)
+bool QPU::execute()
 {
-    const qpu_asm::Instruction* inst = &(*(firstInstruction + pc));
+    if(stopExecution)
+        return false;
+
     {
         std::lock_guard<std::mutex> instrumentationGuard(instrumentationLock);
         ++instrumentation.at(pc).numExecutions;
     }
+
+    // If we stall on an instruction (the PC is the same as for the previous cycle), the instruction is already in the
+    // QPU and does not have to be looked up again
+    qpu_asm::Instruction inst{lastInstruction.second};
+    if(lastInstruction.first != pc)
+    {
+        auto val = slice.readInstruction(pc);
+        if(!val.second)
+            return true;
+        inst = val.first;
+    }
+    lastInstruction = std::make_pair(pc, inst.toBinaryCode());
+
     CPPLOG_LAZY(logging::Level::INFO,
         log << "QPU " << static_cast<unsigned>(ID) << " (0x" << std::hex << pc << std::dec
-            << "): " << inst->toASMString() << logging::endl);
+            << "): " << inst.toASMString() << logging::endl);
     ProgramCounter nextPC = pc;
-    if(inst->getSig() == SIGNAL_END_PROGRAM)
-        // end program
-        return false;
-    if(inst->getSig() == SIGNAL_NONE || executeSignal(inst->getSig()))
+    if(inst.getSig() == SIGNAL_NONE || executeSignal(inst.getSig()))
     {
-        if(auto op = inst->as<qpu_asm::ALUInstruction>())
+        if(auto op = inst.as<qpu_asm::ALUInstruction>())
         {
             if(executeALU(op))
                 ++nextPC;
             // otherwise the execution stalled and the PC stays the same
         }
-        else if(auto br = inst->as<qpu_asm::BranchInstruction>())
+        else if(auto br = inst.as<qpu_asm::BranchInstruction>())
         {
             if(isConditionMet(br->getBranchCondition()))
             {
@@ -1339,24 +1790,39 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
                     offset += regVal.first[15].signedInt() /
                         static_cast<int32_t>(sizeof(uint64_t)) /* register value is in bytes */;
                 }
+                ProgramCounter targetPC;
                 if(br->getBranchRelative() == BranchRel::BRANCH_RELATIVE)
-                    nextPC = nextPC + 4 /* Branch starts at PC + 4 */ + static_cast<ProgramCounter>(offset);
+                    targetPC = nextPC + 4 /* Branch starts at PC + 4 */ + static_cast<ProgramCounter>(offset);
                 else
-                    nextPC = static_cast<ProgramCounter>(offset);
+                    targetPC = static_cast<ProgramCounter>(offset);
 
                 // see Broadcom specification, page 34
                 registers.writeRegister(toRegister(br->getAddOut(), br->getWriteSwap() == WriteSwap::SWAP),
                     SIMDVector(Literal(pc + 4)), std::bitset<16>(0xFFFF), BITMASK_ALL);
                 registers.writeRegister(toRegister(br->getMulOut(), br->getWriteSwap() == WriteSwap::DONT_SWAP),
                     SIMDVector(Literal(pc + 4)), std::bitset<16>(0xFFFF), BITMASK_ALL);
+
+                // schedule the jump after the next 3 instructions
+                clock.schedule(
+                    {"Branch delay", [this, remainingCycles{3}, targetPC](uint32_t currentCycle) mutable -> bool {
+                         if(remainingCycles > 0)
+                         {
+                             --remainingCycles;
+                             return false;
+                         }
+                         pc = targetPC;
+                         CPPLOG_LAZY(logging::Level::DEBUG,
+                             log << "Jumping program counter for QPU " << static_cast<unsigned>(ID) << " to: 0x"
+                                 << std::hex << pc << std::dec << logging::endl);
+                         return true;
+                     }});
             }
-            else
-                // simply skip to next PC
-                ++nextPC;
+            // simply skip to next PC
+            ++nextPC;
             PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 160, "branches taken",
                 isConditionMet(br->getBranchCondition()) ? 1 : 0);
         }
-        else if(auto load = inst->as<qpu_asm::LoadInstruction>())
+        else if(auto load = inst.as<qpu_asm::LoadInstruction>())
         {
             auto type = load->getType();
             SIMDVector loadedValues;
@@ -1392,7 +1858,7 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
                     flags);
             ++nextPC;
         }
-        else if(auto semaphore = inst->as<qpu_asm::SemaphoreInstruction>())
+        else if(auto semaphore = inst.as<qpu_asm::SemaphoreInstruction>())
         {
             bool dontStall = true;
             SIMDVector result{};
@@ -1429,24 +1895,22 @@ bool QPU::execute(std::vector<qpu_asm::Instruction>::const_iterator firstInstruc
             }
         }
         else
-            throw CompilationError(CompilationStep::GENERAL, "Invalid assembler instruction", inst->toASMString());
+            throw CompilationError(CompilationStep::GENERAL, "Invalid assembler instruction", inst.toASMString());
     }
 
     // clear cache for registers already read this instruction
     registers.clearReadCache();
 
-    ++currentCycle;
     pc = nextPC;
     return true;
 }
 
-const qpu_asm::Instruction* QPU::getCurrentInstruction(
-    std::vector<qpu_asm::Instruction>::const_iterator firstInstruction) const
+qpu_asm::Instruction QPU::getCurrentInstruction() const
 {
-    return &(*(firstInstruction + pc));
+    return qpu_asm::Instruction{lastInstruction.second};
 }
 
-uint32_t QPU::getCurrentInstructionIndex(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction) const
+uint32_t QPU::getCurrentInstructionIndex() const
 {
     return pc;
 }
@@ -1824,9 +2288,23 @@ bool QPU::executeSignal(Signaling signal)
         // ignore
         return true;
     if(signal == SIGNAL_LOAD_TMU0)
-        return tmus.triggerTMURead(0);
+        return tmus.triggerTMURead(0, lastR4Value);
     else if(signal == SIGNAL_LOAD_TMU1)
-        return tmus.triggerTMURead(1);
+        return tmus.triggerTMURead(1, lastR4Value);
+    else if(signal == SIGNAL_END_PROGRAM)
+    {
+        // end program after the next 2 instructions
+        clock.schedule({"Thread end", [this, remainingCycles{2}](uint32_t currentCycle) mutable -> bool {
+                            if(remainingCycles > 0)
+                            {
+                                --remainingCycles;
+                                return false;
+                            }
+                            stopExecution = true;
+                            return true;
+                        }});
+        return true;
+    }
     else
         throw CompilationError(CompilationStep::GENERAL, "Unhandled signal", signal.to_string());
 }
@@ -1917,8 +2395,7 @@ std::vector<MemoryAddress> tools::buildUniforms(Memory& memory, MemoryAddress ba
     return res;
 }
 
-static void emulateStep(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction, std::vector<QPU>& qpus,
-    std::bitset<NATIVE_VECTOR_SIZE>& activeQPUs)
+static void emulateStep(std::vector<QPU>& qpus, std::bitset<NATIVE_VECTOR_SIZE>& activeQPUs)
 {
     for(std::size_t i = 0; i < qpus.size(); ++i)
     {
@@ -1926,7 +2403,7 @@ static void emulateStep(std::vector<qpu_asm::Instruction>::const_iterator firstI
             continue;
         try
         {
-            bool continueRunning = qpus[i].execute(firstInstruction);
+            bool continueRunning = qpus[i].execute();
             if(!continueRunning)
                 // this QPU has finished
                 activeQPUs.reset(i);
@@ -1934,10 +2411,8 @@ static void emulateStep(std::vector<qpu_asm::Instruction>::const_iterator firstI
         catch(const std::exception&)
         {
             logging::error() << "Emulation threw exception execution in following instruction on QPU "
-                             << static_cast<unsigned>(qpus[i].ID) << " ("
-                             << qpus[i].getCurrentInstructionIndex(firstInstruction)
-                             << "): " << qpus[i].getCurrentInstruction(firstInstruction)->toHexString(true)
-                             << logging::endl;
+                             << static_cast<unsigned>(qpus[i].ID) << " (" << qpus[i].getCurrentInstructionIndex()
+                             << "): " << qpus[i].getCurrentInstruction().toHexString(true) << logging::endl;
             // re-throw error
             throw;
         }
@@ -1951,10 +2426,27 @@ bool tools::emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstr
         throw CompilationError(CompilationStep::GENERAL, "Cannot use more than 12 QPUs!");
 
     Mutex mutex;
+    EmulationClock clock{};
     // FIXME is SFU execution per QPU or need SFUs be locked?
-    std::array<SFU, NUM_QPUS> sfus;
-    VPM vpm(memory);
+    std::vector<Slice> slices;
+    slices.reserve(3);
+    std::array<SFU, NUM_QPUS> sfus{
+        SFU(clock),
+        SFU(clock),
+        SFU(clock),
+        SFU(clock),
+        SFU(clock),
+        SFU(clock),
+        SFU(clock),
+        SFU(clock),
+        SFU(clock),
+        SFU(clock),
+        SFU(clock),
+        SFU(clock),
+    };
+    VPM vpm(clock, memory);
     Semaphores semaphores;
+    L2Cache l2Cache(clock, memory, firstInstruction);
 
     std::vector<QPU> qpus;
     qpus.reserve(uniformAddresses.size());
@@ -1962,34 +2454,65 @@ bool tools::emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstr
     uint8_t numQPU = 0;
     for(MemoryAddress uniformPointer : uniformAddresses)
     {
-        qpus.emplace_back(numQPU, mutex, sfus.at(numQPU), vpm, semaphores, memory, uniformPointer, instrumentation);
+        if(slices.size() <= (numQPU / 4))
+            slices.emplace_back(Slice(static_cast<uint8_t>(slices.size()), clock, l2Cache));
+        qpus.emplace_back(numQPU, clock, slices.at(numQPU / 4), mutex, sfus.at(numQPU), vpm, semaphores, uniformPointer,
+            instrumentation);
         ++numQPU;
     }
 
-    uint32_t cycle = 0;
+    // Additional information to keep track of any hangs
+    // We track the actual instructions in addition to the program counters to only abort if the instruction already
+    // have been loaded and not already once the instruction cache is just filled up
+    std::vector<std::pair<ProgramCounter, uint64_t>> lastProgramCounters;
+    bool lastInstructionHadNoAsynchronousExecutions = false;
+
     bool success = true;
     PROFILE_START(Emulation);
     while(activeQPUs.any())
     {
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "Emulating cycle: " << cycle << logging::endl);
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Emulating cycle: " << clock.currentCycle << logging::endl);
         PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 250, "emulation cycles (utilization)", qpus.size());
-        emulateStep(firstInstruction, qpus, activeQPUs);
-        for(SFU& sfu : sfus)
-            sfu.incrementCycle();
-        vpm.incrementCycle();
 
-        ++cycle;
+        emulateStep(qpus, activeQPUs);
+        clock.executeClockCycle();
 
-        if(cycle == maxCycles)
+        if(clock.currentCycle == maxCycles)
         {
             logging::error() << "After the maximum number of execution cycles, following QPUs are still running: "
                              << logging::endl;
             for(const QPU& qpu : qpus)
                 logging::error() << "QPU " << static_cast<unsigned>(qpu.ID) << ": "
-                                 << qpu.getCurrentInstruction(firstInstruction)->toASMString() << logging::endl;
+                                 << qpu.getCurrentInstruction().toASMString() << logging::endl;
             success = false;
             break;
         }
+
+        if(!clock.hasAsynchronousExecutions())
+        {
+            std::vector<std::pair<ProgramCounter, uint64_t>> currentProgramCounters;
+            for(auto& qpu : qpus)
+            {
+                if(activeQPUs.test(qpu.ID))
+                    currentProgramCounters.emplace_back(
+                        qpu.getCurrentInstructionIndex(), qpu.getCurrentInstruction().toBinaryCode());
+            }
+            if(lastInstructionHadNoAsynchronousExecutions && lastProgramCounters == currentProgramCounters)
+            {
+                // this and the last instruction had no asynchronous execution running and the program counters of all
+                // QPUs are identical -> we hung
+                logging::error() << "No progress for the last two instructions, QPUs hang!" << logging::endl;
+                for(const QPU& qpu : qpus)
+                    logging::error() << "QPU " << static_cast<unsigned>(qpu.ID) << ": "
+                                     << qpu.getCurrentInstruction().toASMString() << logging::endl;
+                success = false;
+                break;
+            }
+            lastInstructionHadNoAsynchronousExecutions = true;
+            lastProgramCounters = std::move(currentProgramCounters);
+        }
+        else
+            lastInstructionHadNoAsynchronousExecutions = false;
     }
     PROFILE_END(Emulation);
 
@@ -1999,10 +2522,11 @@ bool tools::emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstr
     {
         CPPLOG_LAZY(logging::Level::ERROR, log << "Hardware mutex was not unlocked!" << logging::endl);
     }
+    clock.logPendingExecutions();
 
     CPPLOG_LAZY(logging::Level::INFO,
         log << "Emulation " << (success ? "finished" : "timed out") << " for " << uniformAddresses.size()
-            << " QPUs after " << cycle << " cycles" << logging::endl);
+            << " QPUs after " << clock.currentCycle << " cycles" << logging::endl);
 
     vpm.dumpContents();
     return success;
@@ -2032,8 +2556,12 @@ static Memory fillMemory(const StableList<Global>& globalData, const EmulationDa
             return u + global.initialValue.type.getInMemoryWidth() / (TYPE_INT32.getScalarBitCount() / 8);
         });
     auto size = globalDataSize + settings.calcParameterSize();
-    // make sure to have enough space to align UNIFORMs
-    while((size % 8) != 0)
+    // make sure to have enough space to align UNIFORMs and to fetch full L2 cache lines
+    if((size % 64) == 0)
+        // if we happen to align directly, add a full cache line to be able to prefetch the next 2 UNIFORMs for the last
+        // QPU
+        size += 64;
+    while((size % 64) != 0)
         ++size;
     size += settings.calcNumWorkItems() * (16 + settings.parameter.size());
     Memory mem(size);
