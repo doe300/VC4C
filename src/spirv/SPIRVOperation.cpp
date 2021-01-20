@@ -848,6 +848,14 @@ void SPIRVInsertionExtraction::mapInstruction(TypeMapping& types, ConstantMappin
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating intermediate insertion of " << element->to_string() << " into element "
                 << index.to_string() << " of " << dest.to_string(true) << logging::endl);
+
+        if(container.isUndefined())
+        {
+            // source container is undefined -> overwrite all elements with element to be inserted
+            method.method->appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(element).value()));
+            return;
+        }
+
         // 1. copy whole composite
         method.method->appendToEnd(new intermediate::MoveOperation(Value(dest), std::move(container)));
         // 2. insert object at given index

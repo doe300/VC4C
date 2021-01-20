@@ -297,6 +297,36 @@ static uint8_t getVectorWidth(DataType type)
     return type.getVectorWidth();
 }
 
+static void removeSplatDecoration(IntermediateInstruction* inst, Optional<InstructionWalker> it)
+{
+    if(!inst->hasDecoration(InstructionDecorations::IDENTICAL_ELEMENTS))
+        return;
+    inst->decoration = remove_flag(inst->decoration, InstructionDecorations::IDENTICAL_ELEMENTS);
+
+    if(inst->writesRegister(REG_TMU0_ADDRESS) || inst->writesRegister(REG_TMU1_ADDRESS))
+    {
+        if(!it)
+            throw CompilationError(CompilationStep::OPTIMIZER,
+                "Cannot remove splat decoration from TMU read without knowing its position");
+        auto checkIt = it->copy().nextInBlock();
+        while(!checkIt.isEndOfBlock())
+        {
+            if(checkIt->readsRegister(REG_TMU_OUT))
+            {
+                removeSplatDecoration(checkIt.get(), checkIt);
+                break;
+            }
+            checkIt.nextInBlock();
+        }
+        if(checkIt.isEndOfBlock())
+            throw CompilationError(CompilationStep::OPTIMIZER,
+                "Failed to find TMU value read for no longer identical TMU address write", inst->to_string());
+    }
+    if(auto loc = inst->checkOutputLocal())
+        loc->forUsers(LocalUse::Type::READER,
+            [=](const LocalUser* reader) { removeSplatDecoration(const_cast<LocalUser*>(reader), it); });
+}
+
 static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Method& method,
     FastMap<const intermediate::IntermediateInstruction*, uint8_t>& openInstructions, unsigned vectorizationFactor,
     ControlFlowLoop& loop, uint8_t minVectorWidth, const Optional<Value>& dynamicElementCount)
@@ -360,6 +390,48 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
                 const_cast<DataType&>(loc->type) = loc->type.toVectorType(getVectorWidth(out.type));
             scheduleForVectorization(loc, openInstructions, loop, false, vectorWidth);
         }
+        if(out.hasRegister(REG_REPLICATE_ALL) || out.hasRegister(REG_REPLICATE_QUAD))
+        {
+            // for replications (e.g. for scalar TMU read), need to un-replicate the values
+            // TODO is this true in any case??
+            auto replicateIt = loop.findInLoop(inst);
+            if(!replicateIt)
+                // TODO not actually a problem, we just have to find the instruction walker
+                throw CompilationError(
+                    CompilationStep::OPTIMIZER, "Cannot vectorize replication outside of loop", inst->to_string());
+
+            auto newLoc = method.addNewLocal(out.type, "%vectorized_replication");
+            inst->replaceValue(out, newLoc, LocalUse::Type::WRITER);
+
+            auto checkIt = replicateIt->nextInBlock();
+            while(!checkIt.isEndOfBlock())
+            {
+                if(auto arg = checkIt->findRegisterArgument(REG_ACC5))
+                {
+                    checkIt->replaceValue(*arg, newLoc, LocalUse::Type::READER);
+                    checkIt->decoration = remove_flag(checkIt->decoration, InstructionDecorations::IDENTICAL_ELEMENTS);
+                    removeSplatDecoration(checkIt.get(), checkIt);
+                }
+                if(auto arg = checkIt->findRegisterArgument(REG_REPLICATE_ALL))
+                {
+                    checkIt->replaceValue(*arg, newLoc, LocalUse::Type::READER);
+                    checkIt->decoration = remove_flag(checkIt->decoration, InstructionDecorations::IDENTICAL_ELEMENTS);
+                    removeSplatDecoration(checkIt.get(), checkIt);
+                }
+                if(auto arg = checkIt->findRegisterArgument(REG_REPLICATE_QUAD))
+                {
+                    checkIt->replaceValue(*arg, newLoc, LocalUse::Type::READER);
+                    checkIt->decoration = remove_flag(checkIt->decoration, InstructionDecorations::IDENTICAL_ELEMENTS);
+                    removeSplatDecoration(checkIt.get(), checkIt);
+                }
+                if(checkIt->writesRegister(REG_ACC5) || checkIt->writesRegister(REG_REPLICATE_ALL) ||
+                    checkIt->writesRegister(REG_REPLICATE_QUAD))
+                    // replication register is overwritten, abort
+                    break;
+                checkIt.nextInBlock();
+            }
+            scheduleForVectorization(newLoc.local(), openInstructions, loop, false, vectorWidth);
+        }
     }
 
     if(inst->writesRegister(REG_TMU0_ADDRESS) || inst->writesRegister(REG_TMU1_ADDRESS))
@@ -371,47 +443,6 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
             // TODO not actually a problem, we just have to find the instruction walker
             throw CompilationError(
                 CompilationStep::OPTIMIZER, "Cannot vectorize setting TMU address outside of loop", inst->to_string());
-
-        auto optIt = addressIt->getBasicBlock()->findLastSettingOfFlags(*addressIt);
-        if(!optIt)
-            throw CompilationError(CompilationStep::OPTIMIZER,
-                "Failed to find setting of element-wise flags for setting of TMU address", inst->to_string());
-        logging::debug() << "Vectorizing TMU load element mask: " << (*optIt)->to_string() << logging::endl;
-        if((*optIt)->getMoveSource() & [](const Value val) -> bool { return val.hasRegister(REG_ELEMENT_NUMBER); })
-        {
-            // Rewrite single element selection via move elem_num to multi-element selection via per-element loads. This
-            // way we do not need to change any flags
-            optIt->reset((new LoadImmediate((*optIt)->getOutput().value(), 0xFFFF ^ ((1 << vectorWidth) - 1),
-                              LoadType::PER_ELEMENT_UNSIGNED))
-                             ->copyExtrasFrom(optIt->get()));
-        }
-        else if(auto op = optIt->get<intermediate::Operation>())
-        {
-            if(op->op != OP_SUB || !op->assertArgument(0).hasRegister(REG_ELEMENT_NUMBER) ||
-                !op->assertArgument(1).getLiteralValue())
-                throw CompilationError(CompilationStep::OPTIMIZER,
-                    "Unhandled instruction setting flags for valid TMU address elements", (*optIt)->to_string());
-            // we have instruction - = elem_num - vector_width (setf)
-            op->setArgument(1, Value(Literal(vectorWidth), TYPE_INT8));
-        }
-        else
-            // TODO make more robust!
-            throw CompilationError(CompilationStep::OPTIMIZER,
-                "Unhandled instruction setting flags for valid TMU address elements", (*optIt)->to_string());
-        (*optIt)->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
-        // TODO if the previous size was 1 and the input is not directly an UNIFORM value, we need to replicate the base
-        // address too!
-
-        // when writing to TMU address register, we also need to change the element address offset, since it is added
-        // twice (once for the modified original index and once for the TMU loading element address offset).
-        // The TMU address is set conditionally depending on the above setting of flags to either zero or the base
-        // address + element offset
-        auto firstArg = inst->getArgument(0);
-        if(dynamic_cast<MoveOperation*>(inst) == nullptr || !firstArg || firstArg->checkLocal() == nullptr ||
-            firstArg->local()->countUsers(LocalUse::Type::WRITER) != 2)
-            // TODO make more robust!
-            throw CompilationError(
-                CompilationStep::OPTIMIZER, "Unhandled instruction setting TMU address elements", inst->to_string());
 
         if(dynamicElementCount)
         {

@@ -216,6 +216,47 @@ tools::SmallSortedPointerSet<const CFGNode*> ControlFlowLoop::findSuccessors() c
     return successors;
 }
 
+const CFGEdge* ControlFlowLoop::findExitEdge() const
+{
+    const CFGEdge* exitEdge = nullptr;
+    for(const CFGNode* node : *this)
+    {
+        node->forAllOutgoingEdges([this, node, &exitEdge](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
+            if(find(&neighbor) == end())
+            {
+                // the relation is forward and node is not within this loop -> successor
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Found exit edge for CFG loop: " << node->key->to_string() << " -> "
+                        << neighbor.key->to_string() << logging::endl);
+
+                if(exitEdge != nullptr && exitEdge != &edge)
+                {
+                    // multiple successors, abort
+                    exitEdge = nullptr;
+                    return false;
+                }
+                exitEdge = &edge;
+            }
+            return true;
+        });
+    }
+    return exitEdge;
+}
+
+tools::SmallSortedPointerSet<const CFGEdge*> ControlFlowLoop::findExitEdges() const
+{
+    tools::SmallSortedPointerSet<const CFGEdge*> exitEdges;
+    for(const CFGNode* node : *this)
+    {
+        node->forAllOutgoingEdges([this, &exitEdges](const CFGNode& neighbor, const CFGEdge& edge) -> bool {
+            if(find(&neighbor) == end())
+                exitEdges.emplace(&edge);
+            return true;
+        });
+    }
+    return exitEdges;
+}
+
 Optional<InstructionWalker> ControlFlowLoop::findInLoop(const intermediate::IntermediateInstruction* inst) const
 {
     for(const CFGNode* node : *this)
@@ -377,11 +418,23 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
         return {};
     }
 
+    // If the repetition branch in the tail block is unconditional, the exit branch is conditional and has to be checked
+    Optional<InstructionWalker> exitBranch{};
+    if(auto exitEdge = findExitEdge())
+    {
+        auto first = *exitEdge->getNodes().begin();
+        auto second = *(++exitEdge->getNodes().begin());
+        if(find(first) != end())
+            exitBranch = exitEdge->data.getPredecessor(first->key);
+        else
+            exitBranch = exitEdge->data.getPredecessor(second->key);
+    }
+
     for(auto local : findLocalDependencies(dependencyGraph))
     {
         if(local == nullptr)
             continue;
-        if(auto inductionVar = extractInductionVariable(local, tailBranch, tail, includeIterationInformation))
+        if(auto inductionVar = extractInductionVariable(local, tailBranch, exitBranch, includeIterationInformation))
             variables.emplace_back(std::move(inductionVar).value());
     }
 
@@ -712,7 +765,7 @@ static const char* switchComparisonOperands(const std::string& comparison)
     throw CompilationError(CompilationStep::GENERAL, "Unhandled comparison operation to switch", comparison);
 }
 
-static const char* invertComparisonOperands(const std::string& comparison)
+static const char* invertComparison(const std::string& comparison)
 {
     if(comparison == intermediate::COMP_EQ)
         return intermediate::COMP_NEQ;
@@ -738,16 +791,21 @@ static const char* invertComparisonOperands(const std::string& comparison)
     throw CompilationError(CompilationStep::GENERAL, "Unhandled comparison operation to invert", comparison);
 }
 
-static void addIterationInformation(
-    InductionVariable& inductionVar, const ControlFlowLoop& loop, InstructionWalker tailBranch, const CFGNode* tail)
+static void addIterationInformation(InductionVariable& inductionVar, const ControlFlowLoop& loop,
+    InstructionWalker tailBranch, Optional<InstructionWalker> exitBranch)
 {
     auto local = inductionVar.local;
     auto stepOperation = inductionVar.inductionStep;
     const Local* repeatConditionLocal = nullptr;
     ConditionCode repeatCondition = COND_NEVER;
+    auto comparisonBlock = tailBranch.getBasicBlock();
+    auto conditionalInstruction = tailBranch.get();
+    bool isExitBranch = false;
 
     if(auto branch = tailBranch.get<intermediate::Branch>())
     {
+        // "Default" case, the repeat condition is in the tail and determines whether to jump back to the header for a
+        // new iteration or not and therefore somehow leave the loop
         if(auto branchCondition = tailBranch.getBasicBlock()->findLastSettingOfFlags(tailBranch))
         {
             auto pair = intermediate::getBranchCondition(branchCondition->get<intermediate::ExtendedInstruction>());
@@ -765,6 +823,33 @@ static void addIterationInformation(
         repeatCondition = branch->branchCondition.toConditionCode();
     }
 
+    if(!repeatConditionLocal && exitBranch)
+    {
+        if(auto branch = exitBranch->get<intermediate::Branch>())
+        {
+            // "Compact" case, e.g. for barrier() loops, the repeat condition is in the exit node and determines whether
+            // to jump out of the loop or somehow run the next iteration
+            if(auto branchCondition = exitBranch->getBasicBlock()->findLastSettingOfFlags(*exitBranch))
+            {
+                auto pair = intermediate::getBranchCondition(branchCondition->get<intermediate::ExtendedInstruction>());
+                if(!pair.first || pair.second != 0x1)
+                {
+                    // for now we don't support any non-standard conditions. Otherwise we also would need to support all
+                    // any/all flags combinations
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Skipping non-default branch condition: " << (*branchCondition)->to_string()
+                            << logging::endl);
+                    return;
+                }
+                repeatConditionLocal = pair.first->local();
+            }
+            isExitBranch = true;
+            repeatCondition = branch->branchCondition.toConditionCode();
+            conditionalInstruction = branch;
+            comparisonBlock = exitBranch->getBasicBlock();
+        }
+    }
+
     if(!repeatConditionLocal)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
@@ -772,7 +857,14 @@ static void addIterationInformation(
         return;
     }
 
-    auto repeatComparison = getComparison(repeatConditionLocal, tail->key->walk());
+    Optional<ComparisonInfo> repeatComparison{};
+    if(repeatConditionLocal == inductionVar.local)
+        // This happens e.g. for simplified ==/!= 0 comparisons, where there is no boolean variable in between the
+        // comparison and the flag setter for the branch and therefore the flag setter found above is the comparison and
+        // thus the flag setter argument is the induction variable.
+        repeatComparison = getComparison(conditionalInstruction, comparisonBlock->walk());
+    else
+        repeatComparison = getComparison(repeatConditionLocal, comparisonBlock->walk());
     if(!repeatComparison)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
@@ -811,14 +903,18 @@ static void addIterationInformation(
     }
 
     auto compName = repeatComparison->name;
+    if(isExitBranch)
+        // the comparison is for the exit branch, i.e. if the comparison is met, we exit the loop. So to stay on the
+        // loop, we need to invert the comparison
+        compName = invertComparison(compName);
     if(!isLeftOperand)
         // we expect the induction variable (or its derivative) to be on the left side of the comparison, so we need
         // to switch the operands and the comparison function
         compName = switchComparisonOperands(compName);
-    if(repeatCondition == COND_ZERO_SET)
+    if(repeatConditionLocal != inductionVar.local && repeatCondition == COND_ZERO_SET)
         // the boolean flag is set on zero clear, but we repeat on zero set, so we need to invert the comparison
-        compName = invertComparisonOperands(compName);
-    else if(repeatCondition != COND_ZERO_CLEAR)
+        compName = invertComparison(compName);
+    if(repeatCondition != COND_ZERO_CLEAR && repeatCondition != COND_ZERO_SET)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Repetition branch on this flag is not yet supported: " << repeatCondition.to_string()
@@ -829,8 +925,8 @@ static void addIterationInformation(
         RepeatCondition{compName, isLeftOperand ? rightOperand : leftOperand, repeatConditionLocal};
 }
 
-Optional<InductionVariable> ControlFlowLoop::extractInductionVariable(
-    const Local* local, InstructionWalker tailBranch, const CFGNode* tail, bool includeIterationInformation) const
+Optional<InductionVariable> ControlFlowLoop::extractInductionVariable(const Local* local, InstructionWalker tailBranch,
+    Optional<InstructionWalker> exitBranch, bool includeIterationInformation) const
 {
     auto stepInfo = findInitialAssignmentAndSingleStep(local, *this);
     if(!stepInfo.first || !stepInfo.second)
@@ -846,7 +942,7 @@ Optional<InductionVariable> ControlFlowLoop::extractInductionVariable(
 
     if(includeIterationInformation)
         // try to find the additional information indicating repetition count, etc.
-        addIterationInformation(inductionVar, *this, tailBranch, tail);
+        addIterationInformation(inductionVar, *this, tailBranch, exitBranch);
 
     return inductionVar;
 }

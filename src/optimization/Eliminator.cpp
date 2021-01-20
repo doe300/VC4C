@@ -473,6 +473,36 @@ static bool isNoReadBetween(InstructionWalker first, InstructionWalker second, R
     return true;
 }
 
+static std::function<bool(const intermediate::IntermediateInstruction&)> createRegisterCheck(
+    InstructionWalker it, const Value& src)
+{
+    auto reg = src.checkRegister();
+    if(!reg)
+        // no register read, this check does not apply
+        return [](const auto&) -> bool { return true; };
+    /*
+     * We need to make sure, that the register is not overwritten between the original register read and the read after
+     * this optimization is applied.
+     */
+    if(*reg == REG_SFU_OUT || *reg == REG_TMU_OUT)
+    {
+        return [](const auto& inst) -> bool {
+            // allow as long as r4 accumulator is not written
+            return !(inst.checkOutputRegister() & &Register::triggersReadOfR4) && !inst.getSignal().triggersReadOfR4();
+        };
+    }
+    if(*reg == REG_ACC5)
+    {
+        return [](const auto& inst) -> bool {
+            // allow as long as neither r5 nor any replication registers are written
+            auto outReg = inst.checkOutputRegister();
+            return !outReg || (*outReg != REG_ACC5 && *outReg != REG_REPLICATE_ALL && *outReg != REG_REPLICATE_QUAD);
+        };
+    }
+    // any other register, do not allow to move, since we did not run the proper check
+    return [](const auto& inst) -> bool { return false; };
+}
+
 /* TODO
  * this propagation should work among basic blocks.
  * but we need very keen to unsafe-case
@@ -525,6 +555,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
                 FastSet<const LocalUser*>{};
             // registers fixed to physical file B cannot be combined with literal
             bool skipLiteralReads = newValue.checkRegister() && newValue.reg().file == RegisterFile::PHYSICAL_B;
+            auto checkRegister = createRegisterCheck(it, newValue);
             while(!it2.isEndOfBlock() && !remainingLocalReads.empty())
             {
                 bool replacedThisInstruction = false;
@@ -546,6 +577,9 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
                     foldConstants(module, method, it2, config);
 
                 if(it2->getOutput() && it2->getOutput() == oldValue)
+                    break;
+
+                if(it2.has() && !checkRegister(*it2.get()))
                     break;
 
                 it2.nextInBlock();

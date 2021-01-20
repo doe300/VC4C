@@ -24,6 +24,7 @@ namespace vc4c
     {
         class CFGRelation;
         using CFGNode = Node<BasicBlock*, CFGRelation, Directionality::BIDIRECTIONAL>;
+        using CFGEdge = Edge<CFGNode, CFGRelation, Directionality::BIDIRECTIONAL>;
         class DataDependencyGraph;
 
         struct RepeatCondition
@@ -126,6 +127,14 @@ namespace vc4c
             tools::SmallSortedPointerSet<const CFGNode*> findSuccessors() const;
 
             /*
+             * Returns the edges exiting the loop, i.e. the edges branching to the successor blocks.
+             *
+             * NOTE: The single return value variant returns NULL if there are multiple exit edges!
+             */
+            const CFGEdge* findExitEdge() const;
+            tools::SmallSortedPointerSet<const CFGEdge*> findExitEdges() const;
+
+            /*
              * Returns the InstructionWalker for the given instruction, if it is within the loop.
              */
             Optional<InstructionWalker> findInLoop(const intermediate::IntermediateInstruction* inst) const;
@@ -217,7 +226,7 @@ namespace vc4c
             const CFGNode::EdgeType* backEdge;
 
             Optional<InductionVariable> extractInductionVariable(const Local* local, InstructionWalker tailBranch,
-                const CFGNode* tail, bool includeIterationInformation) const;
+                Optional<InstructionWalker> exitBranch, bool includeIterationInformation) const;
         };
 
         /*

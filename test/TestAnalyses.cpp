@@ -475,9 +475,6 @@ void TestAnalyses::testControlFlowLoops()
         {
             if(loop.isWorkGroupLoop())
                 continue;
-            if(loop.size() == 2)
-                // TODO we can't yet determine the comparison for the barrier loop
-                continue;
             auto inductionVars = loop.findInductionVariables(*dataDependencies, true);
             if(inductionVars.size() != 1)
                 continue;

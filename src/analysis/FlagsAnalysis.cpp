@@ -363,6 +363,22 @@ static Optional<ComparisonData> checkEquals(InstructionWalker searchIt, Value& l
         return ComparisonData{intermediate::COMP_EQ, result, COND_ZERO_SET};
     }
 
+    // Check for scalar left == 0
+    Pattern scalarZeroPattern = {{
+
+        /* register - = or element_number, %left (setf) */
+        anyValue() = (match(OP_OR), match(ELEMENT_NUMBER_REGISTER), capture(leftOperand), match(SetFlag::SET_FLAGS))
+
+    }};
+
+    result = pattern::search(searchIt, scalarZeroPattern, true);
+    if(!result.isEndOfBlock() && (leftOperand.type.isScalarType() || leftOperand.type.getPointerType()))
+    {
+        // only allow this if the type is actually a scalar type
+        rightOperand = INT_ZERO;
+        return ComparisonData{intermediate::COMP_EQ, result, COND_ZERO_SET};
+    }
+
     return {};
 }
 

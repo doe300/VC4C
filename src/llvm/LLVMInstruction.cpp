@@ -465,6 +465,14 @@ bool ContainerInsertion::mapInstruction(Method& method)
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating insertion of " << newValue.to_string() << " at " << index.to_string() << " into "
             << container.to_string() << " into " << dest.to_string() << logging::endl);
+
+    if(container.isUndefined())
+    {
+        // source container is undefined -> overwrite all elements with element to be inserted
+        method.appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(newValue)));
+        return true;
+    }
+
     // 1. copy whole container
     method.appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(container)));
     // 2. insert new element
