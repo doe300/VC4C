@@ -856,6 +856,7 @@ static void initializeTests()
         registerOpenCLGeometricFunctionTests();
         registerOpenCLIntegerFunctionTests();
         registerOpenCLRelationalFunctionTests();
+        registerMathTests();
         registerMemoryTests();
         registerTypeConversionTests();
         registerVectorTests();

@@ -179,6 +179,26 @@ static T checkShiftRight(T arg1, T arg2)
     return static_cast<T>(arg1 >> (arg2 % (sizeof(T) * CHAR_BIT)));
 }
 
+template <typename T, typename Func>
+static typename std::enable_if<std::is_integral<T>::value, Func>::type wrap(const Func& func)
+{
+    return func;
+}
+
+template <typename T>
+static typename std::enable_if<std::is_floating_point<T>::value, std::function<float(float)>>::type wrap(
+    const std::function<float(float)>& func)
+{
+    return test_data::roundToZero(func);
+}
+
+template <typename T>
+static typename std::enable_if<std::is_floating_point<T>::value, std::function<float(float, float)>>::type wrap(
+    const std::function<float(float, float)>& func)
+{
+    return test_data::roundToZero(func);
+}
+
 template <typename T>
 static void registerNonFloatTests(const std::string& typeName, test_data::DataFilter flags, const std::string& options,
     const std::vector<T>& unaryInputs, const std::vector<T>& binaryInputsLeft, const std::vector<T>& binaryInputsRight)
@@ -333,7 +353,7 @@ static void registerTypeTests(const std::string& typeName)
     registerTest(TestData{"unary_minus_" + typeName, flags, &UNARY_OPERATIONS, options, "test_minus",
         {toBufferParameter(std::vector<T>(unaryInputs.size())), toBufferParameter(std::vector<T>(unaryInputs))},
         calculateDimensions(unaryInputs.size()),
-        {checkParameter<Comparator>(0, transform<T>(unaryInputs, [](T val) -> T { return -val; }))}});
+        {checkParameter<Comparator>(0, transform<T>(unaryInputs, wrap<T>([](T val) -> T { return -val; })))}});
 
     // TODO wrong results for (u)long and SPIR-V front-end
     auto additionalFlags = sizeof(T) > sizeof(uint32_t) ? DataFilter::SPIRV_DISABLED : DataFilter::NONE;
@@ -351,32 +371,34 @@ static void registerTypeTests(const std::string& typeName)
         {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
             toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
         calculateDimensions(binaryInputsLeft.size()),
-        {checkParameter<Comparator>(0, transform<T>(binaryInputsLeft, binaryInputsRight, std::plus<T>{}))}});
+        {checkParameter<Comparator>(0, transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>(std::plus<T>{})))}});
 
     registerTest(TestData{"binary_sub_" + typeName, flags, &BINARY_OPERATIONS, options, "test_sub",
         {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
             toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
         calculateDimensions(binaryInputsLeft.size()),
-        {checkParameter<Comparator>(0, transform<T>(binaryInputsLeft, binaryInputsRight, std::minus<T>{}))}});
+        {checkParameter<Comparator>(0, transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>(std::minus<T>{})))}});
 
     registerTest(TestData{"binary_mul_" + typeName, flags, &BINARY_OPERATIONS, options, "test_mul",
         {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
             toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
         calculateDimensions(binaryInputsLeft.size()),
-        {checkParameter<Comparator>(0, transform<T>(binaryInputsLeft, binaryInputsRight, std::multiplies<T>{}))}});
+        {checkParameter<Comparator>(
+            0, transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>(std::multiplies<T>{})))}});
 
     registerTest(TestData{"binary_div_" + typeName, flags | divisionFlags, &BINARY_OPERATIONS, options, "test_div",
         {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
             toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
         calculateDimensions(binaryInputsLeft.size()),
-        {checkParameter<Comparator>(0, transform<T>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> T {
-            if(val2 == static_cast<T>(-1))
-                // somehow my host does not like divisions by -1 (at least not for some types)
-                return std::is_unsigned<T>::value ? (val1 == static_cast<T>(-1) ? 1 : 0) : -val1;
-            if(val2 == 0 || std::isnan(val2))
-                return static_cast<T>(std::signbit(val1) ? 1 : -1);
-            return val1 / val2;
-        }))}});
+        {checkParameter<Comparator>(
+            0, transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>([](T val1, T val2) -> T {
+                if(val2 == static_cast<T>(-1))
+                    // somehow my host does not like divisions by -1 (at least not for some types)
+                    return std::is_unsigned<T>::value ? (val1 == static_cast<T>(-1) ? 1 : 0) : -val1;
+                if(val2 == 0 || std::isnan(val2))
+                    return static_cast<T>(std::signbit(val1) ? 1 : -1);
+                return val1 / val2;
+            })))}});
 
     ////
     // Relational operators

@@ -8,6 +8,7 @@
 #include "TestData.h"
 
 #include <algorithm>
+#include <cfenv>
 #include <cmath>
 #include <functional>
 #include <iomanip>
@@ -172,6 +173,32 @@ namespace test_data
         return result;
     }
 
+    template <typename R>
+    static std::function<R(float)> roundToZero(const std::function<R(float)>& func)
+    {
+        return [&](float in) -> R {
+            auto origMode = fegetround();
+            // emulate the VideoCore IV rounding mode, truncate to zero
+            fesetround(FE_TOWARDZERO);
+            auto tmp = func(in);
+            fesetround(origMode);
+            return tmp;
+        };
+    }
+
+    template <typename R>
+    static std::function<R(float, float)> roundToZero(const std::function<R(float, float)>& func)
+    {
+        return [&](float in1, float in2) -> R {
+            auto origMode = fegetround();
+            // emulate the VideoCore IV rounding mode, truncate to zero
+            fesetround(FE_TOWARDZERO);
+            auto tmp = func(in1, in2);
+            fesetround(origMode);
+            return tmp;
+        };
+    }
+
     // just to check that really the long- and double-versions are used
     template <typename T>
     struct UniformDistribution
@@ -291,6 +318,15 @@ namespace test_data
             std::abs(actual) < std::numeric_limits<float>::min())
             // truncate all denormal values to zero, also merge all positive and negative denormal/zero values
             return true;
+        if(std::abs(expected) != 0.0f && std::abs(actual) != 0.0f && std::signbit(expected) == std::signbit(actual) &&
+            std::abs(expected) <= std::numeric_limits<float>::min() &&
+            std::abs(actual) <= std::numeric_limits<float>::min())
+            // If both values are either the normal value closest to zero or a subnormal value and have the same sign,
+            // consider them equal. This also applies for a maximum distance of zero!
+            return true;
+        if(std::fpclassify(maxDistance) == FP_SUBNORMAL)
+            // Convert any subnormal maximum distance to the lowest normal value
+            maxDistance = std::numeric_limits<float>::min();
         return ((actual - expected) * (actual > expected ? 1 : -1)) <= (maxDistance < 0 ? -maxDistance : maxDistance);
     }
 
@@ -303,7 +339,7 @@ namespace test_data
         {
             auto realDelta = static_cast<std::size_t>(
                 std::abs(std::ceil(static_cast<double>(std::max(expected, actual) - std::min(expected, actual)) /
-                    (static_cast<double>(actual) * static_cast<double>(std::numeric_limits<T>::epsilon())))));
+                    (static_cast<double>(expected) * static_cast<double>(std::numeric_limits<T>::epsilon())))));
             std::stringstream ss;
             if(onlyError)
                 ss << realDelta << " ULP";
@@ -441,6 +477,23 @@ namespace test_data
         const std::vector<float> allowedErrors;
     };
 
+    struct CompareDynamicULP
+    {
+        using type = float;
+
+        Result operator()(float a, float b, std::size_t index) const
+        {
+            return checkScalarEqualsUlp(a, b, ULP, "", true);
+        }
+
+        std::string getAdditionalInfo() const
+        {
+            return "allowed are " + std::to_string(ULP) + " ULP";
+        }
+
+        std::size_t ULP;
+    };
+
     template <typename Comparison, typename T = typename Comparison::type>
     ResultVerification checkParameter(std::size_t index, std::vector<T>&& expected, Comparison comp = {})
     {
@@ -523,6 +576,7 @@ namespace test_data
     void registerOpenCLGeometricFunctionTests();
     void registerOpenCLIntegerFunctionTests();
     void registerOpenCLRelationalFunctionTests();
+    void registerMathTests();
     void registerMemoryTests();
     void registerTypeConversionTests();
     void registerVectorTests();

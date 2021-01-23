@@ -117,6 +117,7 @@ add_library(TestData STATIC
 	ConversionTests.cpp
 	FloatTests.cpp
 	IntegerTests.cpp
+	MathTests.cpp
 	MemoryTests.cpp
 	RelationalTests.cpp
 	VectorTests.cpp
