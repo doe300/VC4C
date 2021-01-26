@@ -698,12 +698,12 @@ AddressSpace spirv::toAddressSpace(const spv::StorageClass storageClass)
     return AddressSpace::PRIVATE;
 }
 
-std::vector<uint32_t> spirv::readStreamOfWords(std::istream* in)
+std::vector<uint32_t> spirv::readStreamOfWords(std::istream& in)
 {
     std::vector<uint32_t> words;
-    words.reserve(static_cast<std::size_t>(in->rdbuf()->in_avail()));
+    words.reserve(static_cast<std::size_t>(in.rdbuf()->in_avail()));
     char buffer[sizeof(uint32_t)];
-    while(in->read(buffer, sizeof(uint32_t)).good())
+    while(in.read(buffer, sizeof(uint32_t)).good())
     {
         words.push_back(*reinterpret_cast<uint32_t*>(buffer));
     }

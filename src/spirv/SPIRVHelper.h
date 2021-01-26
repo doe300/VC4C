@@ -40,7 +40,7 @@ namespace vc4c
         DataType getIntegerType(uint32_t bitWidth, uint32_t signedness);
         AddressSpace toAddressSpace(spv::StorageClass storageClass);
 
-        std::vector<uint32_t> readStreamOfWords(std::istream* in);
+        std::vector<uint32_t> readStreamOfWords(std::istream& in);
 
         std::string demangleFunctionName(const std::string& name);
 

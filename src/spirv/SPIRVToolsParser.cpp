@@ -230,7 +230,8 @@ void spirv::linkSPIRVModules(const std::vector<std::istream*>& inputModules, std
 {
     std::vector<std::vector<uint32_t>> binaries;
     binaries.reserve(inputModules.size());
-    std::transform(inputModules.begin(), inputModules.end(), std::back_inserter(binaries), readStreamOfWords);
+    std::transform(inputModules.begin(), inputModules.end(), std::back_inserter(binaries),
+        [](std::istream* stream) { readStreamOfWords(*stream); });
 
     spvtools::LinkerOptions options;
     options.SetCreateLibrary(false);

@@ -104,7 +104,10 @@ BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : cont
         if(!expected)
         {
 #if LLVM_LIBRARY_VERSION >= 40
-            throw std::system_error(llvm::errorToErrorCode(expected.takeError()), "Error parsing LLVM module");
+            std::string error = "";
+            llvm::handleAllErrors(
+                expected.takeError(), [&error](const llvm::ErrorInfoBase& base) { error = base.message(); });
+            throw std::runtime_error("Error parsing LLVM module" + error);
 #else
             throw std::system_error(expected.getError(), "Error parsing LLVM module");
 #endif

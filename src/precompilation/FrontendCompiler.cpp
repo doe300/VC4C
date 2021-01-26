@@ -30,6 +30,29 @@
 using namespace vc4c;
 using namespace vc4c::precompilation;
 
+/**
+ * Wrapper to allow writing to a temporary file which will then read into the given output stream on scope exit.
+ */
+struct TemporaryOutputFileWrapper
+{
+    explicit TemporaryOutputFileWrapper(std::ostream& s) : stream(s), file() {}
+    TemporaryOutputFileWrapper(const TemporaryOutputFileWrapper&) = delete;
+    TemporaryOutputFileWrapper(TemporaryOutputFileWrapper&&) noexcept = delete;
+
+    ~TemporaryOutputFileWrapper() noexcept
+    {
+        std::unique_ptr<std::istream> s;
+        file.openInputStream(s);
+        stream << s->rdbuf();
+    }
+
+    TemporaryOutputFileWrapper& operator=(const TemporaryOutputFileWrapper&) = delete;
+    TemporaryOutputFileWrapper& operator=(TemporaryOutputFileWrapper&&) noexcept = delete;
+
+    std::ostream& stream;
+    TemporaryFile file;
+};
+
 static std::vector<std::string> buildClangCommand(const std::string& compiler, const std::string& defaultOptions,
     const std::string& options, const std::string& emitter, const std::string& outputFile, const std::string& inputFile,
     bool usePCH)
@@ -467,9 +490,15 @@ std::string convertSourcesToFiles(std::istream*& inputStream, std::vector<T>& so
             auto separator = a.empty() || !addOverride ? " " : " -override=";
             if(b.file)
                 return a + separator + b.file.value();
-            if(inputStream != nullptr)
+            if(sources.size() > 1 || inputStream)
             {
-                // there already is a stream input, need to move this input to temporary file
+                /*
+                 * We can only have at most a single input from stdin for the link process.
+                 *
+                 * Also, if we have multiple inputs, at some point the linker process (at least for llvm-link) has
+                 * troubles correctly handling the stdin (at least the way we set it), so just always use input files in
+                 * this case.
+                 */
                 tempFiles.emplace_back(new TemporaryFile());
                 std::unique_ptr<std::ostream> s;
                 auto& file = tempFiles.back();
@@ -522,7 +551,11 @@ void precompilation::linkLLVMModules(
      * NOTE: cannot use " -only-needed -internalize" in general case, since symbols used across module boundaries are
      * otherwise optimized away. " -only-needed -internalize" is now only used when linking in the standard-library.
      */
-    const std::string out = result.file ? std::string("-o=") + result.file.value() : "";
+    // Always use a (temporary) result file for better stability
+    std::unique_ptr<TemporaryOutputFileWrapper> tmpResult;
+    if(!result.file)
+        tmpResult.reset(new TemporaryOutputFileWrapper(*result.stream));
+    const std::string out = std::string("-o=") + (result.file ? result.file.value() : tmpResult->file.fileName);
     std::string command = *llvm_link + " " + userOptions + " " + out + " " + emptyInput + " " + inputs;
 
     // llvm-link does not like multiple white-spaces in the list of files (assumes file with empty name)
@@ -534,7 +567,7 @@ void precompilation::linkLLVMModules(
 
     CPPLOG_LAZY(logging::Level::INFO, log << "Linking LLVM-IR modules with: " << command << logging::endl);
 
-    runPrecompiler(command, inputStream, result.file ? nullptr : result.stream);
+    runPrecompiler(command, inputStream, nullptr);
     PROFILE_END(LinkLLVMModules);
 }
 
@@ -544,13 +577,17 @@ void precompilation::linkSPIRVModules(
     PROFILE_START(LinkSPIRVModules);
     if(auto spirv_link = findToolLocation("spirv-link", SPIRV_LINK_PATH))
     {
+        // Always use a (temporary) result file for better stability
+        std::unique_ptr<TemporaryOutputFileWrapper> tmpResult;
+        if(!result.file)
+            tmpResult.reset(new TemporaryOutputFileWrapper(*result.stream));
         // only one input can be from a stream
         std::istream* inputStream = nullptr;
         // this is needed, since we can use a maximum of 1 stream input
         std::vector<std::unique_ptr<TemporaryFile>> tempFiles;
         std::string inputs = convertSourcesToFiles(inputStream, sources, tempFiles, false);
 
-        auto out = result.file ? std::string("-o=") + result.file.value() : "";
+        auto out = std::string("-o=") + (result.file ? result.file.value() : tmpResult->file.fileName);
         // the VC4CL intrinsics are not provided by any input module
         auto customOptions = "--allow-partial-linkage --verify-ids --target-env opencl1.2embedded";
         std::string command = *spirv_link + " " + userOptions + " " + customOptions + " " + out + " " + inputs;
@@ -563,7 +600,7 @@ void precompilation::linkSPIRVModules(
         }
 
         CPPLOG_LAZY(logging::Level::INFO, log << "Linking SPIR-V modules with: " << command << logging::endl);
-        runPrecompiler(command, inputStream, result.file ? nullptr : result.stream);
+        runPrecompiler(command, inputStream, nullptr);
     }
     else
     {

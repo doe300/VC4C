@@ -175,8 +175,9 @@ void test_data::registerMathTests()
         {"atan2pi", atan2pi, 6, DataFilter::DISABLED},
         {"copysign", copysignf, 0},
         {"fdim", fdimf, 0},
-        {"fmax", fmaxf, 0},
-        {"fmin", fminf, 0},
+        // SPIR-V maps them directly to the fmin/fmax opcode which does not handle NaN correctly
+        {"fmax", fmaxf, 0, DataFilter::SPIRV_DISABLED},
+        {"fmin", fminf, 0, DataFilter::SPIRV_DISABLED},
         {"fmod", fmodf, 0, DataFilter::DISABLED},
         {"hypot", hypotf, 4, DataFilter::DISABLED},
         {"maxmag", maxmag, 0},

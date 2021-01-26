@@ -34,7 +34,7 @@ void SPIRVParserBase::parse(Module& module)
     this->module = &module;
 
     // read input and map into buffer
-    std::vector<uint32_t> words = readStreamOfWords(&input);
+    std::vector<uint32_t> words = readStreamOfWords(input);
 
     // if input is SPIR-V text, convert to binary representation
     if(isTextInput)
