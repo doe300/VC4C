@@ -26,13 +26,46 @@ namespace vc4c
         template <SourceType Type>
         struct PrecompilationResult : private NonCopyable
         {
-            // XXX this is actually a variant between the members
-            Optional<std::string> file;
-            std::ostream* stream;
+            explicit PrecompilationResult(const std::string& file) : file(file) {}
+            virtual ~PrecompilationResult() noexcept = default;
 
-            explicit PrecompilationResult(std::ostream* s) : stream(s) {}
-            explicit PrecompilationResult(const std::string& file) : file(file), stream(nullptr) {}
+            std::string file;
         };
+
+        /**
+         * Wrapper to allow writing to a temporary file which will then read into the given output stream on scope exit.
+         */
+        template <SourceType Type>
+        struct TemporaryPrecompilationResult : public PrecompilationResult<Type>
+        {
+            explicit TemporaryPrecompilationResult(std::ostream* s = nullptr) :
+                PrecompilationResult<Type>(""), tmpFile(), stream(s)
+            {
+                this->file = tmpFile.fileName;
+            }
+
+            ~TemporaryPrecompilationResult() noexcept override
+            {
+                if(stream)
+                {
+                    std::unique_ptr<std::istream> tmpStream;
+                    tmpFile.openInputStream(tmpStream);
+                    *stream << tmpStream->rdbuf();
+                }
+            }
+
+            TemporaryFile tmpFile;
+            std::ostream* stream;
+        };
+
+        template <SourceType Type>
+        inline std::unique_ptr<PrecompilationResult<Type>> createResult(
+            std::ostream& stream, Optional<std::string> outputFile)
+        {
+            if(outputFile)
+                return std::make_unique<PrecompilationResult<Type>>(*outputFile);
+            return std::make_unique<TemporaryPrecompilationResult<Type>>(&stream);
+        }
 
         template <SourceType Type>
         struct PrecompilationSource : private NonCopyable
@@ -43,8 +76,7 @@ namespace vc4c
 
             explicit PrecompilationSource(std::istream& s) : stream(&s) {}
             explicit PrecompilationSource(const std::string& file) : file(file), stream(nullptr) {}
-            explicit PrecompilationSource(PrecompilationResult<Type>& res) :
-                file(res.file), stream(dynamic_cast<std::istream*>(res.stream))
+            explicit PrecompilationSource(PrecompilationResult<Type>& res) : file(res.file)
             {
                 if(!file && !stream)
                     throw CompilationError(

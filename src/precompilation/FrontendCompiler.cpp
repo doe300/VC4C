@@ -30,29 +30,6 @@
 using namespace vc4c;
 using namespace vc4c::precompilation;
 
-/**
- * Wrapper to allow writing to a temporary file which will then read into the given output stream on scope exit.
- */
-struct TemporaryOutputFileWrapper
-{
-    explicit TemporaryOutputFileWrapper(std::ostream& s) : stream(s), file() {}
-    TemporaryOutputFileWrapper(const TemporaryOutputFileWrapper&) = delete;
-    TemporaryOutputFileWrapper(TemporaryOutputFileWrapper&&) noexcept = delete;
-
-    ~TemporaryOutputFileWrapper() noexcept
-    {
-        std::unique_ptr<std::istream> s;
-        file.openInputStream(s);
-        stream << s->rdbuf();
-    }
-
-    TemporaryOutputFileWrapper& operator=(const TemporaryOutputFileWrapper&) = delete;
-    TemporaryOutputFileWrapper& operator=(TemporaryOutputFileWrapper&&) noexcept = delete;
-
-    std::ostream& stream;
-    TemporaryFile file;
-};
-
 static std::vector<std::string> buildClangCommand(const std::string& compiler, const std::string& defaultOptions,
     const std::string& options, const std::string& emitter, const std::string& outputFile, const std::string& inputFile,
     bool usePCH)
@@ -243,7 +220,7 @@ void precompilation::compileOpenCLWithPCH(OpenCLSource&& source, const std::stri
 {
     PROFILE_START(CompileOpenCLWithPCH);
     OpenCLSource src(std::forward<OpenCLSource>(source));
-    compileOpenCLToLLVMIR0(src.stream, result.stream, userOptions, "llvm-bc", src.file, result.file, true);
+    compileOpenCLToLLVMIR0(src.stream, nullptr, userOptions, "llvm-bc", src.file, result.file, true);
     PROFILE_END(CompileOpenCLWithPCH);
 }
 
@@ -341,7 +318,7 @@ static Optional<std::string> getDefaultHeadersPCHPath(const std::string& userOpt
             log << "Precompiling default OpenCL C header to PCH to speed up further clang front-end runs for "
                    "compilation flags: "
                 << checkOptions << logging::endl);
-        compileOpenCLToLLVMIR0(&emptyStream, result.stream, checkOptions, "pch", {}, result.file, false);
+        compileOpenCLToLLVMIR0(&emptyStream, nullptr, checkOptions, "pch", {}, result.file, false);
         return it->second.first.fileName;
     }
     catch(const std::exception&)
@@ -362,7 +339,7 @@ void precompilation::compileOpenCLWithDefaultHeader(
     PROFILE_START(CompileOpenCLWithDefaultHeader);
     OpenCLSource src(std::forward<OpenCLSource>(source));
     auto actualOptions = pchPath ? userOptions + " -include-pch " + *pchPath : userOptions;
-    compileOpenCLToLLVMIR0(src.stream, result.stream, actualOptions, "llvm-bc", src.file, result.file, false);
+    compileOpenCLToLLVMIR0(src.stream, nullptr, actualOptions, "llvm-bc", src.file, result.file, false);
     PROFILE_END(CompileOpenCLWithDefaultHeader);
 }
 
@@ -389,7 +366,7 @@ void precompilation::compileOpenCLToLLVMText(
 {
     PROFILE_START(CompileOpenCLToLLVMText);
     OpenCLSource src(std::forward<OpenCLSource>(source));
-    compileOpenCLToLLVMIR0(src.stream, result.stream, userOptions, "llvm", src.file, result.file, true);
+    compileOpenCLToLLVMIR0(src.stream, nullptr, userOptions, "llvm", src.file, result.file, true);
     PROFILE_END(CompileOpenCLToLLVMText);
 }
 
@@ -397,7 +374,7 @@ void precompilation::compileLLVMToSPIRV(LLVMIRSource&& source, const std::string
 {
     PROFILE_START(CompileLLVMToSPIRV);
     LLVMIRSource src(std::forward<LLVMIRSource>(source));
-    compileLLVMIRToSPIRV0(src.stream, result.stream, userOptions, false, src.file, result.file);
+    compileLLVMIRToSPIRV0(src.stream, nullptr, userOptions, false, src.file, result.file);
     PROFILE_END(CompileLLVMToSPIRV);
 }
 
@@ -405,7 +382,7 @@ void precompilation::assembleSPIRV(SPIRVTextSource&& source, const std::string& 
 {
     PROFILE_START(AssembleSPIRV);
     SPIRVTextSource src(std::forward<SPIRVTextSource>(source));
-    compileSPIRVToSPIRV(src.stream, result.stream, userOptions, false, src.file, result.file);
+    compileSPIRVToSPIRV(src.stream, nullptr, userOptions, false, src.file, result.file);
     PROFILE_END(AssembleSPIRV);
 }
 
@@ -414,7 +391,7 @@ void precompilation::compileLLVMToSPIRVText(
 {
     PROFILE_START(CompileLLVMToSPIRVText);
     LLVMIRSource src(std::forward<LLVMIRSource>(source));
-    compileLLVMIRToSPIRV0(src.stream, result.stream, userOptions, true, src.file, result.file);
+    compileLLVMIRToSPIRV0(src.stream, nullptr, userOptions, true, src.file, result.file);
     PROFILE_END(CompileLLVMToSPIRVText);
 }
 
@@ -422,7 +399,7 @@ void precompilation::disassembleSPIRV(SPIRVSource&& source, const std::string& u
 {
     PROFILE_START(DisassembleSPIRV);
     SPIRVSource src(std::forward<SPIRVSource>(source));
-    compileSPIRVToSPIRV(src.stream, result.stream, userOptions, true, src.file, result.file);
+    compileSPIRVToSPIRV(src.stream, nullptr, userOptions, true, src.file, result.file);
     PROFILE_END(DisassembleSPIRV);
 }
 
@@ -434,11 +411,11 @@ void precompilation::disassembleLLVM(LLVMIRSource&& source, const std::string& u
         throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-dis not found, can't disassemble LLVM IR!");
 
     std::string command = *llvm_dis;
-    command.append(" -o ").append(result.file.value_or("/dev/stdout")).append(" ");
+    command.append(" -o ").append(result.file).append(" ");
     command.append(source.file.value_or("/dev/stdin"));
     CPPLOG_LAZY(
         logging::Level::INFO, log << "Disassembling LLVM IR to LLVM IR text with: " << command << logging::endl);
-    runPrecompiler(command, source.file ? nullptr : source.stream, result.file ? nullptr : result.stream);
+    runPrecompiler(command, source.file ? nullptr : source.stream, nullptr);
     PROFILE_END(DisassembleLLVM);
 }
 
@@ -450,10 +427,10 @@ void precompilation::assembleLLVM(LLVMIRTextSource&& source, const std::string& 
         throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-as not found, can't assemble LLVM IR!");
 
     std::string command = *llvm_as;
-    command.append(" -o ").append(result.file.value_or("/dev/stdout")).append(" ");
+    command.append(" -o ").append(result.file).append(" ");
     command.append(source.file.value_or("/dev/stdin"));
     CPPLOG_LAZY(logging::Level::INFO, log << "Assembling LLVM IR text to LLVM IR with: " << command << logging::endl);
-    runPrecompiler(command, source.file ? nullptr : source.stream, result.file ? nullptr : result.stream);
+    runPrecompiler(command, source.file ? nullptr : source.stream, nullptr);
     PROFILE_END(AssembleLLVM);
 }
 
@@ -551,11 +528,7 @@ void precompilation::linkLLVMModules(
      * NOTE: cannot use " -only-needed -internalize" in general case, since symbols used across module boundaries are
      * otherwise optimized away. " -only-needed -internalize" is now only used when linking in the standard-library.
      */
-    // Always use a (temporary) result file for better stability
-    std::unique_ptr<TemporaryOutputFileWrapper> tmpResult;
-    if(!result.file)
-        tmpResult.reset(new TemporaryOutputFileWrapper(*result.stream));
-    const std::string out = std::string("-o=") + (result.file ? result.file.value() : tmpResult->file.fileName);
+    const std::string out = std::string("-o=") + result.file;
     std::string command = *llvm_link + " " + userOptions + " " + out + " " + emptyInput + " " + inputs;
 
     // llvm-link does not like multiple white-spaces in the list of files (assumes file with empty name)
@@ -577,17 +550,13 @@ void precompilation::linkSPIRVModules(
     PROFILE_START(LinkSPIRVModules);
     if(auto spirv_link = findToolLocation("spirv-link", SPIRV_LINK_PATH))
     {
-        // Always use a (temporary) result file for better stability
-        std::unique_ptr<TemporaryOutputFileWrapper> tmpResult;
-        if(!result.file)
-            tmpResult.reset(new TemporaryOutputFileWrapper(*result.stream));
         // only one input can be from a stream
         std::istream* inputStream = nullptr;
         // this is needed, since we can use a maximum of 1 stream input
         std::vector<std::unique_ptr<TemporaryFile>> tempFiles;
         std::string inputs = convertSourcesToFiles(inputStream, sources, tempFiles, false);
 
-        auto out = std::string("-o=") + (result.file ? result.file.value() : tmpResult->file.fileName);
+        auto out = std::string("-o=") + result.file;
         // the VC4CL intrinsics are not provided by any input module
         auto customOptions = "--allow-partial-linkage --verify-ids --target-env opencl1.2embedded";
         std::string command = *spirv_link + " " + userOptions + " " + customOptions + " " + out + " " + inputs;
@@ -636,7 +605,7 @@ void precompilation::optimizeLLVMIR(LLVMIRSource&& source, const std::string& us
         throw CompilationError(CompilationStep::PRECOMPILATION, "opt not found, can't optimize LLVM IR!");
 
     std::string commandOpt = *opt;
-    const std::string out = result.file ? std::string("-o=") + result.file.value() : "";
+    const std::string out = std::string("-o=") + result.file;
     const std::string in = source.file ? source.file.value() : "-";
 
     commandOpt.append(" -force-vector-width=16 -O3 ").append(out);
@@ -656,7 +625,7 @@ void precompilation::optimizeLLVMIR(LLVMIRSource&& source, const std::string& us
     commandOpt.append(" ").append(in);
 
     CPPLOG_LAZY(logging::Level::INFO, log << "Optimizing LLVM IR module with opt: " << commandOpt << logging::endl);
-    runPrecompiler(commandOpt, source.stream, result.stream);
+    runPrecompiler(commandOpt, source.stream, nullptr);
     PROFILE_END(OptimizeLLVMIR);
 }
 
@@ -670,7 +639,7 @@ void precompilation::optimizeLLVMText(
         throw CompilationError(CompilationStep::PRECOMPILATION, "opt not found, can't optimize LLVM IR!");
 
     std::string commandOpt = *opt;
-    const std::string out = result.file ? std::string("-o=") + result.file.value() : "";
+    const std::string out = std::string("-o=") + result.file;
     const std::string in = source.file ? source.file.value() : "-";
 
     commandOpt.append(" -force-vector-width=16 -O3 ").append(out);
@@ -690,7 +659,7 @@ void precompilation::optimizeLLVMText(
     commandOpt.append(" ").append(in);
 
     CPPLOG_LAZY(logging::Level::INFO, log << "Optimizing LLVM text with opt: " << commandOpt << logging::endl);
-    runPrecompiler(commandOpt, source.stream, result.stream);
+    runPrecompiler(commandOpt, source.stream, nullptr);
     PROFILE_END(OptimizeLLVMText);
 }
 
