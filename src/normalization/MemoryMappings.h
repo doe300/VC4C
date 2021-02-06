@@ -34,8 +34,8 @@ namespace vc4c
             const Optional<std::vector<MemoryAccessRange>> ranges = {};
             // the constant value or mapped register this local represents.
             Optional<Value> mappedRegisterOrConstant = NO_VALUE;
-            // e.g. for arrays converted to vectors, this is the resulting vector type
-            Optional<DataType> convertedRegisterType = {};
+            // e.g. for arrays converted to vectors, this is the resulting vector type (in a register or VPM area)
+            Optional<DataType> convertedRegisterOrAreaType = {};
             // flags which TMU to be used for reading
             bool tmuFlag = false;
 

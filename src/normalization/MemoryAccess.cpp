@@ -6,6 +6,7 @@
 
 #include "MemoryAccess.h"
 
+#include "../Expression.h"
 #include "../InstructionWalker.h"
 #include "../Module.h"
 #include "../Profiler.h"
@@ -791,17 +792,71 @@ static tools::SmallSortedPointerSet<const MemoryInfo*> getMemoryInfos(const Loca
     return result;
 }
 
-static bool hasOnlyAddressesDerivateOfLocalId(const MemoryAccessRange& range)
+static bool checkIdDecoration(InstructionDecorations deco)
+{
+    return has_flag(deco, intermediate::InstructionDecorations::BUILTIN_LOCAL_ID) ||
+        has_flag(deco, intermediate::InstructionDecorations::BUILTIN_GLOBAL_ID);
+}
+
+static bool hasOnlyAddressesDerivateOfLocalId(const MemoryAccessRange& range, unsigned& minFactor, unsigned& maxSize)
 {
     // Be conservative, if there are no dynamic address parts in the container, don't assume that there are none, but
     // that we might have failed/skipped to determine them. Also if all work-items statically access the same index, we
     // do have a cross-item access.
     return !range.dynamicAddressParts.empty() &&
         std::all_of(range.dynamicAddressParts.begin(), range.dynamicAddressParts.end(),
-            [](const std::pair<Value, intermediate::InstructionDecorations>& parts) -> bool {
-                // TODO add support for derivates of global/local id, as long as they are guaranteed to not overlap!
-                return has_flag(parts.second, intermediate::InstructionDecorations::BUILTIN_LOCAL_ID) ||
-                    has_flag(parts.second, intermediate::InstructionDecorations::BUILTIN_GLOBAL_ID);
+            [&, memWrite{range.addressWrite.get<MemoryInstruction>()}](
+                const std::pair<Value, intermediate::InstructionDecorations>& parts) -> bool {
+                if(checkIdDecoration(parts.second))
+                {
+                    // The offset is in number of elements
+                    minFactor = std::min(
+                        minFactor, static_cast<unsigned>(range.memoryObject->type.getElementType().getVectorWidth()));
+                    maxSize = std::max(
+                        maxSize, static_cast<unsigned>(range.memoryObject->type.getElementType().getVectorWidth()));
+                    return true;
+                }
+                if(!memWrite)
+                    return false;
+                std::shared_ptr<Expression> expression;
+                if(auto writer = parts.first.getSingleWriter())
+                    expression = Expression::createRecursiveExpression(*writer);
+                if(expression && expression->hasConstantOperand() &&
+                    (expression->code == Expression::FAKEOP_UMUL || expression->code == OP_MUL24 ||
+                        expression->code == OP_SHL))
+                {
+                    // E.g. something like %global_id * X is allowed as long as X >= number of elements accessed per
+                    // work-item. Also accept shl with constant, since this is also a multiplication.
+                    bool leftIsId = expression->arg0.checkExpression() &&
+                        checkIdDecoration(expression->arg0.checkExpression()->deco);
+                    bool rightIsId = expression->arg1.checkExpression() &&
+                        checkIdDecoration(expression->arg1.checkExpression()->deco);
+                    auto constantArg =
+                        leftIsId ? expression->arg1.getLiteralValue() : expression->arg0.getLiteralValue();
+                    if(constantArg && leftIsId != rightIsId)
+                    {
+                        // we have a multiplication (maybe presenting as a shift) of the global/local ID with a
+                        // constant, now we need to make sure the constant is at least the number of elements accessed.
+
+                        auto factor = expression->code == OP_SHL ? (1u << constantArg->unsignedInt()) :
+                                                                   constantArg->unsignedInt();
+                        if(memWrite->op == MemoryOperation::READ)
+                        {
+                            minFactor = std::min(minFactor, factor);
+                            maxSize = std::max(
+                                maxSize, static_cast<unsigned>(memWrite->getDestinationElementType().getVectorWidth()));
+                            return true;
+                        }
+                        if(memWrite->op == MemoryOperation::WRITE)
+                        {
+                            minFactor = std::min(minFactor, factor);
+                            maxSize = std::max(
+                                maxSize, static_cast<unsigned>(memWrite->getSourceElementType().getVectorWidth()));
+                            return true;
+                        }
+                    }
+                }
+                return false;
             });
 }
 
@@ -813,10 +868,6 @@ static bool mayHaveCrossWorkItemMemoryDependency(const Local* memoryObject, cons
        })
         // constant memory -> no write -> no dependency
         return false;
-    if(info.convertedRegisterType || info.mappedRegisterOrConstant || (info.area && info.area->requiresSpacePerQPU()))
-        // per-QPU fields -> not shared -> no dependency
-        return false;
-
     switch(info.type)
     {
     case MemoryAccessType::RAM_LOAD_TMU:
@@ -834,9 +885,17 @@ static bool mayHaveCrossWorkItemMemoryDependency(const Local* memoryObject, cons
 
     if(info.ranges)
     {
-        if(std::all_of(info.ranges->begin(), info.ranges->end(), hasOnlyAddressesDerivateOfLocalId))
-            // If we manged to figure out the dynamic address parts to be (a derivation of) the local or global id,
-            // then we don't have data dependencies across different local ids.
+        unsigned minFactor = std::numeric_limits<unsigned>::max();
+        unsigned maxSize = 0;
+        bool dummy = false;
+        if((dummy = std::all_of(info.ranges->begin(), info.ranges->end(),
+                [&](const MemoryAccessRange& range) -> bool {
+                    return hasOnlyAddressesDerivateOfLocalId(range, minFactor, maxSize);
+                })) &&
+            maxSize <= minFactor)
+            // If we manged to figure out the dynamic address parts to be (a derivation of) the local or global id, and
+            // the maximum accessed vector size is not larger than the minimum accessed local/global id factor, then we
+            // don't have data dependencies across different local ids.
             return false;
     }
 

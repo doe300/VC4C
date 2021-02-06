@@ -31,7 +31,7 @@ const std::string intrinsics::FUNCTION_NAME_GLOBAL_ID = "vc4cl_global_id";
 static NODISCARD InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, InstructionWalker it, const Value& arg,
     const std::vector<BuiltinLocal::Type>& locals, const Value& defaultValue, const InstructionDecorations decoration)
 {
-    if(auto lit = arg.getLiteralValue())
+    if(auto lit = (arg.getConstantValue() & &Value::getLiteralValue))
     {
         Value src = UNDEFINED_VALUE;
         switch(lit->unsignedInt())
@@ -136,9 +136,9 @@ static NODISCARD InstructionWalker intrinsifyReadLocalSize(Method& method, Instr
     {
         const auto& workGroupSizes = method.metaData.workGroupSizes;
         Optional<Literal> immediate;
-        if(arg.isLiteralValue())
+        if(auto lit = (arg.getConstantValue() & &Value::getLiteralValue))
             // the dimension is a literal value -> look this dimension up
-            immediate = arg.getLiteralValue();
+            immediate = lit;
         else if(std::all_of(workGroupSizes.begin(), workGroupSizes.end(), [](uint32_t u) -> bool { return u == 1; }))
             // all dimensions are 1 (for any set or not explicitly set dimension) -> take any of them
             immediate = Literal(0u);
@@ -294,8 +294,8 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
         it.emplace(new MoveOperation(tmpLocalID, NOP_REGISTER));
         it = intrinsifyReadLocalID(method, it, callSite->assertArgument(0));
         it.nextInBlock();
-        assign(it, tmpRes0) = mul24(tmpGroupID, tmpLocalSize);
-        assign(it, tmpRes1) = tmpGlobalOffset + tmpRes0;
+        assign(it, tmpRes0) = (mul24(tmpGroupID, tmpLocalSize), InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+        assign(it, tmpRes1) = (tmpGlobalOffset + tmpRes0, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
         it.reset((new Operation(OP_ADD, callSite->getOutput().value(), tmpRes1, tmpLocalID))
                      ->copyExtrasFrom(callSite)
                      ->addDecorations(add_flag(callSite->decoration, InstructionDecorations::BUILTIN_GLOBAL_ID,

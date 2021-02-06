@@ -187,20 +187,21 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
     it = insertAddressToElementOffset(
         it, method, tmpIndex, getBaseAddressesAndContainers(srcInfos), selectedContainer, mem, mem->getSource());
     // TODO check whether index is guaranteed to be in range [0, 16[
-    auto elementType = srcInfo.convertedRegisterType ? *srcInfo.convertedRegisterType :
-                                                       srcInfo.mappedRegisterOrConstant->type.getElementType();
+    auto elementType = srcInfo.convertedRegisterOrAreaType ? *srcInfo.convertedRegisterOrAreaType :
+                                                             srcInfo.mappedRegisterOrConstant->type.getElementType();
 
-    auto wholeRegister = srcInfo.convertedRegisterType &&
-        copiesWholeRegister(mem->getNumEntries(), mem->getDestinationElementType(), *srcInfo.convertedRegisterType);
-    if(!srcInfo.convertedRegisterType && srcInfo.mappedRegisterOrConstant & &Value::checkLiteral)
+    auto wholeRegister = srcInfo.convertedRegisterOrAreaType &&
+        copiesWholeRegister(
+            mem->getNumEntries(), mem->getDestinationElementType(), *srcInfo.convertedRegisterOrAreaType);
+    if(!srcInfo.convertedRegisterOrAreaType && srcInfo.mappedRegisterOrConstant & &Value::checkLiteral)
         // check additionally, whether we copy the whole constant "vector"
         wholeRegister |= copiesWholeRegister(
             mem->getNumEntries(), mem->getDestinationElementType(), srcInfo.mappedRegisterOrConstant->type);
     Value tmpVal(UNDEFINED_VALUE);
     if(mem->op == MemoryOperation::COPY && wholeRegister)
         // there is no need to calculate the index, if we copy the whole object
-        tmpVal = srcInfo.convertedRegisterType ? Value(*srcInfo.convertedRegisterType) :
-                                                 srcInfo.mappedRegisterOrConstant.value();
+        tmpVal = srcInfo.convertedRegisterOrAreaType ? Value(*srcInfo.convertedRegisterOrAreaType) :
+                                                       srcInfo.mappedRegisterOrConstant.value();
     else
     {
         tmpVal = method.addNewLocal(elementType, "%lowered_constant");
@@ -248,7 +249,7 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
             return it;
         }
     }
-    if(srcInfo.convertedRegisterType)
+    if(srcInfo.convertedRegisterOrAreaType)
     {
         if(mem->op == MemoryOperation::READ)
         {
@@ -384,8 +385,8 @@ static InstructionWalker lowerMemoryCopyToRegister(Method& method, InstructionWa
         throw CompilationError(
             CompilationStep::NORMALIZER, "Copy into read-only registers is not supported", mem->to_string());
 
-    auto wholeRegister =
-        copiesWholeRegister(mem->getNumEntries(), mem->getDestinationElementType(), *srcInfo.convertedRegisterType);
+    auto wholeRegister = copiesWholeRegister(
+        mem->getNumEntries(), mem->getDestinationElementType(), *srcInfo.convertedRegisterOrAreaType);
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Lowering copy with register-mapped memory: " << mem->to_string() << logging::endl);
@@ -747,7 +748,7 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
     });
     bool destAreas = std::all_of(destInfos.begin(), destInfos.end(), [](const MemoryInfo* info) { return info->area; });
     bool destConvertedRegisters = std::all_of(
-        destInfos.begin(), destInfos.end(), [](const MemoryInfo* info) { return info->convertedRegisterType; });
+        destInfos.begin(), destInfos.end(), [](const MemoryInfo* info) { return info->convertedRegisterOrAreaType; });
 
     for(auto srcInfo : srcInfos)
     {
@@ -893,14 +894,14 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
     {
         // copy from VPM/RAM into register -> read from VPM/RAM + write to register
         ASSERT_SINGLE_DESTINATION("mapMemoryCopy");
-        if(copiesWholeRegister(numEntries, mem->getSourceElementType(), *destInfo.convertedRegisterType))
+        if(copiesWholeRegister(numEntries, mem->getSourceElementType(), *destInfo.convertedRegisterOrAreaType))
         {
             // e.g. for copying 32 bytes into float[8] register -> just read 1 float16 vector
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Mapping copy of whole register from VPM/RAM into register to read from VPM/RAM: "
                     << mem->to_string() << logging::endl);
             it.reset(new MemoryInstruction(MemoryOperation::READ, Value(*destInfo.mappedRegisterOrConstant),
-                Value(mem->getSource().local(), method.createPointerType(*destInfo.convertedRegisterType)),
+                Value(mem->getSource().local(), method.createPointerType(*destInfo.convertedRegisterOrAreaType)),
                 Value(INT_ONE), mem->guardAccess));
             return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfos, destInfos);
         }
@@ -915,7 +916,7 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
             // also if we copy 20 entries of i8, we need to copy 5 SIMD elements of i32!
             auto numElements =
                 (numEntries.getLiteralValue()->unsignedInt() * mem->getSourceElementType().getLogicalWidth()) /
-                destInfo.convertedRegisterType->getElementType().getLogicalWidth();
+                destInfo.convertedRegisterOrAreaType->getElementType().getLogicalWidth();
             if(numElements == 0 || numElements > NATIVE_VECTOR_SIZE)
                 // TODO copy e.g. copying 1 byte into an int vector, need to combine the byte with the rest of the word
                 // for the correct element

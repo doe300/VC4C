@@ -492,8 +492,8 @@ bool IntermediateInstruction::replaceValue(const Value& oldValue, const Value& n
     if(has_flag(type, LocalUse::Type::WRITER) && output && output == oldValue)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "replaceValue: replace " << output.to_string() << " to " << newValue.to_string(true, true) << " in "
-                << to_string() << logging::endl);
+            log << "replaceValue: replace " << output->to_string(true, true) << " to " << newValue.to_string(true, true)
+                << " in " << to_string() << logging::endl);
         setOutput(Optional<Value>(newValue));
         replaced = true;
     }
@@ -505,8 +505,8 @@ bool IntermediateInstruction::replaceValue(const Value& oldValue, const Value& n
             if(arg == oldValue)
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "replaceValue: replace " << arg.to_string() << " to " << newValue.to_string(false, true)
-                        << " in " << to_string() << logging::endl);
+                    log << "replaceValue: replace " << arg.to_string(false, false) << " to "
+                        << newValue.to_string(false, true) << " in " << to_string() << logging::endl);
                 removeAsUserFromValue(arg, LocalUse::Type::READER);
                 arg = newValue;
                 addAsUserToValue(arg, LocalUse::Type::READER);
