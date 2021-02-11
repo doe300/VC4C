@@ -40,9 +40,11 @@ namespace vc4c
             Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder = false);
         NODISCARD InstructionWalker intrinsifyUnsignedIntegerDivisionByConstant(
             Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder = false);
+        NODISCARD InstructionWalker intrinsifyIntegerDivisionByFloatingDivision(
+            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder = false);
 
         NODISCARD InstructionWalker intrinsifyFloatingDivision(
-            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op);
+            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool fullRangeDivision = true);
 
         /*
          * Implementations for on-host calculations

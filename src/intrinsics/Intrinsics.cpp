@@ -922,6 +922,20 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
             // XXX is never used, LLVM always uses i32 for division??
             it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, *op);
         }
+        else if(arg0.type.getScalarBitCount() < 24 && arg1.type.getScalarBitCount() < 24)
+        {
+            // possible for |type| < 24, since for -2^23 <= x <= 2^23 float is an exact representation
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Intrinsifying unsigned division with floating-point division: " << op->to_string()
+                    << logging::endl);
+            auto tmpArg0 = method.addNewLocal(TYPE_INT32.toVectorType(arg0.type.getVectorWidth()), "%div");
+            it = insertZeroExtension(it, method, arg0, tmpArg0, true);
+            op->setArgument(0, tmpArg0);
+            auto tmpArg1 = method.addNewLocal(TYPE_INT32.toVectorType(arg1.type.getVectorWidth()), "%div");
+            it = insertZeroExtension(it, method, arg1, tmpArg1, true);
+            op->setArgument(1, tmpArg1);
+            it = intrinsifyIntegerDivisionByFloatingDivision(method, it, *op);
+        }
         else
             it = intrinsifyUnsignedIntegerDivision(method, it, *op);
         return true;
@@ -969,24 +983,20 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
             // XXX is never used, LLVM always uses i32 for division??
             it = intrinsifySignedIntegerDivisionByConstant(method, it, *op);
         }
-        /*        // a / b = ftoi(itof(a) / itof(b))
-                // possible for |type| < 24, since for -2^23 <= x <= 2^23 float is an exact representation
-                else if(arg0.type.getScalarBitCount() < 24 && arg1.type.getScalarBitCount() < 24)
-                {
-                    logging::debug() << "Intrinsifying signed division with floating-point division" << logging::endl;
-                    Value arg0Float = method.addNewLocal(TYPE_FLOAT.toVectorType(arg0.type.getVectorWidth()));
-                    Value arg1Float = method.addNewLocal(TYPE_FLOAT.toVectorType(arg1.type.getVectorWidth()));
-                    Value resultFloat =
-           method.addNewLocal(TYPE_FLOAT.toVectorType(op->getOutput()->type.getVectorWidth())); it.emplace(new
-           Operation(OP_ITOF, arg0Float, arg0)); it.nextInBlock(); it.emplace(new Operation(OP_ITOF, arg1Float, arg1));
-                    it.nextInBlock();
-                    //insert dummy instruction to replace
-                    it.emplace(new IntrinsicOperation("fdiv", resultFloat, arg0Float, arg1Float));
-                    it = intrinsifyFloatingDivision(method, it, *it.get<IntrinsicOperation>());
-                    it.nextInBlock();
-                    it.reset(new Operation(OP_FTOI, op->getOutput().value(), resultFloat));
-                }
-        */
+        else if(arg0.type.getScalarBitCount() < 24 && arg1.type.getScalarBitCount() < 24)
+        {
+            // possible for |type| < 24, since for -2^23 <= x <= 2^23 float is an exact representation
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Intrinsifying signed division with floating-point division: " << op->to_string()
+                    << logging::endl);
+            auto tmpArg0 = method.addNewLocal(TYPE_INT32.toVectorType(arg0.type.getVectorWidth()), "%div");
+            it = insertSignExtension(it, method, arg0, tmpArg0, true);
+            op->setArgument(0, tmpArg0);
+            auto tmpArg1 = method.addNewLocal(TYPE_INT32.toVectorType(arg1.type.getVectorWidth()), "%div");
+            it = insertSignExtension(it, method, arg1, tmpArg1, true);
+            op->setArgument(1, tmpArg1);
+            it = intrinsifyIntegerDivisionByFloatingDivision(method, it, *op);
+        }
         else
             it = intrinsifySignedIntegerDivision(method, it, *op);
         return true;
@@ -1018,6 +1028,20 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
         else if((arg1.isLiteralValue() || arg1.checkVector()) && arg0.type.getScalarBitCount() <= 16)
         {
             it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, *op, true);
+        }
+        else if(arg0.type.getScalarBitCount() < 24 && arg1.type.getScalarBitCount() < 24)
+        {
+            // possible for |type| < 24, since for -2^23 <= x <= 2^23 float is an exact representation
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Intrinsifying unsigned modulo with floating-point division: " << op->to_string()
+                    << logging::endl);
+            auto tmpArg0 = method.addNewLocal(TYPE_INT32.toVectorType(arg0.type.getVectorWidth()), "%mod");
+            it = insertZeroExtension(it, method, arg0, tmpArg0, true);
+            op->setArgument(0, tmpArg0);
+            auto tmpArg1 = method.addNewLocal(TYPE_INT32.toVectorType(arg1.type.getVectorWidth()), "%mod");
+            it = insertZeroExtension(it, method, arg1, tmpArg1, true);
+            op->setArgument(1, tmpArg1);
+            it = intrinsifyIntegerDivisionByFloatingDivision(method, it, *op, true);
         }
         else
             it = intrinsifyUnsignedIntegerDivision(method, it, *op, true);
@@ -1061,6 +1085,20 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
         else if((arg1.isLiteralValue() || arg1.checkVector()) && arg0.type.getScalarBitCount() <= 16)
         {
             it = intrinsifySignedIntegerDivisionByConstant(method, it, *op, true);
+        }
+        else if(arg0.type.getScalarBitCount() < 24 && arg1.type.getScalarBitCount() < 24)
+        {
+            // possible for |type| < 24, since for -2^23 <= x <= 2^23 float is an exact representation
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Intrinsifying signed modulo with floating-point division: " << op->to_string()
+                    << logging::endl);
+            auto tmpArg0 = method.addNewLocal(TYPE_INT32.toVectorType(arg0.type.getVectorWidth()), "%mod");
+            it = insertSignExtension(it, method, arg0, tmpArg0, true);
+            op->setArgument(0, tmpArg0);
+            auto tmpArg1 = method.addNewLocal(TYPE_INT32.toVectorType(arg1.type.getVectorWidth()), "%mod");
+            it = insertSignExtension(it, method, arg1, tmpArg1, true);
+            op->setArgument(1, tmpArg1);
+            it = intrinsifyIntegerDivisionByFloatingDivision(method, it, *op, true);
         }
         else
             it = intrinsifySignedIntegerDivision(method, it, *op, true);

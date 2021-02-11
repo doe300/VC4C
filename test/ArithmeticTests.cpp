@@ -302,6 +302,7 @@ static void registerTypeTests(const std::string& typeName)
 
     // Test exact match, but allow for NaN equality for float
     using Comparator = std::conditional_t<std::is_floating_point<T>::value, CompareULP<0>, CompareEquals<T>>;
+    using MulComparator = std::conditional_t<std::is_floating_point<T>::value, CompareULP<3>, CompareEquals<T>>;
 
     std::vector<T> unaryInputs{
         0, 1, 17, 42,                                                                                   // 4
@@ -329,7 +330,7 @@ static void registerTypeTests(const std::string& typeName)
     if(sizeof(T) > sizeof(uint32_t))
         flags = flags | DataFilter::USES_LONG;
     if(std::is_floating_point<T>::value)
-        // TODO some checks for float are not correct yet
+        // TODO most float operations return Inf where they should return a NaN
         flags = flags | DataFilter::DISABLED;
     // TODO (u)long division/modulo is not correct yet
     auto divisionFlags = sizeof(T) > sizeof(uint32_t) ? DataFilter::DISABLED : DataFilter::NONE;
@@ -383,20 +384,25 @@ static void registerTypeTests(const std::string& typeName)
         {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
             toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
         calculateDimensions(binaryInputsLeft.size()),
-        {checkParameter<Comparator>(
+        {checkParameter<MulComparator>(
             0, transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>(std::multiplies<T>{})))}});
 
     registerTest(TestData{"binary_div_" + typeName, flags | divisionFlags, &BINARY_OPERATIONS, options, "test_div",
         {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
             toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
         calculateDimensions(binaryInputsLeft.size()),
-        {checkParameter<Comparator>(
+        {checkParameter<MulComparator>(
             0, transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>([](T val1, T val2) -> T {
-                if(val2 == static_cast<T>(-1))
+                if(std::is_integral<T>::value && val2 == static_cast<T>(-1))
                     // somehow my host does not like divisions by -1 (at least not for some types)
                     return std::is_unsigned<T>::value ? (val1 == static_cast<T>(-1) ? 1 : 0) : -val1;
-                if(val2 == 0 || std::isnan(val2))
-                    return static_cast<T>(std::signbit(val1) ? 1 : -1);
+                // "A divide by zero with integer types does not cause an exception but will result in an unspecified
+                // value. Division by zero for floating-point types will result in +-infinity or NaN as prescribed by
+                // the IEEE-754 standard"
+                if(std::is_integral<T>::value && val2 == 0)
+                    // (u)short and (u)char use float division, while (u)int and (u)long have their own implementation
+                    return sizeof(T) <= 3 ? (std::signbit(val1) != std::signbit(val2) ? -1 : 1) :
+                                            static_cast<T>(std::signbit(val1) ? 1 : -1);
                 return val1 / val2;
             })))}});
 

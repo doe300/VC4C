@@ -640,12 +640,95 @@ InstructionWalker intrinsics::intrinsifyUnsignedIntegerDivisionByConstant(
     return it;
 }
 
-InstructionWalker intrinsics::intrinsifyFloatingDivision(Method& method, InstructionWalker it, IntrinsicOperation& op)
+NODISCARD InstructionWalker intrinsics::intrinsifyIntegerDivisionByFloatingDivision(
+    Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder)
+{
+    auto floatType = TYPE_FLOAT.toVectorType(op.getOutput()->type.getVectorWidth());
+    auto floatNominator = method.addNewLocal(floatType, "%fdiv");
+    it.emplace(new intermediate::Operation(OP_ITOF, floatNominator, op.assertArgument(0)));
+    it.nextInBlock();
+    auto floatDivisor = method.addNewLocal(floatType, "%fdiv");
+    it.emplace(new intermediate::Operation(OP_ITOF, floatDivisor, op.assertArgument(1)));
+    it.nextInBlock();
+    op.setArgument(0, floatNominator);
+    op.setArgument(1, floatDivisor);
+    auto realResult = op.getOutput();
+    auto floatResult = method.addNewLocal(floatType, "%fdiv");
+    op.setOutput(floatResult);
+    // The only "edge case" we have for integer division is division by zero, which we are allowed to return an
+    // undefined value anyway
+    it = intrinsifyFloatingDivision(method, it, op, false /* no need to handle edge cases */);
+    it.nextInBlock();
+    auto result = method.addNewLocal(realResult->type, "%div");
+    it.emplace(new intermediate::Operation(OP_FTOI, result, floatResult));
+    it.nextInBlock();
+
+    /*
+     * Due to the float division not being infinite precise, we get some sparse errors on exact division.
+     *
+     * E.g. for 2a / a, the float division may return 1.999... instead of 2.0 which is the truncated down to 1, instead
+     * of the expected 2.
+     *
+     * We know that we are off by 0 or 1 (or: at most 1), so we can check:
+     * real result = result + 1 if result * divisor + divisor <= nominator
+     *
+     * Even with this fix required, this calculation is still far faster than doing the bit-wise integer division.
+     */
+    floatResult = method.addNewLocal(floatType, "%div_fix");
+    it.emplace(new intermediate::Operation(OP_ITOF, floatResult, result));
+    it.nextInBlock();
+    // diff = abs(nominator - result * divisor)
+    auto tmpResult = assign(it, floatType, "%div_fix") = as_float{floatResult} * as_float{floatDivisor};
+    auto resultDiff = assign(it, floatType, "%div_fix") = as_float{floatNominator} - as_float{tmpResult};
+    tmpResult = method.addNewLocal(floatType, "%div_fix");
+    it.emplace(new intermediate::Operation(OP_FMAXABS, tmpResult, resultDiff, resultDiff));
+    it.nextInBlock();
+    // offset = (nominator < 0) ^ (divisor < 0) ? -1 : 1
+    auto sign = assign(it, realResult->type, "%div_sign") = floatNominator ^ floatDivisor;
+    sign = assign(it, realResult->type, "%div_sign") = as_signed{sign} >> 31_val;
+    auto increment = assign(it, realResult->type, "%div_fix") = sign | 1_val;
+    // result = result + offset, iff abs(diff) >= abs(divisor) (<=> abs(divisor) ! > abs(diff))
+    it.emplace(new intermediate::Operation(
+        OP_FMAXABS, NOP_REGISTER, floatDivisor, tmpResult, COND_ALWAYS, SetFlag::SET_FLAGS));
+    it.nextInBlock();
+    assign(it, result) = (result + increment, COND_CARRY_CLEAR);
+
+    if(useRemainder)
+    {
+        floatResult = method.addNewLocal(floatType, "%mod");
+        it.emplace(new intermediate::Operation(OP_ITOF, floatResult, result));
+        it.nextInBlock();
+        tmpResult = assign(it, floatType, "%mod") = as_float{floatResult} * as_float{floatDivisor};
+        tmpResult = assign(it, floatType, "%mod") = as_float{floatNominator} - as_float{tmpResult};
+        it.emplace(new intermediate::Operation(OP_FTOI, realResult.value(), tmpResult));
+    }
+    else
+        it.emplace(new intermediate::MoveOperation(realResult.value(), result));
+
+    return it;
+}
+
+InstructionWalker intrinsics::intrinsifyFloatingDivision(
+    Method& method, InstructionWalker it, IntrinsicOperation& op, bool fullRangeDivision)
 {
     /*
+     * Current implementation is a Goldschmidt algorithm taken from
+     * http://www.informatik.uni-trier.de/Reports/TR-08-2004/rnc6_12_markstein.pdf (formula 9)
+     *
+     * Tests on the VideoCore IV GPU have shown that a 2 steps are enough to give an accurate result (within the allowed
+     * 3 ULP). This implementation has the same accuracy as the previous Newton-Raphson implementation with 5 steps.
+     * Adding more Goldschmidt's steps does not make the result more accurate, in the contrary, it raises the relative
+     * error to 4 ULP for a lot of values. Thus, we instead use Newton-Raphson for the second step to reduce the
+     * accumulated error.
+     *
+     * Other resources:
      * https://dspace.mit.edu/bitstream/handle/1721.1/80133/43609668-MIT.pdf
      * https://en.wikipedia.org/wiki/Division_algorithm#Newton.E2.80.93Raphson_division
      * http://www.rfwireless-world.com/Tutorials/floating-point-tutorial.html
+     *
+     * The GLSL shader (in mesa) uses the SFU_RECIP with a Newton-Raphson step "to improve our approximation",
+     * see http://anholt.livejournal.com/49474.html
+     *
      */
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying floating-point division" << logging::endl);
 
@@ -653,47 +736,122 @@ InstructionWalker intrinsics::intrinsifyFloatingDivision(Method& method, Instruc
     const Value& divisor = op.assertArgument(1);
     auto outputType = op.getOutput()->type;
 
-    ////
-    // Newton-Raphson
-    ////
-    // TODO: "The Newton-Raphson  algorithm [...] is commonly used if the result does not require proper rounding"
-    //-> use Goldschmidt??
+    auto reducedNominator = nominator;
+    auto reducedDivisor = divisor;
 
-    // 1. initialization step: P0 = SFU_RECIP(D)
+    if(fullRangeDivision)
+    {
+        /*
+         * The Goldschmidt's algorithm by its own becomes too inaccurate for huge divisors (|x| > 2^32) and as stated
+         * above, adding more steps only introduces more error across all values.
+         *
+         * To mitigate this, we do argument reduction to reduce the number for which to calculate the reciprocal.
+         *
+         * (M1 * 2^E1) / (M2 * 2^E2) = (M1 / M2) * 2^(E1 - E2) = M1 * (1 / M2) * 2^(E1 - E2)
+         * with:
+         * E1 = 127 + P1
+         * E2 = 127 + P2
+         *
+         * => M = M1 * (1 / M2)
+         * => E = (E1 - 127) - (E2 - 127) + 127 = E1 - E2 + 127
+         */
+        // truncate the exponent to 127 for both nominator and divisor
+        reducedNominator = assign(it, outputType, "%fdiv_reduction") = nominator & 0x807FFFFF_val;
+        reducedNominator = assign(it, outputType, "%div_reduction") = reducedNominator | 0x3F800000_val;
+        reducedDivisor = assign(it, outputType, "%fdiv_reduction") = divisor & 0x807FFFFF_val;
+        reducedDivisor = assign(it, outputType, "%div_reduction") = reducedDivisor | 0x3F800000_val;
+    }
+
+    ////
+    // Combined Goldschmidt's and Newton-Raphson Algorithm
+    ////
+
+    // 1. initialization step: Y0 = SFU_RECIP(D)
+    it = periphery::insertSFUCall(REG_SFU_RECIP, it, reducedDivisor);
+    auto Y0 = assign(it, outputType, "%fdiv_recip") = Value(REG_SFU_OUT, outputType);
+
+    // 2. calculate error: e = 1 - D * Y0
+    auto tmp = assign(it, outputType, "%fdiv_error") = as_float{reducedDivisor} * as_float{Y0};
+    auto e = assign(it, outputType, "%fdiv_error") = 1.0_val - tmp;
+
+    // 3. iteration step: Yi+1 = Yi * (1 + e^i)
+    // For running more Goldschmidt's steps, use Yn = Y0 * (1 + e + e^2 + e^3 + e^4 + ...)
+    auto step = assign(it, outputType, "%fdiv_step") = 1.0_val + e;
+    auto Y1 = assign(it, outputType, "%fdiv_step") = Y0 * step;
     /*
-     * The GLSL shader uses the SFU_RECIP with a Newton-Raphson step "to improve our approximation",
-     * see http://anholt.livejournal.com/49474.html
+     * Since Goldschmidt's algorithm introduces an accumulated rounding error, we use the Newton-Raphson algorithm for
+     * the second step:
+     * - ei = 1 - b0 * Y1
+     * - Yi+1 = Yi + Yi * ei
+     *
+     * In practice, using the Newton-Raphson algorithm for the second step reduces the relative error by enough for this
+     * division algorithm to be precise (within the allowed error).
      */
-    it = periphery::insertSFUCall(REG_SFU_RECIP, it, divisor);
-    Value P0 = assign(it, outputType, "%fdiv_recip") = Value(REG_SFU_OUT, TYPE_FLOAT);
+    tmp = assign(it, outputType, "%fdiv_error") = as_float{reducedDivisor} * as_float{Y1};
+    e = assign(it, outputType, "%fdiv_error") = 1.0_val - tmp;
+    auto stepTmp2 = assign(it, outputType, "%fdiv_step") = as_float{Y1} * as_float{e};
+    auto recip = assign(it, outputType, "%fdiv_recip") = Y1 + stepTmp2;
 
-    // 2. iteration step: Pi+1 = Pi(2 - D * Pi)
-    // run 5 iterations
-    Value P1 = assign(it, outputType, "%fdiv_p1") = divisor * P0;
-    Value P1_1 = assign(it, outputType, "%fdiv_p1") = 2.0_val - P1;
-    Value P1_2 = assign(it, outputType, "%fdiv_p1") = P0 * P1_1;
+    // 4. final step: Q = Yn * N
+    auto result = assign(it, outputType, "%fdiv") = as_float{reducedNominator} * as_float{recip};
 
-    Value P2 = assign(it, outputType, "%fdiv_p2") = divisor * P1_2;
-    Value P2_1 = assign(it, outputType, "%fdiv_p2") = 2.0_val - P2;
-    Value P2_2 = assign(it, outputType, "%fdiv_p2") = P1_2 * P2_1;
+    if(fullRangeDivision)
+    {
+        /**
+         * Revert the range reduction by calculating and applying the exponent difference
+         *
+         * We don't need to actually calculate E, since we can just add the difference E1 - E2 to the exponent of the
+         * resulting range reduces value.
+         */
+        auto intType = TYPE_INT8.toVectorType(outputType.getVectorWidth());
+        auto nominatorExponent = assign(it, intType, "%fdiv_exponent") = as_unsigned{nominator} >> 23_val;
+        nominatorExponent = assign(it, intType, "%fdiv_exponent") = nominatorExponent & 0x000000FF_val;
+        auto divisorExponent = assign(it, intType, "%fdiv_exponent") = as_unsigned{divisor} >> 23_val;
+        divisorExponent = assign(it, intType, "%fdiv_exponent") = divisorExponent & 0x000000FF_val;
+        // Ediff = Enom - Ediv
+        auto exponentDiff = assign(it, intType, "%fdiv_exponent") = nominatorExponent - divisorExponent;
+        auto resultExponent = assign(it, intType, "%fdiv_exponent") = as_unsigned{result} >> 23_val;
+        resultExponent = assign(it, intType, "%fdiv_exponent") = resultExponent & 0x000000FF_val;
+        // Eres = Eres + Ediff
+        resultExponent = assign(it, intType, "%fdiv_exponent") = resultExponent + exponentDiff;
+        // clamp to range [0, 254] to make sure we do not modify any other bits and do not generate wrong Infs
+        resultExponent = assign(it, intType, "%fdiv_exponent") = max(as_signed{resultExponent}, as_signed{0_val});
+        resultExponent = assign(it, intType, "%fdiv_exponent") = min(as_signed{resultExponent}, as_signed{254_val});
+        resultExponent = assign(it, intType, "%fdiv_exponent") = resultExponent << 23_val;
+        // reinsert the exponent into the result
+        auto resultRest = assign(it, outputType, "%fdiv_reduction") = result & 0x807FFFFF_val;
+        assign(it, result) = resultRest | resultExponent;
 
-    Value P3 = assign(it, outputType, "%fdiv_p3") = divisor * P2_2;
-    Value P3_1 = assign(it, outputType, "%fdiv_p3") = 2.0_val - P3;
-    Value P3_2 = assign(it, outputType, "%fdiv_p3") = P2_2 * P3_1;
+        /*
+         * 5. all the special value handling
+         * Priorities (we need to calculate in inverse order):
+         * 1. x / NaN = NaN
+         * 2. NaN / x = NaN
+         * 3. +-Inf / +-Inf = NaN
+         * 4. 0 / 0 = NaN
+         */
+        // we can now (correctly?) calculate subnormal values, which we do not support, so flush to zero
+        auto cond = assignNop(it) = as_unsigned{resultExponent} == as_unsigned{INT_ZERO};
+        assign(it, result) = (FLOAT_ZERO, cond);
+        cond = assignNop(it) = as_unsigned{nominatorExponent} == as_unsigned{INT_ZERO};
+        assign(it, result) = (FLOAT_ZERO, cond);
+        cond = assignNop(it) = isinf(as_float{divisor});
+        assign(it, result) = (FLOAT_ZERO, cond);
+        auto tmp = assign(it, outputType, "%fdiv_edge") = nominator | divisor;
+        // both of them are zero
+        cond = assignNop(it) = iszero(as_float{tmp});
+        assign(it, result) = (FLOAT_NAN, cond);
+        tmp = assign(it, outputType, "%fdiv_edge") = nominator & divisor;
+        // both of them are Inf
+        cond = assignNop(it) = isinf(as_float{tmp});
+        assign(it, result) = (FLOAT_NAN, cond);
+        cond = assignNop(it) = isnan(as_float{nominator});
+        assign(it, result) = (FLOAT_NAN, cond);
+        cond = assignNop(it) = isnan(as_float{divisor});
+        assign(it, result) = (FLOAT_NAN, cond);
+    }
 
-    Value P4 = assign(it, outputType, "%fdiv_p4") = divisor * P3_2;
-    Value P4_1 = assign(it, outputType, "%fdiv_p4") = 2.0_val - P4;
-    Value P4_2 = assign(it, outputType, "%fdiv_p4") = P3_2 * P4_1;
-
-    Value P5 = assign(it, outputType, "%fdiv_p5") = divisor * P4_2;
-    Value P5_1 = assign(it, outputType, "%fdiv_p5") = 2.0_val - P5;
-    Value P5_2 = assign(it, outputType, "%fdiv_p5") = P4_2 * P5_1;
-
-    // TODO add a 6th step? Sometimes the float-division is too inaccurate
-
-    // 3. final step: Q = Pn * N
-    it.reset(new Operation(OP_FMUL, op.getOutput().value(), nominator, P5_2));
-
+    it.reset((new intermediate::MoveOperation(op.getOutput().value(), result))->copyExtrasFrom(&op));
     return it;
 }
 
