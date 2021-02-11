@@ -244,6 +244,23 @@ static std::string cleanOptions(std::string userOptions)
         userOptions.erase(pos, endPos - pos);
     }
 
+    /*
+     * To greatly reduce the number of PCHs to build, also remove any macro definition without an underscore in it.
+     *
+     * All macros used by clang's opencl-c.h have at least a single underscore, although the header defines
+     * macros without one (e.g. NAN, INFINITY).
+     */
+    pos = 0;
+    while((pos = userOptions.find("-D", pos)) != std::string::npos)
+    {
+        auto endPos = userOptions.find(" ", pos);
+        auto macro = userOptions.substr(pos, endPos - pos);
+        if(macro.find('_') == std::string::npos)
+            userOptions.erase(pos, macro.size() + 1);
+        else
+            pos = endPos;
+    }
+
     // trim leading and trailing zeroes
     userOptions.erase(0, userOptions.find_first_not_of(' '));
     if(!userOptions.empty())

@@ -52,7 +52,7 @@ static InstructionWalker lookBackInBlock(InstructionWalker it)
     return it;
 }
 
-static InstructionWalker findSingleReader(InstructionWalker it, InstructionWalker endIt, const Local* loc,
+static InstructionWalker findSingleReaderInBlock(InstructionWalker it, InstructionWalker endIt, const Local* loc,
     const RegisterMap& registerMap, const Register& conflictingRegister)
 {
     auto locIt = registerMap.find(loc);
@@ -60,7 +60,7 @@ static InstructionWalker findSingleReader(InstructionWalker it, InstructionWalke
         // not found, abort
         return endIt;
 
-    while(!(it = lookAhead(it)).isEndOfBlock())
+    while(!(it = lookAheadInBlock(it)).isEndOfBlock())
     {
         if(it->writesLocal(loc))
             return endIt;
@@ -283,7 +283,8 @@ void optimizations::removeObsoleteInstructions(
                     nextIt->replaceLocal(moveOut, moveIn, LocalUse::Type::READER);
                     continue;
                 }
-                auto readerIt = findSingleReader(it, it.getBasicBlock()->walkEnd(), moveOut, registerMap, inIt->second);
+                auto readerIt =
+                    findSingleReaderInBlock(it, it.getBasicBlock()->walkEnd(), moveOut, registerMap, inIt->second);
                 if(!readerIt.isEndOfBlock() && readerIt->readsLocal(moveOut) && !readerIt->hasUnpackMode() &&
                     !readerIt->getVectorRotation() && !nextIt.isEndOfMethod() &&
                     canRemoveInstructionBetween(lastInstruction, nextIt, registerMap))

@@ -368,7 +368,7 @@ namespace vc4c
         template <typename T>
         inline const T* get() const
         {
-            return dynamic_cast<T*>(get());
+            return dynamic_cast<const T*>(get());
         }
 
         /*

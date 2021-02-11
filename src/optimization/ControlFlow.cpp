@@ -1051,8 +1051,8 @@ NODISCARD static bool moveGroupIdInitializers(Method& method, BasicBlock& defaul
             if(auto it = defaultBlock.findWalkerForInstruction(writer, defaultBlock.walkEnd()))
                 it->erase();
         }
-        assign(insertIt, loc->createReference()) =
-            (INT_ZERO, InstructionDecorations::IDENTICAL_ELEMENTS, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+        assign(insertIt, loc->createReference()) = (INT_ZERO, InstructionDecorations::IDENTICAL_ELEMENTS,
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::PHI_NODE);
     }
 
     if(groupIdsOnlyRead)
@@ -1066,7 +1066,7 @@ NODISCARD static bool moveGroupIdInitializers(Method& method, BasicBlock& defaul
             it.erase();
         // 2. Add new assignment to grouped value
         assign(it, method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_IDS)->createReference()) =
-            (INT_ZERO, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+            (INT_ZERO, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::PHI_NODE);
     }
 
     return groupIdsOnlyRead;
@@ -1119,10 +1119,10 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
         // First increment current id then reset previous dimension to be able to skip inserting a nop, since we read
         // the current id immediately afterwards.
         assign(it, id) = (id + INT_ONE, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
-            InstructionDecorations::IDENTICAL_ELEMENTS);
+            InstructionDecorations::IDENTICAL_ELEMENTS, InstructionDecorations::PHI_NODE);
         if(previousId)
             assign(it, previousId->createReference()) = (INT_ZERO, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
-                InstructionDecorations::IDENTICAL_ELEMENTS);
+                InstructionDecorations::IDENTICAL_ELEMENTS, InstructionDecorations::PHI_NODE);
         // setting this decoration allows for most of the conditional code inserted below to be optimized away
         condDecorations = InstructionDecorations::IDENTICAL_ELEMENTS;
     }
@@ -1135,7 +1135,7 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
             (ELEMENT_NUMBER_REGISTER - Value(Literal(mergedValueIndex), TYPE_INT8), SetFlag::SET_FLAGS);
         assign(it, mergedValue) = (mergedValue + INT_ONE, COND_ZERO_SET);
         if(previousId)
-            assign(it, mergedValue) = (INT_ZERO, COND_NEGATIVE_SET);
+            assign(it, mergedValue) = (INT_ZERO, COND_NEGATIVE_SET, InstructionDecorations::PHI_NODE);
         // we explicitly set the SIMD element to set the branch condition below, so use the whole group ids merged value
         // here.
         id = mergedValue;

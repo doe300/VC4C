@@ -535,10 +535,14 @@ void GraphColoring::createGraph()
             // sanity check
             if(pair.first->hasUsers(LocalUse::Type::READER))
             {
-                for(const auto& user : pair.first->getUsers())
-                    logging::error() << user.first->to_string() << logging::endl;
-                throw CompilationError(CompilationStep::LABEL_REGISTER_MAPPING,
-                    "Local is being read, but first and last occurrence are the same", pair.first->to_string());
+                // This can happen due to errors in the compiler, but also due to undefined behavior in the original
+                // source code, in which case we should not fail to compile completely!
+                CPPLOG_LAZY(logging::Level::WARNING, {
+                    logging::warn() << "Local is being read, but first and last occurrence are the same: "
+                                    << pair.first->to_string() << logging::endl;
+                    for(const auto& user : pair.first->getUsers())
+                        logging::warn() << user.first->to_string() << logging::endl;
+                });
             }
             node.possibleFiles = RegisterFile::NONE;
             node.initialFile = RegisterFile::NONE;
