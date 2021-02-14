@@ -16,6 +16,13 @@ __kernel void test(__global float16* out, __global float16* in) {
 }
 )";
 
+static const std::string UNARY_INT_FUNCTION = R"(
+__kernel void test(__global int16* out, __global float16* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = FUNC(in[gid]);
+}
+)";
+
 static const std::string BINARY_FUNCTION = R"(
 __kernel void test(__global float16* out, __global float16* in0, __global float16* in1) {
   size_t gid = get_global_id(0);
@@ -23,10 +30,31 @@ __kernel void test(__global float16* out, __global float16* in0, __global float1
 }
 )";
 
+static const std::string BINARY_INT_FUNCTION = R"(
+__kernel void test(__global float16* out, __global float16* in0, __global int16* in1) {
+  size_t gid = get_global_id(0);
+  out[gid] = FUNC(in0[gid], in1[gid]);
+}
+)";
+
+static const std::string BINARY_POINTER_FUNCTION = R"(
+__kernel void test(__global float16* out, __global float16* in0, __global POINTER_TYPE* out1) {
+  size_t gid = get_global_id(0);
+  out[gid] = FUNC(in0[gid], &out1[gid]);
+}
+)";
+
 static const std::string TERNARY_FUNCTION = R"(
 __kernel void test(__global float16* out, __global float16* in0, __global float16* in1, __global float16* in2) {
   size_t gid = get_global_id(0);
   out[gid] = FUNC(in0[gid], in1[gid], in2[gid]);
+}
+)";
+
+static const std::string TERNARY_POINTER_FUNCTION = R"(
+__kernel void test(__global float16* out, __global float16* in0, __global float16* in1, __global POINTER_TYPE* out1) {
+  size_t gid = get_global_id(0);
+  out[gid] = FUNC(in0[gid], in1[gid], &out1[gid]);
 }
 )";
 
@@ -92,6 +120,17 @@ static float tanpi(float f)
     return tanf(static_cast<float>(M_PI) * f);
 }
 
+/*
+ * As of OpenCL C 1.2 specification, 7.5.2. Changes to C99 TC2 Behavior:
+ *
+ * modf behaves as though implemented by:
+ */
+static float openclc_modf(float value, float* iptr)
+{
+    *iptr = truncf(value);
+    return copysignf(isinff(value) ? 0.0f : value - *iptr, value);
+}
+
 void test_data::registerMathTests()
 {
     auto defaultFlags = DataFilter::FLOAT_ARITHMETIC;
@@ -144,15 +183,15 @@ void test_data::registerMathTests()
         {"log2", log2f, 4, DataFilter::DISABLED},
         {"log10", log10f, 4, DataFilter::DISABLED},
         {"log1p", log1pf, 4, DataFilter::DISABLED},
-        {"logb", logbf, 0, DataFilter::DISABLED},
+        {"logb", logbf, 0},
         // TODO host truncates to zero where it should not
         {"rint", rintf, 0, DataFilter::DISABLED},
         {"round", roundf, 0},
-        {"rsqrt", rsqrt, 4, DataFilter::DISABLED},
+        {"rsqrt", rsqrt, 4},
         {"sin", sinf, 4, DataFilter::DISABLED},
         {"sinh", sinhf, 4, DataFilter::DISABLED},
         {"sinpi", sinpi, 4, DataFilter::DISABLED},
-        {"sqrt", sqrtf, 4, DataFilter::DISABLED},
+        {"sqrt", sqrtf, 4},
         {"tan", tanf, 5, DataFilter::DISABLED},
         {"tanh", tanhf, 5, DataFilter::DISABLED},
         {"tanpi", tanpi, 6, DataFilter::DISABLED},
@@ -199,4 +238,109 @@ void test_data::registerMathTests()
                 transform<float>(productLeft, productRight, test_data::roundToZero(func.func)),
                 CompareDynamicULP{func.ulp})}});
     }
+
+    registerTest(TestData{"fract", defaultFlags, &BINARY_POINTER_FUNCTION, "-DFUNC=fract -DPOINTER_TYPE=float16",
+        "test",
+        {toBufferParameter(std::vector<float>(values.size(), 42.0f)), toBufferParameter(std::vector<float>(values)),
+            toBufferParameter(std::vector<float>(values.size(), 42))},
+        calculateDimensions(values.size()),
+        {checkParameter<CompareULP<0>>(0, transform<float>(values, test_data::roundToZero<float>([](float x) -> float {
+             return isnanf(x) ? x : fminf(x - floorf(x), std::nextafter(1.0f, 0.0f));
+         }))),
+            checkParameter<CompareULP<0>>(2, transform<float>(values, floorf))}});
+
+    registerTest(TestData{"frexp", defaultFlags, &BINARY_POINTER_FUNCTION, "-DFUNC=frexp -DPOINTER_TYPE=int16", "test",
+        {toBufferParameter(std::vector<float>(values.size(), 42.0f)), toBufferParameter(std::vector<float>(values)),
+            toBufferParameter(std::vector<int32_t>(values.size(), 42))},
+        calculateDimensions(values.size()),
+        {checkParameter<CompareULP<0>>(0, transform<float>(values, test_data::roundToZero<float>([](float x) -> float {
+             int32_t dummyExp = 0;
+             return frexpf(x, &dummyExp);
+         }))),
+            checkParameterEquals(2, transform<int32_t>(values, [](float x) -> int32_t {
+                int32_t exp = 0;
+                frexpf(x, &exp);
+                return exp;
+            }))}});
+
+    registerTest(TestData{"ilogb", defaultFlags, &UNARY_INT_FUNCTION, "-DFUNC=ilogb", "test",
+        {toBufferParameter(std::vector<int32_t>(values.size(), 42.0f)), toBufferParameter(std::vector<float>(values))},
+        calculateDimensions(values.size()), {checkParameterEquals(0, transform<int32_t>(values, [](float x) -> int32_t {
+            // Clang defines FP_ILOGBNAN to INT_MAX, which might differ from host compiler definition
+            return std::isnan(x) ? std::numeric_limits<int32_t>::max() : ilogbf(x);
+        }))}});
+
+    std::vector<int32_t> exponents(productLeft.size());
+    auto it = exponents.begin();
+    for(auto exp :
+        {0, 1, -1, 16, -16, 32, -32, 64, -64, 127, -127, 128, -128, 256, -256, std::numeric_limits<int32_t>::max()})
+    {
+        it = std::fill_n(it, 16, exp);
+    }
+    registerTest(TestData{"ldexp", defaultFlags, &BINARY_INT_FUNCTION, "-DFUNC=ldexp", "test",
+        {toBufferParameter(std::vector<float>(productLeft.size(), 42.0f)),
+            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<int32_t>(exponents))},
+        calculateDimensions(productLeft.size()),
+        {checkParameter<CompareULP<0>>(0, transform<float>(productLeft, exponents, ldexpf))}});
+
+    registerTest(TestData{"lgamma_r", defaultFlags | DataFilter::DISABLED, &BINARY_POINTER_FUNCTION,
+        "-DFUNC=lgamma_r -DPOINTER_TYPE=int16", "test",
+        {toBufferParameter(std::vector<float>(values.size(), 42.0f)), toBufferParameter(std::vector<float>(values)),
+            toBufferParameter(std::vector<int32_t>(values.size(), 42))},
+        calculateDimensions(values.size()),
+        {checkParameter<CompareULP<1024 /* maximum error is undefined */>>(
+             0, transform<float>(values, test_data::roundToZero<float>(lgammaf))),
+            checkParameterEquals(2, transform<int32_t>(values, [](float x) -> int32_t {
+                int32_t sign = 0;
+                lgammaf_r(x, &sign);
+                return sign;
+            }))}});
+
+    registerTest(TestData{"modf", defaultFlags, &BINARY_POINTER_FUNCTION, "-DFUNC=modf -DPOINTER_TYPE=int16", "test",
+        {toBufferParameter(std::vector<float>(values.size(), 42.0f)), toBufferParameter(std::vector<float>(values)),
+            toBufferParameter(std::vector<int32_t>(values.size(), 42))},
+        calculateDimensions(values.size()),
+        {checkParameter<CompareULP<0>>(0, transform<float>(values, test_data::roundToZero<float>([](float x) -> float {
+             float dummy = 0;
+             return openclc_modf(x, &dummy);
+         }))),
+            checkParameter<CompareULP<0>>(2, transform<float>(values, [](float x) -> float {
+                float integral = 0;
+                openclc_modf(x, &integral);
+                return integral;
+            }))}});
+
+    registerTest(TestData{"pown", defaultFlags | DataFilter::DISABLED, &BINARY_INT_FUNCTION, "-DFUNC=pown", "test",
+        {toBufferParameter(std::vector<float>(productLeft.size(), 42.0f)),
+            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<int32_t>(exponents))},
+        calculateDimensions(productLeft.size()),
+        {checkParameter<CompareULP<16>>(
+            0, transform<float>(productLeft, exponents, test_data::roundToZero<float>([](float x, int32_t y) -> float {
+                return powf(x, static_cast<float>(y));
+            })))}});
+
+    registerTest(TestData{"remquo", defaultFlags | DataFilter::DISABLED, &TERNARY_POINTER_FUNCTION,
+        "-DFUNC=remquo -DPOINTER_TYPE=int16", "test",
+        {toBufferParameter(std::vector<float>(productLeft.size(), 42.0f)),
+            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight)),
+            toBufferParameter(std::vector<int32_t>(productLeft.size(), 42))},
+        calculateDimensions(productLeft.size()),
+        {checkParameter<CompareULP<0>>(0,
+             transform<float>(productLeft, productRight, test_data::roundToZero<float>([](float x, float y) -> float {
+                 int32_t dummy = 0;
+                 return remquof(x, y, &dummy);
+             }))),
+            checkParameterEquals(3, transform<int32_t>(productLeft, productRight, [](float x, float y) -> int32_t {
+                int32_t quotient = 0;
+                remquof(x, y, &quotient);
+                return quotient;
+            }))}});
+
+    registerTest(TestData{"sincos", defaultFlags | DataFilter::DISABLED, &BINARY_POINTER_FUNCTION,
+        "-DFUNC=sincos -DPOINTER_TYPE=float16", "test",
+        {toBufferParameter(std::vector<float>(values.size(), 42.0f)), toBufferParameter(std::vector<float>(values)),
+            toBufferParameter(std::vector<float>(values.size(), 42))},
+        calculateDimensions(values.size()),
+        {checkParameter<CompareULP<4>>(0, transform<float>(values, test_data::roundToZero<float>(sinf))),
+            checkParameter<CompareULP<4>>(2, transform<float>(values, test_data::roundToZero<float>(cosf)))}});
 }

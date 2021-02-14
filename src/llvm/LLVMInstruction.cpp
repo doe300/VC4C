@@ -321,7 +321,8 @@ bool CallSite::mapInstruction(Method& method)
         return true;
     }
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Generating immediate call to " << methodName << " -> " << dest.type.to_string() << logging::endl);
+        log << "Generating immediate call to: " << dest.to_string() << " = " << methodName << " ("
+            << to_string<Value>(arguments) << ")" << logging::endl);
     if(dest.checkLocal())
         method.appendToEnd(
             (new intermediate::MethodCall(std::move(output), std::move(methodName), std::move(arguments)))

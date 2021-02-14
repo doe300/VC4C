@@ -279,6 +279,27 @@ static IntrinsicFunction intrinsifyCheckNaN(bool checkInfinite)
     };
 }
 
+static InstructionWalker intrinsifyCheckZero(Method& method, InstructionWalker it, const MethodCall* callSite)
+{
+    CPPLOG_LAZY(
+        logging::Level::DEBUG, log << "Intrinsifying floating point check: " << callSite->to_string() << logging::endl);
+
+    // Return -1/1 (for vector/scalar) if value is +-0, 0 otherwise
+    auto cond = assignNop(it) = iszero(as_float{callSite->assertArgument(0)});
+
+    if(callSite->assertArgument(0).type.isScalarType())
+        assign(it, callSite->getOutput().value()) = (INT_ONE, cond);
+    else
+        assign(it, callSite->getOutput().value()) = (INT_MINUS_ONE, cond);
+    assign(it, callSite->getOutput().value()) = (INT_ZERO, cond.invert());
+
+    it.erase();
+    // so next instruction is not skipped
+    it.previousInBlock();
+
+    return it;
+}
+
 static InstructionWalker intrinsifyIntegerMultiplicationHighPart(
     Method& method, InstructionWalker it, const MethodCall* callSite)
 {
@@ -510,6 +531,10 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> unaryIn
         Intrinsic{intrinsifyCheckNaN(true),
             calculateIntrinsic(TYPE_INT32,
                 [](const Literal& lit) { return std::isnan(lit.real()) || std::isinf(lit.real()) ? 1_lit : 0_lit; })}},
+    {"vc4cl_is_zero",
+        Intrinsic{intrinsifyCheckZero,
+            calculateIntrinsic(
+                TYPE_INT32, [](const Literal& lit) { return std::fabs(lit.real()) == 0.0f ? 1_lit : 0_lit; })}},
     {"vc4cl_vload3", Intrinsic{intrinsifyMemoryAccess(MemoryAccess::READ, true)}},
     /* simply set the event to something so it is initialized */
     {"vc4cl_set_event", Intrinsic{intrinsifyValueRead(INT_ZERO), [](const Value& val) -> Value { return INT_ZERO; }}},
