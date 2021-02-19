@@ -66,6 +66,9 @@ namespace vc4c
             // the flags which indicate the comparison, i.e. for an "ult" comparison, the flags indicating the left
             // operand being less then the right operand seen as unsigned integers
             ConditionCode condition;
+            // the mask of the SIMD vector elements that are being considered for this comparison, i.e. the vector
+            // elements where a change in value actually influences the comparison result flags
+            std::bitset<NATIVE_VECTOR_SIZE> elementMask;
 
             std::string to_string() const;
         };
@@ -74,13 +77,14 @@ namespace vc4c
          * Tries to extract the original comparison information for the comparison setting the flags used in the given
          * conditional instruction.
          */
-        Optional<ComparisonInfo> getComparison(
-            const intermediate::IntermediateInstruction* conditionalInstruction, InstructionWalker searchStart);
+        Optional<ComparisonInfo> getComparison(const intermediate::IntermediateInstruction* conditionalInstruction,
+            InstructionWalker searchStart, bool checkTransitive = false);
 
         /**
          * Tries to extract the original comparison information for the comparison writing into the given result local.
          */
-        Optional<ComparisonInfo> getComparison(const Local* comparisonResult, InstructionWalker searchStart);
+        Optional<ComparisonInfo> getComparison(
+            const Local* comparisonResult, InstructionWalker searchStart, bool checkTransitive = false);
     } // namespace analysis
 } // namespace vc4c
 

@@ -296,9 +296,9 @@ void test_data::registerMathTests()
                 return sign;
             }))}});
 
-    registerTest(TestData{"modf", defaultFlags, &BINARY_POINTER_FUNCTION, "-DFUNC=modf -DPOINTER_TYPE=int16", "test",
+    registerTest(TestData{"modf", defaultFlags, &BINARY_POINTER_FUNCTION, "-DFUNC=modf -DPOINTER_TYPE=float16", "test",
         {toBufferParameter(std::vector<float>(values.size(), 42.0f)), toBufferParameter(std::vector<float>(values)),
-            toBufferParameter(std::vector<int32_t>(values.size(), 42))},
+            toBufferParameter(std::vector<float>(values.size(), 42))},
         calculateDimensions(values.size()),
         {checkParameter<CompareULP<0>>(0, transform<float>(values, test_data::roundToZero<float>([](float x) -> float {
              float dummy = 0;

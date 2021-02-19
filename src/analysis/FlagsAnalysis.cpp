@@ -321,7 +321,7 @@ std::string ComparisonInfo::to_string() const
 {
     auto outputPart = result ? (result->to_string() + " = ") : "";
     return outputPart + leftOperand.to_string() + " " + std::string(name) + " " + rightOperand.to_string() + " (" +
-        condition.to_string() + ")";
+        condition.to_string() + ", " + elementMask.to_string() + ")";
 }
 LCOV_EXCL_STOP
 
@@ -330,6 +330,15 @@ struct ComparisonData
     std::string comp;
     InstructionWalker endOfComparison;
     ConditionCode trueCondition;
+    std::bitset<NATIVE_VECTOR_SIZE> elementMask{0xFFFF};
+
+    LCOV_EXCL_START
+    inline std::string to_string(const Value& left, const Value& right) const
+    {
+        ComparisonInfo tmp{comp, left, right, nullptr, trueCondition, elementMask};
+        return tmp.to_string();
+    }
+    LCOV_EXCL_STOP
 };
 
 static Optional<ComparisonData> checkEquals(InstructionWalker searchIt, Value& leftOperand, Value& rightOperand)
@@ -376,7 +385,7 @@ static Optional<ComparisonData> checkEquals(InstructionWalker searchIt, Value& l
     {
         // only allow this if the type is actually a scalar type
         rightOperand = INT_ZERO;
-        return ComparisonData{intermediate::COMP_EQ, result, COND_ZERO_SET};
+        return ComparisonData{intermediate::COMP_EQ, result, COND_ZERO_SET, 0x1 /* single element */};
     }
 
     return {};
@@ -490,8 +499,128 @@ static Optional<ComparisonData> checkSignedGreaterThan(
     return {};
 }
 
+static std::pair<const intermediate::IntermediateInstruction*, ConditionCode> findTrueSetter(const Local* loc)
+{
+    auto writers = loc->getUsers(LocalUse::Type::WRITER);
+    if(writers.size() != 2)
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Cannot determine comparison for local without exactly 2 conditional writes: " << loc->to_string()
+                << logging::endl);
+        return std::make_pair(nullptr, COND_NEVER);
+    }
+
+    auto trueWriterIt = std::find_if(writers.begin(), writers.end(), [](const LocalUser* writer) -> bool {
+        auto source = writer->getMoveSource();
+        return source && source->getConstantValue() & &Value::getLiteralValue & &Literal::isTrue &&
+            dynamic_cast<const intermediate::ExtendedInstruction*>(writer);
+    });
+    if(trueWriterIt == writers.end())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Failed to find writer of 'true' value for: " << loc->to_string() << logging::endl);
+        return std::make_pair(nullptr, COND_NEVER);
+    }
+    auto trueCond = dynamic_cast<const intermediate::ExtendedInstruction*>(*trueWriterIt)->getCondition();
+    if(trueCond == COND_ALWAYS || trueCond == COND_NEVER)
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Writer of 'true' value is not conditional: " << (*trueWriterIt)->to_string() << logging::endl);
+        return std::make_pair(nullptr, COND_NEVER);
+    }
+    return std::make_pair(*trueWriterIt, trueCond);
+}
+
+/*
+ * Tries to merge multiple dependent comparisons into a single data set.
+ *
+ * Starting from our current resulting comparison info, recursively check whether this is a boolean (true/false)
+ * comparison and if so, try to find the comparison setting the used boolean values. If such a comparison is found,
+ * merge their information, so the final result is dependent on the original comparison.
+ */
+static ComparisonInfo mergeComparisons(ComparisonInfo&& info,
+    const FastMap<InstructionWalker, std::tuple<ComparisonData, Value, Value>>& otherComparisons, BasicBlock& block)
+{
+    if(otherComparisons.empty())
+        return std::move(info);
+
+    if(info.name != intermediate::COMP_EQ && info.name != intermediate::COMP_NEQ)
+        // for only support merging of boolean comparisons and their source comparisons
+        return std::move(info);
+
+    // 1. find the flag set instruction walker for the input boolean value
+    Optional<InstructionWalker> previousFlagSetter{};
+    ConditionCode trueCond = COND_NEVER;
+    if(info.leftOperand.checkLocal() && info.leftOperand.type.getElementType() == TYPE_BOOL)
+    {
+        auto pair = findTrueSetter(info.leftOperand.local());
+        if(pair.first && pair.second != COND_NEVER)
+        {
+            if(auto tmpIt = block.findWalkerForInstruction(pair.first, block.walkEnd()))
+                previousFlagSetter = block.findLastSettingOfFlags(*tmpIt);
+            if(previousFlagSetter)
+                trueCond = pair.second;
+        }
+    }
+    if(!previousFlagSetter && info.rightOperand.checkLocal() && info.rightOperand.type.getElementType() == TYPE_BOOL)
+    {
+        auto pair = findTrueSetter(info.rightOperand.local());
+        if(pair.first && pair.second != COND_NEVER)
+        {
+            if(auto tmpIt = block.findWalkerForInstruction(pair.first, block.walkEnd()))
+                previousFlagSetter = block.findLastSettingOfFlags(*tmpIt);
+            if(previousFlagSetter)
+                trueCond = pair.second;
+        }
+    }
+
+    if(!previousFlagSetter || trueCond == COND_NEVER)
+        return std::move(info);
+
+    // 2. find the comparison matching the flag set instruction walker
+    auto compIt = otherComparisons.find(*previousFlagSetter);
+    if(compIt == otherComparisons.end())
+        return std::move(info);
+
+    // 3. merge comparison info and heed any inversion of flags
+    // original comparison has condition for boolean "true" result
+    auto originalCond = std::get<0>(compIt->second).trueCondition;
+    // we have our intermediate boolean condition, on which flags they are set
+    auto intermediateCond = trueCond;
+    // and our final boolean true condition of the output comparison
+    auto outputCond = info.condition;
+
+    if(originalCond != intermediateCond && !originalCond.isInversionOf(intermediateCond))
+        // they are unrelated, which should never happen
+        return std::move(info);
+
+    // intermediate boolean is true on original comparison match -> retain output condition
+    auto resultCond = originalCond == intermediateCond ? outputCond : outputCond.invert();
+
+    if(info.name == intermediate::COMP_NEQ)
+        // intermediate boolean is not "some true value" -> invert condition
+        resultCond = resultCond.invert();
+
+    if(info.leftOperand.getConstantValue() == INT_ZERO || info.rightOperand.getConstantValue() == INT_ZERO)
+        // intermediate boolean is zero (false value) -> invert condition
+        resultCond = resultCond.invert();
+
+    ComparisonInfo resultInfo{std::get<0>(compIt->second).comp, std::get<1>(compIt->second),
+        std::get<2>(compIt->second), info.result, resultCond,
+        std::get<0>(compIt->second).elementMask & info.elementMask};
+
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Combined comparison '" << info.to_string() << "' and '"
+            << std::get<0>(compIt->second).to_string(std::get<1>(compIt->second), std::get<2>(compIt->second))
+            << "' into: " << resultInfo.to_string() << logging::endl);
+
+    // recursively check further
+    return mergeComparisons(std::move(resultInfo), otherComparisons, block);
+}
+
 Optional<analysis::ComparisonInfo> analysis::getComparison(
-    const intermediate::IntermediateInstruction* conditionalInstruction, InstructionWalker searchStart)
+    const intermediate::IntermediateInstruction* conditionalInstruction, InstructionWalker searchStart,
+    bool checkTransitive)
 {
     // TODO add floating point and long comparisons??
 
@@ -513,23 +642,33 @@ Optional<analysis::ComparisonInfo> analysis::getComparison(
     // Since there might be multiple comparisons between the search start and the writing of the output value, we need
     // to iteratively check until we have a match or do not find any comparison anymore. The order of the checks is on
     // purpose, since e.g. some the unsigned less then check include an equality-check, so we need to check them first.
+
+    // Keep track of already found comparisons, in case we need to merge them in later
+    FastMap<InstructionWalker, std::tuple<ComparisonData, Value, Value>> otherComparisons;
     for(const auto& check : {checkUnsignedLessThan, checkSignedGreaterThan, checkEquals})
     {
         auto checkIt = searchStart;
         while(auto tmp = check(checkIt, leftOperand, rightOperand))
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Found comparison: " << leftOperand.to_string() << " " << tmp->comp << " "
-                    << rightOperand.to_string() << logging::endl);
+                log << "Found comparison: " << tmp->to_string(leftOperand, rightOperand) << logging::endl);
             if(tmp->endOfComparison.get() == matchingFlagSetterIt->get())
                 // The comparison ends with the flag setter responsible for setting the boolean values, this is the
                 // comparison we want!
-                return ComparisonInfo{tmp->comp, leftOperand, rightOperand, nullptr, tmp->trueCondition};
+                return mergeComparisons(
+                    ComparisonInfo{tmp->comp, leftOperand, rightOperand, nullptr, tmp->trueCondition, tmp->elementMask},
+                    otherComparisons, *searchStart.getBasicBlock());
 
             checkIt = tmp->endOfComparison;
             // The end of the comparison is inside the comparison, which for single instruction comparisons is
             // also its start)
             checkIt.nextInBlock();
+
+            if(checkTransitive)
+                // We do not override any previous comparison on purpose for the reason stated above, so that e.g.
+                // equals comparisons do not override other comparisons including them
+                otherComparisons.emplace(
+                    tmp->endOfComparison, std::make_tuple(std::move(tmp.value()), leftOperand, rightOperand));
         }
     }
 
@@ -562,48 +701,25 @@ static const char* invertComparisonName(const std::string& comparison)
     throw CompilationError(CompilationStep::GENERAL, "Unhandled comparison operation to invert", comparison);
 }
 
-Optional<analysis::ComparisonInfo> analysis::getComparison(const Local* comparisonResult, InstructionWalker searchStart)
+Optional<analysis::ComparisonInfo> analysis::getComparison(
+    const Local* comparisonResult, InstructionWalker searchStart, bool checkTransitive)
 {
-    auto writers = comparisonResult->getUsers(LocalUse::Type::WRITER);
-    if(writers.size() != 2)
-    {
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Cannot determine comparison for local without exactly 2 conditional writes: "
-                << comparisonResult->to_string() << logging::endl);
+    auto pair = findTrueSetter(comparisonResult);
+    if(!pair.first || pair.second == COND_NEVER)
         return {};
-    }
 
-    auto trueWriterIt = std::find_if(writers.begin(), writers.end(), [](const LocalUser* writer) -> bool {
-        auto source = writer->getMoveSource();
-        return source && source->getConstantValue() & &Value::getLiteralValue & &Literal::isTrue &&
-            dynamic_cast<const intermediate::ExtendedInstruction*>(writer);
-    });
-    if(trueWriterIt == writers.end())
-    {
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Failed to find writer of 'true' value for: " << comparisonResult->to_string() << logging::endl);
-        return {};
-    }
-    auto trueCond = dynamic_cast<const intermediate::ExtendedInstruction*>(*trueWriterIt)->getCondition();
-    if(trueCond == COND_ALWAYS || trueCond == COND_NEVER)
-    {
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Writer of 'true' value is not conditional: " << (*trueWriterIt)->to_string() << logging::endl);
-        return {};
-    }
-
-    if(auto result = getComparison(*writers.begin(), searchStart))
+    if(auto result = getComparison(pair.first, searchStart, checkTransitive))
     {
         result->result = comparisonResult;
-        if(trueCond.isInversionOf(result->condition))
+        if(pair.second.isInversionOf(result->condition))
         {
             // Invert comparison if necessary depending on actual flags setting the bool true. E.g. for "not equals", we
             // insert an "equals" comparison and invert the flags, so we need to invert the comparison and the flags
             // back again here.
             result->name = invertComparisonName(result->name);
-            result->condition = trueCond;
+            result->condition = pair.second;
         }
-        if(trueCond != result->condition)
+        if(pair.second != result->condition)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Found matching comparison, but flags mismatch for '" << comparisonResult->to_string()

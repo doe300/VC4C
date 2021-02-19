@@ -182,13 +182,12 @@ static std::unique_ptr<DominatorTree> createTreeInner(
 
 static FastSet<const CFGNode*> getDominatorCandidates(const CFGNode& node)
 {
-    // check all incoming edges that are not back edges or bidirectional (e.g. for small loops)
+    // check all incoming edges that are not back edges
     FastSet<const CFGNode*> possibleDominators;
     std::size_t numIncomingEdges = 0;
     node.forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge& edge) -> bool {
         ++numIncomingEdges;
-        if(!edge.data.isBackEdge(predecessor.key) && !edge.data.isWorkGroupLoop &&
-            edge.getDirection() != Direction::BOTH)
+        if(!edge.data.isBackEdge(predecessor.key))
             possibleDominators.emplace(&predecessor);
         return true;
     });

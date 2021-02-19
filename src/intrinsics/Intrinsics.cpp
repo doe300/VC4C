@@ -1324,7 +1324,9 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying unary floating-point negation to binary operation" << logging::endl);
-        it.reset((new Operation(OP_FSUB, op->getOutput().value(), FLOAT_ZERO, op->getFirstArg()))->copyExtrasFrom(op));
+        // SPIR-V 1.5+ disallows fsub 0, x here. Also this gives us a chance to utilize the MUL ALU
+        it.reset((new Operation(OP_FMUL, op->getOutput().value(), op->getFirstArg(), Value(Literal(-1.0f), TYPE_FLOAT)))
+                     ->copyExtrasFrom(op));
         return true;
     }
     return false;
