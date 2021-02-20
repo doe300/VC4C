@@ -1230,7 +1230,7 @@ struct TestEntry
     Value expectedLeftOperand;
     Value expectedRightOperand;
     ConditionCode expectedCondition;
-    std::bitset<NATIVE_VECTOR_SIZE> elementMask{0xFF};
+    std::bitset<NATIVE_VECTOR_SIZE> elementMask{0xFFFF};
 };
 
 void TestAnalyses::testIntegerComparisonDetection()
@@ -1438,7 +1438,7 @@ void TestAnalyses::testIntegerComparisonDetection()
         TEST_ASSERT_EQUALS(13_lit, comp->rightOperand.getLiteralValue());
         TEST_ASSERT_EQUALS(nullptr, comp->result);
         TEST_ASSERT_EQUALS(expectedCond, comp->condition);
-        TEST_ASSERT_EQUALS(std::bitset<NATIVE_VECTOR_SIZE>{0xFF}, comp->elementMask);
+        TEST_ASSERT_EQUALS(std::bitset<NATIVE_VECTOR_SIZE>{0xFFFF}, comp->elementMask);
 
         it.nextInBlock();
     }

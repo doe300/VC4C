@@ -996,6 +996,8 @@ namespace vc4c
      * - -Inf + -Inf = -Inf
      *
      * NOTE: All additions with NaN result in an +/- Inf
+     *
+     * NOTE: +-0 and all subnormal numbers are flushed to +0
      */
     static constexpr OpCode OP_FADD{"fadd", 1, 0, 2, true, true,
         add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_POSITIVE)};
@@ -1011,6 +1013,8 @@ namespace vc4c
      * - -Inf - -Inf = Inf
      *
      * NOTE: All subtractions with NaN result in an +/- Inf
+     *
+     * NOTE: +-0 and all subnormal numbers are flushed to +0
      */
     static constexpr OpCode OP_FSUB{"fsub", 2, 0, 2, true, true,
         add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_POSITIVE)};
@@ -1028,6 +1032,9 @@ namespace vc4c
      * - fmin(-Inf, -Inf) = -Inf
      * -> -Inf < Inf < NaN
      * -> Simple "normal" fmin/fmax: NaN (0x7F8xxxxx) > Inf (0x7F800000)
+     *
+     * NOTE: if both operands are subnormals, the comparison seems to be done with the absolute value, i.e. fmin(a, b) =
+     * abs(a) < abs(b) ? a : b
      */
     static constexpr OpCode OP_FMIN{"fmin", 3, 0, 2, true, true,
         add_flag(
@@ -1046,6 +1053,9 @@ namespace vc4c
      * - fmax(-Inf, -Inf) = -Inf
      * -> -Inf < Inf < NaN
      * -> Simple "normal" fmin/fmax: NaN (0x7F8xxxxx) > Inf (0x7F800000)
+     *
+     * NOTE: if both operands are subnormals, the comparison seems to be done with the absolute value, i.e. fmax(a, b) =
+     * abs(a) > abs(b) ? a : b
      */
     static constexpr OpCode OP_FMAX{"fmax", 4, 0, 2, true, true,
         add_flag(
@@ -1202,6 +1212,8 @@ namespace vc4c
      * - fmul(NaN, -Inf) = -Inf
      * - fmul(Inf, -Inf) = -Inf
      * - fmul(-Inf, -Inf) = Inf
+     *
+     * NOTE: +-0 and all subnormal numbers are flushed to +0
      */
     static constexpr OpCode OP_FMUL{"fmul", 0, 1, 2, true, true,
         add_flag(FlagBehavior::ZERO_ALL_ZEROS, FlagBehavior::NEGATIVE_MSB_SET, FlagBehavior::CARRY_NEVER)};

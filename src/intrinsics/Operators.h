@@ -78,7 +78,8 @@ namespace vc4c
     constexpr float flushDenorms(float result)
     {
         if(std::abs(result) < std::numeric_limits<float>::min())
-            return std::signbit(result) ? -0.0f : 0.0f;
+            // denorms seem to be always flushed to +0.0
+            return 0.0f;
         return result;
     }
 

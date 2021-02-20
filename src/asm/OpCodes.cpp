@@ -1002,9 +1002,9 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
     {
     case OP_FADD.opAdd:
     {
-        // -0 seems to be treated generally as +0
-        auto firstArg = firstLit.real() == -0.0f ? 0.0f : firstLit.real();
-        auto secondArg = secondLit.real() == -0.0f ? 0.0f : secondLit.real();
+        // subnormal values and -0. seem to be treated generally as +0
+        auto firstArg = flushDenorms(firstLit.real());
+        auto secondArg = flushDenorms(secondLit.real());
         if(std::isnan(secondArg))
             // for addition with NaN, the sign of the NaN is taken
             // this also applies if both operands are NaNs
@@ -1017,9 +1017,9 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
     }
     case OP_FSUB.opAdd:
     {
-        // -0 seems to be treated generally as +0
-        auto firstArg = firstLit.real() == -0.0f ? 0.0f : firstLit.real();
-        auto secondArg = secondLit.real() == -0.0f ? 0.0f : secondLit.real();
+        // subnormal values and -0. seem to be treated generally as +0
+        auto firstArg = flushDenorms(firstLit.real());
+        auto secondArg = flushDenorms(secondLit.real());
         if(std::isnan(secondArg))
             // for subtraction with NaN, the sign of the NaN is inverted
             // x - NaN -> -Inf, x - -NaN -> +Inf
@@ -1047,6 +1047,12 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
                 return setFlags(secondLit, checkMinMaxCarry(firstLit, secondLit));
             return setFlags(firstLit, checkMinMaxCarry(firstLit, secondLit));
         }
+        if(std::abs(firstLit.real()) < std::numeric_limits<float>::min() &&
+            std::abs(secondLit.real()) < std::numeric_limits<float>::min() &&
+            !(std::fpclassify(firstLit.real()) == FP_ZERO && std::fpclassify(secondLit.real()) == FP_ZERO))
+            // for subnormal, the min/max calculation is for some reason done on the absolute value
+            return setFlags(std::abs(firstLit.real()) < std::abs(secondLit.real()) ? firstLit : secondLit,
+                std::abs(firstLit.real()) > std::abs(secondLit.real()), false);
         static_assert(std::min(std::numeric_limits<float>::infinity(), 0.0f) == 0.0f, "");
         static_assert(std::min(-std::numeric_limits<float>::infinity(), 0.0f) != 0.0f, "");
         return setFlags(
@@ -1072,6 +1078,11 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
             (secondLit.real() == -0.0f || secondLit.real() == 0.0f))
             // test have shown that both zeroes are treated equal, with the second operand being returned
             return setFlags(secondLit, false);
+        if(std::abs(firstLit.real()) < std::numeric_limits<float>::min() &&
+            std::abs(secondLit.real()) < std::numeric_limits<float>::min())
+            // for subnormal, the min/max calculation is for some reason done on the absolute value
+            return setFlags(std::abs(firstLit.real()) > std::abs(secondLit.real()) ? firstLit : secondLit,
+                std::abs(firstLit.real()) > std::abs(secondLit.real()), false);
         static_assert(std::max(std::numeric_limits<float>::infinity(), 0.0f) != 0.0f, "");
         static_assert(std::max(-std::numeric_limits<float>::infinity(), 0.0f) == 0.0f, "");
         return setFlags(
@@ -1188,9 +1199,9 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
     {
     case OP_FMUL.opMul:
     {
-        // -0 seems to be treated generally as +0
-        auto firstArg = flushDenorms(firstLit.real() == -0.0f ? 0.0f : firstLit.real());
-        auto secondArg = flushDenorms(secondLit.real() == -0.0f ? 0.0f : secondLit.real());
+        // subnormal values and -0. seem to be treated generally as +0
+        auto firstArg = flushDenorms(firstLit.real());
+        auto secondArg = flushDenorms(secondLit.real());
         auto eitherSign = std::signbit(firstArg) != std::signbit(secondArg);
         if(firstArg == 0.0f || secondArg == 0.0f)
             // multiplication with zero beats any NaN/Inf considerations
@@ -1223,7 +1234,9 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
             throw CompilationError(CompilationStep::GENERAL, "Unhandled op-code", code.name);
         };
         if(code == OP_V8ADDS)
-            func = [](uint32_t a, uint32_t b) -> uint32_t { return std::min(a + b, 255u); };
+            func = [](uint32_t a, uint32_t b) -> uint32_t {
+                return static_cast<uint32_t>(std::max(std::min(static_cast<int32_t>(a + b), 255), 0));
+            };
         if(code == OP_V8SUBS)
             func = [](uint32_t a, uint32_t b) -> uint32_t {
                 return static_cast<uint32_t>(std::max(std::min(static_cast<int32_t>(a - b), 255), 0));
