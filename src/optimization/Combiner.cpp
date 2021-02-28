@@ -1406,7 +1406,7 @@ static Optional<std::pair<Value, InstructionDecorations>> combineAdditions(
 
 bool optimizations::cacheWorkGroupDMAAccess(const Module& module, Method& method, const Configuration& config)
 {
-    if(method.metaData.getWorkGroupSize() == 1)
+    if(method.metaData.getFixedWorkGroupSize() == 1u)
     {
         // no need to do anything, if there is only 1 work-item
         CPPLOG_LAZY(logging::Level::DEBUG,

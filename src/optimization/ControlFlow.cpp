@@ -1219,7 +1219,7 @@ static bool insertSynchronizationBlock(Method& method, BasicBlock& lastBlock)
         return false;
     }
 
-    if(method.metaData.getWorkGroupSize() == 1)
+    if(method.metaData.getFixedWorkGroupSize() == 1u)
     {
         // Only a single work-item (per work-group), so no need to synchronize, since all work-items/work-groups are
         // guaranteed to be executed serially.

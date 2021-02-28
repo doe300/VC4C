@@ -17,7 +17,7 @@
 
 namespace vc4c
 {
-    /*
+    /**
      * Contains information about the implicit UNIFORMs (work-group info, etc.) actually used in the kernel
      */
     struct KernelUniforms : public Bitfield<uint64_t>
@@ -47,43 +47,64 @@ namespace vc4c
         }
     };
 
-    /*
+    /**
      * Container for additional meta-data of kernel-functions
      */
     struct KernelMetaData
     {
-        /*
+        /**
          * The implicit UNIFORMs actually used
          */
         KernelUniforms uniformsUsed;
-        /*
+        /**
          * The compilation-time work-group size, specified by the reqd_work_group_size attribute
          */
         std::array<uint32_t, 3> workGroupSizes;
-        /*
+        /**
          * The compilation-time preferred work-group size, specified by the work_group_size_hint attribute
          */
         std::array<uint32_t, 3> workGroupSizeHints;
+        /**
+         * The factor with which the work-items are merged, e.g. 16 if 16 work-items are merged into one QPU execution.
+         */
+        uint8_t mergedWorkItemsFactor;
 
-        KernelMetaData() : uniformsUsed(), workGroupSizes(), workGroupSizeHints()
+        KernelMetaData() : uniformsUsed(), workGroupSizes(), workGroupSizeHints(), mergedWorkItemsFactor(0)
         {
             workGroupSizes.fill(0);
             workGroupSizeHints.fill(0);
         }
 
-        /*
-         * Retuns whether the explicit work-group size is set
+        /**
+         * Returns the explicit work-group size, if it is set
          */
-        inline bool isWorkGroupSizeSet() const
+        inline Optional<uint32_t> getFixedWorkGroupSize() const
         {
-            return std::any_of(workGroupSizes.begin(), workGroupSizes.end(), [](uint32_t u) -> bool { return u > 0; });
+            if(std::any_of(workGroupSizes.begin(), workGroupSizes.end(), [](uint32_t u) -> bool { return u > 0; }))
+                return std::accumulate(workGroupSizes.begin(), workGroupSizes.end(), 1u, std::multiplies<uint32_t>{});
+            return {};
         }
 
-        uint32_t getWorkGroupSize()
+        /**
+         * Returns the maximum number of work-items in a work-group for this kernel
+         */
+        inline uint32_t getMaximumWorkGroupSize() const
         {
-            if(isWorkGroupSizeSet())
-                return std::accumulate(workGroupSizes.begin(), workGroupSizes.end(), 1u, std::multiplies<uint32_t>{});
-            // we don't know - assume "worst"
+            if(auto fixedSize = getFixedWorkGroupSize())
+                return *fixedSize;
+            return NUM_QPUS * std::max(mergedWorkItemsFactor, uint8_t{1});
+        }
+
+        /**
+         * Returns the maximum number of kernel instances to be executed (the maximum number of QPUs required) for a
+         * single work-group
+         */
+        inline uint32_t getMaximumInstancesCount() const
+        {
+            auto factor = std::max(mergedWorkItemsFactor, uint8_t{1});
+            if(auto fixedSize = getFixedWorkGroupSize())
+                // round up if the fixed number of work-items do not match exactly
+                return (*fixedSize / factor) + (*fixedSize % factor != 0);
             return NUM_QPUS;
         }
     };

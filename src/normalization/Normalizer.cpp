@@ -159,10 +159,10 @@ static void propagateUnsignedValues(Module& module, Method& method, InstructionW
 static void checkNormalized(Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     LCOV_EXCL_START
-    if(method.metaData.getWorkGroupSize() > NUM_QPUS)
+    if(method.metaData.getMaximumInstancesCount() > NUM_QPUS)
         // fail here with a proper error message instead of somewhere at the end with some obscure error
         throw CompilationError(CompilationStep::NORMALIZER, "Kernel requires too big work-group size",
-            std::to_string(method.metaData.getWorkGroupSize()));
+            std::to_string(*method.metaData.getFixedWorkGroupSize()));
     if(it.has() && !it->isNormalized())
     {
         if(it.get<intermediate::MethodCall>())

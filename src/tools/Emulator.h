@@ -402,7 +402,7 @@ namespace vc4c
 
         std::vector<MemoryAddress> buildUniforms(Memory& memory, MemoryAddress baseAddress,
             const std::vector<MemoryAddress>& parameter, const WorkGroupConfig& config, MemoryAddress globalData,
-            const KernelUniforms& uniformsUsed);
+            const KernelUniforms& uniformsUsed, uint8_t workItemMergeFactor = 1);
         bool emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction, Memory& memory,
             const std::vector<MemoryAddress>& uniformAddresses, InstrumentationResults& instrumentation,
             uint32_t maxCycles = std::numeric_limits<uint32_t>::max());

@@ -132,14 +132,14 @@ static NODISCARD InstructionWalker intrinsifyReadLocalSize(Method& method, Instr
      * argument to clEnqueueNDRangeKernel." (page 231)
      */
 
-    if(method.metaData.isWorkGroupSizeSet())
+    if(auto fixedSize = method.metaData.getFixedWorkGroupSize())
     {
         const auto& workGroupSizes = method.metaData.workGroupSizes;
         Optional<Literal> immediate;
         if(auto lit = (arg.getConstantValue() & &Value::getLiteralValue))
             // the dimension is a literal value -> look this dimension up
             immediate = lit;
-        else if(std::all_of(workGroupSizes.begin(), workGroupSizes.end(), [](uint32_t u) -> bool { return u == 1; }))
+        else if(fixedSize == 1u)
             // all dimensions are 1 (for any set or not explicitly set dimension) -> take any of them
             immediate = Literal(0u);
         if(immediate)
@@ -159,9 +159,7 @@ static NODISCARD InstructionWalker intrinsifyReadLocalSize(Method& method, Instr
 
 static NODISCARD InstructionWalker intrinsifyReadLocalID(Method& method, InstructionWalker it, const Value& arg)
 {
-    if(method.metaData.isWorkGroupSizeSet() &&
-        std::all_of(method.metaData.workGroupSizes.begin(), method.metaData.workGroupSizes.end(),
-            [](uint32_t u) -> bool { return u == 1; }))
+    if(method.metaData.getFixedWorkGroupSize() == 1u)
     {
         // if all the work-group sizes are 1, the ID is always 0 for all dimensions
         return it.reset((new MoveOperation(it->getOutput().value(), INT_ZERO))
@@ -441,9 +439,9 @@ static void lowerBarrier(Method& method, InstructionWalker it, const MethodCall*
     Optional<Value> localSizeScalar = NO_VALUE;
     auto maximumWorkGroupSize = NUM_QPUS;
 
-    if(method.metaData.isWorkGroupSizeSet())
+    if(auto fixedSize = method.metaData.getFixedWorkGroupSize())
     {
-        if(method.metaData.getWorkGroupSize() == 1)
+        if(fixedSize == 1u)
         {
             // for a single work-item there is no need to synchronize
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -455,8 +453,7 @@ static void lowerBarrier(Method& method, InstructionWalker it, const MethodCall*
             return;
         }
         // for other (fixed known) work-group sized, we can at least simplify some of the checks and skip some blocks
-        maximumWorkGroupSize = method.metaData.getWorkGroupSize();
-        localSizeScalar = Value(Literal(maximumWorkGroupSize), TYPE_INT8);
+        localSizeScalar = Value(Literal(*fixedSize), TYPE_INT8);
     }
 
     // calculate the scalar local ID and size

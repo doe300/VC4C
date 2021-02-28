@@ -13,6 +13,7 @@
 #include "../performance.h"
 #include "config.h"
 
+#include <array>
 #include <iostream>
 #include <vector>
 
@@ -160,7 +161,11 @@ namespace vc4c
             /*
              * The 3 dimensions for the work-group size specified in the source code
              */
-            uint64_t workGroupSize;
+            std::array<uint16_t, 3> workGroupSize;
+            /*
+             * The merge factor for merged work-items (the number of work-items executed by a single QPU)
+             */
+            uint8_t workItemMergeFactor;
             /*
              * Bit-field determining the implicit UNIFORMs used by this kernel. Depending on this field, the
              * UNIFORM-values are created host-side
@@ -169,9 +174,6 @@ namespace vc4c
 
             std::size_t write(std::ostream& stream, OutputMode mode) const;
             std::string to_string() const;
-
-            // The maximum work group sizes specified in the VC4CL runtime library
-            static constexpr uint32_t MAX_WORK_GROUP_SIZES = NUM_QPUS;
 
             inline void setName(const std::string& name)
             {

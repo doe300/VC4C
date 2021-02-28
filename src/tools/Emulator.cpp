@@ -2329,11 +2329,12 @@ void QPU::setFlags(const SIMDVector& output, ConditionCode cond, const VectorFla
 
 std::vector<MemoryAddress> tools::buildUniforms(Memory& memory, MemoryAddress baseAddress,
     const std::vector<MemoryAddress>& parameter, const WorkGroupConfig& config, MemoryAddress globalData,
-    const KernelUniforms& uniformsUsed)
+    const KernelUniforms& uniformsUsed, uint8_t workItemMergeFactor)
 {
     std::vector<MemoryAddress> res;
 
-    Word numQPUs = config.localSizes[0] * config.localSizes[1] * config.localSizes[2];
+    Word numQPUs = (config.localSizes[0] * config.localSizes[1] * config.localSizes[2]);
+    numQPUs = numQPUs / workItemMergeFactor + (numQPUs % workItemMergeFactor != 0);
     res.reserve(numQPUs);
 
     std::vector<Word> qpuUniforms;
@@ -2355,7 +2356,7 @@ std::vector<MemoryAddress> tools::buildUniforms(Memory& memory, MemoryAddress ba
         if(uniformsUsed.getLocalSizesUsed())
             qpuUniforms[i++] = (config.localSizes[2] << 16) | (config.localSizes[1] << 8) | config.localSizes[0];
         if(uniformsUsed.getLocalIDsUsed())
-            qpuUniforms[i++] = (localIDs[2] << 16) | (localIDs[1] << 8) | localIDs[0];
+            qpuUniforms[i++] = (localIDs[2] << 16) | (localIDs[1] << 8) | (localIDs[0] * workItemMergeFactor);
         if(uniformsUsed.getNumGroupsXUsed())
             qpuUniforms[i++] = config.numGroups[0];
         if(uniformsUsed.getNumGroupsYUsed())
@@ -2724,8 +2725,9 @@ EmulationResult tools::emulate(const EmulationData& data)
     std::vector<MemoryAddress> paramAddresses;
     Memory mem(fillMemory(globals, data, uniformAddress, globalDataAddress, paramAddresses));
 
-    auto uniformAddresses =
-        buildUniforms(mem, uniformAddress, paramAddresses, data.workGroup, globalDataAddress, kernelInfo->uniformsUsed);
+    auto mergeFactor = std::max(kernelInfo->workItemMergeFactor, uint8_t{1});
+    auto uniformAddresses = buildUniforms(
+        mem, uniformAddress, paramAddresses, data.workGroup, globalDataAddress, kernelInfo->uniformsUsed, mergeFactor);
 
     if(!data.memoryDump.empty())
         dumpMemory(mem, data.memoryDump, uniformAddress, true);

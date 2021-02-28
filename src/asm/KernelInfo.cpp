@@ -86,9 +86,10 @@ std::size_t ParamInfo::write(std::ostream& stream, const OutputMode mode) const
     return numWords;
 }
 
-KernelInfo::KernelInfo(const std::size_t& numParameters) : Bitfield(0), workGroupSize(0)
+KernelInfo::KernelInfo(const std::size_t& numParameters) : Bitfield(0), workGroupSize(), workItemMergeFactor(0)
 {
     parameters.reserve(numParameters);
+    workGroupSize.fill(0);
 }
 
 std::size_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
@@ -105,7 +106,9 @@ std::size_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
         *reinterpret_cast<uint64_t*>(buf.data()) = value;
         writeStream(stream, buf, mode);
         ++numWords;
-        *reinterpret_cast<uint64_t*>(buf.data()) = workGroupSize;
+        memcpy(buf.data(), workGroupSize.data(), 6);
+        buf[6] = workItemMergeFactor;
+        buf[7] = 0;
         writeStream(stream, buf, mode);
         ++numWords;
         *reinterpret_cast<uint64_t*>(buf.data()) = uniformsUsed.value;
@@ -162,10 +165,13 @@ std::string KernelInfo::to_string() const
     const std::string uniformsString =
         uniformsSet.empty() ? "" : (std::string(" (") + vc4c::to_string<std::string>(uniformsSet) + ")");
 
+    auto mergeFactor =
+        workItemMergeFactor ? (" (work-item merge factor: " + std::to_string(workItemMergeFactor) + ")") : "";
+
     return std::string("Kernel '") + (name + "' with ") +
         (std::to_string(getLength().getValue()) + " instructions, offset ") +
         (std::to_string(getOffset().getValue()) + ", with following parameters: ") +
-        ::to_string<ParamInfo>(parameters) + uniformsString;
+        ::to_string<ParamInfo>(parameters) + uniformsString + mergeFactor;
 }
 LCOV_EXCL_STOP
 
@@ -337,30 +343,28 @@ KernelInfo qpu_asm::getKernelInfos(
     info.setOffset(Word(initialOffset));
     info.setLength(Word(numInstructions));
     info.setName(method.name[0] == '@' ? method.name.substr(1) : method.name);
-    info.workGroupSize = 0;
+    info.workGroupSize.fill(0);
+    info.workItemMergeFactor = method.metaData.mergedWorkItemsFactor;
     info.uniformsUsed = method.metaData.uniformsUsed;
     {
-        size_t requiredSize = 1;
-        unsigned offset = 0;
-        for(uint32_t size : method.metaData.workGroupSizes)
+        for(std::size_t i = 0; i < method.metaData.workGroupSizes.size(); ++i)
+            info.workGroupSize[i] = static_cast<uint16_t>(method.metaData.workGroupSizes[i]);
+        auto maxNumInstances = method.metaData.getMaximumInstancesCount();
+        if(maxNumInstances > NUM_QPUS)
         {
-            info.workGroupSize |= static_cast<uint64_t>(size) << offset;
-            offset += 16;
-            requiredSize *= size;
-        }
-        if(requiredSize > KernelInfo::MAX_WORK_GROUP_SIZES)
-        {
-            logging::error() << "Required work-group size " << requiredSize << " exceeds the limit of "
-                             << KernelInfo::MAX_WORK_GROUP_SIZES << logging::endl;
+            logging::error() << "Required number of instances " << maxNumInstances << " exceeds the limit of "
+                             << NUM_QPUS << logging::endl;
         }
     }
     {
-        uint32_t requiredSize = std::accumulate(method.metaData.workGroupSizeHints.begin(),
+        uint32_t sizeHint = std::accumulate(method.metaData.workGroupSizeHints.begin(),
             method.metaData.workGroupSizeHints.end(), 1u, std::multiplies<uint32_t>());
-        if(requiredSize > KernelInfo::MAX_WORK_GROUP_SIZES)
+        auto sizeFactor = std::max(method.metaData.mergedWorkItemsFactor, uint8_t{1});
+        sizeHint = (sizeHint / sizeFactor) + (sizeHint % sizeFactor != 0);
+        if(sizeHint > NUM_QPUS)
         {
-            logging::warn() << "Work-group size hint " << requiredSize << " exceeds the limit of "
-                            << KernelInfo::MAX_WORK_GROUP_SIZES << logging::endl;
+            logging::warn() << "Work-group size hint " << sizeHint << " exceeds the limit of " << NUM_QPUS
+                            << logging::endl;
         }
     }
     for(const Parameter& param : method.parameters)

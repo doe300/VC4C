@@ -246,5 +246,8 @@ void TestFrontends::testKernelAttributes()
     extractBinary(res.first, module, globals, instructions);
 
     TEST_ASSERT(!module.kernelInfos.empty())
-    TEST_ASSERT_EQUALS(uint64_t{0x0000000300020002}, module.kernelInfos[0].workGroupSize)
+    TEST_ASSERT_EQUALS(2, module.kernelInfos[0].workGroupSize[0])
+    TEST_ASSERT_EQUALS(2, module.kernelInfos[0].workGroupSize[1])
+    TEST_ASSERT_EQUALS(3, module.kernelInfos[0].workGroupSize[2])
+    TEST_ASSERT_EQUALS(0, module.kernelInfos[0].workItemMergeFactor)
 }

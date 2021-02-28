@@ -249,9 +249,11 @@ Optional<ValueRange> ValueRange::getValueRange(intermediate::InstructionDecorati
     else if(has_flag(deco, InstructionDecorations::BUILTIN_LOCAL_ID))
     {
         int64_t maxID = 0;
-        if(method && method->metaData.isWorkGroupSizeSet())
+        if(method && method->metaData.getFixedWorkGroupSize())
             maxID =
                 *std::max_element(method->metaData.workGroupSizes.begin(), method->metaData.workGroupSizes.end()) - 1;
+        else if(method)
+            maxID = method->metaData.getMaximumWorkGroupSize() - 1;
         else
             maxID = NUM_QPUS - 1;
         return ValueRange{0.0, static_cast<double>(maxID)};
@@ -259,8 +261,10 @@ Optional<ValueRange> ValueRange::getValueRange(intermediate::InstructionDecorati
     else if(has_flag(deco, InstructionDecorations::BUILTIN_LOCAL_SIZE))
     {
         int64_t maxSize = 0;
-        if(method && method->metaData.isWorkGroupSizeSet())
+        if(method && method->metaData.getFixedWorkGroupSize())
             maxSize = *std::max_element(method->metaData.workGroupSizes.begin(), method->metaData.workGroupSizes.end());
+        else if(method)
+            maxSize = method->metaData.getMaximumWorkGroupSize();
         else
             maxSize = NUM_QPUS;
         return ValueRange{0.0, static_cast<double>(maxSize)};

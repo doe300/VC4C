@@ -246,7 +246,10 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Stable
     {
         qpu_asm::KernelInfo kernelInfo(4);
         binary.read(reinterpret_cast<char*>(&kernelInfo.value), sizeof(kernelInfo.value));
-        binary.read(reinterpret_cast<char*>(&kernelInfo.workGroupSize), sizeof(kernelInfo.workGroupSize));
+        binary.read(reinterpret_cast<char*>(kernelInfo.workGroupSize.data()), sizeof(kernelInfo.workGroupSize));
+        binary.read(reinterpret_cast<char*>(&kernelInfo.workItemMergeFactor), sizeof(kernelInfo.workItemMergeFactor));
+        char unusedByte = 0;
+        binary.read(&unusedByte, sizeof(unusedByte));
         binary.read(reinterpret_cast<char*>(&kernelInfo.uniformsUsed.value), sizeof(kernelInfo.uniformsUsed.value));
         kernelInfo.name = readString(binary, kernelInfo.getNameLength().getValue());
         totalInstructions += kernelInfo.getLength().getValue();

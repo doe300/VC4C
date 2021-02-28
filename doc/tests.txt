@@ -168,6 +168,13 @@ test_vector						PASSED (reads 1-after-bounds of allocated buffer)
 test_wait_list					PASSED
 test_zip_iterator				PASSED
 
+piglit cl:
+skip:    87
+pass:    442
+fail:    173
+timeout: 7
+crash:   1
+
 pocl:
 kernel/
   image_query_funcs                                       "CL_INVALID_OPERATION in clCreateSampler on line 70"
