@@ -8,7 +8,7 @@
 
 #include "../Module.h"
 #include "../intermediate/VectorHelper.h"
-#include "../periphery/VPM.h"
+#include "../periphery/TMU.h"
 #include "log.h"
 
 using namespace vc4c;
@@ -187,9 +187,7 @@ bool intermediate::intrinsifyImageFunction(InstructionWalker it, Method& method)
         }
         else if(callSite->methodName.find("vc4cl_image_read") != std::string::npos)
         {
-            // TODO other coordinates, other data
-            it = periphery::insertReadTMU(
-                method, it, callSite->assertArgument(0), callSite->getOutput().value(), callSite->assertArgument(1));
+            // TODO
             it.erase();
             return true;
         }

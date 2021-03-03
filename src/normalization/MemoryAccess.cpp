@@ -13,6 +13,7 @@
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/operators.h"
 #include "../optimization/Optimizer.h"
+#include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
 #include "AddressCalculation.h"
 #include "MemoryMappings.h"
@@ -1048,9 +1049,36 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
 
     method.vpm->dumpUsage();
 
-    // TODO move this to optimization?
-    combineVPMAccess(affectedBlocks, method);
     insertCacheSynchronizationCode(method, localsCachedInVPM);
 
     // TODO clean up no longer used (all kernels!) globals and stack allocations
+}
+
+bool normalization::lowerMemoryAccess(const Module& module, Method& method, const Configuration& config)
+{
+    method.dumpInstructions();
+    for(auto& block : method)
+    {
+        auto it = block.walk();
+        while(!it.isEndOfBlock())
+        {
+            if(auto memoryAccess = it.get<MemoryAccessInstruction>())
+            {
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Lowering memory access: " << memoryAccess->to_string() << logging::endl);
+                if(memoryAccess->getTMUCacheEntry())
+                    it = lowerTMURead(method, it);
+                else if(memoryAccess->getVPMCacheEntry())
+                    it = lowerVPMAccess(method, it);
+                else
+                    throw CompilationError(
+                        CompilationStep::NORMALIZER, "Unhandled memory access instruction", it->to_string());
+            }
+            else
+                it.nextInBlock();
+        }
+    }
+    // a kernel without a single memory access does not make sense at all
+    method.dumpInstructions();
+    return true;
 }

@@ -8,6 +8,9 @@
 
 #include "../GlobalValues.h"
 #include "../asm/Instruction.h"
+#include "../periphery/CacheEntry.h"
+#include "../periphery/TMU.h"
+#include "../periphery/VPM.h"
 
 #include "log.h"
 
@@ -215,5 +218,191 @@ bool MemoryInstruction::innerEquals(const IntermediateInstruction& other) const
 {
     if(auto otherMem = dynamic_cast<const MemoryInstruction*>(&other))
         return op == otherMem->op && guardAccess == otherMem->guardAccess;
+    return false;
+}
+
+MemoryAccessInstruction::MemoryAccessInstruction(
+    MemoryOperation op, const std::shared_ptr<periphery::CacheEntry>& cacheEntry) :
+    IntermediateInstruction(),
+    op(op), cache(cacheEntry)
+{
+    cache->accesses.emplace(this);
+}
+
+MemoryAccessInstruction::~MemoryAccessInstruction()
+{
+    cache->accesses.erase(this);
+}
+
+qpu_asm::DecoratedInstruction MemoryAccessInstruction::convertToAsm(
+    const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping,
+    std::size_t instructionIndex) const
+{
+    throw CompilationError(CompilationStep::OPTIMIZER, "There should be no more mmeory access operations", to_string());
+}
+
+IntermediateInstruction* MemoryAccessInstruction::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
+{
+    throw CompilationError(
+        CompilationStep::GENERAL, "Memory access instructions cannot be copied for new", to_string());
+}
+
+bool MemoryAccessInstruction::isNormalized() const
+{
+    return true;
+}
+
+SideEffectType MemoryAccessInstruction::getSideEffects() const
+{
+    return SideEffectType::MEMORY_ACCESS;
+}
+
+std::shared_ptr<periphery::TMUCacheEntry> MemoryAccessInstruction::getTMUCacheEntry() const
+{
+    return std::dynamic_pointer_cast<periphery::TMUCacheEntry>(cache);
+}
+
+std::shared_ptr<periphery::VPMCacheEntry> MemoryAccessInstruction::getVPMCacheEntry() const
+{
+    return std::dynamic_pointer_cast<periphery::VPMCacheEntry>(cache);
+}
+
+bool MemoryAccessInstruction::isLoadAccess() const noexcept
+{
+    return op == MemoryOperation::READ;
+}
+
+bool MemoryAccessInstruction::isStoreAccess() const noexcept
+{
+    return op != MemoryOperation::READ;
+}
+
+bool MemoryAccessInstruction::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherMem = dynamic_cast<const RAMAccessInstruction*>(&other))
+        return op == otherMem->op && &cache == &otherMem->cache;
+    return false;
+}
+
+RAMAccessInstruction::RAMAccessInstruction(MemoryOperation op, const Value& memoryAddress,
+    const std::shared_ptr<periphery::CacheEntry>& cacheEntry, const Value& numCopies) :
+    MemoryAccessInstruction(op, cacheEntry)
+{
+    // we always read the address, even if we write its content
+    setArgument(0, memoryAddress);
+    setArgument(1, numCopies);
+
+    // to make the old code work with the new instruction types
+    if(auto tmuCacheEntry = std::dynamic_pointer_cast<periphery::TMUCacheEntry>(cacheEntry))
+        setOutput(tmuCacheEntry->tmu.getAddress(memoryAddress.type));
+    else if(auto vpmCacheEntry = std::dynamic_pointer_cast<periphery::VPMCacheEntry>(cacheEntry))
+        setOutput(
+            Value(op == MemoryOperation::READ ? REG_VPM_DMA_LOAD_ADDR : REG_VPM_DMA_STORE_ADDR, memoryAddress.type));
+
+    checkMemoryLocation(memoryAddress);
+    checkLocalValue(numCopies);
+    if(op == MemoryOperation::COPY || op == MemoryOperation::FILL)
+        throw CompilationError(CompilationStep::GENERAL, "Invalid memory operation for accessing RAM");
+    if(cache->isReadOnly() && op == MemoryOperation::WRITE)
+        throw CompilationError(CompilationStep::GENERAL, "Cannot write to read-only cache");
+}
+
+LCOV_EXCL_START
+std::string RAMAccessInstruction::to_string() const
+{
+    if(op == MemoryOperation::READ)
+        return "load " + getNumEntries().to_string() + " entries from memory at " + getMemoryAddress().to_string() +
+            " into " + cache->to_string() + createAdditionalInfoString();
+    if(op == MemoryOperation::WRITE)
+        return "store " + getNumEntries().to_string() + " entries from " + cache->to_string() + " into memory at " +
+            getMemoryAddress().to_string() + createAdditionalInfoString();
+    throw CompilationError(
+        CompilationStep::GENERAL, "Unknown memory operation type", std::to_string(static_cast<unsigned>(op)));
+}
+LCOV_EXCL_STOP
+
+const Value& RAMAccessInstruction::getMemoryAddress() const
+{
+    return assertArgument(0);
+}
+
+const Value& RAMAccessInstruction::getNumEntries() const
+{
+    return assertArgument(1);
+}
+
+bool RAMAccessInstruction::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherMem = dynamic_cast<const RAMAccessInstruction*>(&other))
+        return MemoryAccessInstruction::innerEquals(other);
+    return false;
+}
+
+CacheAccessInstruction::CacheAccessInstruction(
+    MemoryOperation op, const Value& data, const std::shared_ptr<periphery::CacheEntry>& cacheEntry) :
+    MemoryAccessInstruction(op, cacheEntry)
+{
+    if(op == MemoryOperation::WRITE)
+        setArgument(0, data);
+    else if(op == MemoryOperation::READ)
+        setOutput(data);
+    else
+        throw CompilationError(CompilationStep::GENERAL, "Invalid memory operation for accessing cache");
+
+    // to make the old code work with the new instruction types
+    if(auto tmuCacheEntry = std::dynamic_pointer_cast<periphery::TMUCacheEntry>(cacheEntry))
+    {
+        if(op == MemoryOperation::WRITE)
+            throw CompilationError(CompilationStep::GENERAL, "Cannot write to TMU cache");
+        signal = tmuCacheEntry->tmu.signal;
+        setArgument(0, Value(REG_TMU_OUT, data.type));
+    }
+    else if(auto vpmCacheEntry = std::dynamic_pointer_cast<periphery::VPMCacheEntry>(cacheEntry))
+    {
+        if(op == MemoryOperation::WRITE)
+            setOutput(Value(REG_VPM_IO, data.type));
+        else if(op == MemoryOperation::READ)
+            setArgument(0, Value(REG_VPM_IO, data.type));
+    }
+
+    checkLocalValue(data);
+}
+
+LCOV_EXCL_START
+std::string CacheAccessInstruction::to_string() const
+{
+    if(op == MemoryOperation::READ)
+        return getDestination().to_string() + " = load" + (upperWord ? " upper word" : "") + " from " +
+            cache->to_string() + createAdditionalInfoString();
+    if(op == MemoryOperation::WRITE)
+        return "store " + getSource().to_string() + " into " + (upperWord ? "upper word of " : "") +
+            cache->to_string() + createAdditionalInfoString();
+    throw CompilationError(
+        CompilationStep::GENERAL, "Unknown memory operation type", std::to_string(static_cast<unsigned>(op)));
+}
+LCOV_EXCL_STOP
+
+const Value& CacheAccessInstruction::getData() const
+{
+    if(op == MemoryOperation::READ)
+        return getOutput().value();
+    return assertArgument(0);
+}
+
+Optional<Value> CacheAccessInstruction::getSource() const
+{
+    return getArgument(0);
+}
+
+Optional<Value> CacheAccessInstruction::getDestination() const
+{
+    return getOutput();
+}
+
+bool CacheAccessInstruction::innerEquals(const IntermediateInstruction& other) const
+{
+    if(auto otherMem = dynamic_cast<const CacheAccessInstruction*>(&other))
+        return MemoryAccessInstruction::innerEquals(other);
     return false;
 }

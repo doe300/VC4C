@@ -497,7 +497,8 @@ static InstructionWalker lowerMemoryReadToVPM(Method& method, InstructionWalker 
     it = insertToInVPMAreaOffset(method, it, inAreaOffset, srcInfo, mem, mem->getSource());
     if(mem->op == MemoryOperation::READ)
     {
-        it = method.vpm->insertReadVPM(method, it, mem->getDestination(), srcInfo.area, mem->guardAccess, inAreaOffset);
+        it =
+            method.vpm->insertReadVPM(method, it, mem->getDestination(), *srcInfo.area, mem->guardAccess, inAreaOffset);
         return it.erase();
     }
     throw CompilationError(
@@ -540,7 +541,7 @@ static InstructionWalker lowerMemoryWriteToVPM(Method& method, InstructionWalker
     it = insertToInVPMAreaOffset(method, it, inAreaOffset, destInfo, mem, mem->getDestination());
     if(mem->op == MemoryOperation::WRITE)
     {
-        it = method.vpm->insertWriteVPM(method, it, mem->getSource(), destInfo.area, mem->guardAccess, inAreaOffset);
+        it = method.vpm->insertWriteVPM(method, it, mem->getSource(), *destInfo.area, mem->guardAccess, inAreaOffset);
         return it.erase();
     }
     if(mem->op == MemoryOperation::FILL)
@@ -573,7 +574,7 @@ static InstructionWalker lowerMemoryWriteToVPM(Method& method, InstructionWalker
             {
                 auto byteOffset = assign(it, TYPE_INT32) = Value(Literal(i), TYPE_INT32) * vpmTypeSize;
                 byteOffset = assign(it, TYPE_INT32) = inAreaOffset + byteOffset;
-                it = method.vpm->insertWriteVPM(method, it, fillVector, destInfo.area, false, byteOffset);
+                it = method.vpm->insertWriteVPM(method, it, fillVector, *destInfo.area, false, byteOffset);
             }
             if(mem->guardAccess)
             {
@@ -614,7 +615,7 @@ static InstructionWalker loadMemoryViaTMU(Method& method, InstructionWalker it, 
             ++(srcInfo->tmuFlag ? numTMU0 : numTMU1);
         }
         // prefer TMU1 here, since statistically TMU0 will be used more often
-        auto tmu = numTMU0 > numTMU1 ? periphery::TMU0 : periphery::TMU1;
+        const auto& tmu = numTMU0 > numTMU1 ? periphery::TMU0 : periphery::TMU1;
         it = periphery::insertReadVectorFromTMU(method, it, mem->getDestination(), mem->getSource(), tmu);
         return it.erase();
     }
@@ -642,39 +643,26 @@ static InstructionWalker accessMemoryInRAMViaVPM(Method& method, InstructionWalk
             it.emplace(new MutexLock(MutexAccess::LOCK));
             it.nextInBlock();
         }
-        if(auto numCopies = mem->getNumEntries().getLiteralValue())
+        auto numCopies = mem->getNumEntries().getLiteralValue();
+        if(numCopies && mem->getSource().type == TYPE_INT8)
         {
-            if(mem->getSource().type == TYPE_INT8)
-            {
-                // if we fill single bytes, combine them to some vector type to not have to write so many single bytes
-                auto vpmType = periphery::getBestVectorSize(numCopies->unsignedInt());
-                // 1. replicate byte across word
-                auto fillWord = assign(it, TYPE_INT32) = (mem->getSource(), UNPACK_8A_32);
-                // 2. replicate word across all vector elements
-                auto fillVector = method.addNewLocal(TYPE_INT32.toVectorType(16), "%memory_fill");
-                it = insertReplication(it, fillWord, fillVector);
-                // 3. write vector to VPM
-                it = method.vpm->insertWriteVPM(method, it, fillVector, nullptr, false);
-                // 4. fill memory with vector
-                it = method.vpm->insertFillRAM(
-                    method, it, mem->getDestination(), vpmType.first, vpmType.second, nullptr, false);
-            }
-            else
-            {
-                it = method.vpm->insertWriteVPM(method, it, mem->getSource(), nullptr, false);
-                it = method.vpm->insertFillRAM(method, it, mem->getDestination(), mem->getSourceElementType(),
-                    numCopies->unsignedInt(), nullptr, false);
-            }
+            // if we fill single bytes, combine them to some vector type to not have to write so many single bytes
+            auto vpmType = periphery::getBestVectorSize(numCopies->unsignedInt());
+            // 1. replicate byte across word
+            auto fillWord = assign(it, TYPE_INT32) = (mem->getSource(), UNPACK_8A_32);
+            // 2. replicate word across all vector elements
+            auto fillVector = method.addNewLocal(vpmType.first, "%memory_fill");
+            it = insertReplication(it, fillWord, fillVector);
+            // 3. write vector to VPM and then fill the memory
+            it = method.vpm->insertFillDMA(
+                method, it, mem->getDestination(), fillVector, Value(Literal(vpmType.second), TYPE_INT32), false);
         }
         else
-        {
             // Fill dynamically sized memory
             // TODO This is usually the result of an (llvm.)memset(...) instruction, which always writes a certain
             // number of single bytes, which is very inefficient!
-            it = method.vpm->insertWriteVPM(method, it, mem->getSource(), nullptr, false);
-            it = method.vpm->insertFillRAMDynamic(
-                method, it, mem->getDestination(), mem->getSourceElementType(), mem->getNumEntries(), nullptr, false);
-        }
+            it = method.vpm->insertFillDMA(
+                method, it, mem->getDestination(), mem->getSource(), mem->getNumEntries(), false);
         if(mem->guardAccess)
         {
             it.emplace(new MutexLock(MutexAccess::RELEASE));
@@ -851,7 +839,8 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
         auto destType = method.createPointerType(vpmRowType.value_or(mem->getDestinationElementType()),
             mem->getDestination().type.getPointerType()->addressSpace);
         it = method.vpm->insertWriteRAM(method, it, Value(mem->getDestination().local(), destType),
-            vpmRowType.value_or(mem->getSourceElementType()), srcInfo.area, mem->guardAccess, inAreaOffset, numEntries);
+            vpmRowType.value_or(mem->getSourceElementType()), *srcInfo.area, mem->guardAccess, inAreaOffset,
+            numEntries);
         return it.erase();
     }
     else if(srcInRAM && destInVPM)
@@ -865,7 +854,7 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
         auto srcType = method.createPointerType(
             vpmRowType.value_or(mem->getSourceElementType()), mem->getSource().type.getPointerType()->addressSpace);
         it = method.vpm->insertReadRAM(method, it, Value(mem->getSource().local(), srcType),
-            vpmRowType.value_or(mem->getDestinationElementType()), destInfo.area, mem->guardAccess, inAreaOffset,
+            vpmRowType.value_or(mem->getDestinationElementType()), *destInfo.area, mem->guardAccess, inAreaOffset,
             numEntries);
         return it.erase();
     }
@@ -876,7 +865,7 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
             log << "Mapping copy from RAM into RAM to DMA read and DMA write: " << mem->to_string() << logging::endl);
         if(!numEntries.isLiteralValue())
             it = method.vpm->insertCopyRAMDynamic(
-                method, it, mem->getDestination(), mem->getSource(), numEntries, nullptr, mem->guardAccess);
+                method, it, mem->getDestination(), mem->getSource(), numEntries, mem->guardAccess);
         else
         {
             uint64_t numBytes = numEntries.getLiteralValue()->unsignedInt() *
@@ -885,8 +874,8 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
                 throw CompilationError(
                     CompilationStep::OPTIMIZER, "Cannot copy more than 4GB of data", mem->to_string());
 
-            it = method.vpm->insertCopyRAM(method, it, mem->getDestination(), mem->getSource(),
-                static_cast<unsigned>(numBytes), nullptr, mem->guardAccess);
+            it = method.vpm->insertCopyRAM(
+                method, it, mem->getDestination(), mem->getSource(), static_cast<unsigned>(numBytes), mem->guardAccess);
         }
         return it.erase();
     }
@@ -1026,7 +1015,7 @@ static InstructionWalker insertWriteBackCode(
     }
     auto elementType = info->area->originalAddress->type.getElementType();
     return method.vpm->insertWriteRAM(
-        method, it, memoryAddress, elementType, info->area, false /* no mutex required */, INT_ZERO, numEntries);
+        method, it, memoryAddress, elementType, *info->area, false /* no mutex required */, INT_ZERO, numEntries);
 }
 
 void normalization::insertCacheSynchronizationCode(

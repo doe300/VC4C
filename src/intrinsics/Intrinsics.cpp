@@ -13,8 +13,6 @@
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
 #include "../periphery/SFU.h"
-#include "../periphery/TMU.h"
-#include "../periphery/VPM.h"
 
 #include "Comparisons.h"
 #include "Images.h"

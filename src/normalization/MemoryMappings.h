@@ -121,7 +121,7 @@ namespace vc4c
         MemoryInfo checkMemoryMapping(Method& method, const Local* baseAddr, MemoryAccess& access);
 
         /*
-         * Maps the given memory access instruction to hardware instructions according to the given source and
+         * Maps the given memory access instruction to intermediate instructions according to the given source and
          * destination information.
          */
         InstructionWalker mapMemoryAccess(Method& method, InstructionWalker it, intermediate::MemoryInstruction* mem,

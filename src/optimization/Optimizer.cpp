@@ -11,6 +11,7 @@
 #include "../Profiler.h"
 #include "../ThreadPool.h"
 #include "../intrinsics/Intrinsics.h"
+#include "../normalization/MemoryAccess.h"
 #include "Combiner.h"
 #include "ControlFlow.h"
 #include "Eliminator.h"
@@ -258,6 +259,12 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
     OptimizationPass("VectorizeLoops", "vectorize-loops", vectorizeLoops, "vectorizes supported types of loops",
         OptimizationType::INITIAL),
     /*
+     * Optimization run before this have access to the MemoryAccessInstructions and their accessed CacheEntries.
+     * After this step is run, the direct hardware instructions are available instead.
+     */
+    OptimizationPass("LowerMemoryAccess", "lower-memory-access", normalization::lowerMemoryAccess,
+        "MANDATORY: lowers the memory access instructions to actual hardware instructions", OptimizationType::INITIAL),
+    /*
      * The second block executes optimizations only within a single basic block.
      * These optimizations may be executed in a loop until there are not more changes to the instructions
      */
@@ -359,6 +366,9 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         // TODO this is not an optimization, more a normalization step.
         // Move out of optimizations/remove when instruction scheduling is implemented
         passes.emplace("split-read-write");
+        // This is mandatory and needs to run always. it is only located in the optimization, since it needs to be
+        // executed in between the optimization steps.
+        passes.emplace("lower-memory-access");
         FALL_THROUGH
     default:
         break;

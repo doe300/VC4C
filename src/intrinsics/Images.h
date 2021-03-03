@@ -8,7 +8,6 @@
 #define IMAGES_H
 
 #include "../InstructionWalker.h"
-#include "../periphery/TMU.h"
 
 #include <cstdint>
 

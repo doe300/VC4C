@@ -10,6 +10,7 @@
 #include "../Bitfield.h"
 #include "../InstructionWalker.h"
 #include "../Method.h"
+#include "CacheEntry.h"
 
 namespace vc4c
 {
@@ -23,6 +24,8 @@ namespace vc4c
 
     namespace periphery
     {
+        struct VPMArea;
+
         /*
          * Setup for writing from QPU to VPM
          *
@@ -694,6 +697,36 @@ namespace vc4c
             RAM_CACHE
         };
 
+        /**
+         * Object representation of a cache "entry" in the VPM.
+         *
+         * In contrast to the VPMArea type, which represents a statically allocated area of the VPM cache associated
+         * with a single purpose (e.g. a single memory address), this type represents the location and configuration of
+         * a single data entry, e.g. a single cache entry for memory load/store.
+         *
+         * NOTE: Since we do allow dynamic addressing and rewriting of VPM cache layout/contents, this type needs to be
+         * modifiable by optimizations.
+         */
+        struct VPMCacheEntry : CacheEntry
+        {
+            VPMCacheEntry(const VPMArea& area, DataType type, const Value& innerOffset = INT_ZERO);
+            ~VPMCacheEntry() noexcept override;
+
+            std::string to_string() const override;
+
+            inline bool isReadOnly() const override
+            {
+                return false;
+            }
+
+            const unsigned index;
+            const VPMArea& area;
+            // NOTE: This usage is not tracked, so any optimization removing unread local MUST not be run yet as long as
+            // this cache entry is not lowered!
+            Value inAreaOffset;
+            DataType elementType;
+        };
+
         /*
          * An area of the VPM used for a specific purpose (e.g. cache, register spilling, etc.)
          */
@@ -852,44 +885,40 @@ namespace vc4c
              * NOTE: the inAreaOffset is the offset in bytes
              */
             NODISCARD InstructionWalker insertReadVPM(Method& method, InstructionWalker it, const Value& dest,
-                const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
+                const VPMArea& area, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
             /*
              * Inserts a write from a QPU register into VPM
              *
              * NOTE: the inAreaOffset is the offset in bytes
              */
             NODISCARD InstructionWalker insertWriteVPM(Method& method, InstructionWalker it, const Value& src,
-                const VPMArea* area = nullptr, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
+                const VPMArea& area, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
 
             /*
              * Inserts a read from RAM into VPM via DMA
              */
             NODISCARD InstructionWalker insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-                DataType type, const VPMArea* area = nullptr, bool useMutex = true,
-                const Value& inAreaOffset = INT_ZERO, const Value& numEntries = INT_ONE);
+                DataType type, const VPMArea& area, bool useMutex = true, const Value& inAreaOffset = INT_ZERO,
+                const Value& numEntries = INT_ONE);
             /*
              * Inserts a write from VPM into RAM via DMA
              */
             NODISCARD InstructionWalker insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-                DataType type, const VPMArea* area = nullptr, bool useMutex = true,
-                const Value& inAreaOffset = INT_ZERO, const Value& numEntries = INT_ONE);
+                DataType type, const VPMArea& area, bool useMutex = true, const Value& inAreaOffset = INT_ZERO,
+                const Value& numEntries = INT_ONE);
             /*
              * Inserts a copy from RAM via DMA and VPM into RAM
              */
             NODISCARD InstructionWalker insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress,
-                const Value& srcAddress, unsigned numBytes, const VPMArea* area = nullptr, bool useMutex = true);
+                const Value& srcAddress, unsigned numBytes, bool useMutex = true);
 
             NODISCARD InstructionWalker insertCopyRAMDynamic(Method& method, InstructionWalker it,
-                const Value& destAddress, const Value& srcAddress, const Value& numEntries,
-                const VPMArea* area = nullptr, bool useMutex = true);
+                const Value& destAddress, const Value& srcAddress, const Value& numEntries, bool useMutex = true);
             /*
-             * Inserts a filling of a memory-area with a single value from VPM
+             * Inserts a filling of a memory-area with a local single value
              */
-            NODISCARD InstructionWalker insertFillRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-                DataType type, unsigned numCopies, const VPMArea* area = nullptr, bool useMutex = true);
-            NODISCARD InstructionWalker insertFillRAMDynamic(Method& method, InstructionWalker it,
-                const Value& memoryAddress, DataType type, const Value& numCopies, const VPMArea* area = nullptr,
-                bool useMutex = true);
+            NODISCARD InstructionWalker insertFillDMA(Method& method, InstructionWalker it, const Value& memoryAddress,
+                const Value& source, const Value& numCopies, bool useMutex = true);
 
             /*
              * Updates the maximum size used by the scratch area.
@@ -897,10 +926,10 @@ namespace vc4c
              */
             void updateScratchSize(unsigned char requestedRows);
 
-            /*
-             * Since we can only access the VPM from QPU-side in vectors of 16 elements,
-             * the type needs to be converted to a type with all element-types set to 16-element vectors
-             * to correctly determine the amount of VPM cache required to store the data.
+            /**
+             * Since we can only access the VPM from QPU-side in vectors of 16 elements, the type needs to be converted
+             * to a type with all element-types set to 16-element vectors to correctly determine the amount of VPM cache
+             * required to store the data.
              */
             static DataType getVPMStorageType(DataType elemenType);
 
@@ -915,6 +944,21 @@ namespace vc4c
 
             InstructionWalker insertLockMutex(InstructionWalker it, bool useMutex) const;
             InstructionWalker insertUnlockMutex(InstructionWalker it, bool useMutex) const;
+
+            NODISCARD InstructionWalker insertReadVPM(Method& method, InstructionWalker it, const Value& dest,
+                const std::shared_ptr<VPMCacheEntry>& cacheEntry);
+            NODISCARD InstructionWalker insertWriteVPM(Method& method, InstructionWalker it, const Value& src,
+                const std::shared_ptr<VPMCacheEntry>& cacheEntry);
+
+            NODISCARD InstructionWalker insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
+                const std::shared_ptr<VPMCacheEntry>& cacheEntry, const Value& numEntries = INT_ONE);
+            NODISCARD InstructionWalker insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
+                const std::shared_ptr<VPMCacheEntry>& cacheEntry, const Value& numEntries = INT_ONE);
+
+            friend InstructionWalker insertReadDMA(
+                Method& method, InstructionWalker it, const Value& dest, const Value& addr, bool useMutex);
+            friend InstructionWalker insertWriteDMA(
+                Method& method, InstructionWalker it, const Value& dest, const Value& addr, bool useMutex);
         };
 
         /*
@@ -966,7 +1010,15 @@ namespace vc4c
          * This function looks within the same mutex-lock block (if any) at the preceding and following instructions to
          * find the instructions required for the given VPM access.
          */
-        VPMInstructions findRelatedVPMInstructions(InstructionWalker anyVPMInstruction, bool isVPMRead);
+        [[deprecated]] VPMInstructions findRelatedVPMInstructions(InstructionWalker anyVPMInstruction, bool isVPMRead);
+
+        /**
+         * Lowers the intermediate VPM (cache) access instructions to the hardware instructions actually performed to
+         * access the associated memory.
+         *
+         * This function also inserts the instructions to set up the VPM (and DMA) read and write configuration.
+         */
+        NODISCARD InstructionWalker lowerVPMAccess(Method& method, InstructionWalker it);
     } // namespace periphery
 } // namespace vc4c
 

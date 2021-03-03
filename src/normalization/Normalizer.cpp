@@ -321,7 +321,7 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
         PROFILE_END_DYNAMIC(step.first);
     }
 
-    // maps all memory-accessing instructions to instructions actually performing the hardware memory-access
+    // maps all memory-accessing instructions to intermediate memory access instructions.
     // this step is called extra, because it needs to be run over all instructions
     logging::logLazy(logging::Level::DEBUG, []() {
         logging::debug() << logging::endl;

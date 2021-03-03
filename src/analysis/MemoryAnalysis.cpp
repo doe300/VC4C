@@ -341,7 +341,7 @@ static bool findTypeSizeShift(
 static Optional<MemoryAccessRange> determineAccessRange(
     Method& method, const intermediate::IntermediateInstruction& inst, InstructionWalker memIt)
 {
-    // 1. find writes to VPM DMA addresses with work-group uniform part in address values
+    // 1. find writes to memory addresses with work-group uniform part in address values
     if(auto memInst = dynamic_cast<const intermediate::MemoryInstruction*>(&inst))
     {
         auto checkLocal = memInst->op == intermediate::MemoryOperation::READ ?

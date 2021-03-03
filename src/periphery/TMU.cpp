@@ -8,57 +8,97 @@
 
 #include "../GlobalValues.h"
 #include "../InstructionWalker.h"
+#include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
+
+#include <atomic>
 
 using namespace vc4c;
 using namespace vc4c::periphery;
 using namespace vc4c::operators;
+
+// running counter, for visual distinction of the TMU cache entries only
+static std::atomic_uint32_t tmuCacheEntryCounter{0};
+
+TMUCacheEntry::TMUCacheEntry(const TMU& tmu, const Value& addr, DataType originalType) :
+    index(tmuCacheEntryCounter++), tmu(tmu), addresses(addr),
+    numVectorElements(originalType.getPointerType() ? 1 : originalType.getVectorWidth()),
+    elementStrideInBytes(originalType.getScalarBitCount() / 8)
+{
+    if(!originalType.isSimpleType() && !originalType.getPointerType())
+        throw CompilationError(
+            CompilationStep::GENERAL, "Reading of this type via TMU is not implemented", originalType.to_string());
+}
+
+TMUCacheEntry::~TMUCacheEntry() noexcept = default;
+
+LCOV_EXCL_START
+std::string TMUCacheEntry::to_string() const
+{
+    return "TMU" + std::to_string(static_cast<unsigned>(getTMUIndex())) + " cache entry " + std::to_string(index) +
+        " (" + std::to_string(static_cast<unsigned>(numVectorElements)) + " elements with stride of " +
+        std::to_string(elementStrideInBytes) + " byte)";
+}
+LCOV_EXCL_STOP
+
+uint8_t TMUCacheEntry::getTMUIndex() const noexcept
+{
+    return tmu.signal == SIGNAL_LOAD_TMU0 ? 0 : 1;
+}
+
+const intermediate::RAMAccessInstruction* TMUCacheEntry::getRAMReader() const
+{
+    auto memoryAccesses = getMemoryAccesses();
+    return memoryAccesses.size() == 1 ? *memoryAccesses.begin() : nullptr;
+}
+
+const intermediate::CacheAccessInstruction* TMUCacheEntry::getCacheReader() const
+{
+    auto cacheAccesses = getQPUAccesses();
+    return cacheAccesses.size() == 1 ? *cacheAccesses.begin() : nullptr;
+}
 
 const TMU periphery::TMU0{REG_TMU0_COORD_S_U_X, REG_TMU0_COORD_T_V_Y, REG_TMU0_COORD_R_BORDER_COLOR,
     REG_TMU0_COORD_B_LOD_BIAS, SIGNAL_LOAD_TMU0};
 const TMU periphery::TMU1{REG_TMU1_COORD_S_U_X, REG_TMU1_COORD_T_V_Y, REG_TMU1_COORD_R_BORDER_COLOR,
     REG_TMU1_COORD_B_LOD_BIAS, SIGNAL_LOAD_TMU1};
 
-static NODISCARD InstructionWalker insertCalculateAddressOffsets(
-    Method& method, InstructionWalker it, const Value& baseAddress, DataType type, Value& outputAddress)
+static NODISCARD InstructionWalker insertCalculateAddressOffsets(Method& method, InstructionWalker it,
+    const Value& baseAddress, uint8_t numElements, uint32_t elementStrideInBytes, const Value& outputAddress)
 {
     // since the base address might be a single pointer, we need to replicate it for the upper vector elements to read
     // the correct address
     Value replicatedAddress = baseAddress;
     if(!baseAddress.isAllSame())
     {
-        replicatedAddress = method.addNewLocal(
-            method.createPointerType(type.getElementType().toVectorType(type.getVectorWidth())), "%replicated_address");
+        replicatedAddress =
+            method.addNewLocal(method.createPointerType(TYPE_INT32.toVectorType(numElements)), "%replicated_address");
         it = intermediate::insertReplication(it, baseAddress, replicatedAddress);
     }
 
-    if(type.isScalarType() || type.getPointerType())
+    if(numElements == 1)
     {
         // We don't actually need to load anything into the upper SIMD vector elements. But since we cannot "not load
         // anything" for single elements, we just load the same data into all elements, which at least requires only a
         // single TMU cache miss.
         // To guarantee that we actually load the same address (and not some random value which happened to be in the
         // address register), we also use the replicated address for the scalar loads.
-        outputAddress = assign(it, method.createPointerType(type), "%tmu_address") = replicatedAddress;
+        assign(it, outputAddress) = replicatedAddress;
         return it;
     }
     /*
      * we need to set the addresses in this way:
      *
-     * element 0: base-address + sizeof(type) * 0
-     * element 1: base-address + sizeof(type) * 1
-     * element 2: base-address + sizeof(type) * 2
+     * element 0: base-address + type-size * 0
+     * element 1: base-address + type-size * 1
+     * element 2: base-address + type-size * 2
      * ...
-     *
-     * any element not in use (e.g. 5 to 15 for 4-element vector) needs to be set to 0
      */
-    const Value addressOffsets = method.addNewLocal(TYPE_INT32.toVectorType(type.getVectorWidth()), "%address_offset");
-    // NOTE: actually this is baseAddr.type * type.num, but we can't have vectors of pointers
-    outputAddress = method.addNewLocal(TYPE_INT32.toVectorType(type.getVectorWidth()), "%tmu_address");
+    const Value addressOffsets = method.addNewLocal(TYPE_INT32.toVectorType(numElements), "%address_offset");
 
     // addressOffsets = sizeof(type) * elem_num
-    assign(it, addressOffsets) = ELEMENT_NUMBER_REGISTER * Literal(static_cast<uint32_t>(type.getScalarBitCount()) / 8);
+    assign(it, addressOffsets) = ELEMENT_NUMBER_REGISTER * Literal(elementStrideInBytes);
     // We don't actually need to load anything into the upper SIMD vector elements. But since we cannot "not load
     // anything" for single elements, we just load the successive data into the upper elements. Since the data is most
     // likely anyway on the same TMU cache line and/or will be queried in a successive (work-group) loop iteration, this
@@ -147,23 +187,12 @@ static NODISCARD InstructionWalker insertExtractByteElements(
 static NODISCARD InstructionWalker insertReadLongVectorFromTMU(
     Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu)
 {
+    using namespace intermediate;
+
     auto outputData = Local::getLocalData<MultiRegisterData>(dest.checkLocal());
     if(!outputData)
         throw CompilationError(
             CompilationStep::GENERAL, "Can only read 64-bit value from TMU into long local", dest.to_string());
-
-    // load the lower N 32-bit elements (where N is the result vector size)
-    // using the 64-bit destination type, the address offsets guarantee the upper part to be skipped, e.g.
-    // element 0 loads from address + 0, element 1 from address + 8, ..., element N from address + 8 * N
-    Value lowerAddresses(UNDEFINED_VALUE);
-    it = insertCalculateAddressOffsets(method, it, addr, dest.type, lowerAddresses);
-
-    // load the upper N 32-bit elements (where N is the result vector size)
-    // using the 64-bit destination type, the address offsets guarantee the lower part to be skipped, e.g.
-    // element 0 loads from address + 4, element 1 from address + 12, ..., element N from address + 4 + 8 * N
-    auto tmpAddress = assign(it, addr.type, "%tmu_upper_addr") = addr + 4_val;
-    Value upperAddresses(UNDEFINED_VALUE);
-    it = insertCalculateAddressOffsets(method, it, tmpAddress, dest.type, upperAddresses);
 
     /*
      * This works:
@@ -192,15 +221,29 @@ static NODISCARD InstructionWalker insertReadLongVectorFromTMU(
      * (Both receive the result of the last load_tmu0, since it overrides any previous value in r4)
      */
 
-    assign(it, tmu.getAddress(addr.type)) = lowerAddresses;
-    assign(it, tmu.getAddress(addr.type)) = upperAddresses;
+    auto lowerEntry =
+        tmu.createEntry(method.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%tmu_address"), dest.type);
+    auto upperEntry =
+        tmu.createEntry(method.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%tmu_address"), dest.type);
+
+    // load the lower N 32-bit elements (where N is the result vector size)
+    // using the 64-bit destination type, the address offsets guarantee the upper part to be skipped, e.g.
+    // element 0 loads from address + 0, element 1 from address + 8, ..., element N from address + 8 * N
+    it.emplace(new RAMAccessInstruction(MemoryOperation::READ, addr, lowerEntry));
+    it.nextInBlock();
+    // load the upper N 32-bit elements (where N is the result vector size)
+    // using the 64-bit destination type, the address offsets guarantee the lower part to be skipped, e.g.
+    // element 0 loads from address + 4, element 1 from address + 12, ..., element N from address + 4 + 8 * N
+    auto tmpAddress = assign(it, addr.type, "%tmu_upper_addr") = addr + 4_val;
+    it.emplace(new RAMAccessInstruction(MemoryOperation::READ, tmpAddress, upperEntry));
+    it.nextInBlock();
 
     // read the lower and upper elements into the result variables
-    nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
-    assign(it, outputData->lower->createReference()) = TMU_READ_REGISTER;
+    it.emplace(new CacheAccessInstruction(MemoryOperation::READ, outputData->lower->createReference(), lowerEntry));
+    it.nextInBlock();
 
-    nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
-    assign(it, outputData->upper->createReference()) = TMU_READ_REGISTER;
+    it.emplace(new CacheAccessInstruction(MemoryOperation::READ, outputData->upper->createReference(), upperEntry));
+    it.nextInBlock();
 
     return it;
 }
@@ -208,6 +251,7 @@ static NODISCARD InstructionWalker insertReadLongVectorFromTMU(
 InstructionWalker periphery::insertReadVectorFromTMU(
     Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu)
 {
+    using namespace intermediate;
     if(!dest.type.isSimpleType() && !dest.type.getPointerType())
         throw CompilationError(
             CompilationStep::GENERAL, "Reading of this type via TMU is not (yet) implemented", dest.type.to_string());
@@ -215,75 +259,76 @@ InstructionWalker periphery::insertReadVectorFromTMU(
     if(dest.type.getScalarBitCount() == 64)
         return insertReadLongVectorFromTMU(method, it, dest, addr, tmu);
 
-    Value addresses(UNDEFINED_VALUE);
-    it = insertCalculateAddressOffsets(method, it, addr, dest.type, addresses);
+    // NOTE: actually this is baseAddr.type * type.num, but we can't have vectors of pointers
+    auto entry =
+        tmu.createEntry(method.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%tmu_address"), dest.type);
+    it.emplace(new RAMAccessInstruction(MemoryOperation::READ, addr, entry));
+    it.nextInBlock();
+    it.emplace(new CacheAccessInstruction(MemoryOperation::READ, dest, entry));
+    it.nextInBlock();
+    return it;
+}
+
+NODISCARD static InstructionWalker lowerReadRAM(Method& method, InstructionWalker it,
+    const intermediate::RAMAccessInstruction& access, const TMUCacheEntry& cacheEntry)
+{
+    it = insertCalculateAddressOffsets(method, it, access.getMemoryAddress(), cacheEntry.numVectorElements,
+        cacheEntry.elementStrideInBytes, cacheEntry.addresses);
 
     //"General-memory lookups are performed by writing to just the s-parameter, using the absolute memory address" (page
     // 41)  1) write address to TMU_S register
-    assign(it, tmu.getAddress(addr.type)) = addresses;
+    assign(it, cacheEntry.tmu.getAddress(access.getMemoryAddress().type)) = cacheEntry.addresses;
+
+    return it.erase();
+}
+
+NODISCARD static InstructionWalker lowerReadCache(Method& method, InstructionWalker it,
+    const intermediate::CacheAccessInstruction& access, const TMUCacheEntry& cacheEntry)
+{
+    const auto& dest = access.getData();
+
     // 2) trigger loading of TMU
-    nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
+    nop(it, intermediate::DelayType::WAIT_TMU, cacheEntry.tmu.signal);
+    it.copy().previousInBlock()->addDecorations(intermediate::InstructionDecorations::MANDATORY_DELAY);
     // 3) read value from R4
-    // FIXME in both cases, result values are unsigned (as in zero-, not sign-extended)!! (Same behavior as for VPM?!)
+    // NOTE: in both cases, result values are unsigned (as in zero-, not sign-extended)!! (Same behavior as for VPM?!)
     if(dest.type.getScalarBitCount() <= 8)
     {
         Value tmp = assign(it, TYPE_INT32.toVectorType(dest.type.getVectorWidth()), "%tmu_result") = TMU_READ_REGISTER;
-        return insertExtractByteElements(method, it, dest, tmp, addresses);
+        it = insertExtractByteElements(method, it, dest, tmp, cacheEntry.addresses);
     }
     else if(dest.type.getScalarBitCount() <= 16)
     {
         Value tmp = assign(it, TYPE_INT32.toVectorType(dest.type.getVectorWidth()), "%tmu_result") = TMU_READ_REGISTER;
-        return insertExtractHalfWordElements(method, it, dest, tmp, addresses);
+        it = insertExtractHalfWordElements(method, it, dest, tmp, cacheEntry.addresses);
     }
     else if(dest.type.getScalarBitCount() <= 32)
         assign(it, dest) = TMU_READ_REGISTER;
     else
         throw CompilationError(
             CompilationStep::GENERAL, "Cannot read values larger than 32-bit via TMU", dest.to_string());
-    return it;
+
+    return it.erase();
 }
 
-InstructionWalker periphery::insertReadTMU(Method& method, InstructionWalker it, const Value& image, const Value& dest,
-    const Value& xCoord, const Optional<Value>& yCoord, const TMU& tmu)
+InstructionWalker periphery::lowerTMURead(Method& method, InstructionWalker it)
 {
-    if(!image.checkLocal())
-        throw CompilationError(
-            CompilationStep::GENERAL, "Cannot access image-configuration for non-local image", image.to_string());
-    const Global* imageConfig =
-        method.findGlobal(ImageType::toImageConfigurationName(image.local()->getBase(false)->name));
-    if(imageConfig == nullptr)
-        throw CompilationError(
-            CompilationStep::GENERAL, "Failed to find the image-configuration for", image.to_string());
-    if(!xCoord.type.isFloatingType())
-        throw CompilationError(CompilationStep::GENERAL, "Can only read with floating-point coordinates in the x-axis",
-            xCoord.to_string());
-    if(yCoord && !yCoord->type.isFloatingType())
-        throw CompilationError(CompilationStep::GENERAL, "Can only read with floating-point coordinates in the y-axis",
-            yCoord.to_string());
+    using namespace intermediate;
 
-    // 1. set the UNIFORM pointer to point to the configurations for the image about to be read
-    assign(
-        it, Value(REG_UNIFORM_ADDRESS, method.createPointerType(TYPE_INT32.toVectorType(16), AddressSpace::GLOBAL))) =
-        imageConfig->createReference();
-    // 2. need to wait 2 instructions for UNIFORM-pointer to be changed
-    nop(it, intermediate::DelayType::WAIT_UNIFORM);
-    nop(it, intermediate::DelayType::WAIT_UNIFORM);
-    // 3. write the TMU addresses
-    if(yCoord)
-    {
-        assign(it, tmu.getYCoord(yCoord->type)) = yCoord.value();
-    }
-    else
-    {
-        // for 1D-images, we only have an x-coordinate, but if we only write the TMU_S register, general TMU lookup is
-        // used!  so we write a dummy y-coordinate with a value of zero, to select the first row
-        assign(it, tmu.getYCoord()) = 0_val;
-    }
-    assign(it, tmu.getXCoord(xCoord.type)) = xCoord;
-    // 4. trigger loadtmu (stalls 9 to 20 cycles)
-    nop(it, intermediate::DelayType::WAIT_TMU, tmu.signal);
-    // 5. read from r4
-    assign(it, dest) = TMU_READ_REGISTER;
-    // 6. TODO reset UNIFORM pointer? for next work-group iteration, or disable when used with images?
+    auto tmuCacheEntry =
+        (check(it.get<MemoryAccessInstruction>()) & &MemoryAccessInstruction::getTMUCacheEntry).value_or(nullptr);
+
+    if(!tmuCacheEntry)
+        return it;
+
+    if(auto ramAccess = it.get<RAMAccessInstruction>())
+        //"General-memory lookups are performed by writing to just the s-parameter, using the absolute memory address"
+        //(page 41)
+        // 1) write address to TMU_S register
+        it = lowerReadRAM(method, it, *ramAccess, *tmuCacheEntry);
+    else if(auto cacheAccess = it.get<CacheAccessInstruction>())
+        // 2) trigger loading of TMU
+        // 3) read value from R4
+        it = lowerReadCache(method, it, *cacheAccess, *tmuCacheEntry);
     return it;
 }

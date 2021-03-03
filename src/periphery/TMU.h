@@ -9,6 +9,7 @@
 
 #include "../Method.h"
 #include "../asm/OpCodes.h"
+#include "CacheEntry.h"
 
 namespace vc4c
 {
@@ -16,6 +17,76 @@ namespace vc4c
     {
         const Value TMU_READ_REGISTER(REG_TMU_OUT, TYPE_UNKNOWN);
 
+        struct TMU;
+
+        struct TMUCacheEntry : CacheEntry
+        {
+            explicit TMUCacheEntry(const TMU& tmu, const Value& addr, DataType originalType);
+            ~TMUCacheEntry() noexcept override;
+
+            std::string to_string() const override;
+
+            inline bool isReadOnly() const override
+            {
+                return true;
+            }
+
+            uint8_t getTMUIndex() const noexcept;
+
+            /**
+             * Returns the single instruction reading the data from memory into the TMU cache entry
+             */
+            const intermediate::RAMAccessInstruction* getRAMReader() const;
+            /**
+             * Returns the single instruction reading the data from the TMU cache entry into a QPU register
+             */
+            const intermediate::CacheAccessInstruction* getCacheReader() const;
+
+            const unsigned index;
+            const TMU& tmu;
+            /**
+             * Track the per-element addresses/offsets.
+             *
+             * This is required to be able to determine the byte/half-word offset for 8-bit/16-bit loads on reading from
+             * the TMU cache.
+             *
+             * NOTE: Storage if this value here is okay, since it is not accessed at all before the memory access
+             * lowering and therefore ignored by any optimization.
+             */
+            const Value addresses;
+            /**
+             * The number of vector elements to contain valid/useful data.
+             *
+             * For a number N the first N vector-elements will contain the words loaded from:
+             * - base-address
+             * - base-address + 1 * type-size
+             * - base-address + 2 * type-size
+             * - ...
+             * - base-address + (N-1) * type-size
+             *
+             * NOTE: The other elements of the vector will have undefined contents.
+             *
+             * NOTE: The single addresses are truncated to multiple of 32-bit words hardware-side!
+             */
+            uint8_t numVectorElements;
+            /**
+             * The stride between consecutive 32-bit word elements being loaded.
+             *
+             * An element stride of less than 4 will result in multiple adjacent vector elements to contain the same
+             * 32-bit word content (since the addresses are truncated to 32-bit word addresses hardware-side). Using an
+             * element stride of more than 4 will result in memory being skipped and not read into any output element.
+             */
+            uint32_t elementStrideInBytes;
+        };
+
+        /**
+         * TMU
+         *
+         * Every QPU has access to 2 TMUs (TMU_0 and TMU_1) and can queue up to 4 requests to each of the TMUs.
+         * The VC4 has 2 TMUs shared by all QPUs on a slice. Nevertheless, querying memory via a TMU does not require a
+         * mutex-lock. The TMU memory-lookup is per-element, so element X will return the value from the address  given
+         * by element X, write 0 per element to disable.
+         */
         struct TMU
         {
             const Register s_coordinate;
@@ -38,35 +109,30 @@ namespace vc4c
             {
                 return Value(t_coordinate, type);
             }
+
+            inline std::shared_ptr<TMUCacheEntry> createEntry(const Value& addresses, DataType originalType) const
+            {
+                return std::make_shared<TMUCacheEntry>(*this, addresses, originalType);
+            }
         };
 
         extern const TMU TMU0;
         extern const TMU TMU1;
 
         /*
-         * TMU
-         *
-         * Every QPU has access to 2 TMUs (TMU_0 and TMU_1) and can queue up to 4 requests to each of the TMUs.
-         * The VC4 has 2 TMUs shared by all QPUs on a slice. Nevertheless, querying memory via a TMU does not require a
-         * mutex-lock. The TMU memory-lookup is per-element, so element X will return the value from the address  given
-         * by element X, write 0 per element to disable.
-         */
-
-        /*
-         * Perform a general memory lookup via the TMU.
-         *
-         * Reads the required number of 32-bit vectors from the given address via the TMU and performs the necessary
-         * type conversions and vector rotations (for non 32-bit types).
+         * Generates the intermediate TMU memory/cache access instructions representing the given TMU data lookup.
          */
         NODISCARD InstructionWalker insertReadVectorFromTMU(
             Method& method, InstructionWalker it, const Value& dest, const Value& addr, const TMU& tmu = TMU0);
 
-        /*
-         * Inserts a read via TMU from the given image-parameter at the coordinates x, y (y optional), which need to be
-         * converted to [0, 1] prior to this call and stores the result in dest.
+        /**
+         * Lowers the intermediate TMU (cache) access instructions to the hardware instructions actually performed to
+         * load the associated memory.
+         *
+         * This function also inserts the instructions to perform the necessary type conversions and to calculate the
+         * address offsets (for non-scalar non-32-bit types).
          */
-        NODISCARD InstructionWalker insertReadTMU(Method& method, InstructionWalker it, const Value& image,
-            const Value& dest, const Value& xCoord, const Optional<Value>& yCoord = NO_VALUE, const TMU& tmu = TMU0);
+        NODISCARD InstructionWalker lowerTMURead(Method& method, InstructionWalker it);
 
     } /* namespace periphery */
 } /* namespace vc4c */

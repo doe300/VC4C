@@ -19,6 +19,13 @@ namespace vc4c
         struct DecoratedInstruction;
     } // namespace qpu_asm
 
+    namespace periphery
+    {
+        struct CacheEntry;
+        struct TMUCacheEntry;
+        struct VPMCacheEntry;
+    } // namespace periphery
+
     namespace intermediate
     {
         using InlineMapping = FastMap<const Local*, const Local*>;
@@ -1103,8 +1110,8 @@ namespace vc4c
             FILL
         };
 
-        /*
-         * Instruction operating (reading/writing/copying/filling) on memory or VPM cache
+        /**
+         * General instruction operating (reading/writing/copying/filling) on any kind of memory or cache
          */
         struct MemoryInstruction final : IntermediateInstruction
         {
@@ -1150,6 +1157,81 @@ namespace vc4c
 
             const MemoryOperation op;
             const bool guardAccess;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
+        };
+
+        /**
+         * Base class for any type of (partially lowered) memory access operation for easier detecting and unified
+         * handling.
+         */
+        struct MemoryAccessInstruction : IntermediateInstruction
+        {
+            MemoryAccessInstruction(MemoryOperation op, const std::shared_ptr<periphery::CacheEntry>& cacheEntry);
+            ~MemoryAccessInstruction() override;
+
+            qpu_asm::DecoratedInstruction convertToAsm(const FastMap<const Local*, Register>& registerMapping,
+                const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
+            IntermediateInstruction* copyFor(
+                Method& method, const std::string& localPrefix, InlineMapping& localMapping) const override;
+            bool isNormalized() const override;
+            SideEffectType getSideEffects() const override;
+
+            std::shared_ptr<periphery::TMUCacheEntry> getTMUCacheEntry() const;
+            std::shared_ptr<periphery::VPMCacheEntry> getVPMCacheEntry() const;
+            bool isLoadAccess() const noexcept;
+            bool isStoreAccess() const noexcept;
+
+            const MemoryOperation op;
+            std::shared_ptr<periphery::CacheEntry> cache;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
+        };
+
+        /**
+         * Instruction representing data exchange between RAM and some cache (e.g. TMU or VPM) in either direction.
+         *
+         * This instruction type will then be later lowered to e.g. a TMU load or a DMA read/write, depending on the
+         * cache and access type.
+         */
+        struct RAMAccessInstruction final : MemoryAccessInstruction
+        {
+            RAMAccessInstruction(MemoryOperation op, const Value& memoryAddress,
+                const std::shared_ptr<periphery::CacheEntry>& cacheEntry, const Value& numEntries = INT_ONE);
+            ~RAMAccessInstruction() override = default;
+
+            std::string to_string() const override;
+
+            const Value& getMemoryAddress() const;
+            const Value& getNumEntries() const;
+
+        protected:
+            bool innerEquals(const IntermediateInstruction& other) const override;
+        };
+
+        /**
+         * Instruction representing data exchange between a single QPU and some cache (e.g. TMU or VPM) in either
+         * direction.
+         *
+         * This instruction type will then be later lowered to e.g. a TMU load or a VPM read/write, depending on the
+         * cache and access type.
+         */
+        struct CacheAccessInstruction final : MemoryAccessInstruction
+        {
+            CacheAccessInstruction(
+                MemoryOperation op, const Value& data, const std::shared_ptr<periphery::CacheEntry>& cacheEntry);
+            ~CacheAccessInstruction() override = default;
+
+            std::string to_string() const override;
+
+            const Value& getData() const;
+            Optional<Value> getSource() const;
+            Optional<Value> getDestination() const;
+
+            // Whether this accesses the upper word of a 64-bit entry. NOTE: This is only valid for VPM cache access!
+            bool upperWord = false;
 
         protected:
             bool innerEquals(const IntermediateInstruction& other) const override;

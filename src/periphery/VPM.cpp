@@ -12,6 +12,7 @@
 #include "../intermediate/operators.h"
 #include "log.h"
 
+#include <atomic>
 #include <cmath>
 #include <iomanip>
 
@@ -318,8 +319,9 @@ InstructionWalker periphery::insertReadDMA(
         it.nextInBlock();
     }
 
-    it = method.vpm->insertReadRAM(method, it, addr, dest.type, nullptr, false);
-    it = method.vpm->insertReadVPM(method, it, dest, nullptr, false);
+    auto cacheEntry = std::make_shared<VPMCacheEntry>(method.vpm->getScratchArea(), dest.type);
+    it = method.vpm->insertReadRAM(method, it, addr, cacheEntry);
+    it = method.vpm->insertReadVPM(method, it, dest, cacheEntry);
 
     if(useMutex)
     {
@@ -340,8 +342,9 @@ InstructionWalker periphery::insertWriteDMA(
         it.nextInBlock();
     }
 
-    it = method.vpm->insertWriteVPM(method, it, src, nullptr, false);
-    it = method.vpm->insertWriteRAM(method, it, addr, src.type, nullptr, false);
+    auto cacheEntry = std::make_shared<VPMCacheEntry>(method.vpm->getScratchArea(), src.type);
+    it = method.vpm->insertWriteVPM(method, it, src, cacheEntry);
+    it = method.vpm->insertWriteRAM(method, it, addr, cacheEntry);
 
     if(useMutex)
     {
@@ -372,6 +375,130 @@ std::pair<DataType, uint32_t> periphery::getBestVectorSize(uint32_t numBytes)
     }
     throw CompilationError(CompilationStep::GENERAL,
         "Failed to find element- and vector-sizes matching the given amount of bytes", std::to_string(numBytes));
+}
+
+InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const Value& dest, const VPMArea& area,
+    bool useMutex, const Value& inAreaOffset)
+{
+    // we always read whole vectors from VPM
+    auto vpmStorageType = getVPMStorageType(dest.type);
+    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, vpmStorageType, inAreaOffset);
+
+    it = insertLockMutex(it, useMutex);
+    it = insertReadVPM(method, it, dest, cacheEntry);
+    it = insertUnlockMutex(it, useMutex);
+    return it;
+}
+
+InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, const Value& src, const VPMArea& area,
+    bool useMutex, const Value& inAreaOffset)
+{
+    // we always write whole vectors to VPM
+    auto vpmStorageType = getVPMStorageType(src.type);
+    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, vpmStorageType, inAreaOffset);
+
+    it = insertLockMutex(it, useMutex);
+    it = insertWriteVPM(method, it, src, cacheEntry);
+    it = insertUnlockMutex(it, useMutex);
+    return it;
+}
+
+InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress, DataType type,
+    const VPMArea& area, bool useMutex, const Value& inAreaOffset, const Value& numEntries)
+{
+    area.checkAreaSize(getVPMStorageType(type).getLogicalWidth());
+
+    if(auto local = memoryAddress.checkLocal())
+    {
+        // set the type of the parameter, if we can determine it
+        if(auto param = local->as<Parameter>())
+            memoryAddress.local()->as<Parameter>()->decorations =
+                add_flag(param->decorations, ParameterDecorations::INPUT);
+        if(auto param = local->getBase(true)->as<Parameter>())
+            param->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
+    }
+
+    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, type, inAreaOffset);
+
+    it = insertLockMutex(it, useMutex);
+    it = insertReadRAM(method, it, memoryAddress, cacheEntry, numEntries);
+    it = insertUnlockMutex(it, useMutex);
+    return it;
+}
+
+InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress, DataType type,
+    const VPMArea& area, bool useMutex, const Value& inAreaOffset, const Value& numEntries)
+{
+    area.checkAreaSize(getVPMStorageType(type).getLogicalWidth());
+
+    if(auto local = memoryAddress.checkLocal())
+    {
+        // set the type of the parameter, if we can determine it
+        if(auto param = local->as<Parameter>())
+            memoryAddress.local()->as<Parameter>()->decorations =
+                add_flag(param->decorations, ParameterDecorations::OUTPUT);
+        if(auto param = local->getBase(true)->as<Parameter>())
+            param->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
+    }
+
+    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, type, inAreaOffset);
+
+    it = insertLockMutex(it, useMutex);
+    it = insertWriteRAM(method, it, memoryAddress, cacheEntry, numEntries);
+    it = insertUnlockMutex(it, useMutex);
+    return it;
+}
+
+NODISCARD InstructionWalker VPM::insertReadVPM(
+    Method& method, InstructionWalker it, const Value& dest, const std::shared_ptr<VPMCacheEntry>& cacheEntry)
+{
+    if(auto data = Local::getLocalData<MultiRegisterData>(dest.checkLocal()))
+    {
+        it.emplace(new CacheAccessInstruction(MemoryOperation::READ, data->lower->createReference(), cacheEntry));
+        it.nextInBlock();
+        it.emplace(new CacheAccessInstruction(MemoryOperation::READ, data->upper->createReference(), cacheEntry));
+        it.get<CacheAccessInstruction>()->upperWord = true;
+    }
+    else
+        it.emplace(new CacheAccessInstruction(MemoryOperation::READ, dest, cacheEntry));
+    it.nextInBlock();
+    return it;
+}
+
+NODISCARD InstructionWalker VPM::insertWriteVPM(
+    Method& method, InstructionWalker it, const Value& src, const std::shared_ptr<VPMCacheEntry>& cacheEntry)
+{
+    auto convertedSource = src;
+    if(src.getLiteralValue() || src.checkVector())
+        // we need this, otherwise i.e. vectors directly written to the VPM are not handled correctly
+        convertedSource = assign(it, src.type) = src;
+    if(auto data = Local::getLocalData<MultiRegisterData>(convertedSource.checkLocal()))
+    {
+        it.emplace(new CacheAccessInstruction(MemoryOperation::WRITE, data->lower->createReference(), cacheEntry));
+        it.nextInBlock();
+        it.emplace(new CacheAccessInstruction(MemoryOperation::WRITE, data->upper->createReference(), cacheEntry));
+        it.get<CacheAccessInstruction>()->upperWord = true;
+    }
+    else
+        it.emplace(new CacheAccessInstruction(MemoryOperation::WRITE, convertedSource, cacheEntry));
+    it.nextInBlock();
+    return it;
+}
+
+NODISCARD InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
+    const std::shared_ptr<VPMCacheEntry>& cacheEntry, const Value& numEntries)
+{
+    it.emplace(new RAMAccessInstruction(MemoryOperation::READ, memoryAddress, cacheEntry, numEntries));
+    it.nextInBlock();
+    return it;
+}
+
+NODISCARD InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
+    const std::shared_ptr<VPMCacheEntry>& cacheEntry, const Value& numEntries)
+{
+    it.emplace(new RAMAccessInstruction(MemoryOperation::WRITE, memoryAddress, cacheEntry, numEntries));
+    it.nextInBlock();
+    return it;
 }
 
 /*
@@ -446,23 +573,24 @@ static bool isUnalignedMemoryVPMAccess(const Value& offset, DataType elementType
         (!offset.getLiteralValue() || (offset.getLiteralValue()->unsignedInt() % elementType.getInMemoryWidth()) != 0);
 }
 
-InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const Value& dest, const VPMArea* area,
-    bool useMutex, const Value& inAreaOffset)
+NODISCARD static InstructionWalker lowerReadVPM(
+    Method& method, InstructionWalker it, const CacheAccessInstruction& access, const VPMCacheEntry& cacheEntry)
 {
-    const DataType vpmStorageType = getVPMStorageType(dest.type);
-    if(area != nullptr)
-        area->checkAreaSize(vpmStorageType.getLogicalWidth());
-    else
-        // a single vector can only use a maximum of 2 rows (for 64-bit elements)
-        updateScratchSize(dest.type.getScalarBitCount() > 32 ? 2 : 1);
-
     // try to get constant offset value
-    auto internalOffset = inAreaOffset.getConstantValue(true).value_or(inAreaOffset);
+    auto internalOffset = getSourceValue(cacheEntry.inAreaOffset);
+    internalOffset = internalOffset.getConstantValue(true).value_or(internalOffset);
 
-    it = insertLockMutex(it, useMutex);
     // 1) configure reading from VPM into QPU
-    const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
-    VPRSetup genericSetup(realArea.toReadSetup(dest.type));
+    auto& dataType = cacheEntry.elementType;
+    VPRSetup genericSetup(cacheEntry.area.toReadSetup(dataType));
+    if(dataType.getScalarBitCount() == 64)
+    {
+        // only read a single row, since we insert separate setups for both words
+        // FIXME this is way less efficient then loading both rows at once!
+        genericSetup.genericSetup.setNumber(genericSetup.genericSetup.getNumber() / 2);
+        if(access.upperWord)
+            genericSetup.genericSetup.setWordRow(genericSetup.genericSetup.getWordRow() + 1u);
+    }
     Value outputValue = VPM_IO_REGISTER;
     if(internalOffset == INT_ZERO)
     {
@@ -470,7 +598,7 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
         it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
         it.nextInBlock();
     }
-    else if(isUnalignedMemoryVPMAccess(internalOffset, dest.type))
+    else if(isUnalignedMemoryVPMAccess(internalOffset, dataType))
     {
         // TODO make sure this block is only used where really really required!
         // TODO if inAreaOffset guaranteed to lie within one row, skip loading of second?!
@@ -494,7 +622,7 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
          */
         Value elementOffset = UNDEFINED_VALUE;
         it = calculateElementOffsetInVPM(
-            method, it, dest.type, internalOffset, elementOffset, !realArea.canBePackedIntoRow());
+            method, it, dataType, internalOffset, elementOffset, !cacheEntry.area.canBePackedIntoRow());
         genericSetup.genericSetup.setNumber(2);
         assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
             InstructionDecorations::VPM_READ_CONFIGURATION);
@@ -502,25 +630,25 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
         // VPM has (address B) 0, 1, 2, 3, 4, 5, 6, 7, ..., (address B + 1) 16, 17, 18, 19, 20, ..., 31
         // Vector size N = 16, rotation factor R = 11
         // L = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-        auto lowerPart = assign(it, dest.type, "%vpm.unaligned.lower") = VPM_IO_REGISTER;
+        auto lowerPart = assign(it, dataType, "%vpm.unaligned.lower") = VPM_IO_REGISTER;
         // U = [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
-        auto upperPart = assign(it, dest.type, "%vpm.unaligned.upper") = VPM_IO_REGISTER;
-        auto rotationOffset = assign(it, TYPE_INT8) = internalOffset % Literal(dest.type.getInMemoryWidth());
+        auto upperPart = assign(it, dataType, "%vpm.unaligned.upper") = VPM_IO_REGISTER;
+        auto rotationOffset = assign(it, TYPE_INT8) = internalOffset % Literal(dataType.getInMemoryWidth());
         rotationOffset = assign(it, TYPE_INT8, "%vpm.unaligned.offset") =
-            rotationOffset / Literal(dest.type.getElementType().getInMemoryWidth());
-        Value lowerRotated = method.addNewLocal(dest.type, "%vpm.unaligned.lower");
-        Value upperRotated = method.addNewLocal(dest.type, "%vpm.unaligned.upper");
+            rotationOffset / Literal(dataType.getElementType().getInMemoryWidth());
+        Value lowerRotated = method.addNewLocal(dataType, "%vpm.unaligned.lower");
+        Value upperRotated = method.addNewLocal(dataType, "%vpm.unaligned.upper");
         // L = [11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         it = insertVectorRotation(it, lowerPart, rotationOffset, lowerRotated, Direction::DOWN);
         // V = [11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        outputValue = assign(it, dest.type, "%vpm.unaligned.result") = lowerRotated;
+        outputValue = assign(it, dataType, "%vpm.unaligned.result") = lowerRotated;
         // U = [27, 28, 29, 30, 31, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]
         it = insertVectorRotation(it, upperPart, rotationOffset, upperRotated, Direction::DOWN);
         Value rotationOffsetReplicated = method.addNewLocal(TYPE_INT8.toVectorType(16));
         it = insertReplication(it, rotationOffset, rotationOffsetReplicated);
         // N-R = 5
         auto selectionOffset = assign(it, TYPE_INT8.toVectorType(16)) =
-            Value(Literal(dest.type.getVectorWidth()), TYPE_INT8) - rotationOffsetReplicated;
+            Value(Literal(dataType.getVectorWidth()), TYPE_INT8) - rotationOffsetReplicated;
         // flags = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER - selectionOffset, SetFlag::SET_FLAGS);
         // V = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]
@@ -533,52 +661,40 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
         it = calculateElementOffsetInVPM(
-            method, it, dest.type, internalOffset, elementOffset, !realArea.canBePackedIntoRow());
+            method, it, dataType, internalOffset, elementOffset, !cacheEntry.area.canBePackedIntoRow());
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
         assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
             InstructionDecorations::VPM_READ_CONFIGURATION);
     }
     // 2) read value from VPM
-    if(dest.type.getScalarBitCount() == 64)
-    {
-        auto data = Local::getLocalData<MultiRegisterData>(dest.checkLocal());
-        if(!data)
-            throw CompilationError(
-                CompilationStep::GENERAL, "Can only read 64-bit value from VPM from long local", dest.to_string());
-        assign(it, data->lower->createReference()) = VPM_IO_REGISTER;
-        assign(it, data->upper->createReference()) = VPM_IO_REGISTER;
-    }
-    else
-        assign(it, dest) = outputValue;
-    it = insertUnlockMutex(it, useMutex);
+    assign(it, access.getData()) = outputValue;
+    it.erase();
     return it;
 }
 
-InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, const Value& src, const VPMArea* area,
-    bool useMutex, const Value& inAreaOffset)
+NODISCARD static InstructionWalker lowerWriteVPM(
+    Method& method, InstructionWalker it, const CacheAccessInstruction& access, const VPMCacheEntry& cacheEntry)
 {
-    const DataType vpmStorageType = getVPMStorageType(src.type);
-    if(area != nullptr)
-        area->checkAreaSize(vpmStorageType.getLogicalWidth());
-    else
-        // a single vector can only use a maximum of 2 rows (for 64-bit elements)
-        updateScratchSize(src.type.getScalarBitCount() > 32 ? 2 : 1);
-
     // try to get constant offset value
-    auto internalOffset = inAreaOffset.getConstantValue(true).value_or(inAreaOffset);
+    auto internalOffset = getSourceValue(cacheEntry.inAreaOffset);
+    internalOffset = internalOffset.getConstantValue(true).value_or(internalOffset);
 
-    it = insertLockMutex(it, useMutex);
     // 1. configure writing from QPU into VPM
-    const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
-    const VPWSetup genericSetup(realArea.toWriteSetup(src.type));
+    auto& dataType = cacheEntry.elementType;
+    VPWSetup genericSetup(cacheEntry.area.toWriteSetup(dataType));
+    if(dataType.getScalarBitCount() == 64)
+    {
+        if(access.upperWord)
+            genericSetup.genericSetup.setWordRow(genericSetup.genericSetup.getWordRow() + 1u);
+    }
     if(internalOffset == INT_ZERO)
     {
         it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(genericSetup.value)));
         it->addDecorations(InstructionDecorations::VPM_WRITE_CONFIGURATION);
         it.nextInBlock();
     }
-    else if(isUnalignedMemoryVPMAccess(internalOffset, src.type))
+    else if(isUnalignedMemoryVPMAccess(internalOffset, dataType))
     {
         // TODO make sure this block is only used where really really required!
         // TODO if inAreaOffset guaranteed to lie within one row, skip loading of second?!
@@ -605,9 +721,9 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
          */
         Value elementOffset = UNDEFINED_VALUE;
         it = calculateElementOffsetInVPM(
-            method, it, src.type, internalOffset, elementOffset, !realArea.canBePackedIntoRow());
+            method, it, dataType, internalOffset, elementOffset, !cacheEntry.area.canBePackedIntoRow());
         {
-            VPRSetup genericReadSetup(realArea.toReadSetup(src.type));
+            VPRSetup genericReadSetup(cacheEntry.area.toReadSetup(dataType));
             // XXX this might lead to reading 64th (as in one-past-the-end) VPM row, if the original addressed row is
             // the 63th (last row) while reading the second row. This should not be a problem, since the address wraps
             // at 64 rows, thus we read the 0th row, but never actually access its data.
@@ -620,15 +736,15 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
         // Vector size N = 16, rotation factor R = 11
         // Vector data V = [40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55]
         // L = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-        auto lowerPart = assign(it, src.type, "%vpm.unaligned.orig.lower") = VPM_IO_REGISTER;
+        auto lowerPart = assign(it, dataType, "%vpm.unaligned.orig.lower") = VPM_IO_REGISTER;
         // U = [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
-        auto upperPart = assign(it, src.type, "%vpm.unaligned.orig.upper") = VPM_IO_REGISTER;
-        auto rotationOffset = assign(it, TYPE_INT8) = internalOffset % Literal(src.type.getInMemoryWidth());
+        auto upperPart = assign(it, dataType, "%vpm.unaligned.orig.upper") = VPM_IO_REGISTER;
+        auto rotationOffset = assign(it, TYPE_INT8) = internalOffset % Literal(dataType.getInMemoryWidth());
         rotationOffset = assign(it, TYPE_INT8, "%vpm.unaligned.offset") =
-            rotationOffset / Literal(src.type.getElementType().getInMemoryWidth());
-        Value srcRotated = method.addNewLocal(src.type, "%vpm.unaligned.new");
+            rotationOffset / Literal(dataType.getElementType().getInMemoryWidth());
+        Value srcRotated = method.addNewLocal(dataType, "%vpm.unaligned.new");
         // V = [45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 40, 41, 42, 43, 44]
-        it = insertVectorRotation(it, src, rotationOffset, srcRotated, Direction::UP);
+        it = insertVectorRotation(it, access.getData(), rotationOffset, srcRotated, Direction::UP);
         Value rotationOffsetReplicated = method.addNewLocal(TYPE_INT8.toVectorType(16));
         it = insertReplication(it, rotationOffset, rotationOffsetReplicated);
         rotationOffsetReplicated = assign(it, rotationOffsetReplicated.type) = rotationOffsetReplicated - 1_val;
@@ -642,7 +758,7 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
             InstructionDecorations::VPM_WRITE_CONFIGURATION);
         assign(it, VPM_IO_REGISTER) = lowerPart;
         assign(it, VPM_IO_REGISTER) = upperPart;
-        it = insertUnlockMutex(it, useMutex);
+        it.erase();
         return it;
     }
     else
@@ -652,63 +768,34 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
         it = calculateElementOffsetInVPM(
-            method, it, src.type, internalOffset, elementOffset, !realArea.canBePackedIntoRow());
+            method, it, dataType, internalOffset, elementOffset, !cacheEntry.area.canBePackedIntoRow());
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
         assign(it, VPM_OUT_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
             InstructionDecorations::VPM_WRITE_CONFIGURATION);
     }
     // 2. write data to VPM
-    if(src.type.getScalarBitCount() == 64)
-    {
-        auto data = Local::getLocalData<MultiRegisterData>(src.checkLocal());
-        if(!data)
-            throw CompilationError(
-                CompilationStep::GENERAL, "Can only write 64-bit value into VPM from long local", src.to_string());
-        assign(it, VPM_IO_REGISTER) = data->lower->createReference();
-        assign(it, VPM_IO_REGISTER) = data->upper->createReference();
-    }
-    else
-        assign(it, VPM_IO_REGISTER) = src;
-    it = insertUnlockMutex(it, useMutex);
+    assign(it, VPM_IO_REGISTER) = access.getData();
+    it.erase();
     return it;
 }
 
-InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress, DataType type,
-    const VPMArea* area, bool useMutex, const Value& inAreaOffset, const Value& numEntries)
+NODISCARD static InstructionWalker lowerReadRAM(
+    Method& method, InstructionWalker it, const RAMAccessInstruction& access, const VPMCacheEntry& cacheEntry)
 {
-    if(area != nullptr)
-        // FIXME this needs to have the numEntries added and the correct type!!!
-        // TODO rename numEntries to numRows or move entry->row handling here?!
-        area->checkAreaSize(getVPMStorageType(type).getLogicalWidth());
-    else
-        // a single vector can only use a maximum of 2 rows (for 64-bit elements)
-        updateScratchSize(type.getScalarBitCount() > 32 ? 2 : 1);
-
-    if(auto local = memoryAddress.checkLocal())
-    {
-        // set the type of the parameter, if we can determine it
-        if(auto param = local->as<Parameter>())
-            memoryAddress.local()->as<Parameter>()->decorations =
-                add_flag(param->decorations, ParameterDecorations::INPUT);
-        if(auto param = local->getBase(true)->as<Parameter>())
-            param->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
-    }
-
+    auto numEntries = getSourceValue(access.getNumEntries());
     auto rowCount = numEntries.getLiteralValue() ? numEntries.getLiteralValue()->unsignedInt() : 0;
     if(rowCount > 16)
         throw CompilationError(CompilationStep::GENERAL, "Cannot read more than 16 entries at a time from RAM via DMA",
             numEntries.to_string());
 
-    it = insertLockMutex(it, useMutex);
     // for some additional information, see
     // http://maazl.de/project/vc4asm/doc/VideoCoreIV-addendum.html
 
     // initialize VPM DMA for reading from host
-    const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
-    const VPRSetup dmaSetup(realArea.toReadDMASetup(type, static_cast<uint8_t>(rowCount)));
+    const VPRSetup dmaSetup(cacheEntry.area.toReadDMASetup(cacheEntry.elementType, static_cast<uint8_t>(rowCount)));
     Value dmaSetupBits(Literal(dmaSetup.value), TYPE_INT32);
-    if(inAreaOffset != INT_ZERO)
+    if(cacheEntry.inAreaOffset != INT_ZERO)
     {
         // this is the offset in byte -> calculate the offset in elements of destination-type
 
@@ -717,9 +804,10 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
         // If we cannot pack the row, the data accessed from the QPUs is aligned to the beginning of a separate row per
         // element. To also align the data transferred via DMA to that, we do not align to a row of the correct type in
         // the call to #calculateElementOffsetInVPM, but instead below force alignment to 32-bit row.
-        it = calculateElementOffsetInVPM(method, it, type.getElementType(), inAreaOffset, elementOffset, true);
+        it = calculateElementOffsetInVPM(
+            method, it, cacheEntry.elementType.getElementType(), cacheEntry.inAreaOffset, elementOffset, true);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
-        if(!realArea.canBePackedIntoRow())
+        if(!cacheEntry.area.canBePackedIntoRow())
             // need to modify offset to point to next row, not next element in same row
             elementOffset = assign(it, TYPE_INT32, "%vpm_row_offset") = elementOffset << 4_val;
         // 3) write setup with dynamic address
@@ -744,7 +832,7 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
     if(numEntries != INT_ONE)
         // NOTE: This for read the pitch (start-to-start) and for write the stride (end-to-start) is set, we need to set
         // this to the data size, but not required for write setup!
-        strideSetup.strideSetup = VPRStrideSetup(static_cast<uint16_t>(type.getInMemoryWidth()));
+        strideSetup.strideSetup = VPRStrideSetup(static_cast<uint16_t>(cacheEntry.elementType.getInMemoryWidth()));
     it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(strideSetup.value)));
     it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
     it.nextInBlock();
@@ -752,49 +840,31 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
     //"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or
     // VCD_ST_ADDR register" (p. 56)
     //-> write output-argument base address + offset/index into VPM_ADDR
-    assign(it, VPM_DMA_LOAD_ADDR_REGISTER) = memoryAddress;
+    assign(it, VPM_DMA_LOAD_ADDR_REGISTER) = access.getMemoryAddress();
     //"A new DMA load or store operation cannot be started until the previous one is complete" (p. 56)
     assign(it, NOP_REGISTER) = VPM_DMA_LOAD_WAIT_REGISTER;
 
-    it = insertUnlockMutex(it, useMutex);
+    it.erase();
     return it;
 }
 
-InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress, DataType type,
-    const VPMArea* area, bool useMutex, const Value& inAreaOffset, const Value& numEntries)
+NODISCARD static InstructionWalker lowerWriteRAM(
+    Method& method, InstructionWalker it, const RAMAccessInstruction& access, const VPMCacheEntry& cacheEntry)
 {
-    if(area != nullptr)
-        area->checkAreaSize(getVPMStorageType(type).getLogicalWidth());
-    else
-        // a single vector can only use a maximum of 2 rows (for 64-bit elements)
-        updateScratchSize(type.getScalarBitCount() > 32 ? 2 : 1);
-
     // TODO is the calculation of the size to copy correct? We are mixing different types (e.g. byte from memory
     // instruction, consecutive memory area) with type for VPM area (rows which might not be filled completely). Same
     // for reading RAM!
 
+    auto numEntries = getSourceValue(access.getNumEntries());
     auto rowCount = numEntries.getLiteralValue() ? numEntries.getLiteralValue()->unsignedInt() : 0;
     if(rowCount > 128)
         throw CompilationError(CompilationStep::GENERAL,
             "Cannot write more than 128 entries at a time into RAM via DMA", numEntries.to_string());
 
-    if(auto local = memoryAddress.checkLocal())
-    {
-        // set the type of the parameter, if we can determine it
-        if(auto param = local->as<Parameter>())
-            memoryAddress.local()->as<Parameter>()->decorations =
-                add_flag(param->decorations, ParameterDecorations::OUTPUT);
-        if(auto param = local->getBase(true)->as<Parameter>())
-            param->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
-    }
-
-    it = insertLockMutex(it, useMutex);
-
     // initialize VPM DMA for writing to host
-    const VPMArea& realArea = area != nullptr ? *area : getScratchArea();
-    const VPWSetup dmaSetup(realArea.toWriteDMASetup(type, static_cast<uint8_t>(rowCount)));
+    const VPWSetup dmaSetup(cacheEntry.area.toWriteDMASetup(cacheEntry.elementType, static_cast<uint8_t>(rowCount)));
     Value dmaSetupBits(Literal(dmaSetup.value), TYPE_INT32);
-    if(inAreaOffset != INT_ZERO)
+    if(cacheEntry.inAreaOffset != INT_ZERO)
     {
         // this is the offset in byte -> calculate the offset in elements of destination-type
 
@@ -803,9 +873,10 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
         // If we cannot pack the row, the data accessed from the QPUs is aligned to the beginning of a separate row per
         // element. To also align the data transferred via DMA to that, we do not align to a row of the correct type in
         // the call to #calculateElementOffsetInVPM, but instead below force alignment to 32-bit row.
-        it = calculateElementOffsetInVPM(method, it, type.getElementType(), inAreaOffset, elementOffset, true);
+        it = calculateElementOffsetInVPM(
+            method, it, cacheEntry.elementType.getElementType(), cacheEntry.inAreaOffset, elementOffset, true);
         // 2) dynamically calculate new VPM address from base and offset (shift and add offset to setup-value)
-        if(!realArea.canBePackedIntoRow())
+        if(!cacheEntry.area.canBePackedIntoRow())
             // need to modify offset to point to next row, not next element in same row
             elementOffset = assign(it, TYPE_INT32, "%vpm_row_offset") = elementOffset << 4_val;
         Value shiftedOffset = assign(it, TYPE_INT32) = elementOffset << 3_val;
@@ -838,28 +909,25 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
     //"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or
     // VCD_ST_ADDR register" (p. 56)
     //-> write output-argument base address + offset/index into VPM_ADDR
-    assign(it, VPM_DMA_STORE_ADDR_REGISTER) = memoryAddress;
+    assign(it, VPM_DMA_STORE_ADDR_REGISTER) = access.getMemoryAddress();
     //"A new DMA load or store operation cannot be started until the previous one is complete" (p. 56)
     assign(it, NOP_REGISTER) = VPM_DMA_STORE_WAIT_REGISTER;
 
-    it = insertUnlockMutex(it, useMutex);
+    it.erase();
     return it;
 }
 
 InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress,
-    const Value& srcAddress, const unsigned numBytes, const VPMArea* area, bool useMutex)
+    const Value& srcAddress, const unsigned numBytes, bool useMutex)
 {
     const auto size = getBestVectorSize(numBytes);
-    if(area != nullptr)
-        area->checkAreaSize(size.first.getLogicalWidth());
-    else
-        updateScratchSize(1);
 
     it = insertLockMutex(it, useMutex);
 
     // TODO use insertReadRAM/insertWriteRAM with multiple entries??
-    it = insertReadRAM(method, it, srcAddress, size.first, area, false);
-    it = insertWriteRAM(method, it, destAddress, size.first, area, false);
+    auto cacheEntry = std::make_shared<VPMCacheEntry>(getScratchArea(), size.first);
+    it = insertReadRAM(method, it, srcAddress, cacheEntry);
+    it = insertWriteRAM(method, it, destAddress, cacheEntry);
 
     for(unsigned i = 1; i < size.second; ++i)
     {
@@ -874,8 +942,8 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
         if(auto data = Local::getLocalData<ReferenceData>(destAddress.checkLocal()))
             tmpDest.local()->set(ReferenceData(*data->base, ANY_ELEMENT));
 
-        it = insertReadRAM(method, it, tmpSource, size.first, area, false);
-        it = insertWriteRAM(method, it, tmpDest, size.first, area, false);
+        it = insertReadRAM(method, it, tmpSource, cacheEntry);
+        it = insertWriteRAM(method, it, tmpDest, cacheEntry);
     }
     it = insertUnlockMutex(it, useMutex);
 
@@ -883,7 +951,7 @@ InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const
 }
 
 InstructionWalker VPM::insertCopyRAMDynamic(Method& method, InstructionWalker it, const Value& destAddress,
-    const Value& srcAddress, const Value& numEntries, const VPMArea* area, bool useMutex)
+    const Value& srcAddress, const Value& numEntries, bool useMutex)
 {
     it = insertLockMutex(it, useMutex);
 
@@ -927,8 +995,10 @@ InstructionWalker VPM::insertCopyRAMDynamic(Method& method, InstructionWalker it
                 tmpDest.local()->set(ReferenceData(*data->base, ANY_ELEMENT));
         }
 
-        inLoopIt = insertReadRAM(method, inLoopIt, tmpSource, elementType, area, false);
-        inLoopIt = insertWriteRAM(method, inLoopIt, tmpDest, elementType, area, false);
+        auto cacheEntry = std::make_shared<VPMCacheEntry>(getScratchArea(), elementType);
+
+        inLoopIt = insertReadRAM(method, inLoopIt, tmpSource, cacheEntry);
+        inLoopIt = insertWriteRAM(method, inLoopIt, tmpDest, cacheEntry);
 
         // decrement remaining iterations counter
         assign(inLoopIt, counter) = (counter - INT_ONE, InstructionDecorations::PHI_NODE);
@@ -939,58 +1009,54 @@ InstructionWalker VPM::insertCopyRAMDynamic(Method& method, InstructionWalker it
     return it;
 }
 
-InstructionWalker VPM::insertFillRAM(Method& method, InstructionWalker it, const Value& memoryAddress, DataType type,
-    const unsigned numCopies, const VPMArea* area, bool useMutex)
+InstructionWalker VPM::insertFillDMA(Method& method, InstructionWalker it, const Value& memoryAddress,
+    const Value& source, const Value& numCopies, bool useMutex)
 {
-    if(numCopies == 0)
+    if(numCopies.getLiteralValue() == 0_lit)
         return it;
 
-    if(area != nullptr)
-        area->checkAreaSize(type.getLogicalWidth());
+    auto cacheEntry = std::make_shared<VPMCacheEntry>(getScratchArea(), source.type);
+
+    it = insertLockMutex(it, useMutex);
+    it = insertWriteVPM(method, it, source, cacheEntry);
+    it = insertWriteRAM(method, it, memoryAddress, cacheEntry);
+
+    if(auto literalCount = (numCopies.getConstantValue() & &Value::getLiteralValue))
+    {
+        for(unsigned i = 1; i < literalCount->unsignedInt(); ++i)
+        {
+            // increment offset from base address
+            Value tmpDest = assign(it, memoryAddress.type, "%mem_fill_addr") =
+                memoryAddress + Value(Literal(i * source.type.getInMemoryWidth()), TYPE_INT8);
+            it = insertWriteRAM(method, it, tmpDest, cacheEntry);
+        }
+    }
     else
-        // a single vector can only use a maximum of 2 rows (for 64-bit elements)
-        updateScratchSize(type.getScalarBitCount() > 32 ? 2 : 1);
-
-    it = insertLockMutex(it, useMutex);
-    it = insertWriteRAM(method, it, memoryAddress, type, area, false);
-    for(unsigned i = 1; i < numCopies; ++i)
     {
-        // increment offset from base address
-        Value tmpDest = assign(it, memoryAddress.type, "%mem_fill_addr") =
-            memoryAddress + Value(Literal(i * type.getInMemoryWidth()), TYPE_INT8);
-        it = insertWriteRAM(method, it, tmpDest, type, area, false);
-    }
-    it = insertUnlockMutex(it, useMutex);
+        // count from maximum to 0 (exclusive)
+        auto counter = assign(it, numCopies.type, "%remaining_iterations") =
+            (numCopies, InstructionDecorations::PHI_NODE);
+        auto& block = intermediate::insertLoop(method, it, counter, "dynamic_dma_fill");
+        {
+            // inside the loop, a single iteration
+            auto inLoopIt = block.walk().nextInBlock();
+            auto index = assign(inLoopIt, counter.type) = numCopies - counter;
+            // XXX does not support more than 2^23 elements
+            auto offset = assign(inLoopIt, counter.type) =
+                mul24(index, Value(Literal(source.type.getInMemoryWidth()), TYPE_INT32));
 
-    return it;
-}
+            // increment offset from base address
+            Value tmpDest = assign(inLoopIt, memoryAddress.type, "%mem_fill_addr") = memoryAddress + offset;
 
-InstructionWalker VPM::insertFillRAMDynamic(Method& method, InstructionWalker it, const Value& memoryAddress,
-    DataType type, const Value& numCopies, const VPMArea* area, bool useMutex)
-{
-    it = insertLockMutex(it, useMutex);
+            inLoopIt = insertWriteRAM(method, inLoopIt, tmpDest, cacheEntry);
 
-    // count from maximum to 0 (exclusive)
-    auto counter = assign(it, numCopies.type, "%remaining_iterations") = (numCopies, InstructionDecorations::PHI_NODE);
-    auto& block = intermediate::insertLoop(method, it, counter, "dynamic_dma_fill");
-    {
-        // inside the loop, a single iteration
-        auto inLoopIt = block.walk().nextInBlock();
-        auto index = assign(inLoopIt, counter.type) = numCopies - counter;
-        // XXX does not support more than 2^23 elements
-        auto offset = assign(inLoopIt, counter.type) =
-            mul24(index, Value(Literal(type.getInMemoryWidth()), TYPE_INT32));
+            // decrement remaining iterations counter
+            assign(inLoopIt, counter) = (counter - INT_ONE, InstructionDecorations::PHI_NODE);
+        }
 
-        // increment offset from base address
-        Value tmpDest = assign(inLoopIt, memoryAddress.type, "%mem_fill_addr") = memoryAddress + offset;
-
-        inLoopIt = insertWriteRAM(method, inLoopIt, tmpDest, type, area, false);
-
-        // decrement remaining iterations counter
-        assign(inLoopIt, counter) = (counter - INT_ONE, InstructionDecorations::PHI_NODE);
+        it.nextInBlock();
     }
 
-    it.nextInBlock();
     it = insertUnlockMutex(it, useMutex);
     return it;
 }
@@ -1259,11 +1325,31 @@ std::string VPMArea::to_string() const
 }
 LCOV_EXCL_STOP
 
+// running counter, for visual distinction of the VPM cache entries only
+static std::atomic_uint32_t vpmCacheEntryCounter{0};
+
+VPMCacheEntry::VPMCacheEntry(const VPMArea& area, DataType type, const Value& innerOffset) :
+    index(vpmCacheEntryCounter++), area(area), inAreaOffset(innerOffset), elementType(type)
+{
+    area.checkAreaSize(type.getLogicalWidth());
+}
+
+VPMCacheEntry::~VPMCacheEntry() noexcept = default;
+
+LCOV_EXCL_START
+std::string VPMCacheEntry::to_string() const
+{
+    return "VPM cache entry " + std::to_string(index) + " (" + elementType.to_string() + " and offset " +
+        inAreaOffset.to_string() + " to base " + area.to_string() + ")";
+}
+LCOV_EXCL_STOP
+
 VPM::VPM(const unsigned totalVPMSize) : maximumVPMSize(std::min(VPM_DEFAULT_SIZE, totalVPMSize)), areas(VPM_NUM_ROWS)
 {
-    // set a size of at least 1 row, so if no scratch is used, the first area has an offset of != 0 and therefore is
-    // different than the scratch-area
-    areas[0] = std::make_shared<VPMArea>(VPMUsage::SCRATCH, 0, 1, nullptr);
+    // set a size of at least 2 row (for 64-bit data), so if no scratch is used, the first area has an offset of != 0
+    // and therefore is different than the scratch-area
+    auto scratch = std::make_shared<VPMArea>(VPMUsage::SCRATCH, 0, 2, nullptr);
+    areas[0] = areas[1] = scratch;
 }
 
 const VPMArea& VPM::getScratchArea() const
@@ -1560,3 +1646,40 @@ void VPM::dumpUsage() const
     });
 }
 LCOV_EXCL_STOP
+
+static InstructionWalker lowerAccessRAM(
+    Method& method, InstructionWalker it, const RAMAccessInstruction& access, const VPMCacheEntry& cacheEntry)
+{
+    if(access.op == MemoryOperation::READ)
+        return lowerReadRAM(method, it, access, cacheEntry);
+    if(access.op == MemoryOperation::WRITE)
+        return lowerWriteRAM(method, it, access, cacheEntry);
+    throw CompilationError(
+        CompilationStep::NORMALIZER, "Invalid memory operation for VPM DMA access", access.to_string());
+}
+
+static InstructionWalker lowerAccessCache(
+    Method& method, InstructionWalker it, const CacheAccessInstruction& access, const VPMCacheEntry& cacheEntry)
+{
+    if(access.op == MemoryOperation::READ)
+        return lowerReadVPM(method, it, access, cacheEntry);
+    if(access.op == MemoryOperation::WRITE)
+        return lowerWriteVPM(method, it, access, cacheEntry);
+    throw CompilationError(
+        CompilationStep::NORMALIZER, "Invalid memory operation for VPM cache access", access.to_string());
+}
+
+InstructionWalker periphery::lowerVPMAccess(Method& method, InstructionWalker it)
+{
+    auto vpmCacheEntry =
+        (check(it.get<MemoryAccessInstruction>()) & &MemoryAccessInstruction::getVPMCacheEntry).value_or(nullptr);
+
+    if(!vpmCacheEntry)
+        return it;
+
+    if(auto ramAccess = it.get<RAMAccessInstruction>())
+        it = lowerAccessRAM(method, it, *ramAccess, *vpmCacheEntry);
+    else if(auto cacheAccess = it.get<CacheAccessInstruction>())
+        it = lowerAccessCache(method, it, *cacheAccess, *vpmCacheEntry);
+    return it;
+}
