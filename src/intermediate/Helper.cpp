@@ -321,7 +321,14 @@ Value intermediate::getSourceValue(Value value)
     while(auto writer = value.getSingleWriter())
     {
         if(writer->isSimpleMove() && !writer->hasConditionalExecution())
-            value = writer->getMoveSource().value();
+        {
+            auto src = writer->getMoveSource().value();
+            if(src.checkRegister())
+                // e.g. to avoid returning the replication register (or UNIFORM) where the contents are
+                // position-dependent
+                break;
+            value = src;
+        }
         else
             break;
     }

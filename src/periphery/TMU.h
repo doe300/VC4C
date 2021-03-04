@@ -36,10 +36,12 @@ namespace vc4c
             /**
              * Returns the single instruction reading the data from memory into the TMU cache entry
              */
+            intermediate::RAMAccessInstruction* getRAMReader();
             const intermediate::RAMAccessInstruction* getRAMReader() const;
             /**
              * Returns the single instruction reading the data from the TMU cache entry into a QPU register
              */
+            intermediate::CacheAccessInstruction* getCacheReader();
             const intermediate::CacheAccessInstruction* getCacheReader() const;
 
             const unsigned index;
@@ -67,8 +69,11 @@ namespace vc4c
              * NOTE: The other elements of the vector will have undefined contents.
              *
              * NOTE: The single addresses are truncated to multiple of 32-bit words hardware-side!
+             *
+             * NOTE: This usage is not tracked, so any optimization removing unread local MUST not be run yet as long as
+             * this cache entry is not lowered!
              */
-            uint8_t numVectorElements;
+            Value numVectorElements;
             /**
              * The stride between consecutive 32-bit word elements being loaded.
              *

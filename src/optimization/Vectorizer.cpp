@@ -10,10 +10,12 @@
 #include "../analysis/ControlFlowGraph.h"
 #include "../analysis/ControlFlowLoop.h"
 #include "../analysis/DataDependencyGraph.h"
+#include "../analysis/FlagsAnalysis.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
 #include "../normalization/LiteralValues.h"
+#include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
 #include "log.h"
 
@@ -115,54 +117,26 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
         {
             if(it)
             {
-                if(it->writesRegister(REG_VPM_DMA_LOAD_ADDR) || it->writesRegister(REG_TMU0_ADDRESS) ||
-                    it->writesRegister(REG_TMU1_ADDRESS))
+                if(auto access = dynamic_cast<const RAMAccessInstruction*>(it.get()))
                 {
                     // for dynamic iteration counts, we need to insert a mask/dynamic element calculation per memory
                     // access
                     // XXX actually per loop iteration
-                    costs += isDynamicIterationCount * (it->writesRegister(REG_VPM_DMA_LOAD_ADDR) ? 5 : 3);
-                    for(const Value& arg : it->getArguments())
+                    costs += isDynamicIterationCount * (access->getVPMCacheEntry() ? 3 : 2);
+                    auto& addresses = access->op == MemoryOperation::READ ? readAddresses : writtenAddresses;
+                    if(auto loc = access->getMemoryAddress().checkLocal())
                     {
-                        if(auto loc = arg.checkLocal())
+                        addresses.emplace(loc);
+                        if(auto data = loc->get<ReferenceData>())
+                            addresses.emplace(data->base);
+                        if(loc->residesInMemory())
                         {
-                            readAddresses.emplace(loc);
-                            if(auto data = loc->get<ReferenceData>())
-                                readAddresses.emplace(data->base);
-                            if(loc->residesInMemory())
-                            {
-                                // we directly read an absolute memory address (without any dynamic offset) inside the
-                                // loop, we cannot vectorize this
-                                CPPLOG_LAZY(logging::Level::DEBUG,
-                                    log << "Cannot vectorize loops reading from absolute memory location: "
-                                        << it->to_string() << logging::endl);
-                                return std::numeric_limits<int>::min();
-                            }
-                        }
-                    }
-                }
-                else if(it->writesRegister(REG_VPM_DMA_STORE_ADDR))
-                {
-                    // for dynamic iteration counts, we need to insert a mask/dynamic element calculation per memory
-                    // access
-                    // XXX actually per loop iteration
-                    costs += isDynamicIterationCount * 4;
-                    for(const Value& arg : it->getArguments())
-                    {
-                        if(auto loc = arg.checkLocal())
-                        {
-                            writtenAddresses.emplace(loc);
-                            if(auto data = loc->get<ReferenceData>())
-                                writtenAddresses.emplace(data->base);
-                            if(loc->residesInMemory())
-                            {
-                                // we directly write an absolute memory address (without any dynamic offset) inside the
-                                // loop, we cannot vectorize this
-                                CPPLOG_LAZY(logging::Level::DEBUG,
-                                    log << "Cannot vectorize loops writing to absolute memory location: "
-                                        << it->to_string() << logging::endl);
-                                return std::numeric_limits<int>::min();
-                            }
+                            // we directly access an absolute memory address (without any dynamic offset) inside the
+                            // loop, we cannot vectorize this
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Cannot vectorize loops accessing absolute memory location: " << it->to_string()
+                                    << logging::endl);
+                            return std::numeric_limits<int>::min();
                         }
                     }
                 }
@@ -303,28 +277,87 @@ static void removeSplatDecoration(IntermediateInstruction* inst, Optional<Instru
         return;
     inst->decoration = remove_flag(inst->decoration, InstructionDecorations::IDENTICAL_ELEMENTS);
 
-    if(inst->writesRegister(REG_TMU0_ADDRESS) || inst->writesRegister(REG_TMU1_ADDRESS))
+    if(auto tmuCache =
+            (check(dynamic_cast<const RAMAccessInstruction*>(inst)) & &RAMAccessInstruction::getTMUCacheEntry)
+                .value_or(nullptr))
     {
         if(!it)
             throw CompilationError(CompilationStep::OPTIMIZER,
                 "Cannot remove splat decoration from TMU read without knowing its position");
-        auto checkIt = it->copy().nextInBlock();
-        while(!checkIt.isEndOfBlock())
-        {
-            if(checkIt->readsRegister(REG_TMU_OUT))
-            {
-                removeSplatDecoration(checkIt.get(), checkIt);
-                break;
-            }
-            checkIt.nextInBlock();
-        }
-        if(checkIt.isEndOfBlock())
+        auto reader = tmuCache->getCacheReader();
+        auto readerIt = it->getBasicBlock()->findWalkerForInstruction(reader, it->getBasicBlock()->walkEnd());
+        if(!readerIt || readerIt->isEndOfBlock())
             throw CompilationError(CompilationStep::OPTIMIZER,
                 "Failed to find TMU value read for no longer identical TMU address write", inst->to_string());
+        removeSplatDecoration(reader, *readerIt);
     }
     if(auto loc = inst->checkOutputLocal())
         loc->forUsers(LocalUse::Type::READER,
             [=](const LocalUser* reader) { removeSplatDecoration(const_cast<LocalUser*>(reader), it); });
+}
+
+static void scheduleForOutputValue(Value& out, intermediate::IntermediateInstruction* inst, Method& method,
+    FastMap<const intermediate::IntermediateInstruction*, uint8_t>& openInstructions, uint8_t vectorWidth,
+    ControlFlowLoop& loop)
+{
+    if(auto ptrType = out.type.getPointerType())
+        // TODO this is only correct if the elements are located in one block (base+0, base+1, base+2...). Is this
+        // guaranteed?
+        out.type = method.createPointerType(ptrType->elementType.toVectorType(vectorWidth), ptrType->addressSpace);
+    else
+        out.type = out.type.toVectorType(vectorWidth);
+    if(auto loc = out.checkLocal())
+    {
+        if(auto ptrType = loc->type.getPointerType())
+            // TODO see above
+            const_cast<DataType&>(loc->type) = method.createPointerType(
+                loc->type.getPointerType()->elementType.toVectorType(getVectorWidth(out.type)), ptrType->addressSpace);
+        else
+            const_cast<DataType&>(loc->type) = loc->type.toVectorType(getVectorWidth(out.type));
+        scheduleForVectorization(loc, openInstructions, loop, false, vectorWidth);
+    }
+    if(out.hasRegister(REG_REPLICATE_ALL) || out.hasRegister(REG_REPLICATE_QUAD))
+    {
+        // for replications (e.g. for scalar TMU read), need to un-replicate the values
+        // TODO is this true in any case??
+        auto replicateIt = loop.findInLoop(inst);
+        if(!replicateIt)
+            // TODO not actually a problem, we just have to find the instruction walker
+            throw CompilationError(
+                CompilationStep::OPTIMIZER, "Cannot vectorize replication outside of loop", inst->to_string());
+
+        auto newLoc = method.addNewLocal(out.type, "%vectorized_replication");
+        inst->replaceValue(out, newLoc, LocalUse::Type::WRITER);
+
+        auto checkIt = replicateIt->nextInBlock();
+        while(!checkIt.isEndOfBlock())
+        {
+            if(auto arg = checkIt->findRegisterArgument(REG_ACC5))
+            {
+                checkIt->replaceValue(*arg, newLoc, LocalUse::Type::READER);
+                checkIt->decoration = remove_flag(checkIt->decoration, InstructionDecorations::IDENTICAL_ELEMENTS);
+                removeSplatDecoration(checkIt.get(), checkIt);
+            }
+            if(auto arg = checkIt->findRegisterArgument(REG_REPLICATE_ALL))
+            {
+                checkIt->replaceValue(*arg, newLoc, LocalUse::Type::READER);
+                checkIt->decoration = remove_flag(checkIt->decoration, InstructionDecorations::IDENTICAL_ELEMENTS);
+                removeSplatDecoration(checkIt.get(), checkIt);
+            }
+            if(auto arg = checkIt->findRegisterArgument(REG_REPLICATE_QUAD))
+            {
+                checkIt->replaceValue(*arg, newLoc, LocalUse::Type::READER);
+                checkIt->decoration = remove_flag(checkIt->decoration, InstructionDecorations::IDENTICAL_ELEMENTS);
+                removeSplatDecoration(checkIt.get(), checkIt);
+            }
+            if(checkIt->writesRegister(REG_ACC5) || checkIt->writesRegister(REG_REPLICATE_ALL) ||
+                checkIt->writesRegister(REG_REPLICATE_QUAD))
+                // replication register is overwritten, abort
+                break;
+            checkIt.nextInBlock();
+        }
+        scheduleForVectorization(newLoc.local(), openInstructions, loop, false, vectorWidth);
+    }
 }
 
 static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Method& method,
@@ -366,108 +399,98 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
                 scheduleForVectorization(loc, openInstructions, loop, true, vectorWidth);
         }
     }
+    if(inst->hasConditionalExecution())
+    {
+        // if this instruction is conditional, need to also vectorize the flag setter
+        // TODO true for all cases?
+        auto instIt = loop.findInLoop(inst);
+        if(auto lastFlagSetterIt =
+                instIt ? instIt->getBasicBlock()->findLastSettingOfFlags(*instIt) : Optional<InstructionWalker>{})
+        {
+            if(!(*lastFlagSetterIt)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
+                openInstructions.emplace(lastFlagSetterIt->get(), vectorWidth);
+        }
+        else
+            CPPLOG_LAZY(logging::Level::WARNING,
+                log << "Failed to find flag setter for vectorized conditional instruction within loop: "
+                    << inst->to_string() << logging::endl);
+    }
+    if(inst->readsRegister(REG_ACC5) || inst->readsRegister(REG_REPLICATE_ALL) ||
+        inst->readsRegister(REG_REPLICATE_QUAD))
+    {
+        // if this instruction reads a replication, need to de-replicate the source
+        // TODO true for all cases?
+        auto instIt = loop.findInLoop(inst);
+        if(auto replicationIt = instIt ?
+                instIt->getBasicBlock()->findLastWritingOfRegister(*instIt, REG_REPLICATE_ALL) :
+                Optional<InstructionWalker>{})
+        {
+            if(!(*replicationIt)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
+                openInstructions.emplace(replicationIt->get(), vectorWidth);
+        }
+        else
+            CPPLOG_LAZY(logging::Level::WARNING,
+                log << "Failed to find replication writer for vectorized instruction within loop: " << inst->to_string()
+                    << logging::endl);
+    }
 
     // 2. depending on operation performed, update type of output
     if(inst->getOutput() &&
-        (dynamic_cast<const intermediate::Operation*>(inst) || dynamic_cast<const intermediate::MoveOperation*>(inst)))
+        (dynamic_cast<intermediate::Operation*>(inst) || dynamic_cast<intermediate::MoveOperation*>(inst)))
     {
         // TODO vector-rotations need special handling?!
         Value& out = const_cast<Value&>(inst->getOutput().value());
-        if(auto ptrType = out.type.getPointerType())
-            // TODO this is only correct if the elements are located in one block (base+0, base+1, base+2...). Is this
-            // guaranteed?
-            out.type = method.createPointerType(ptrType->elementType.toVectorType(vectorWidth), ptrType->addressSpace);
-        else
-            out.type = out.type.toVectorType(vectorWidth);
-        if(auto loc = out.checkLocal())
+        scheduleForOutputValue(out, inst, method, openInstructions, vectorWidth, loop);
+    }
+
+    if(auto access = dynamic_cast<RAMAccessInstruction*>(inst))
+    {
+        if(auto cacheEntry = access->getTMUCacheEntry())
         {
-            if(auto ptrType = loc->type.getPointerType())
-                // TODO see above
-                const_cast<DataType&>(loc->type) = method.createPointerType(
-                    loc->type.getPointerType()->elementType.toVectorType(getVectorWidth(out.type)),
-                    ptrType->addressSpace);
+            // if we load from a TMU address, we need to adapt the setting of valid TMU address elements (vs. zeroing
+            // out) to match the new vector width
+            if(dynamicElementCount)
+                cacheEntry->numVectorElements = *dynamicElementCount;
+            else if(auto lit = cacheEntry->numVectorElements.getLiteralValue())
+                cacheEntry->numVectorElements.literal() = Literal(lit->unsignedInt() * vectorizationFactor);
             else
-                const_cast<DataType&>(loc->type) = loc->type.toVectorType(getVectorWidth(out.type));
-            scheduleForVectorization(loc, openInstructions, loop, false, vectorWidth);
+                // TODO need to set the static vector width dynamically
+                throw CompilationError(CompilationStep::OPTIMIZER,
+                    "Vectorizing this type of TMU vector width is not supported", inst->to_string());
         }
-        if(out.hasRegister(REG_REPLICATE_ALL) || out.hasRegister(REG_REPLICATE_QUAD))
+        if(auto cacheEntry = access->getVPMCacheEntry())
         {
-            // for replications (e.g. for scalar TMU read), need to un-replicate the values
-            // TODO is this true in any case??
-            auto replicateIt = loop.findInLoop(inst);
-            if(!replicateIt)
-                // TODO not actually a problem, we just have to find the instruction walker
-                throw CompilationError(
-                    CompilationStep::OPTIMIZER, "Cannot vectorize replication outside of loop", inst->to_string());
-
-            auto newLoc = method.addNewLocal(out.type, "%vectorized_replication");
-            inst->replaceValue(out, newLoc, LocalUse::Type::WRITER);
-
-            auto checkIt = replicateIt->nextInBlock();
-            while(!checkIt.isEndOfBlock())
+            // if we read/write to DMA address via VPM, we need to adapt the element type to be accessed
+            if(dynamicElementCount)
+                cacheEntry->setDynamicElementCount(*dynamicElementCount);
+            else
             {
-                if(auto arg = checkIt->findRegisterArgument(REG_ACC5))
-                {
-                    checkIt->replaceValue(*arg, newLoc, LocalUse::Type::READER);
-                    checkIt->decoration = remove_flag(checkIt->decoration, InstructionDecorations::IDENTICAL_ELEMENTS);
-                    removeSplatDecoration(checkIt.get(), checkIt);
-                }
-                if(auto arg = checkIt->findRegisterArgument(REG_REPLICATE_ALL))
-                {
-                    checkIt->replaceValue(*arg, newLoc, LocalUse::Type::READER);
-                    checkIt->decoration = remove_flag(checkIt->decoration, InstructionDecorations::IDENTICAL_ELEMENTS);
-                    removeSplatDecoration(checkIt.get(), checkIt);
-                }
-                if(auto arg = checkIt->findRegisterArgument(REG_REPLICATE_QUAD))
-                {
-                    checkIt->replaceValue(*arg, newLoc, LocalUse::Type::READER);
-                    checkIt->decoration = remove_flag(checkIt->decoration, InstructionDecorations::IDENTICAL_ELEMENTS);
-                    removeSplatDecoration(checkIt.get(), checkIt);
-                }
-                if(checkIt->writesRegister(REG_ACC5) || checkIt->writesRegister(REG_REPLICATE_ALL) ||
-                    checkIt->writesRegister(REG_REPLICATE_QUAD))
-                    // replication register is overwritten, abort
-                    break;
-                checkIt.nextInBlock();
+                auto newVectorWidth = cacheEntry->getVectorType().getVectorWidth() * vectorizationFactor;
+                cacheEntry->setStaticElementCount(static_cast<uint8_t>(newVectorWidth));
             }
-            scheduleForVectorization(newLoc.local(), openInstructions, loop, false, vectorWidth);
+        }
+
+        // schedule all other accesses of the same cache entry for vectorization
+        for(auto* inst : access->cache->accesses)
+        {
+            if(!has_flag(inst->decoration, InstructionDecorations::AUTO_VECTORIZED))
+                openInstructions.emplace(inst, vectorWidth);
         }
     }
 
-    if(inst->writesRegister(REG_TMU0_ADDRESS) || inst->writesRegister(REG_TMU1_ADDRESS))
+    if(auto access = dynamic_cast<CacheAccessInstruction*>(inst))
     {
-        // if we write to a TMU address register, we need to adapt the setting of valid TMU address elements (vs.
-        // zeroing out) to match the new vector width
-        auto addressIt = loop.findInLoop(inst);
-        if(!addressIt)
-            // TODO not actually a problem, we just have to find the instruction walker
-            throw CompilationError(
-                CompilationStep::OPTIMIZER, "Cannot vectorize setting TMU address outside of loop", inst->to_string());
-
-        if(dynamicElementCount)
+        if(access->op == MemoryOperation::READ)
         {
-            /*
-             * If we have a dynamic active element count, we need to mask off the elements not actually used, since
-             * otherwise we might read memory which is not mapped at all.
-             *
-             * So we need to set all non-active elements to zero to tell the TMU to not load anything into there.
-             *
-             * NOTE: This code requires the dynamicElementCount value to be a splat value!
-             */
-            auto it = *addressIt;
-            auto maskedAddress = assign(it, inst->assertArgument(0).type, "%masked_address") = INT_ZERO;
-            auto cond = assignNop(it) = as_signed{ELEMENT_NUMBER_REGISTER} < as_signed{*dynamicElementCount};
-            if(auto source = inst->getMoveSource())
-                assign(it, maskedAddress) = (*source, cond);
-            else if(dynamic_cast<Operation*>(inst) && dynamic_cast<Operation*>(inst)->op == OP_ADD)
-                assign(it, maskedAddress) = (inst->assertArgument(0) + inst->assertArgument(1), cond);
-            else
-                throw CompilationError(CompilationStep::OPTIMIZER,
-                    "Masking off TMU addresses dynamically for this kind of calculation is not yet implemented",
-                    inst->to_string());
-            it.reset((new MoveOperation(inst->getOutput().value(), maskedAddress))->copyExtrasFrom(inst));
-            openInstructions.erase(inst);
-            inst = it.get();
+            auto& out = const_cast<Value&>(access->getData());
+            scheduleForOutputValue(out, inst, method, openInstructions, vectorWidth, loop);
+        }
+
+        // schedule all other accesses of the same cache entry for vectorization
+        for(auto* inst : access->cache->accesses)
+        {
+            if(!has_flag(inst->decoration, InstructionDecorations::AUTO_VECTORIZED))
+                openInstructions.emplace(inst, vectorWidth);
         }
     }
 
@@ -478,133 +501,6 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
     // mark as already processed and remove from open-set
     inst->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
     openInstructions.erase(inst);
-}
-
-static std::size_t fixVPMSetups(
-    Method& method, ControlFlowLoop& loop, unsigned vectorizationFactor, const Optional<Value>& dynamicElementCount)
-{
-    std::size_t numVectorized = 0;
-
-    for(auto& node : loop)
-    {
-        auto it = node->key->walk();
-        while(!it.isEndOfBlock())
-        {
-            if(it->writesRegister(REG_VPM_OUT_SETUP))
-            {
-                periphery::VPWSetupWrapper vpwSetup(static_cast<intermediate::LoadImmediate*>(nullptr));
-                if(auto load = it.get<intermediate::LoadImmediate>())
-                    vpwSetup = periphery::VPWSetupWrapper(load);
-                else if(auto move = it.get<intermediate::MoveOperation>())
-                    vpwSetup = periphery::VPWSetupWrapper(move);
-                else
-                    throw CompilationError(CompilationStep::OPTIMIZER,
-                        "Unsupported instruction to write VPM for vectorized value", it->to_string());
-
-                auto relatedInstructions = periphery::findRelatedVPMInstructions(it, false);
-                bool isVPMWriteVectorized = relatedInstructions.vpmAccess &&
-                    (*relatedInstructions.vpmAccess)->hasDecoration(InstructionDecorations::AUTO_VECTORIZED);
-                bool isDMAAddressVectorized = relatedInstructions.addressWrite &&
-                    (*relatedInstructions.addressWrite)->hasDecoration(InstructionDecorations::AUTO_VECTORIZED);
-                if(vpwSetup.isDMASetup() && (isVPMWriteVectorized || isDMAAddressVectorized))
-                {
-                    // Since this is only true for values actually vectorized, the corresponding VPM-write is checked
-                    if(dynamicElementCount)
-                    {
-                        // need to dynamically calculate the number of elements
-                        auto oldDepth = vpwSetup.dmaSetup.getDepth();
-                        vpwSetup.dmaSetup.setDepth(0);
-                        auto tmpSetup = method.addNewLocal(TYPE_INT32, "%vpm_setup");
-                        it->replaceValue(VPM_OUT_SETUP_REGISTER, tmpSetup, LocalUse::Type::WRITER);
-                        it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
-                        it.nextInBlock();
-                        auto numElements = assign(it, TYPE_INT32, "%dynamic_depth") =
-                            (*dynamicElementCount * Literal(oldDepth), InstructionDecorations::AUTO_VECTORIZED);
-                        auto dynamicDepth = assign(it, TYPE_INT32, "%dynamic_depth") =
-                            (numElements << 16_val, InstructionDecorations::AUTO_VECTORIZED);
-                        it.emplace(new Operation(OP_ADD, VPM_OUT_SETUP_REGISTER, tmpSetup, dynamicDepth));
-                        it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
-                        numVectorized += 4;
-                    }
-                    else
-                    {
-                        vpwSetup.dmaSetup.setDepth(
-                            static_cast<uint8_t>(vpwSetup.dmaSetup.getDepth() * vectorizationFactor));
-                        ++numVectorized;
-                        it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
-                    }
-                }
-            }
-            else if(it->writesRegister(REG_VPM_IN_SETUP))
-            {
-                periphery::VPRSetupWrapper vprSetup(static_cast<intermediate::LoadImmediate*>(nullptr));
-                if(auto load = it.get<intermediate::LoadImmediate>())
-                    vprSetup = periphery::VPRSetupWrapper(load);
-                else if(auto move = it.get<intermediate::MoveOperation>())
-                    vprSetup = periphery::VPRSetupWrapper(move);
-                else
-                    throw CompilationError(CompilationStep::OPTIMIZER,
-                        "Unsupported instruction to write VPM for vectorized value", it->to_string());
-
-                auto relatedInstructions = periphery::findRelatedVPMInstructions(it, true);
-                bool isVPMReadVectorized = relatedInstructions.vpmAccess &&
-                    (*relatedInstructions.vpmAccess)->hasDecoration(InstructionDecorations::AUTO_VECTORIZED);
-                bool isDMAAddressVectorized = relatedInstructions.addressWrite &&
-                    (*relatedInstructions.addressWrite)->hasDecoration(InstructionDecorations::AUTO_VECTORIZED);
-                if(vprSetup.isDMASetup() && (isVPMReadVectorized || isDMAAddressVectorized))
-                {
-                    // See VPM write
-                    if(dynamicElementCount)
-                    {
-                        // need to dynamically calculate the number of elements
-                        auto oldRowLength = vprSetup.dmaSetup.getRowLength();
-                        vprSetup.dmaSetup.setRowLength(0);
-                        auto tmpSetup = method.addNewLocal(TYPE_INT32, "%vpm_setup");
-                        it->replaceValue(VPM_IN_SETUP_REGISTER, tmpSetup, LocalUse::Type::WRITER);
-                        it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
-                        it.nextInBlock();
-                        auto numElements = assign(it, TYPE_INT32, "%dynamic_rowlength") =
-                            (*dynamicElementCount * Literal(oldRowLength), InstructionDecorations::AUTO_VECTORIZED);
-                        // 0 => 16, so we need to truncate to not override some other bit by accident
-                        auto finalNumElements = assign(it, TYPE_INT32, "%dynamic_rowlength") =
-                            (numElements & 15_val, InstructionDecorations::AUTO_VECTORIZED);
-                        if(vprSetup.dmaSetup.getMode() > 1 && oldRowLength > 1)
-                        {
-                            // if we end up with more than 16 elements in a row, we truncate back (see above). To fix
-                            // this, we need to switch to a higher element size
-                            // TODO correct in general or only for byte-wise copy? Even applicable for anything except
-                            // byte-wise copy? Does anywhere else have a row length of more than 1 while still not
-                            // accessing vectors?
-                            auto modeChange = assign(it, TYPE_INT32, "%dynamic_mode") =
-                                (as_unsigned{numElements} >> 4_val, InstructionDecorations::AUTO_VECTORIZED);
-                            modeChange = assign(it, TYPE_INT32, "%dynamic_mode") =
-                                (0_val - modeChange, InstructionDecorations::AUTO_VECTORIZED);
-                            modeChange = assign(it, TYPE_INT32, "%dynamic_mode") =
-                                (modeChange << 8_val, InstructionDecorations::AUTO_VECTORIZED);
-                            finalNumElements = assign(it, TYPE_INT32, "%dynamic_setup") =
-                                (modeChange | finalNumElements, InstructionDecorations::AUTO_VECTORIZED);
-                        }
-                        auto dynamicRowLength = assign(it, TYPE_INT32, "%dynamic_rowlength") =
-                            (finalNumElements << 20_val, InstructionDecorations::AUTO_VECTORIZED);
-                        it.emplace(new Operation(OP_ADD, VPM_IN_SETUP_REGISTER, tmpSetup, dynamicRowLength));
-                        it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
-                        numVectorized += 5;
-                    }
-                    else
-                    {
-                        vprSetup.dmaSetup.setRowLength(
-                            (vprSetup.dmaSetup.getRowLength() * vectorizationFactor) % 16 /* 0 => 16 */);
-                        ++numVectorized;
-                        it->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
-                    }
-                }
-            }
-
-            it.nextInBlock();
-        }
-    }
-
-    return numVectorized;
 }
 
 /*
@@ -810,8 +706,8 @@ static unsigned fixRepetitionBranch(Method& method, ControlFlowLoop& loop, Induc
  * Calculate the dynamic active element count for this iteration at the very top of the loop head to make sure it is
  * available throughout the loop.
  */
-static unsigned calculateDynamicElementCount(Method& method, ControlFlowLoop& loop,
-    InductionVariable& inductionVariable, unsigned vectorizationFactor, const Value& dynamicElementCount)
+static unsigned calculateDynamicElementCount(Method& method, ControlFlowLoop& loop, const Local* iterationLocal,
+    const Value& limitValue, unsigned vectorizationFactor, const Value& dynamicElementCount)
 {
     auto head = loop.getHeader();
     if(!head)
@@ -820,8 +716,7 @@ static unsigned calculateDynamicElementCount(Method& method, ControlFlowLoop& lo
     auto it = head->key->walk().nextInBlock();
     // TODO need to invert for decrementing step??
     auto tmp = assign(it, dynamicElementCount.type, std::string{dynamicElementCount.local()->name}) =
-        (inductionVariable.repeatCondition.value().comparisonValue - inductionVariable.local->createReference(),
-            InstructionDecorations::AUTO_VECTORIZED);
+        (limitValue - iterationLocal->createReference(), InstructionDecorations::AUTO_VECTORIZED);
     tmp = assign(it, dynamicElementCount.type, std::string{dynamicElementCount.local()->name}) =
         (min(as_signed{Value(Literal(vectorizationFactor), TYPE_INT8)}, as_signed{tmp}),
             InstructionDecorations::AUTO_VECTORIZED);
@@ -832,6 +727,98 @@ static unsigned calculateDynamicElementCount(Method& method, ControlFlowLoop& lo
             << logging::endl);
 
     return 2;
+}
+
+static bool mayReadLocal(const Value& input, const Local* output, FastSet<const Local*>& processedLocals)
+{
+    if(auto loc = input.checkLocal())
+    {
+        if(loc == output)
+            return true;
+        if(processedLocals.find(loc) != processedLocals.end())
+            // This is to prevent stack overflows due to infinite recursion
+            return false;
+        auto writers = loc->getUsers(LocalUse::Type::WRITER);
+        processedLocals.emplace(loc);
+        return std::any_of(writers.begin(), writers.end(), [&](const LocalUser* writer) -> bool {
+            if(writer->hasConditionalExecution())
+                // XXX for now assume the condition could depend on the base local
+                return true;
+            return std::any_of(writer->getArguments().begin(), writer->getArguments().end(),
+                [&](const Value& arg) -> bool { return mayReadLocal(arg, output, processedLocals); });
+        });
+    }
+    if(input.getConstantValue() || input.hasRegister(REG_UNIFORM))
+        // can't depend on any dynamic value
+        return false;
+    // any other value, e.g. replication register, for now assume we may read the base local
+    return true;
+}
+
+/**
+ * Checks that no control flow inside the loop (e.g. if-else or switch-case constructs) depends on the given iteration
+ * variable.
+ *
+ * We cannot jump to separate locations for single vector elements, and we also cannot just run whole basic blocks with
+ * masked vector access (e.g. they might set their own flags, some periphery ignores the flags, etc.). Thus, those
+ * control flow constructs need special handling to make sure the side-effects of their contents match the behavior
+ * as-if they would have bee entered/skipped by the single items.
+ */
+static bool checkIterationVariableDependentControlFlow(
+    Method& method, ControlFlowLoop& loop, const Local* iterationVariable, unsigned vectorizationFactor)
+{
+    if(loop.size() == 1)
+        // no diverging control flow possible for a single block
+        return true;
+
+    bool multipleSuccessorsInLoop = false;
+    // The list of blocks which have conditional branches into multiple other blocks within the loop
+    FastMap<BasicBlock*, tools::SmallSortedPointerSet<IntermediateInstruction*>> branchInstructions;
+    for(auto* node : loop)
+    {
+        unsigned numSuccessorsInLoop = 0;
+        node->forAllOutgoingEdges([&](const CFGNode& successor, const CFGEdge& edge) -> bool {
+            if(loop.find(&successor) != loop.end())
+            {
+                branchInstructions[node->key].emplace(edge.data.getPredecessor(node->key).get());
+                ++numSuccessorsInLoop;
+            }
+            return true;
+        });
+        if(numSuccessorsInLoop > 1)
+            multipleSuccessorsInLoop = true;
+        else
+            // at most a single conditional branch to another block within the loop, ignore
+            branchInstructions.erase(node->key);
+    }
+    if(!multipleSuccessorsInLoop)
+        // no divergent control flow within loop
+        return true;
+
+    // check whether any found divergent control flow may depend on the iteration variable
+    for(auto& block : branchInstructions)
+    {
+        for(auto& inst : block.second)
+        {
+            // TODO to be able to support switch-case, we would need (for dynamic branches) do this check for all
+            // address writes
+            auto comp = analysis::getComparison(inst, block.first->walk(), true);
+            if(!comp)
+                // can't determine the comparison, conservatively assume it may depend on the iteration variable
+                return false;
+            // be conservative here, only assume a comparison to not depend on the iteration variable if we can prove it
+            // for all writes
+            auto checkOperand = [iterationVariable](const Value& val) -> bool {
+                FastSet<const Local*> processedLocals;
+                return !mayReadLocal(val, iterationVariable, processedLocals);
+            };
+            if(!checkOperand(comp->leftOperand) || !checkOperand(comp->rightOperand))
+                // at least one operand may use the iteration variable
+                return false;
+        }
+    }
+
+    return true;
 }
 
 struct AccumulationInfo
@@ -925,11 +912,10 @@ static unsigned fixLCSSAElementMask(Method& method, ControlFlowLoop& loop,
  * - set the iteration variable (local) to vector
  * - iterative (until no more values changed), modify all value (and local)-types so argument/result-types match again
  * - add new instruction-decoration (vectorized) to facilitate
- * - in final iteration, fix TMU/VPM configuration and address calculation and loop condition
- * - fix initial iteration value and step
+ * - in final iteration, fix TMU/VPM configuration and address calculation
  */
-static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariable, Method& method,
-    unsigned vectorizationFactor, Literal stepValue, const FastMap<const Local*, AccumulationInfo>& accumulationsToFold,
+static std::size_t vectorize(ControlFlowLoop& loop, const Local* startLocal, Method& method,
+    unsigned vectorizationFactor, const FastMap<const Local*, AccumulationInfo>& accumulationsToFold,
     const Optional<Value>& dynamicElementCount)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -937,10 +923,9 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
             << (dynamicElementCount ? " and dynamic element count" : "") << "..." << logging::endl);
     FastMap<const intermediate::IntermediateInstruction*, uint8_t> openInstructions;
 
-    const_cast<DataType&>(inductionVariable.local->type) = inductionVariable.local->type.toVectorType(
-        static_cast<unsigned char>(inductionVariable.local->type.getVectorWidth() * vectorizationFactor));
-    scheduleForVectorization(
-        inductionVariable.local, openInstructions, loop, false, static_cast<uint8_t>(vectorizationFactor));
+    const_cast<DataType&>(startLocal->type) = startLocal->type.toVectorType(
+        static_cast<unsigned char>(startLocal->type.getVectorWidth() * vectorizationFactor));
+    scheduleForVectorization(startLocal, openInstructions, loop, false, static_cast<uint8_t>(vectorizationFactor));
     std::size_t numVectorized = 0;
 
     // iteratively change all instructions
@@ -974,7 +959,7 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
                 });
             if(foldIt == accumulationsToFold.end())
                 throw CompilationError(CompilationStep::OPTIMIZER,
-                    "Non-folding access of vectorized locals outside of the loop or is not yet implemented",
+                    "Non-folding access of vectorized locals outside of the loop is not yet implemented",
                     inst->to_string());
 
             // fold vectorized version into "scalar" version by applying the accumulation function
@@ -1014,7 +999,24 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
         }
     }
 
-    numVectorized += fixVPMSetups(method, loop, vectorizationFactor, dynamicElementCount);
+    if(dynamicElementCount)
+        numVectorized += fixLCSSAElementMask(method, loop, accumulationsToFold, *dynamicElementCount);
+
+    return numVectorized;
+}
+
+/*
+ * Runs the above steps, with additionally:
+ * - fix initial iteration value and step
+ * - fix repetition loop condition
+ * - calculate dynamic element count
+ */
+static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariable, Method& method,
+    unsigned vectorizationFactor, Literal stepValue, const FastMap<const Local*, AccumulationInfo>& accumulationsToFold,
+    const Optional<Value>& dynamicElementCount)
+{
+    std::size_t numVectorized =
+        vectorize(loop, inductionVariable.local, method, vectorizationFactor, accumulationsToFold, dynamicElementCount);
 
     fixInitialValueAndStep(method, loop, inductionVariable, stepValue, vectorizationFactor);
     numVectorized += 2;
@@ -1022,30 +1024,33 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
     numVectorized += fixRepetitionBranch(method, loop, inductionVariable, vectorizationFactor, dynamicElementCount);
 
     if(dynamicElementCount)
-    {
-        numVectorized +=
-            calculateDynamicElementCount(method, loop, inductionVariable, vectorizationFactor, *dynamicElementCount);
-        numVectorized += fixLCSSAElementMask(method, loop, accumulationsToFold, *dynamicElementCount);
-    }
+        numVectorized += calculateDynamicElementCount(method, loop, inductionVariable.local,
+            inductionVariable.repeatCondition.value().comparisonValue, vectorizationFactor, *dynamicElementCount);
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Vectorization done, changed " << numVectorized << " instructions!" << logging::endl);
 }
 
-static bool readsOutput(const Local* input, const Local* output, OpCode op)
+static bool readsOutput(
+    const Local* input, const Local* output, Optional<OpCode> op, FastSet<const Local*>& processedLocals)
 {
     if(input == output)
         return true;
+    if(processedLocals.find(input) != processedLocals.end())
+        // This is to prevent stack overflows due to infinite recursion
+        return false;
     auto writers = input->getUsers(LocalUse::Type::WRITER);
+    processedLocals.emplace(input);
     if(std::any_of(writers.begin(), writers.end(), [&](const LocalUser* writer) -> bool {
            if(auto loc = writer->getMoveSource() & &Value::checkLocal)
-               return readsOutput(loc, output, op);
+               return readsOutput(loc, output, op, processedLocals);
            auto writeOp = dynamic_cast<const Operation*>(writer);
-           if(writeOp && writeOp->op == op)
-               // For now we only check whether the read is with the same operation. TODO is this required? If we remove
-               // this though, we need to make sure, we don't run into some stack overflow
-               return std::any_of(writer->getArguments().begin(), writer->getArguments().end(),
-                   [&](const Value& arg) -> bool { return arg.checkLocal() && readsOutput(arg.local(), output, op); });
+           if(writeOp && (!op || writeOp->op == op))
+               // For now we only check whether the read is with the same operation. TODO is this required?
+               return std::any_of(
+                   writer->getArguments().begin(), writer->getArguments().end(), [&](const Value& arg) -> bool {
+                       return arg.checkLocal() && readsOutput(arg.local(), output, op, processedLocals);
+                   });
            return false;
        }))
         return true;
@@ -1066,7 +1071,7 @@ static bool readsOutput(const Local* input, const Local* output, OpCode op)
  * <outside of loop>
  * <...> = %loc
  */
-Optional<AccumulationInfo> determineAccumulation(const Local* loc, const ControlFlowLoop& loop)
+static Optional<AccumulationInfo> determineAccumulation(const Local* loc, const ControlFlowLoop& loop)
 {
     // Local has (directly or indirectly via simple moves):
     // 1. initial write before loop
@@ -1149,8 +1154,10 @@ Optional<AccumulationInfo> determineAccumulation(const Local* loc, const Control
     }
 
     // make sure the input of the loop read is actually at some point the loop write output
-    if(std::none_of(loopWrite->getArguments().begin(), loopWrite->getArguments().end(),
-           [&](const Value& arg) -> bool { return arg.checkLocal() && readsOutput(arg.local(), loc, op->op); }))
+    FastSet<const Local*> processedLocals;
+    if(std::none_of(loopWrite->getArguments().begin(), loopWrite->getArguments().end(), [&](const Value& arg) -> bool {
+           return arg.checkLocal() && readsOutput(arg.local(), loc, op->op, processedLocals);
+       }))
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "In-loop write '" << loopWrite->to_string()
@@ -1357,7 +1364,16 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
             continue;
         }
 
-        // 6. run vectorization
+        // 6. check for divergent control flow depending on iteration variable
+        if(!checkIterationVariableDependentControlFlow(method, loop, inductionVariable.local, vectorizationFactor))
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Skipping loop with divergent control flow depending on induction variable '"
+                    << inductionVariable.local->to_string() << "', aborting!" << logging::endl);
+            continue;
+        }
+
+        // 7. run vectorization
         vectorize(loop, inductionVariable, method, vectorizationFactor, *stepConstant, accumulationsToFold,
             dynamicElementCount);
         // increasing the iteration step might create a value not fitting into small immediate

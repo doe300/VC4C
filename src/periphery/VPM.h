@@ -719,12 +719,33 @@ namespace vc4c
                 return false;
             }
 
+            /**
+             * Returns the type of a single vector element accessed in this cache entry
+             */
+            DataType getScalarType() const;
+            /**
+             * Returns the number of SIMD vector elements in this cache entry
+             */
+            Value getVectorWidth() const;
+            /**
+             * Returns the type of the whole vector with the fixed (or maximum available) vector size
+             */
+            DataType getVectorType() const;
+
+            void setStaticElementCount(uint8_t numElements);
+            void setDynamicElementCount(const Value& numElements);
+
             const unsigned index;
             const VPMArea& area;
             // NOTE: This usage is not tracked, so any optimization removing unread local MUST not be run yet as long as
             // this cache entry is not lowered!
             Value inAreaOffset;
+
+        private:
             DataType elementType;
+            // NOTE: This usage is not tracked, so any optimization removing unread local MUST not be run yet as long as
+            // this cache entry is not lowered!
+            Value dynamicVectorWidth;
         };
 
         /*
@@ -811,38 +832,6 @@ namespace vc4c
              * See #canBeAccessedViaDMA
              */
             bool canBePackedIntoRow() const;
-
-            /*
-             * Generates a QPU-to-VPM write setup for accessing the base-address of this VPM area for elements of the
-             * given data-type.
-             *
-             * If the data-type is set to unknown, the element-type of the local associated with this area is used
-             */
-            VPWGenericSetup toWriteSetup(DataType elementType) const;
-
-            /*
-             * Generates a VPM-to-RAM DMA write setup for storing the contents of the VPM area into RAM with the given
-             * element-type and number of rows of the given type.
-             *
-             * If the data-type is set to unknown, the element-type of the local associated with this area is used
-             */
-            VPWDMASetup toWriteDMASetup(DataType elementType, uint8_t numRows = 1) const;
-
-            /*
-             * Generates a VPM-to-QPU read setup for accessing the base-address of this VPM area for the given number of
-             * rows of the given data-type.
-             *
-             * If the data-type is set to unknown, the default element-type of this area is used
-             */
-            VPRGenericSetup toReadSetup(DataType elementType, uint8_t numRows = 1) const;
-
-            /*
-             * Generates a RAM-to-VPM DMA read setup for loading the contents of a memory address into this VPM area
-             * given the element-type and number of rows of the given type.
-             *
-             * If the data-type is set to unknown, the default element-type of this area is used
-             */
-            VPRDMASetup toReadDMASetup(DataType elementType, uint8_t numRows = 1) const;
 
             std::string to_string() const;
         };

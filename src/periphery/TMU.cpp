@@ -8,6 +8,7 @@
 
 #include "../GlobalValues.h"
 #include "../InstructionWalker.h"
+#include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
@@ -23,7 +24,7 @@ static std::atomic_uint32_t tmuCacheEntryCounter{0};
 
 TMUCacheEntry::TMUCacheEntry(const TMU& tmu, const Value& addr, DataType originalType) :
     index(tmuCacheEntryCounter++), tmu(tmu), addresses(addr),
-    numVectorElements(originalType.getPointerType() ? 1 : originalType.getVectorWidth()),
+    numVectorElements(Value(Literal(originalType.getPointerType() ? 1 : originalType.getVectorWidth()), TYPE_INT8)),
     elementStrideInBytes(originalType.getScalarBitCount() / 8)
 {
     if(!originalType.isSimpleType() && !originalType.getPointerType())
@@ -37,8 +38,8 @@ LCOV_EXCL_START
 std::string TMUCacheEntry::to_string() const
 {
     return "TMU" + std::to_string(static_cast<unsigned>(getTMUIndex())) + " cache entry " + std::to_string(index) +
-        " (" + std::to_string(static_cast<unsigned>(numVectorElements)) + " elements with stride of " +
-        std::to_string(elementStrideInBytes) + " byte)";
+        " (" + numVectorElements.to_string() + " elements with stride of " + std::to_string(elementStrideInBytes) +
+        " byte)";
 }
 LCOV_EXCL_STOP
 
@@ -47,10 +48,22 @@ uint8_t TMUCacheEntry::getTMUIndex() const noexcept
     return tmu.signal == SIGNAL_LOAD_TMU0 ? 0 : 1;
 }
 
+intermediate::RAMAccessInstruction* TMUCacheEntry::getRAMReader()
+{
+    auto memoryAccesses = getMemoryAccesses();
+    return memoryAccesses.size() == 1 ? *memoryAccesses.begin() : nullptr;
+}
+
 const intermediate::RAMAccessInstruction* TMUCacheEntry::getRAMReader() const
 {
     auto memoryAccesses = getMemoryAccesses();
     return memoryAccesses.size() == 1 ? *memoryAccesses.begin() : nullptr;
+}
+
+intermediate::CacheAccessInstruction* TMUCacheEntry::getCacheReader()
+{
+    auto cacheAccesses = getQPUAccesses();
+    return cacheAccesses.size() == 1 ? *cacheAccesses.begin() : nullptr;
 }
 
 const intermediate::CacheAccessInstruction* TMUCacheEntry::getCacheReader() const
@@ -65,19 +78,25 @@ const TMU periphery::TMU1{REG_TMU1_COORD_S_U_X, REG_TMU1_COORD_T_V_Y, REG_TMU1_C
     REG_TMU1_COORD_B_LOD_BIAS, SIGNAL_LOAD_TMU1};
 
 static NODISCARD InstructionWalker insertCalculateAddressOffsets(Method& method, InstructionWalker it,
-    const Value& baseAddress, uint8_t numElements, uint32_t elementStrideInBytes, const Value& outputAddress)
+    const Value& baseAddress, const Value& numElements, uint32_t elementStrideInBytes, const Value& outputAddress)
 {
     // since the base address might be a single pointer, we need to replicate it for the upper vector elements to read
     // the correct address
     Value replicatedAddress = baseAddress;
+    auto realNumElements = intermediate::getSourceValue(numElements);
+    realNumElements = realNumElements.getConstantValue().value_or(realNumElements);
+    // if we have a dynamic element count, assume all elements, at least for type calculations
+    auto elementCount = static_cast<uint8_t>(
+        realNumElements.getLiteralValue().value_or(Literal(static_cast<unsigned>(NATIVE_VECTOR_SIZE))).unsignedInt());
+
     if(!baseAddress.isAllSame())
     {
         replicatedAddress =
-            method.addNewLocal(method.createPointerType(TYPE_INT32.toVectorType(numElements)), "%replicated_address");
+            method.addNewLocal(method.createPointerType(TYPE_INT32.toVectorType(elementCount)), "%replicated_address");
         it = intermediate::insertReplication(it, baseAddress, replicatedAddress);
     }
 
-    if(numElements == 1)
+    if(elementCount == 1)
     {
         // We don't actually need to load anything into the upper SIMD vector elements. But since we cannot "not load
         // anything" for single elements, we just load the same data into all elements, which at least requires only a
@@ -95,7 +114,7 @@ static NODISCARD InstructionWalker insertCalculateAddressOffsets(Method& method,
      * element 2: base-address + type-size * 2
      * ...
      */
-    const Value addressOffsets = method.addNewLocal(TYPE_INT32.toVectorType(numElements), "%address_offset");
+    const Value addressOffsets = method.addNewLocal(TYPE_INT32.toVectorType(elementCount), "%address_offset");
 
     // addressOffsets = sizeof(type) * elem_num
     assign(it, addressOffsets) = ELEMENT_NUMBER_REGISTER * Literal(elementStrideInBytes);
@@ -103,7 +122,23 @@ static NODISCARD InstructionWalker insertCalculateAddressOffsets(Method& method,
     // anything" for single elements, we just load the successive data into the upper elements. Since the data is most
     // likely anyway on the same TMU cache line and/or will be queried in a successive (work-group) loop iteration, this
     // gives us little overhead.
-    assign(it, outputAddress) = replicatedAddress + addressOffsets;
+    auto finalAddresses = assign(it, outputAddress.type) = replicatedAddress + addressOffsets;
+
+    if(!realNumElements.getLiteralValue())
+    {
+        /*
+         * If we have a dynamic active element count, we need to mask off the elements not actually used, since
+         * otherwise we might read memory which is not mapped at all.
+         *
+         * So we need to set all non-active elements to zero to tell the TMU to not load anything into there.
+         *
+         * NOTE: This code requires the numElements value to be a splat value!
+         */
+        auto cond = assignNop(it) = as_signed{ELEMENT_NUMBER_REGISTER} >= as_signed{numElements};
+        assign(it, finalAddresses) = (INT_ZERO, cond);
+    }
+
+    assign(it, outputAddress) = finalAddresses;
     return it;
 }
 

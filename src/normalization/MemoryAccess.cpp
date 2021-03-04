@@ -1052,11 +1052,15 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
     insertCacheSynchronizationCode(method, localsCachedInVPM);
 
     // TODO clean up no longer used (all kernels!) globals and stack allocations
+
+    // clean up empty instructions
+    method.cleanEmptyInstructions();
+    PROFILE_COUNTER(
+        vc4c::profiler::COUNTER_GENERAL + 80, "Scratch memory size (in rows)", method.vpm->getScratchArea().numRows);
 }
 
 bool normalization::lowerMemoryAccess(const Module& module, Method& method, const Configuration& config)
 {
-    method.dumpInstructions();
     for(auto& block : method)
     {
         auto it = block.walk();
@@ -1079,6 +1083,5 @@ bool normalization::lowerMemoryAccess(const Module& module, Method& method, cons
         }
     }
     // a kernel without a single memory access does not make sense at all
-    method.dumpInstructions();
     return true;
 }

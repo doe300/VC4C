@@ -218,7 +218,7 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
                                  << mem->getDestination().to_string() << " - "
                                  << to_string<const MemoryInfo*>(destInfos) << logging::endl;
                 throw CompilationError(CompilationStep::NORMALIZER,
-                    "Lowering copy with more than 1 entry is not yet implemented", mem->to_string());
+                    "Mapping copy with more than 1 entry is not yet implemented", mem->to_string());
             }
             if(wholeRegister && srcInfo.mappedRegisterOrConstant->isAllSame() &&
                 srcInfo.mappedRegisterOrConstant->type.getArrayType())
@@ -267,7 +267,7 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
                                  << mem->getDestination().to_string() << " - "
                                  << to_string<const MemoryInfo*>(destInfos) << logging::endl;
                 throw CompilationError(CompilationStep::NORMALIZER,
-                    "Lowering copy with more than 1 entry is not yet implemented", mem->to_string());
+                    "Mapping copy with more than 1 entry is not yet implemented", mem->to_string());
             }
             it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal)));
             it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfos, destInfos);
@@ -287,7 +287,7 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
                                  << mem->getDestination().to_string() << " - "
                                  << to_string<const MemoryInfo*>(destInfos) << logging::endl;
                 throw CompilationError(CompilationStep::NORMALIZER,
-                    "Lowering copy with more than 1 entry is not yet implemented", mem->to_string());
+                    "Mapping copy with more than 1 entry is not yet implemented", mem->to_string());
             }
             // since a copy always involves another memory object, this rewrite is picked up when the other
             // object is processed
@@ -389,7 +389,7 @@ static InstructionWalker lowerMemoryCopyToRegister(Method& method, InstructionWa
         mem->getNumEntries(), mem->getDestinationElementType(), *srcInfo.convertedRegisterOrAreaType);
 
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Lowering copy with register-mapped memory: " << mem->to_string() << logging::endl);
+        log << "Mapping copy with register-mapped memory: " << mem->to_string() << logging::endl);
 
     Value tmpIndex = UNDEFINED_VALUE;
     Value selectedContainer = UNDEFINED_VALUE;
@@ -426,7 +426,7 @@ static InstructionWalker lowerMemoryCopyToRegister(Method& method, InstructionWa
                 // TODO only add if above is tested and works!
                 // else
                 throw CompilationError(CompilationStep::NORMALIZER,
-                    "Lowering copy with a dynamic number of entries is not yet implemented", mem->to_string());
+                    "Mapping copy with a dynamic number of entries is not yet implemented", mem->to_string());
             }
             else
                 tmp = method.addNewLocal(mem->getSourceElementType());
@@ -488,10 +488,10 @@ static InstructionWalker lowerMemoryReadToVPM(Method& method, InstructionWalker 
 
     if(srcInfo.type == MemoryAccessType::VPM_PER_QPU)
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Lowering read of stack allocation into VPM: " << mem->to_string() << logging::endl);
+            log << "Mapping read of stack allocation into VPM: " << mem->to_string() << logging::endl);
     else
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Lowering read of shared local memory into VPM: " << mem->to_string() << logging::endl);
+            log << "Mapping read of shared local memory into VPM: " << mem->to_string() << logging::endl);
 
     Value inAreaOffset = UNDEFINED_VALUE;
     it = insertToInVPMAreaOffset(method, it, inAreaOffset, srcInfo, mem, mem->getSource());
@@ -527,10 +527,10 @@ static InstructionWalker lowerMemoryWriteToVPM(Method& method, InstructionWalker
 
     if(allAreasArePerQPU)
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Lowering write to stack allocation into VPM: " << mem->to_string() << logging::endl);
+            log << "Mapping write to stack allocation into VPM: " << mem->to_string() << logging::endl);
     else if(allAreasAreShared)
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Lowering write to shared local memory into VPM: " << mem->to_string() << logging::endl);
+            log << "Mapping write to shared local memory into VPM: " << mem->to_string() << logging::endl);
     else
         throw CompilationError(CompilationStep::NORMALIZER,
             "Cannot lower conditional access to per-QPU and shared VPM memory", mem->to_string());

@@ -38,10 +38,12 @@ namespace vc4c
             virtual std::string to_string() const = 0;
             virtual bool isReadOnly() const = 0;
 
+            tools::SmallSortedPointerSet<intermediate::RAMAccessInstruction*> getMemoryAccesses();
             tools::SmallSortedPointerSet<const intermediate::RAMAccessInstruction*> getMemoryAccesses() const;
+            tools::SmallSortedPointerSet<intermediate::CacheAccessInstruction*> getQPUAccesses();
             tools::SmallSortedPointerSet<const intermediate::CacheAccessInstruction*> getQPUAccesses() const;
 
-            tools::SmallSortedPointerSet<const intermediate::MemoryAccessInstruction*> accesses;
+            tools::SmallSortedPointerSet<intermediate::MemoryAccessInstruction*> accesses;
         };
 
     } // namespace periphery
