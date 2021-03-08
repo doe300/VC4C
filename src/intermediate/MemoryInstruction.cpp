@@ -332,6 +332,16 @@ const Value& RAMAccessInstruction::getNumEntries() const
     return assertArgument(1);
 }
 
+void RAMAccessInstruction::setMemoryAddress(const Value& address)
+{
+    setArgument(0, address);
+}
+
+void RAMAccessInstruction::setNumEntries(const Value& numEntries)
+{
+    setArgument(1, numEntries);
+}
+
 bool RAMAccessInstruction::innerEquals(const IntermediateInstruction& other) const
 {
     if(auto otherMem = dynamic_cast<const RAMAccessInstruction*>(&other))

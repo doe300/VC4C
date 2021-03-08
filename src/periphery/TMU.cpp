@@ -20,7 +20,7 @@ using namespace vc4c::periphery;
 using namespace vc4c::operators;
 
 // running counter, for visual distinction of the TMU cache entries only
-static std::atomic_uint32_t tmuCacheEntryCounter{0};
+static std::atomic_uint tmuCacheEntryCounter{0};
 
 TMUCacheEntry::TMUCacheEntry(const TMU& tmu, const Value& addr, DataType originalType) :
     index(tmuCacheEntryCounter++), tmu(tmu), addresses(addr),
@@ -103,7 +103,7 @@ static NODISCARD InstructionWalker insertCalculateAddressOffsets(Method& method,
         // single TMU cache miss.
         // To guarantee that we actually load the same address (and not some random value which happened to be in the
         // address register), we also use the replicated address for the scalar loads.
-        assign(it, outputAddress) = replicatedAddress;
+        assign(it, outputAddress) = (replicatedAddress, intermediate::InstructionDecorations::UNSIGNED_RESULT);
         return it;
     }
     /*
@@ -117,12 +117,15 @@ static NODISCARD InstructionWalker insertCalculateAddressOffsets(Method& method,
     const Value addressOffsets = method.addNewLocal(TYPE_INT32.toVectorType(elementCount), "%address_offset");
 
     // addressOffsets = sizeof(type) * elem_num
-    assign(it, addressOffsets) = ELEMENT_NUMBER_REGISTER * Literal(elementStrideInBytes);
+    assign(it, addressOffsets) = (ELEMENT_NUMBER_REGISTER * Literal(elementStrideInBytes),
+        intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
+        intermediate::InstructionDecorations::UNSIGNED_RESULT);
     // We don't actually need to load anything into the upper SIMD vector elements. But since we cannot "not load
     // anything" for single elements, we just load the successive data into the upper elements. Since the data is most
     // likely anyway on the same TMU cache line and/or will be queried in a successive (work-group) loop iteration, this
     // gives us little overhead.
-    auto finalAddresses = assign(it, outputAddress.type) = replicatedAddress + addressOffsets;
+    auto finalAddresses = assign(it, outputAddress.type) =
+        (replicatedAddress + addressOffsets, intermediate::InstructionDecorations::UNSIGNED_RESULT);
 
     if(!realNumElements.getLiteralValue())
     {

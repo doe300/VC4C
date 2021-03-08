@@ -11,13 +11,13 @@
 #include "../Profiler.h"
 #include "../ThreadPool.h"
 #include "../intrinsics/Intrinsics.h"
-#include "../normalization/MemoryAccess.h"
 #include "Combiner.h"
 #include "ControlFlow.h"
 #include "Eliminator.h"
 #include "Flags.h"
 #include "InstructionScheduler.h"
 #include "LocalCompression.h"
+#include "Memory.h"
 #include "Reordering.h"
 #include "Vectorizer.h"
 #include "log.h"
@@ -262,8 +262,11 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      * Optimization run before this have access to the MemoryAccessInstructions and their accessed CacheEntries.
      * After this step is run, the direct hardware instructions are available instead.
      */
-    OptimizationPass("LowerMemoryAccess", "lower-memory-access", normalization::lowerMemoryAccess,
+    OptimizationPass("LowerMemoryAccess", "lower-memory-access", lowerMemoryAccess,
         "MANDATORY: lowers the memory access instructions to actual hardware instructions", OptimizationType::INITIAL),
+    // TODO enable once tested and working
+    OptimizationPass("GroupMemoryAccess", "group-memory", groupMemoryAccess,
+        "merges memory accesses for adjacent memory and cache areas", OptimizationType::INITIAL),
     /*
      * The second block executes optimizations only within a single basic block.
      * These optimizations may be executed in a loop until there are not more changes to the instructions
@@ -349,6 +352,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("combine-loads");
         passes.emplace("remove-conditional-flags");
         passes.emplace("move-loop-invariant-code");
+        passes.emplace("group-memory");
         FALL_THROUGH
     case OptimizationLevel::BASIC:
         passes.emplace("reorder-blocks");

@@ -950,57 +950,6 @@ namespace vc4c
                 Method& method, InstructionWalker it, const Value& dest, const Value& addr, bool useMutex);
         };
 
-        /*
-         * Helper container to store all instructions related to a VPM load or store operation
-         */
-        struct VPMInstructions
-        {
-            /*
-             * Setup for accessing the VPM QPU-side
-             *
-             * NOTE: This needn't exist (e.g. for memory-copies)
-             */
-            Optional<InstructionWalker> genericVPMSetup;
-            /*
-             * Setup for accessing RAM via DMA
-             *
-             * NOTE: This needn't exist (e.g. for using VPM as cache)
-             */
-            Optional<InstructionWalker> dmaSetup;
-            /*
-             * Setup for the DMA stride
-             *
-             * NOTE: This needn't exist (e.g. for using VPM as cache)
-             */
-            Optional<InstructionWalker> strideSetup;
-            /*
-             * Accessing data in the VPM (actual VPM write/read instruction)
-             *
-             * NOTE: This needn't exist (e.g. for memory-copies)
-             */
-            Optional<InstructionWalker> vpmAccess;
-            /*
-             * Writing of the address for DMA accesses
-             *
-             * NOTE: This needn't exist (e.g. for using VPM as cache)
-             */
-            Optional<InstructionWalker> addressWrite;
-            /*
-             * Waiting for DMA operation to have finished
-             *
-             * NOTE: This needn't exist (e.g. for using VPM as cache)
-             */
-            Optional<InstructionWalker> dmaWait;
-        };
-
-        /*
-         * Returns the instruction related to the current VPM access of the instruction given.
-         *
-         * This function looks within the same mutex-lock block (if any) at the preceding and following instructions to
-         * find the instructions required for the given VPM access.
-         */
-        [[deprecated]] VPMInstructions findRelatedVPMInstructions(InstructionWalker anyVPMInstruction, bool isVPMRead);
-
         /**
          * Lowers the intermediate VPM (cache) access instructions to the hardware instructions actually performed to
          * access the associated memory.

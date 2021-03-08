@@ -380,11 +380,8 @@ std::pair<DataType, uint32_t> periphery::getBestVectorSize(uint32_t numBytes)
 InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const Value& dest, const VPMArea& area,
     bool useMutex, const Value& inAreaOffset)
 {
-    // we always read whole vectors from VPM
-    auto vpmStorageType = getVPMStorageType(dest.type);
-    // XXX this is technically not correct, but avoids unnecessary (and wrong!) usage of unaligned VPM access
-    vpmStorageType = dest.type.isScalarType() || dest.type.getPointerType() ? dest.type : vpmStorageType;
-    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, vpmStorageType, inAreaOffset);
+    auto cacheType = getVPMStorageType(dest.type).toVectorType(dest.type.getVectorWidth());
+    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, cacheType, inAreaOffset);
 
     it = insertLockMutex(it, useMutex);
     it = insertReadVPM(method, it, dest, cacheEntry);
@@ -395,11 +392,8 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
 InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, const Value& src, const VPMArea& area,
     bool useMutex, const Value& inAreaOffset)
 {
-    // we always write whole vectors to VPM
-    auto vpmStorageType = getVPMStorageType(src.type);
-    // XXX this is technically not correct, but avoids unnecessary (and wrong!) usage of unaligned VPM access
-    vpmStorageType = src.type.isScalarType() || src.type.getPointerType() ? src.type : vpmStorageType;
-    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, vpmStorageType, inAreaOffset);
+    auto cacheType = getVPMStorageType(src.type).toVectorType(src.type.getVectorWidth());
+    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, cacheType, inAreaOffset);
 
     it = insertLockMutex(it, useMutex);
     it = insertWriteVPM(method, it, src, cacheEntry);
@@ -1083,7 +1077,7 @@ std::string VPMArea::to_string() const
 LCOV_EXCL_STOP
 
 // running counter, for visual distinction of the VPM cache entries only
-static std::atomic_uint32_t vpmCacheEntryCounter{0};
+static std::atomic_uint vpmCacheEntryCounter{0};
 
 VPMCacheEntry::VPMCacheEntry(const VPMArea& area, DataType type, const Value& innerOffset) :
     index(vpmCacheEntryCounter++), area(area), inAreaOffset(innerOffset), elementType(type),
@@ -1270,106 +1264,6 @@ InstructionWalker VPM::insertUnlockMutex(InstructionWalker it, bool useMutex) co
         it.nextInBlock();
     }
     return it;
-}
-
-VPMInstructions periphery::findRelatedVPMInstructions(InstructionWalker anyVPMInstruction, bool isVPMRead)
-{
-    const auto predAddressWrite = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool {
-        if(isVPMRead)
-            return inst->writesRegister(REG_VPM_DMA_LOAD_ADDR);
-        return inst->writesRegister(REG_VPM_DMA_STORE_ADDR);
-    };
-    const auto predDMASetup = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool {
-        if(dynamic_cast<const intermediate::LoadImmediate*>(inst) == nullptr)
-            return false;
-        if(isVPMRead)
-            return inst->writesRegister(REG_VPM_IN_SETUP) &&
-                VPRSetup::fromLiteral(inst->assertArgument(0).getLiteralValue().value().unsignedInt()).isDMASetup();
-        return inst->writesRegister(REG_VPM_OUT_SETUP) &&
-            VPWSetup::fromLiteral(inst->assertArgument(0).getLiteralValue().value().unsignedInt()).isDMASetup();
-    };
-    const auto predDMAWait = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool {
-        if(isVPMRead)
-            return inst->readsRegister(REG_VPM_DMA_LOAD_WAIT);
-        return inst->readsRegister(REG_VPM_DMA_STORE_WAIT);
-    };
-    const auto predGenericSetup = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool {
-        if(dynamic_cast<const intermediate::LoadImmediate*>(inst) == nullptr)
-            return false;
-        if(isVPMRead)
-            return inst->writesRegister(REG_VPM_IN_SETUP) &&
-                VPRSetup::fromLiteral(inst->assertArgument(0).getLiteralValue().value().unsignedInt()).isGenericSetup();
-        return inst->writesRegister(REG_VPM_OUT_SETUP) &&
-            VPWSetup::fromLiteral(inst->assertArgument(0).getLiteralValue().value().unsignedInt()).isGenericSetup();
-    };
-    const auto predStrideSetup = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool {
-        if(dynamic_cast<const intermediate::LoadImmediate*>(inst) == nullptr)
-            return false;
-        if(isVPMRead)
-            return inst->writesRegister(REG_VPM_IN_SETUP) &&
-                VPRSetup::fromLiteral(inst->assertArgument(0).getLiteralValue().value().unsignedInt()).isStrideSetup();
-        return inst->writesRegister(REG_VPM_OUT_SETUP) &&
-            VPWSetup::fromLiteral(inst->assertArgument(0).getLiteralValue().value().unsignedInt()).isStrideSetup();
-    };
-    const auto predVPMAccess = [isVPMRead](const intermediate::IntermediateInstruction* inst) -> bool {
-        if(isVPMRead)
-            return inst->readsRegister(REG_VPM_IO);
-        return inst->writesRegister(REG_VPM_IO);
-    };
-
-    VPMInstructions result;
-
-    // TODO could this select the wrong instructions for multiple VPM accesses within a single mutex-lock block?
-    // XXX are multiple VPM accesses within a mutex-lock even possible without combining the setups and addresses?
-    auto it = anyVPMInstruction;
-    while(!it.isStartOfBlock())
-    {
-        // only look up to the next mutex (un)lock
-        if(it.get<intermediate::MutexLock>())
-            break;
-        if(it.has())
-        {
-            if(!result.addressWrite && predAddressWrite(it.get()))
-                result.addressWrite = it;
-            if(!result.dmaSetup && predDMASetup(it.get()))
-                result.dmaSetup = it;
-            if(!result.dmaWait && predDMAWait(it.get()))
-                result.dmaWait = it;
-            if(!result.genericVPMSetup && predGenericSetup(it.get()))
-                result.genericVPMSetup = it;
-            if(!result.strideSetup && predStrideSetup(it.get()))
-                result.strideSetup = it;
-            if(!result.vpmAccess && predVPMAccess(it.get()))
-                result.vpmAccess = it;
-        }
-        it.previousInBlock();
-    }
-
-    it = anyVPMInstruction;
-    while(!it.isEndOfBlock())
-    {
-        // only look up to the next mutex (un)lock
-        if(it.get<intermediate::MutexLock>())
-            break;
-        if(it.has())
-        {
-            if(!result.addressWrite && predAddressWrite(it.get()))
-                result.addressWrite = it;
-            if(!result.dmaSetup && predDMASetup(it.get()))
-                result.dmaSetup = it;
-            if(!result.dmaWait && predDMAWait(it.get()))
-                result.dmaWait = it;
-            if(!result.genericVPMSetup && predGenericSetup(it.get()))
-                result.genericVPMSetup = it;
-            if(!result.strideSetup && predStrideSetup(it.get()))
-                result.strideSetup = it;
-            if(!result.vpmAccess && predVPMAccess(it.get()))
-                result.vpmAccess = it;
-        }
-        it.nextInBlock();
-    }
-
-    return result;
 }
 
 DataType VPM::getVPMStorageType(DataType elemenType)

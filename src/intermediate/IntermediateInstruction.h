@@ -1207,6 +1207,9 @@ namespace vc4c
             const Value& getMemoryAddress() const;
             const Value& getNumEntries() const;
 
+            void setMemoryAddress(const Value& address);
+            void setNumEntries(const Value& numEntries);
+
         protected:
             bool innerEquals(const IntermediateInstruction& other) const override;
         };

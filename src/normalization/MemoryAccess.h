@@ -47,12 +47,6 @@ namespace vc4c
          * This optimization-step also contains most of the optimizations for accessing VPM/RAM.
          */
         void mapMemoryAccess(const Module& module, Method& method, const Configuration& config);
-
-        /**
-         * Maps all intermediate memory access instructions to the actual hardware instructions used to perform the
-         * given memory access.
-         */
-        bool lowerMemoryAccess(const Module& module, Method& method, const Configuration& config);
     } // namespace normalization
 } // namespace vc4c
 
