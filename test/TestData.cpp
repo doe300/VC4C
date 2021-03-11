@@ -427,6 +427,20 @@ void test_data::registerGeneralTests()
         {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(std::vector<uint32_t>(1))}, toDimensions(1),
         {checkParameterEquals(1, std::vector<float>{(1023 * 1024) / 2 + (5 * 1024)})}});
 
+    registerTest(TestData{"vectorization17", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test17",
+        {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(std::vector<uint32_t>(1))}, toDimensions(1),
+        {checkParameterEquals(1, std::vector<uint32_t>{267264})}});
+
+    registerTest(TestData{"vectorization18", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test18",
+        {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(std::vector<uint32_t>(6))},
+        toDimensions(3, 1, 1, 2),
+        {checkParameterEquals(
+            1, std::vector<uint32_t>{5 * 1024, (1023 * 1024) / 2, 5 * 1024, 5 * 1024, (1023 * 1024) / 2, 5 * 1024})}});
+
+    registerTest(TestData{"vectorization19", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test19",
+        {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(std::vector<uint32_t>(1))}, toDimensions(1),
+        {checkParameterEquals(1, std::vector<uint32_t>{324088})}});
+
     registerTest(TestData{"work_item", DataFilter::WORK_GROUP, &test_work_item_cl_string, "", "test_work_item",
         {toBufferParameter(std::vector<uint32_t>(24 * 8 * 4, 0x42))}, toDimensions(8, 1, 1, 4, 1, 1),
         {checkParameterEquals(0,

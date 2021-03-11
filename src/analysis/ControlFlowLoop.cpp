@@ -10,6 +10,7 @@
 #include "ControlFlowGraph.h"
 #include "DataDependencyGraph.h"
 #include "DebugGraph.h"
+#include "DominatorTree.h"
 #include "log.h"
 
 #include <limits>
@@ -174,6 +175,31 @@ tools::SmallSortedPointerSet<const CFGNode*> ControlFlowLoop::findPredecessors()
         });
     }
     return predecessors;
+}
+
+const CFGNode* ControlFlowLoop::findPreheader(const DominatorTree& dominators) const
+{
+    const CFGNode* preheaderCandidate = nullptr;
+    if(auto node = dominators.findNode(getHeader()))
+    {
+        node->forAllIncomingEdges([&](const DominatorTreeNode& node, const auto& edge) -> bool {
+            if(preheaderCandidate)
+            {
+                // multiple direct dominators, can't actually happen
+                preheaderCandidate = nullptr;
+                return false;
+            }
+            preheaderCandidate = node.key;
+            return true;
+        });
+    }
+    auto predecessors = findPredecessors();
+    if(predecessors.find(preheaderCandidate) == predecessors.end())
+        // node is a dominator, but not an immediate predecessor, don't use
+        // XXX this could only happen, if we have multiple conditional jumps to the loop, not sure whether clang
+        // generates such control flow at all
+        preheaderCandidate = nullptr;
+    return preheaderCandidate;
 }
 
 const CFGNode* ControlFlowLoop::findSuccessor() const
@@ -581,7 +607,7 @@ bool ControlFlowLoop::operator!=(const ControlFlowLoop& other) const noexcept
 }
 
 LCOV_EXCL_START
-std::string ControlFlowLoop::to_string() const
+std::string ControlFlowLoop::to_string(bool withContent) const
 {
     std::stringstream ss;
     if(auto head = getHeader())
@@ -594,10 +620,14 @@ std::string ControlFlowLoop::to_string() const
     else
         ss << "(unknown tail)";
 
-    ss << " (" << size() << ") {";
-    for(const auto& node : *this)
-        ss << node->key->to_string() << ", ";
-    ss << '}';
+    ss << " (" << size() << ")";
+    if(withContent)
+    {
+        ss << " {";
+        for(const auto& node : *this)
+            ss << node->key->to_string() << ", ";
+        ss << '}';
+    }
     return ss.str();
 }
 LCOV_EXCL_STOP

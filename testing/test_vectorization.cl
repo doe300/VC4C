@@ -140,3 +140,59 @@ kernel void test16(global int *A, global float *B) {
     sum += A[i] + 5;
   *B = (float)sum;
 }
+
+kernel void test17(global unsigned *A, global unsigned *B) {
+  unsigned sum = 0;
+  //Expected: for now cannot be vectorized
+  //Attention: need to make sure the read depending on the input is still correct
+  //Actual: skipped due to divergent control flow in loop
+  for (int i = 0; i < 1024; ++i) {
+    unsigned tmp = 5;
+    if (i % 2)
+      tmp += A[i];
+    sum += tmp;
+  }
+  *B = sum;
+}
+
+kernel void test18(global unsigned *A, global unsigned *B) {
+  unsigned sum = 0;
+  //Expected: should be able to be vectorized
+  //Actual: skipped due to unhandled sum variable
+  for (int i = 0; i < 1024; ++i) {
+    unsigned tmp = 5;
+    if (get_local_id(0) % 2)
+      tmp = A[i];
+    sum += tmp;
+  }
+  B[get_global_id(0)] = sum;
+}
+
+kernel void test19(global int *A, global int *B) {
+  int sum = 0;
+  //Expected: for now cannot be vectorized
+  //Attention: need to make sure the switch-case blocks are still entered/skipped for the correct iterations
+  //Actual: skipped due to containing code-address calculations (for switch-cases)
+  for (int i = 0; i < 1024; ++i) {
+    int tmp = 0;
+    switch(i % 5) {
+    case 0:
+      tmp = 5;
+      break;
+    case 1:
+      tmp = A[i+1];
+      break;
+    case 2:
+      tmp = A[i] + 5;
+      break;
+    case 3:
+      tmp = A[i];
+      // fall-through
+    case 4:
+      tmp += 17;
+      break;
+    }
+    sum += tmp;
+  }
+  *B = sum;
+}

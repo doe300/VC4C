@@ -246,7 +246,7 @@ namespace vc4c
         class Switch final : public LLVMInstruction
         {
         public:
-            Switch(Value&& cond, Value&& defaultLabel, FastMap<int, Value>&& cases);
+            Switch(Value&& cond, Value&& defaultLabel, FastMap<uint32_t, Value>&& cases);
             ~Switch() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
@@ -254,7 +254,7 @@ namespace vc4c
         private:
             Value cond;
             Value defaultLabel;
-            FastMap<int, Value> jumpLabels;
+            FastMap<uint32_t, Value> jumpLabels;
         };
 
         class LongConstant final : public LLVMInstruction

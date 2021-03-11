@@ -289,9 +289,9 @@ static bool replaceNOPs(BasicBlock& basicBlock, Method& method, const Configurat
                     replacementIt.reset(new Nop(DelayType::WAIT_REGISTER));
                 }
             }
-            else if(nop->type == DelayType::WAIT_VPM && !isMandatoryDelay)
+            else if((nop->type == DelayType::WAIT_VPM || nop->type == DelayType::WAIT_TMU) && !isMandatoryDelay)
             {
-                // nops inserted to wait for VPM to finish can be removed again,
+                // nops inserted to wait for VPM/TMU to finish can be removed again,
                 // since the wait-instruction will correctly wait the remaining number of instructions
                 it.erase();
                 // to not skip the next nop
@@ -359,6 +359,16 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                 for(unsigned i = 0; i < numDelays; ++i)
                 {
                     it.emplace(new Nop(DelayType::WAIT_VPM));
+                    it.nextInBlock();
+                    hasChanged = true;
+                }
+            }
+            if(it->getSignal() == SIGNAL_LOAD_TMU0 || it->getSignal() == SIGNAL_LOAD_TMU1)
+            {
+                unsigned numDelays = 12; // XXX actually 9 to 20
+                for(unsigned i = 0; i < numDelays; ++i)
+                {
+                    it.emplace(new Nop(DelayType::WAIT_TMU));
                     it.nextInBlock();
                     hasChanged = true;
                 }

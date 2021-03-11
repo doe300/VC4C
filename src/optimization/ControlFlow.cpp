@@ -440,21 +440,7 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
                 continue;
             }
 
-            const CFGNode* targetCFGNode = nullptr;
-            // Find the predecessor block of targetLoop.
-            if(auto node = dominatorTree->findNode(targetLoop->getHeader()))
-            {
-                node->forAllIncomingEdges([&](const DominatorTreeNode& node, const auto& edge) -> bool {
-                    if(targetCFGNode)
-                    {
-                        // multiple direct dominators, can't actually happen
-                        targetCFGNode = nullptr;
-                        return false;
-                    }
-                    targetCFGNode = node.key;
-                    return true;
-                });
-            }
+            const CFGNode* targetCFGNode = targetLoop->findPreheader(*dominatorTree);
 
             auto targetBlock = targetCFGNode != nullptr ? targetCFGNode->key : insertedBlock;
 

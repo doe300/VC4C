@@ -41,7 +41,6 @@ __kernel void test_private_register(__global uint8* out, const __global uint4* i
 
 __kernel void test_private_vpm_full_row(__global uint8* out, const __global uint8* in, const __global uint* offsets)
 {
-    // XXX is currently not lowered to VPM, since vstoreN with element-offset in VPM is not yet implemented
     // NOTE: offsets is [0, 1, 2, 3, 11]
     // NOTE: in is [00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 0a, 0b, 0c, 0d, 0e, 0f, 10, 11, 12, 13, 14, 15, 16, 17, 18,
     // 19, 1a, 1b, 1c, 1d, 1e, 1f]
@@ -87,7 +86,9 @@ __kernel void test_private_vpm_full_row(__global uint8* out, const __global uint
 
 __kernel void test_private_vpm_partial_row(__global uint8* out, const __global uint8* in, const __global uint* offsets)
 {
-    // XXX is currently not lowered to VPM -> problem with partial row does not exist!
+    // XXX is currently not lowered to VPM (because a) takes too many rows to fit uncompressed and b) offset of the 2
+    // dynamic elements cannot be determined) -> problem with partial row does not exist!
+
     // NOTE: offsets is [0, 1, 2, 3, 11]
     // NOTE: in is [00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 0a, 0b, 0c, 0d, 0e, 0f, 10, 11, 12, 13, 14, 15, 16, 17, 18,
     // 19, 1a, 1b, 1c, 1d, 1e, 1f]
@@ -131,8 +132,6 @@ __kernel void test_private_vpm_partial_row(__global uint8* out, const __global u
     out[4] = vload8(0, ((__private uint*) uloc) + offsets[4]);
 }
 
-/*
- TODO does not compile, inline getelementptr not implemented in LLVM front-end
 __kernel void test_local_vpm_full_row(__global uint8* out, const __global uint8* in, const __global uint* offsets)
 {
     // NOTE: offsets is [0, 1, 2, 3, 11]
@@ -228,12 +227,11 @@ __kernel void test_local_vpm_partial_row(__global uint8* out, const __global uin
     // -> [18, 19, 1a, 1b, 1c, 1d, 1e, 1f]
     out[4] = vload8(0, ((__local uint*) uloc) + offsets[4]);
 }
-*/
 
 __kernel void test_local_parameter(
     __global uint8* out, const __global uint8* in, const __global uint* offsets, __local uint16 uloc[2])
 {
-    // XXX is not lowered into VPM
+    // XXX is not lowered into VPM (because offset of the 2 dynamic elements cannot be determined)
     // NOTE: offsets is [0, 1, 2, 3, 11]
     // NOTE: in is [00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 0a, 0b, 0c, 0d, 0e, 0f, 10, 11, 12, 13, 14, 15, 16, 17, 18,
     // 19, 1a, 1b, 1c, 1d, 1e, 1f]

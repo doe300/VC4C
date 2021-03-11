@@ -24,6 +24,7 @@
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 
+#include <limits>
 #include <regex>
 #include <system_error>
 
@@ -677,13 +678,18 @@ void BitcodeReader::parseInstruction(
         const llvm::SwitchInst* switchIns = llvm::cast<const llvm::SwitchInst>(&inst);
         Value cond = toValue(method, switchIns->getCondition(), &instructions);
         Value defaultLabel = toValue(method, switchIns->getDefaultDest(), &instructions);
-        FastMap<int, Value> caseLabels;
+        FastMap<uint32_t, Value> caseLabels;
         // NOTE: cannot be const auto&, since older LLVM versions have getCaseValue() and getCaseSuccessor() only as
         // non-const member
         for(auto& casePair : switchIns->cases())
         {
-            caseLabels.emplace(static_cast<int>(casePair.getCaseValue()->getSExtValue()),
-                toValue(method, casePair.getCaseSuccessor(), &instructions));
+            auto caseValue = casePair.getCaseValue()->getZExtValue();
+            caseValue = caseValue & casePair.getCaseValue()->getType()->getBitMask();
+            if(caseValue > std::numeric_limits<uint32_t>::max())
+                throw CompilationError(
+                    CompilationStep::PARSER, "Switch-case values exceeding UINT_MAX are not yet implemented!");
+            caseLabels.emplace(
+                static_cast<uint32_t>(caseValue), toValue(method, casePair.getCaseSuccessor(), &instructions));
         }
         instructions.emplace_back(new Switch(std::move(cond), std::move(defaultLabel), std::move(caseLabels)));
         instructions.back()->setDecorations(deco);

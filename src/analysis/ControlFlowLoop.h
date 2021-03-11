@@ -26,6 +26,7 @@ namespace vc4c
         using CFGNode = Node<BasicBlock*, CFGRelation, Directionality::BIDIRECTIONAL>;
         using CFGEdge = Edge<CFGNode, CFGRelation, Directionality::BIDIRECTIONAL>;
         class DataDependencyGraph;
+        struct DominatorTree;
 
         struct RepeatCondition
         {
@@ -113,9 +114,23 @@ namespace vc4c
              * is entered.
              *
              * NOTE: The single return value variant returns NULL if there are multiple predecessors!
+             *
+             * NOTE: In some cases, these function might return additional (or in the scalar case NULL instead)
+             * predecessors, prefer #findPreheader().
              */
             const CFGNode* findPredecessor() const;
             tools::SmallSortedPointerSet<const CFGNode*> findPredecessors() const;
+
+            /**
+             * Returns the single basic block in the CFG which directly dominates the first node in the loop, the node
+             * from which this loop is entered.
+             *
+             * The preheader is the single block which directly dominates the loop header, making it the only block from
+             * which control flow jumps into the loop. The preheader node itself is not part of the loop.
+             *
+             * If there are multiple such blocks, NULL is returned.
+             */
+            const CFGNode* findPreheader(const DominatorTree& dominators) const;
 
             /*
              * Returns the basic-block in the CFG following the last node in the loop, the node into which this loop
@@ -220,7 +235,7 @@ namespace vc4c
             bool operator==(const ControlFlowLoop& other) const noexcept;
             bool operator!=(const ControlFlowLoop& other) const noexcept;
 
-            std::string to_string() const;
+            std::string to_string(bool withContent = true) const;
 
         private:
             const CFGNode::EdgeType* backEdge;

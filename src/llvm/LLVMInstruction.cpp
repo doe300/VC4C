@@ -630,7 +630,7 @@ bool Branch::mapInstruction(Method& method)
     return true;
 }
 
-Switch::Switch(Value&& cond, Value&& defaultLabel, FastMap<int, Value>&& cases) :
+Switch::Switch(Value&& cond, Value&& defaultLabel, FastMap<uint32_t, Value>&& cases) :
     cond(cond), defaultLabel(defaultLabel), jumpLabels(cases)
 {
 }
