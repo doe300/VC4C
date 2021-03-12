@@ -8,6 +8,7 @@
 
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/TypeConversions.h"
+#include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
 #include "../intrinsics/Operators.h"
 #include "log.h"
@@ -113,6 +114,52 @@ static void lowerFlags(Method& method, InstructionWalker it, const MultiRegister
     else
         throw CompilationError(
             CompilationStep::NORMALIZER, "Unhandled flag behavior for 64-bit operation", it->to_string());
+}
+
+static InstructionWalker findReplicationRead(InstructionWalker it)
+{
+    FastSet<const Local*> writtenLocals;
+
+    for(it.nextInBlock(); !it.isEndOfBlock(); it.nextInBlock())
+    {
+        if(it.has() &&
+            (it->readsRegister(REG_REPLICATE_ALL) || it->readsRegister(REG_REPLICATE_QUAD) ||
+                it->readsRegister(REG_ACC5)))
+        {
+            it->forUsedLocals([&](const Local* loc, LocalUse::Type type, const auto&) {
+                if(writtenLocals.find(loc) != writtenLocals.end())
+                    throw CompilationError(CompilationStep::NORMALIZER,
+                        "Cannot rewrite 64-bit replication if replication output is written in between",
+                        it->to_string());
+            });
+            break;
+        }
+        if(it.has())
+            it->forUsedLocals([&](const Local* loc, LocalUse::Type type, const auto&) { writtenLocals.emplace(loc); });
+    }
+    return it;
+}
+
+NODISCARD static InstructionWalker lowerLongReplication(
+    Method& method, InstructionWalker it, const MultiRegisterData* input)
+{
+    auto readerIt = findReplicationRead(it);
+    if(readerIt.isEndOfBlock())
+        throw CompilationError(CompilationStep::NORMALIZER,
+            "Cannot lower 64-bit replication without replication register reader", it->to_string());
+
+    Value outLow = UNDEFINED_VALUE;
+    Value outUp = UNDEFINED_VALUE;
+    std::tie(outLow, outUp) = getLowerAndUpperWords(readerIt->getOutput().value());
+
+    // need to split the replication and replicate lower and upper part separately
+    it.nextInBlock();
+    it = intermediate::insertReplication(it, input->lower->createReference(), outLow);
+    it = intermediate::insertReplication(it, input->upper->createReference(), outUp);
+
+    // remove original value extraction
+    readerIt.erase();
+    return it;
 }
 
 static void lowerLongOperation(
@@ -395,7 +442,13 @@ static void lowerLongOperation(
     else
         throw CompilationError(CompilationStep::NORMALIZER, "Unsupported operation on 64-bit integers", op.to_string());
 
-    if(isDummyOutput && originalOut && originalOut != NOP_REGISTER)
+    if(isDummyOutput &&
+        (originalOut->hasRegister(REG_REPLICATE_ALL) || originalOut->hasRegister(REG_REPLICATE_QUAD) ||
+            originalOut->hasRegister(REG_ACC5)))
+    {
+        it = lowerLongReplication(method, it, out);
+    }
+    else if(isDummyOutput && originalOut && originalOut != NOP_REGISTER)
     {
         // the original output is not a multi-register value (checked above), so simply truncate the lower word into the
         // actual output
@@ -481,7 +534,13 @@ void normalization::lowerLongOperation(
             move->setSource(src->upper->createReference());
         }
 
-        if(isDummyOutput && originalOut && originalOut != NOP_REGISTER)
+        if(isDummyOutput &&
+            (originalOut->hasRegister(REG_REPLICATE_ALL) || originalOut->hasRegister(REG_REPLICATE_QUAD) ||
+                originalOut->hasRegister(REG_ACC5)))
+        {
+            it = lowerLongReplication(method, it, out);
+        }
+        else if(isDummyOutput && originalOut && originalOut != NOP_REGISTER)
         {
             // the original output is not a multi-register value (checked above), so simply truncate the lower word into
             // the actual output

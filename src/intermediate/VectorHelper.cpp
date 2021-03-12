@@ -739,7 +739,7 @@ static std::vector<std::set<ElementSource>> getElementSources(DataType type, con
     else if(auto array = type.getArrayType())
         numElements = array->size;
     else
-        throw CompilationError(CompilationStep::GENERAL, "Invalid input type for vector assembly", type.to_string());
+        return {};
 
     std::vector<std::set<ElementSource>> sources(numElements);
     for(std::size_t i = 0; i < numElements; ++i)

@@ -65,6 +65,7 @@ create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ bugs/54_invalid_results.cl
 
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ boost-compute/initial_reduce.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ boost-compute/adjacent_find.cl)
+create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ boost-compute/test_extrema.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ boost-compute/test_functional_popcount.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ boost-compute/test_reduce.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ boost-compute/test_insertion_sort.cl)

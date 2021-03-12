@@ -334,7 +334,7 @@ namespace vc4c
         {
         public:
             SPIRVSwitch(uint32_t id, SPIRVMethod& method, uint32_t selectorID, uint32_t defaultID,
-                std::vector<std::pair<uint32_t, uint32_t>>&& destinations);
+                std::vector<uint32_t>&& argWords);
             ~SPIRVSwitch() override = default;
 
             void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
@@ -345,7 +345,7 @@ namespace vc4c
         private:
             const uint32_t selectorID;
             const uint32_t defaultID;
-            const std::vector<std::pair<uint32_t, uint32_t>> destinations;
+            const std::vector<uint32_t> argumentWords;
         };
 
         enum class ImageQuery : unsigned char

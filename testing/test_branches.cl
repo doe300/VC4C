@@ -64,3 +64,59 @@ __kernel void test_branches(const __global int* in, __global int* out_ptr)
     }
     out[1] = result;
 }
+
+// mainly tests handling of sign-extension of case values
+__kernel void test_short_switch(const __global short* in, __global short* out)
+{
+    uint gid = get_global_id(0);
+    short val = in[gid];
+
+    switch(val)
+    {
+    case 0x123:
+        out[gid] = 11;
+        break;
+    case 0x6432:
+        val = 17;
+    // fall-through
+    case 0x1345:
+        out[gid] = val + 0x1245;
+        break;
+    case -0x567:
+        out[gid] -= 0x0FFF;
+        break;
+    case -0x7777:
+        out[gid] = 42;
+        break;
+    default:
+        out[gid] = val;
+    }
+}
+
+// mainly tests |case values| > 32 bit
+__kernel void test_long_switch(const __global long* in, __global long* out)
+{
+    uint gid = get_global_id(0);
+    long val = in[gid];
+
+    switch(val)
+    {
+    case 0x12345678:
+        out[gid] = 11;
+        break;
+    case 0x65432:
+        val = 17;
+    // fall-through
+    case 0x12345:
+        out[gid] = val + 0x1234500000000;
+        break;
+    case -0x12345671234567:
+        out[gid] += 0x0FFF0000FFFF0000;
+        break;
+    case -0x12388887777:
+        out[gid] = 42;
+        break;
+    default:
+        out[gid] = val;
+    }
+}

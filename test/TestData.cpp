@@ -200,6 +200,23 @@ void test_data::registerGeneralTests()
                 11, 1145, 42, 10, 10, 42, 0x42, 0x42, 0x42, 0x42, 0x42, 11,             // in = 42
             })}});
 
+    registerTest(TestData{"switch_short", DataFilter::CONTROL_FLOW, &test_branches_cl_string, "", "test_short_switch",
+        {toBufferParameter(std::vector<int16_t>{0x123, 0x124, 0x6432, 0x1345, -0x567, -0x7777}),
+            toBufferParameter(std::vector<int16_t>(6, 0x42))},
+        toDimensions(6),
+        {checkParameterEquals(1, std::vector<int16_t>{11, 0x124, 17 + 0x1245, 0x1345 + 0x1245, 0x42 - 0x0FFF, 42})}});
+
+    // TODO results are wrong for SPIR-V
+    registerTest(TestData{"switch_long", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_branches_cl_string, "", "test_long_switch",
+        {toBufferParameter(
+             std::vector<int64_t>{0x12345678, 0x1F1F1F1F1F1F, 0x65432, 0x12345, -0x12345671234567, -0x12388887777}),
+            toBufferParameter(std::vector<int64_t>(6, 0x42))},
+        toDimensions(6),
+        {checkParameterEquals(1,
+            std::vector<int64_t>{
+                11, 0x1F1F1F1F1F1F, 17 + 0x1234500000000, 0x12345 + 0x1234500000000, 0x42 + 0x0FFF0000FFFF0000, 42})}});
+
     registerTest(TestData{"CRC16", DataFilter::COMPLEX_KERNEL, &test_hashes_cl_string, "", "crc16",
         {// output half-word
             toBufferParameter(std::vector<uint16_t>(1)),
@@ -653,6 +670,36 @@ void test_data::registerGeneralTests()
         {toBufferParameter(std::vector<uint32_t>{0xFFFFFFFFu}),
             toBufferParameter(std::vector<uint32_t>{0, 1, 2, 3, 4, 5, 6, 7, 7, 8, 9, 10, 11, 11, 12, 13, 0})},
         toDimensions(8, 1, 1, 2, 1, 1), {checkParameterEquals(0, std::vector<uint32_t>{7})}});
+
+    registerTest(TestData{"boost_find_extrema_min", DataFilter::NONE, &boost_compute_test_extrema_cl_string, "",
+        "find_extrema_min_max",
+        {toBufferParameter(std::vector<uint32_t>{17, 15, 45, 65, 3, 2, 7, 9, 11, 1300, 12, 6, 8, 200}),
+            toBufferParameter(std::vector<uint32_t>(1))},
+        toDimensions(7, 1, 1, 2, 1, 1), {checkParameterEquals(1, std::vector<uint32_t>{5})}});
+
+    registerTest(TestData{"boost_find_extrema_max", DataFilter::NONE, &boost_compute_test_extrema_cl_string,
+        "-DBOOST_COMPUTE_FIND_MAXIMUM=1", "find_extrema_min_max",
+        {toBufferParameter(std::vector<uint32_t>{17, 15, 45, 65, 3, 2, 7, 9, 11, 1300, 12, 6, 8, 200}),
+            toBufferParameter(std::vector<uint32_t>(1))},
+        toDimensions(7, 1, 1, 2, 1, 1), {checkParameterEquals(1, std::vector<uint32_t>{9})}});
+
+    registerTest(TestData{"boost_find_extrema_on_cpu_min", DataFilter::NONE, &boost_compute_test_extrema_cl_string, "",
+        "find_extrema_on_cpu_min_max",
+        {toScalarParameter(15), toBufferParameter(std::vector<uint32_t>(4)),
+            toBufferParameter(std::vector<uint32_t>(4)),
+            toBufferParameter(std::vector<uint32_t>{17, 15, 45, 65, 3, 2, 7, 9, 11, 1300, 12, 6, 8, 200, 65, 0})},
+        toDimensions(2, 1, 1, 2, 1, 1),
+        {checkParameterEquals(1, std::vector<uint32_t>{15, 2, 6, 8}),
+            checkParameterEquals(2, std::vector<uint32_t>{1, 5, 11, 12})}});
+
+    registerTest(TestData{"boost_find_extrema_on_cpu_max", DataFilter::NONE, &boost_compute_test_extrema_cl_string,
+        "-DBOOST_COMPUTE_FIND_MAXIMUM=1", "find_extrema_on_cpu_min_max",
+        {toScalarParameter(15), toBufferParameter(std::vector<uint32_t>(4)),
+            toBufferParameter(std::vector<uint32_t>(4)),
+            toBufferParameter(std::vector<uint32_t>{17, 15, 45, 65, 3, 2, 7, 9, 11, 1300, 12, 6, 8, 200, 65, 0})},
+        toDimensions(2, 1, 1, 2, 1, 1),
+        {checkParameterEquals(1, std::vector<uint32_t>{65, 9, 1300, 200}),
+            checkParameterEquals(2, std::vector<uint32_t>{3, 7, 9, 13})}});
 
     registerTest(TestData{"boost_functional_popcount_long", DataFilter::USES_LONG,
         &boost_compute_test_functional_popcount_cl_string, "", "copy",

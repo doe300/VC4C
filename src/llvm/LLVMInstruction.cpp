@@ -630,9 +630,26 @@ bool Branch::mapInstruction(Method& method)
     return true;
 }
 
-Switch::Switch(Value&& cond, Value&& defaultLabel, FastMap<uint32_t, Value>&& cases) :
+Switch::Switch(Value&& cond, Value&& defaultLabel, FastMap<uint64_t, Value>&& cases) :
     cond(cond), defaultLabel(defaultLabel), jumpLabels(cases)
 {
+}
+
+static void insertLongLoad(Method& method, const Local& dest, uint64_t value)
+{
+    auto multiRegisters = Local::getLocalData<MultiRegisterData>(&dest);
+
+    if(!multiRegisters)
+        throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot load 64-bit constant given value", dest.to_string());
+
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Generating loading of scalar 64-bit constant " << value << " into " << dest.to_string()
+            << logging::endl);
+
+    Literal lower(static_cast<uint32_t>(static_cast<uint64_t>(value) & 0x00000000FFFFFFFF));
+    Literal upper(static_cast<uint32_t>((static_cast<uint64_t>(value) & 0xFFFFFFFF00000000) >> 32));
+    method.appendToEnd(new intermediate::LoadImmediate(multiRegisters->lower->createReference(), lower));
+    method.appendToEnd(new intermediate::LoadImmediate(multiRegisters->upper->createReference(), upper));
 }
 
 bool Switch::mapInstruction(Method& method)
@@ -654,8 +671,16 @@ bool Switch::mapInstruction(Method& method)
     {
         // for every case, if equal, set target label accordingly
         Value tmp = method.addNewLocal(TYPE_BOOL, "%switch");
+        Value comparisonValue = UNDEFINED_VALUE;
+        if(option.first > std::numeric_limits<uint32_t>::max())
+        {
+            comparisonValue = method.addNewLocal(TYPE_INT64, "%switch.comp");
+            insertLongLoad(method, *comparisonValue.local(), option.first);
+        }
+        else
+            comparisonValue = Value(Literal(static_cast<uint32_t>(option.first)), TYPE_INT32);
         method.appendToEnd(new intermediate::Comparison(
-            intermediate::COMP_EQ, Value(tmp), Value(tmpCond), Value(Literal(option.first), TYPE_INT32)));
+            intermediate::COMP_EQ, Value(tmp), Value(tmpCond), std::move(comparisonValue)));
         method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, tmp, COND_ALWAYS, SetFlag::SET_FLAGS));
         method.appendToEnd(new intermediate::CodeAddress(targetLabel, option.second.local(), COND_ZERO_CLEAR));
     }
@@ -672,11 +697,6 @@ LongConstant::LongConstant(Value&& dest, std::vector<Value>&& elements) :
 
 bool LongConstant::mapInstruction(Method& method)
 {
-    auto multiRegisters = Local::getLocalData<MultiRegisterData>(dest.checkLocal());
-
-    if(!multiRegisters)
-        throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot load 64-bit constant given value", dest.to_string());
-
     if(!elements.empty())
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
@@ -686,14 +706,6 @@ bool LongConstant::mapInstruction(Method& method)
         return true;
     }
 
-    CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Generating loading of scalar 64-bit constant " << value << " into " << dest.to_string()
-            << logging::endl);
-
-    Literal lower(static_cast<uint32_t>(static_cast<uint64_t>(value) & 0x00000000FFFFFFFF));
-    Literal upper(static_cast<uint32_t>((static_cast<uint64_t>(value) & 0xFFFFFFFF00000000) >> 32));
-    method.appendToEnd(new intermediate::LoadImmediate(multiRegisters->lower->createReference(), lower));
-    method.appendToEnd(new intermediate::LoadImmediate(multiRegisters->upper->createReference(), upper));
-
+    insertLongLoad(method, *dest.local(), static_cast<uint64_t>(value));
     return true;
 }

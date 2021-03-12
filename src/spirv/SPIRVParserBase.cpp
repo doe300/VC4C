@@ -1787,15 +1787,9 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSwitch:
     {
-        const std::vector<uint32_t> args = parsed_instruction.parseArguments(3);
-        std::vector<std::pair<uint32_t, uint32_t>> destinations;
-        destinations.reserve(args.size() / 2);
-        for(std::size_t i = 0; i < args.size(); i += 2)
-        {
-            destinations.emplace_back(args[i], args[i + 1]);
-        }
+        std::vector<uint32_t> args = parsed_instruction.parseArguments(3);
         instructions.emplace_back(new SPIRVSwitch(parsed_instruction.getResultId(), *currentMethod,
-            parsed_instruction.getWord(1), parsed_instruction.getWord(2), std::move(destinations)));
+            parsed_instruction.getWord(1), parsed_instruction.getWord(2), std::move(args)));
         return ParseResultCode::SUCCESS;
     }
     case spv::Op::OpReturn:

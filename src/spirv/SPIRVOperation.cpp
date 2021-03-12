@@ -1178,9 +1178,9 @@ Optional<Value> SPIRVSelect::precalculate(
 }
 
 SPIRVSwitch::SPIRVSwitch(const uint32_t id, SPIRVMethod& method, const uint32_t selectorID, const uint32_t defaultID,
-    std::vector<std::pair<uint32_t, uint32_t>>&& destinations) :
+    std::vector<uint32_t>&& argWords) :
     SPIRVOperation(id, method, intermediate::InstructionDecorations::NONE),
-    selectorID(selectorID), defaultID(defaultID), destinations(std::move(destinations))
+    selectorID(selectorID), defaultID(defaultID), argumentWords(std::move(argWords))
 {
 }
 
@@ -1189,6 +1189,23 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
 {
     const Value selector = getValue(selectorID, *method.method, types, constants, localTypes, localMapping);
     const Value defaultLabel = getValue(defaultID, *method.method, types, constants, localTypes, localMapping);
+
+    // "Each literal is interpreted with the type of Selector: The bit width of Selector’s type is the width of each
+    // literal’s type. If this width is not a multiple of 32-bits and the OpTypeInt Signedness is set to 1, the
+    // literal values are interpreted as being sign extended."
+    std::size_t selectorTypeNumWords = selector.type.getScalarBitCount() > 32 ? 2u : 1u;
+    std::vector<std::pair<uint64_t, const Local*>> destinations;
+    destinations.reserve(argumentWords.size() / (selectorTypeNumWords + 1));
+    for(std::size_t i = 0; i < argumentWords.size(); i += selectorTypeNumWords + 1)
+    {
+        uint64_t compValue = argumentWords[i];
+        if(selectorTypeNumWords > 1)
+            compValue |= static_cast<uint64_t>(argumentWords[i + 1]) << 32;
+        auto targetLabel = getValue(
+            argumentWords[i + selectorTypeNumWords], *method.method, types, constants, localTypes, localMapping)
+                               .local();
+        destinations.emplace_back(compValue, targetLabel);
+    }
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating intermediate switched jump on " << selector.to_string() << " to " << destinations.size()
@@ -1207,14 +1224,26 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
     for(const auto& pair : destinations)
     {
         // comparison value is a literal
-        Value comparison(Literal(pair.first), selector.type);
-        const Value destination = getValue(pair.second, *method.method, types, constants, localTypes, localMapping);
+        Value comparison = UNDEFINED_VALUE;
+        if(selectorTypeNumWords > 1)
+        {
+            comparison = method.method->addNewLocal(TYPE_INT64, "%switch.comp");
+            auto multiRegisters = Local::getLocalData<MultiRegisterData>(comparison.local());
+            Literal lower(static_cast<uint32_t>(static_cast<uint64_t>(pair.first) & 0x00000000FFFFFFFF));
+            Literal upper(static_cast<uint32_t>((static_cast<uint64_t>(pair.first) & 0xFFFFFFFF00000000) >> 32));
+            method.method->appendToEnd(
+                new intermediate::LoadImmediate(multiRegisters->lower->createReference(), lower));
+            method.method->appendToEnd(
+                new intermediate::LoadImmediate(multiRegisters->upper->createReference(), upper));
+        }
+        else
+            comparison = Value(Literal(static_cast<uint32_t>(pair.first)), selector.type);
         // for every case, if equal,branch to given label
         const Value tmp = method.method->addNewLocal(TYPE_BOOL, "%switch");
         method.method->appendToEnd(
             new intermediate::Comparison(intermediate::COMP_EQ, Value(tmp), Value(tmpSelector), std::move(comparison)));
         method.method->appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, tmp, COND_ALWAYS, SetFlag::SET_FLAGS));
-        method.method->appendToEnd(new intermediate::CodeAddress(targetLabel, destination.local(), COND_ZERO_CLEAR));
+        method.method->appendToEnd(new intermediate::CodeAddress(targetLabel, pair.second, COND_ZERO_CLEAR));
     }
     method.method->appendToEnd(new intermediate::Branch(targetLabel.local()));
 }
@@ -1222,22 +1251,6 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
 Optional<Value> SPIRVSwitch::precalculate(
     const TypeMapping& types, const ConstantMapping& constants, const LocalMapping& memoryAllocated) const
 {
-    auto it = constants.find(selectorID);
-    if(it != constants.end())
-    {
-        auto val = it->second.toValue();
-        if(!val)
-            return NO_VALUE;
-        const Value& selector = *val;
-        for(const auto& pair : destinations)
-        {
-            it = constants.find(pair.second);
-            if(selector.hasLiteral(Literal(pair.first)) && it != constants.end())
-            {
-                return it->second.toValue();
-            }
-        }
-    }
     return NO_VALUE;
 }
 

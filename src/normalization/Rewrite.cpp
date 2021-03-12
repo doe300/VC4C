@@ -10,6 +10,7 @@
 #include "../intermediate/Helper.h"
 #include "../intermediate/operators.h"
 #include "LiteralValues.h"
+#include "LongOperations.h"
 #include "log.h"
 
 using namespace vc4c;
@@ -156,12 +157,35 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
                                 .first.value();
                 }
             }
+            else if(branch && branch->isDynamicBranch())
+            {
+                const intermediate::CodeAddress* associatedWriter = nullptr;
+                branch->getTarget().local()->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) {
+                    auto codeAddress = dynamic_cast<const intermediate::CodeAddress*>(writer);
+                    if(codeAddress && codeAddress->getLabel() == label)
+                        associatedWriter = codeAddress;
+                });
+                if(!associatedWriter)
+                    throw CompilationError(CompilationStep::NORMALIZER,
+                        "Failed to find code-address writer for dynamic branch to target '" + label->to_string() + ":",
+                        branch->to_string());
+                auto writerIt = blockIt.getBasicBlock()->findWalkerForInstruction(associatedWriter, blockIt);
+                if(!writerIt)
+                    throw CompilationError(CompilationStep::NORMALIZER,
+                        "Failed to find instruction walker for code-address write", associatedWriter->to_string());
+                // we need to insert the phi-node for the same set-flags instruction and conditional flags as the
+                // address-write of the target label
+                blockIt = *writerIt;
+                condition = UNDEFINED_VALUE;
+                jumpCondition = associatedWriter->getCondition();
+                break;
+            }
         }
         // Since originally the value of the PHI node is set after the jump (at the start of the destination basic
         // block)  and we have conditional branches "jump to A or B", we need to only set the value if we take the
         // (conditional) branch jumping to this basic block.
 
-        if(jumpCondition != COND_ALWAYS)
+        if(jumpCondition != COND_ALWAYS && !condition.isUndefined())
         {
             // Since the correct flags for the branch might not be set, we need to set them here.
             // Also, don't "or" with element number, since we might need to set the flags for more than the first
@@ -169,10 +193,39 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
             blockIt.emplace(new intermediate::MoveOperation(NOP_REGISTER, condition, COND_ALWAYS, SetFlag::SET_FLAGS));
             blockIt.nextInBlock();
         }
-        blockIt.emplace(
-            (new intermediate::MoveOperation(node.getOutput().value(), pair.second, jumpCondition))
-                ->copyExtrasFrom(&node)
-                ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
+        if(auto loc = Local::getLocalData<MultiRegisterData>(pair.second.checkLocal()))
+        {
+            // for phi-nodes moving 64-bit values, the source constant is not directly used as the argument for the
+            // phi-node (like it is for max 32-bit type-sizes), but instead loaded in separate instructions into the
+            // lower and upper parts. To not read values which are not written yet, we need to move the original loaded
+            // values.
+            // We do not care for non-constant values, since in this case the writing is anyway split up in the block we
+            // insert the phi-node into (since phi-nodes are always at the very beginning of a block, no calculation can
+            // be done before them).
+            auto lowSource = intermediate::getSourceValue(loc->lower->createReference());
+            auto upSource = intermediate::getSourceValue(loc->upper->createReference());
+            lowSource = lowSource.getConstantValue().value_or(lowSource);
+            upSource = upSource.getConstantValue().value_or(upSource);
+
+            Value lowDest = UNDEFINED_VALUE;
+            Value upDest = UNDEFINED_VALUE;
+            std::tie(lowDest, upDest) = normalization::getLowerAndUpperWords(node.getOutput().value());
+
+            blockIt.emplace(
+                (new intermediate::MoveOperation(lowDest, lowSource, jumpCondition))
+                    ->copyExtrasFrom(&node)
+                    ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
+            blockIt.nextInBlock();
+            blockIt.emplace(
+                (new intermediate::MoveOperation(upDest, upSource, jumpCondition))
+                    ->copyExtrasFrom(&node)
+                    ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
+        }
+        else
+            blockIt.emplace(
+                (new intermediate::MoveOperation(node.getOutput().value(), pair.second, jumpCondition))
+                    ->copyExtrasFrom(&node)
+                    ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Inserting into end of basic-block '" << pair.first->name << "': " << blockIt->to_string()
                 << logging::endl);

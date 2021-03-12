@@ -942,7 +942,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying unsigned division by constant: " << op->to_string() << logging::endl);
-            // XXX is never used, LLVM always uses i32 for division??
+            // XXX is never used, LLVM always uses i32 for division?? Or already optimized by clang?
             it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, *op);
         }
         else if(arg0.type.getScalarBitCount() < 24 && arg1.type.getScalarBitCount() < 24)
