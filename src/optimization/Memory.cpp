@@ -56,7 +56,7 @@ struct BaseAndOffset
 
     explicit BaseAndOffset() : base(NO_VALUE), offset{} {}
 
-    BaseAndOffset(const Optional<Value>& base, Optional<int32_t> offset) : base(base), offset(offset) {}
+    BaseAndOffset(const Optional<Value>& base, Optional<int32_t> offset) : base(base), offset(std::move(offset)) {}
 };
 
 static BaseAndOffset findOffset(const Value& val)
@@ -680,12 +680,12 @@ bool optimizations::groupMemoryAccess(const Module& module, Method& method, cons
         while(!it.isEndOfBlock())
         {
             VPMAccessGroup group;
-            it = findGroupOfVPMAccess(*method.vpm.get(), it, block.walkEnd(), group);
+            it = findGroupOfVPMAccess(*method.vpm, it, block.walkEnd(), group);
             if(group.addressWrites.size() > 1)
             {
                 group.cleanDuplicateInstructions();
                 auto func = group.isVPMWrite ? groupVPMWrites : groupVPMReads;
-                if(func(*method.vpm.get(), group))
+                if(func(*method.vpm, group))
                 {
                     didChanges = true;
                     PROFILE_COUNTER(

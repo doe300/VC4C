@@ -45,7 +45,7 @@ namespace vc4c
         {
         public:
             SPIRVOperation(uint32_t id, SPIRVMethod& method, intermediate::InstructionDecorations decorations);
-            virtual ~SPIRVOperation();
+            virtual ~SPIRVOperation() noexcept;
 
             virtual void mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
                 MethodMapping& methods, LocalMapping& localMapping) = 0;

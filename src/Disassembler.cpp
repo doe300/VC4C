@@ -220,7 +220,7 @@ static std::string readString(std::istream& binary, uint64_t stringLength)
     std::array<char, 1024> buffer = {0};
 
     binary.read(buffer.data(), static_cast<std::streamsize>(stringLength));
-    const std::string name(buffer.data(), static_cast<std::size_t>(stringLength));
+    std::string name(buffer.data(), static_cast<std::size_t>(stringLength));
     uint64_t numPaddingBytes = Byte(stringLength).getPaddingTo(sizeof(uint64_t));
     // skip padding after kernel name
     binary.read(buffer.data(), static_cast<std::streamsize>(numPaddingBytes));
@@ -307,7 +307,7 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Stable
 
     for(uint64_t i = initialInstructionOffset; i < totalInstructions + initialInstructionOffset; ++i)
     {
-        uint64_t tmp64;
+        uint64_t tmp64 = 0;
         binary.read(reinterpret_cast<char*>(&tmp64), sizeof(tmp64));
         qpu_asm::Instruction instr(tmp64);
         if(!instr.isValidInstruction())
@@ -373,7 +373,7 @@ std::size_t vc4c::disassembleCodeOnly(
     std::size_t numBytes = 0;
     for(std::size_t i = 0; i < numInstructions; ++i)
     {
-        uint64_t tmp64;
+        uint64_t tmp64 = 0;
         binary.read(reinterpret_cast<char*>(&tmp64), sizeof(tmp64));
         qpu_asm::Instruction instr(tmp64);
         if(!instr.isValidInstruction())

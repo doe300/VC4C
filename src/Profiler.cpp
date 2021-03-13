@@ -288,7 +288,7 @@ void profiler::increaseCounter(const std::size_t index, std::string name, std::s
 void profiler::startThreadCache()
 {
 #ifdef MULTI_THREADED
-    threadCache.reset(new ThreadResultCache());
+    threadCache = std::make_unique<ThreadResultCache>();
 #endif
 }
 

@@ -366,7 +366,7 @@ analysis::ValueRange Unpack::operator()(const analysis::ValueRange& range, bool 
     return ValueRange{isFloatOperation ? TYPE_FLOAT : TYPE_INT32};
 }
 
-const Unpack Unpack::unpackTo32Bit(DataType type)
+Unpack Unpack::unpackTo32Bit(DataType type)
 {
     if(type.getScalarBitCount() >= DataType::WORD)
         return UNPACK_NOP;
@@ -1221,7 +1221,9 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
 
     if(code == OP_V8ADDS || code == OP_V8SUBS || code == OP_V8MAX || code == OP_V8MIN || code == OP_V8MULD)
     {
-        std::array<uint32_t, 4> bytesA, bytesB, bytesOut;
+        std::array<uint32_t, 4> bytesA{};
+        std::array<uint32_t, 4> bytesB{};
+        std::array<uint32_t, 4> bytesOut{};
         bytesA[0] = firstLit.unsignedInt() & 0xFF;
         bytesA[1] = firstLit.unsignedInt() >> 8 & 0xFF;
         bytesA[2] = firstLit.unsignedInt() >> 16 & 0xFF;

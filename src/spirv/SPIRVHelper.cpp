@@ -12,6 +12,7 @@
 #include "log.h"
 
 #include <algorithm>
+#include <array>
 
 #ifdef __GNUC__
 #include <cxxabi.h>
@@ -702,10 +703,10 @@ std::vector<uint32_t> spirv::readStreamOfWords(std::istream& in)
 {
     std::vector<uint32_t> words;
     words.reserve(static_cast<std::size_t>(in.rdbuf()->in_avail()));
-    char buffer[sizeof(uint32_t)];
-    while(in.read(buffer, sizeof(uint32_t)).good())
+    std::array<char, sizeof(uint32_t)> buffer;
+    while(in.read(buffer.data(), buffer.size()).good())
     {
-        words.push_back(*reinterpret_cast<uint32_t*>(buffer));
+        words.push_back(*reinterpret_cast<uint32_t*>(buffer.data()));
     }
 
     return words;
@@ -717,7 +718,7 @@ std::string spirv::demangleFunctionName(const std::string& name)
         return name;
 
 #ifdef __GNUC__
-    int status;
+    int status = 0;
     char* real_name = abi::__cxa_demangle(name.data(), nullptr, nullptr, &status);
     std::string result = name;
 

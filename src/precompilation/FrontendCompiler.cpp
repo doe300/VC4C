@@ -253,7 +253,7 @@ static std::string cleanOptions(std::string userOptions)
     pos = 0;
     while((pos = userOptions.find("-D", pos)) != std::string::npos)
     {
-        auto endPos = userOptions.find(" ", pos);
+        auto endPos = userOptions.find(' ', pos);
         auto macro = userOptions.substr(pos, endPos - pos);
         if(macro.find('_') == std::string::npos)
             userOptions.erase(pos, macro.size() + 1);
@@ -367,7 +367,6 @@ void precompilation::linkInStdlibModule(LLVMIRSource&& source, const std::string
     std::vector<LLVMIRSource> sources;
     sources.emplace_back(std::forward<LLVMIRSource>(source));
     sources.emplace_back(findStandardLibraryFiles().llvmModule);
-    auto options = userOptions;
     // set options to reduce output module size by only linking in required std-lib symbols
     /*
      * We could also set "-internalize" which makes all non-kernel functions to internal functions (internal linkage).
@@ -746,7 +745,7 @@ static std::string determineFilePath(const std::string& fileName, const std::vec
 {
     for(const auto& folder : folders)
     {
-        auto fullPath = (!folder.empty() && folder.back() == '/' ? folder : (folder + "/")) + fileName;
+        auto fullPath = folder + (!folder.empty() && folder.back() == '/' ? "" : "/") + fileName;
         if(access(fullPath.data(), R_OK) == 0)
         {
             // the file exists (including resolving sym-links, etc.) and can be read

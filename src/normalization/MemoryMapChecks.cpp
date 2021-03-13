@@ -15,6 +15,8 @@
 #include "../periphery/VPM.h"
 #include "log.h"
 
+#include <array>
+
 using namespace vc4c;
 using namespace vc4c::normalization;
 using namespace vc4c::intermediate;
@@ -29,7 +31,7 @@ static MemoryInfo canLowerToSharedVPMArea(Method& method, const Local* baseAddr,
 static MemoryInfo canMapToTMUReadOnly(Method& method, const Local* baseAddr, MemoryAccess& access);
 static MemoryInfo canMapToDMAReadWrite(Method& method, const Local* baseAddr, MemoryAccess& access);
 
-static constexpr MappingCheck CHECKS[6] = {
+static constexpr std::array<MappingCheck, 6> CHECKS = {
     canLowerToRegisterReadOnly,  /* QPU_REGISTER_READONLY */
     canLowerToRegisterReadWrite, /* QPU_REGISTER_READWRITE */
     canLowerToPrivateVPMArea,    /* VPM_PER_QPU */
@@ -1197,7 +1199,7 @@ static MemoryInfo canMapToTMUReadOnly(Method& method, const Local* baseAddr, Mem
 }
 
 static const periphery::VPMArea* checkCacheMemoryAccessRanges(
-    Method& method, const Local* baseAddr, FastAccessList<MemoryAccessRange>& accesRanges, bool isCached);
+    Method& method, const Local* baseAddr, FastAccessList<MemoryAccessRange>& memoryAccessRanges, bool isCached);
 
 static MemoryInfo canMapToDMAReadWrite(Method& method, const Local* baseAddr, MemoryAccess& access)
 {
@@ -1238,7 +1240,7 @@ static const periphery::VPMArea* checkCacheMemoryAccessRanges(
     auto maxNumVectors = method.vpm->getMaxCacheVectors(TYPE_INT32, true);
     GroupedAccessRanges result;
 
-    bool allUniformPartsEqual;
+    bool allUniformPartsEqual = false;
     analysis::ValueRange offsetRange;
     std::tie(allUniformPartsEqual, offsetRange) = analysis::checkWorkGroupUniformParts(memoryAccessRanges);
     if(!allUniformPartsEqual)

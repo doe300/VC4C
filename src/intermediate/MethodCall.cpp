@@ -74,7 +74,7 @@ bool MethodCall::isNormalized() const
 }
 LCOV_EXCL_STOP
 
-const DataType MethodCall::getReturnType() const
+DataType MethodCall::getReturnType() const
 {
     if(!getOutput())
         return TYPE_VOID;

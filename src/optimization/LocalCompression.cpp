@@ -108,7 +108,7 @@ static void compressLocalIntoRegister(
 
 bool optimizations::compressWorkGroupLocals(const Module& module, Method& method, const Configuration& config)
 {
-    if(method.size() == 0 || method.begin()->empty())
+    if(method.empty() || method.begin()->empty())
         return false;
     unsigned char index = 0;
     const Value container = method.addNewLocal(TYPE_INT32.toVectorType(16), "%work_group_info");

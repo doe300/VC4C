@@ -1158,10 +1158,10 @@ bool GraphColoring::fixErrors()
             logging::debug() << node.second.to_string() << logging::endl;
     });
 
-    bool allFixed = true;
-    for(const Local* local : errorSet)
+    auto locIt = errorSet.begin();
+    while(locIt != errorSet.end())
     {
-        ColoredNode& node = graph.assertNode(local);
+        ColoredNode& node = graph.assertNode(*locIt);
         LCOV_EXCL_START
         logging::logLazy(logging::Level::DEBUG, [&]() {
             logging::debug() << "Error in register-allocation for node: " << node.to_string() << logging::endl;
@@ -1174,11 +1174,13 @@ bool GraphColoring::fixErrors()
             s << logging::endl;
         });
         LCOV_EXCL_STOP
-        if(!fixSingleError(method, graph, node, localUses, localUses.at(local)))
-            allFixed = false;
+        if(fixSingleError(method, graph, node, localUses, localUses.at(*locIt)))
+            locIt = errorSet.erase(locIt);
+        else
+            ++locIt;
     }
     PROFILE_END(fixRegisterErrors);
-    return allFixed;
+    return errorSet.empty();
 }
 
 FastMap<const Local*, Register> GraphColoring::toRegisterMap() const

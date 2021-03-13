@@ -12,6 +12,7 @@
 #include "log.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -76,10 +77,10 @@ SourceType Precompiler::getSourceType(std::istream& stream)
 {
     PROFILE_START(GetSourceType);
     // http://llvm.org/docs/BitCodeFormat.html#magic-numbers
-    static constexpr char LLVM_BITCODE_MAGIC_NUMBER[2] = {0x42, 0x43};
+    static constexpr std::array<char, 2> LLVM_BITCODE_MAGIC_NUMBER = {0x42, 0x43};
     static constexpr uint32_t SPIRV_MAGIC_NUMBER = 0x07230203;
-    static constexpr char SPIRV_MAGIC_NUMBER_LITTLE_ENDIAN[4] = {0x07, 0x23, 0x02, 0x03};
-    static constexpr char SPIRV_MAGIC_NUMBER_BIG_ENDIAN[4] = {0x03, 0x02, 0x23, 0x07};
+    static constexpr std::array<char, 4> SPIRV_MAGIC_NUMBER_LITTLE_ENDIAN = {0x07, 0x23, 0x02, 0x03};
+    static constexpr std::array<char, 4> SPIRV_MAGIC_NUMBER_BIG_ENDIAN = {0x03, 0x02, 0x23, 0x07};
     static const std::string QPUASM_MAGIC = []() {
         std::stringstream s;
         s << "0x" << std::hex << QPUASM_MAGIC_NUMBER;
@@ -97,10 +98,11 @@ SourceType Precompiler::getSourceType(std::istream& stream)
     SourceType type = SourceType::UNKNOWN;
     if(s.find("ModuleID") != std::string::npos || s.find("\ntarget triple") != std::string::npos)
         type = SourceType::LLVM_IR_TEXT;
-    else if(memcmp(buffer.data(), LLVM_BITCODE_MAGIC_NUMBER, 2) == 0)
+    else if(memcmp(buffer.data(), LLVM_BITCODE_MAGIC_NUMBER.data(), LLVM_BITCODE_MAGIC_NUMBER.size()) == 0)
         type = SourceType::LLVM_IR_BIN;
-    else if(memcmp(buffer.data(), SPIRV_MAGIC_NUMBER_LITTLE_ENDIAN, 4) == 0 ||
-        memcmp(buffer.data(), SPIRV_MAGIC_NUMBER_BIG_ENDIAN, 4) == 0)
+    else if(memcmp(buffer.data(), SPIRV_MAGIC_NUMBER_LITTLE_ENDIAN.data(), SPIRV_MAGIC_NUMBER_LITTLE_ENDIAN.size()) ==
+            0 ||
+        memcmp(buffer.data(), SPIRV_MAGIC_NUMBER_BIG_ENDIAN.data(), SPIRV_MAGIC_NUMBER_BIG_ENDIAN.size()) == 0)
         type = SourceType::SPIRV_BIN;
     else if(std::atol(buffer.data()) == SPIRV_MAGIC_NUMBER)
         type = SourceType::SPIRV_TEXT;
@@ -223,8 +225,8 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
     // XXX the inputs is actually a variant of file and stream
     PROFILE_START(linkSourceCode);
 
-    bool llvmLinkerPossible;
-    bool spirvLinkerPossible;
+    bool llvmLinkerPossible = false;
+    bool spirvLinkerPossible = false;
     std::vector<std::unique_ptr<TemporaryFile>> tempFiles;
     std::tie(llvmLinkerPossible, spirvLinkerPossible) = determinePossibleLinkers(inputs);
 

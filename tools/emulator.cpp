@@ -64,12 +64,12 @@ void printValue(uint32_t val, BufferType type)
     }
 }
 
-static std::vector<tools::Word> readBinaryFile(std::string fileName)
+static std::vector<tools::Word> readBinaryFile(const std::string& fileName)
 {
     std::ifstream s(fileName);
     std::vector<tools::Word> res;
 
-    tools::Word word;
+    tools::Word word{};
     while(s.read(reinterpret_cast<char*>(&word), sizeof(tools::Word)))
     {
         res.push_back(word);
@@ -78,7 +78,7 @@ static std::vector<tools::Word> readBinaryFile(std::string fileName)
     return res;
 }
 
-static std::vector<tools::Word> readDirectData(std::string data)
+static std::vector<tools::Word> readDirectData(const std::string& data)
 {
     std::vector<tools::Word> words;
 
@@ -111,7 +111,7 @@ struct HexHelper<float>
 };
 
 template <typename T>
-static std::vector<tools::Word> readDirectBuffer(std::string data)
+static std::vector<tools::Word> readDirectBuffer(const std::string& data)
 {
     std::vector<tools::Word> words;
     std::stringstream ss(data);

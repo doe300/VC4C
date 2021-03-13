@@ -165,7 +165,7 @@ Optional<VectorFlags> StaticFlagsAnalysis::analyzeStaticFlags(
                 // can never be set for OR
                 allElements.carry = allElements.overflow = FlagStatus::CLEAR;
                 VectorFlags flags{allElements};
-                for(uint8_t i = 0; i < flags.size(); ++i)
+                for(std::size_t i = 0; i < flags.size(); ++i)
                 {
                     auto& elem = flags[i];
                     auto& first = (*firstFlags)[i];
@@ -203,7 +203,7 @@ Optional<VectorFlags> StaticFlagsAnalysis::analyzeStaticFlags(
                 // can never be set for AND
                 allElements.carry = allElements.overflow = FlagStatus::CLEAR;
                 VectorFlags flags{allElements};
-                for(uint8_t i = 0; i < flags.size(); ++i)
+                for(std::size_t i = 0; i < flags.size(); ++i)
                 {
                     auto& elem = flags[i];
                     auto& first = (*firstFlags)[i];
@@ -242,7 +242,7 @@ Optional<VectorFlags> StaticFlagsAnalysis::analyzeStaticFlags(
             // any of the min/max variants never set 32-bit overflow
             allElements.overflow = FlagStatus::CLEAR;
             VectorFlags flags{allElements};
-            for(uint8_t i = 0; i < flags.size(); ++i)
+            for(std::size_t i = 0; i < flags.size(); ++i)
             {
                 auto& elem = flags[i];
                 auto& first = firstFlags[i];

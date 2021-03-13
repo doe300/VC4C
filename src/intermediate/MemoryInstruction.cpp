@@ -47,7 +47,7 @@ MemoryInstruction::MemoryInstruction(
     setArgument(0, std::move(src));
     setArgument(1, std::move(numEntries));
 
-    if(numEntries != INT_ONE)
+    if(assertArgument(1) != INT_ONE)
     {
         if(op != MemoryOperation::COPY && op != MemoryOperation::FILL)
             throw CompilationError(
@@ -286,12 +286,12 @@ bool MemoryAccessInstruction::innerEquals(const IntermediateInstruction& other) 
 }
 
 RAMAccessInstruction::RAMAccessInstruction(MemoryOperation op, const Value& memoryAddress,
-    const std::shared_ptr<periphery::CacheEntry>& cacheEntry, const Value& numCopies) :
+    const std::shared_ptr<periphery::CacheEntry>& cacheEntry, const Value& numEntries) :
     MemoryAccessInstruction(op, cacheEntry)
 {
     // we always read the address, even if we write its content
     setArgument(0, memoryAddress);
-    setArgument(1, numCopies);
+    setArgument(1, numEntries);
 
     // to make the old code work with the new instruction types
     if(auto tmuCacheEntry = std::dynamic_pointer_cast<periphery::TMUCacheEntry>(cacheEntry))
@@ -301,7 +301,7 @@ RAMAccessInstruction::RAMAccessInstruction(MemoryOperation op, const Value& memo
             Value(op == MemoryOperation::READ ? REG_VPM_DMA_LOAD_ADDR : REG_VPM_DMA_STORE_ADDR, memoryAddress.type));
 
     checkMemoryLocation(memoryAddress);
-    checkLocalValue(numCopies);
+    checkLocalValue(numEntries);
     if(op == MemoryOperation::COPY || op == MemoryOperation::FILL)
         throw CompilationError(CompilationStep::GENERAL, "Invalid memory operation for accessing RAM");
     if(cache->isReadOnly() && op == MemoryOperation::WRITE)

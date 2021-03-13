@@ -88,9 +88,9 @@ TemporaryFile::~TemporaryFile()
 
 void TemporaryFile::openOutputStream(std::unique_ptr<std::ostream>& ptr) const
 {
-    ptr.reset(new std::ofstream(fileName, std::ios_base::out | std::ios_base::trunc | std::ios_base::binary));
+    ptr = std::make_unique<std::ofstream>(fileName, std::ios_base::out | std::ios_base::trunc | std::ios_base::binary);
 }
 void TemporaryFile::openInputStream(std::unique_ptr<std::istream>& ptr) const
 {
-    ptr.reset(new std::ifstream(fileName, std::ios_base::in | std::ios_base::binary));
+    ptr = std::make_unique<std::ifstream>(fileName, std::ios_base::in | std::ios_base::binary);
 }

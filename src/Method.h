@@ -110,8 +110,7 @@ namespace vc4c
          *
          * NOTE: The name of a local must be unique within a method (for parameter, globals, stack-allocations too)
          */
-        NODISCARD const Value addNewLocal(
-            DataType type, const std::string& prefix = "", const std::string& postfix = "");
+        NODISCARD Value addNewLocal(DataType type, const std::string& prefix = "", const std::string& postfix = "");
 
         /*
          * Returns a newly created local with the given type and name.

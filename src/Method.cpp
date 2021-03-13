@@ -95,58 +95,58 @@ const BuiltinLocal* Method::findOrCreateBuiltin(BuiltinLocal::Type type)
     switch(type)
     {
     case Type::WORK_DIMENSIONS:
-        entry.reset(new BuiltinLocal("%work_dim", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%work_dim", TYPE_INT32, type);
         return entry.get();
     case Type::LOCAL_SIZES:
-        entry.reset(new BuiltinLocal("%local_sizes", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%local_sizes", TYPE_INT32, type);
         return entry.get();
     case Type::LOCAL_IDS:
-        entry.reset(new BuiltinLocal("%local_ids", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%local_ids", TYPE_INT32, type);
         return entry.get();
     case Type::NUM_GROUPS_X:
-        entry.reset(new BuiltinLocal("%num_groups_x", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%num_groups_x", TYPE_INT32, type);
         return entry.get();
     case Type::NUM_GROUPS_Y:
-        entry.reset(new BuiltinLocal("%num_groups_y", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%num_groups_y", TYPE_INT32, type);
         return entry.get();
     case Type::NUM_GROUPS_Z:
-        entry.reset(new BuiltinLocal("%num_groups_z", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%num_groups_z", TYPE_INT32, type);
         return entry.get();
     case Type::GROUP_ID_X:
-        entry.reset(new BuiltinLocal("%group_id_x", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%group_id_x", TYPE_INT32, type);
         return entry.get();
     case Type::GROUP_ID_Y:
-        entry.reset(new BuiltinLocal("%group_id_y", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%group_id_y", TYPE_INT32, type);
         return entry.get();
     case Type::GROUP_ID_Z:
-        entry.reset(new BuiltinLocal("%group_id_z", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%group_id_z", TYPE_INT32, type);
         return entry.get();
     case Type::GROUP_IDS:
-        entry.reset(new BuiltinLocal("%group_ids", TYPE_INT32.toVectorType(3), type));
+        entry = std::make_unique<BuiltinLocal>("%group_ids", TYPE_INT32.toVectorType(3), type);
         return entry.get();
     case Type::GLOBAL_OFFSET_X:
-        entry.reset(new BuiltinLocal("%global_offset_x", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%global_offset_x", TYPE_INT32, type);
         return entry.get();
     case Type::GLOBAL_OFFSET_Y:
-        entry.reset(new BuiltinLocal("%global_offset_y", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%global_offset_y", TYPE_INT32, type);
         return entry.get();
     case Type::GLOBAL_OFFSET_Z:
-        entry.reset(new BuiltinLocal("%global_offset_z", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%global_offset_z", TYPE_INT32, type);
         return entry.get();
     case Type::GLOBAL_DATA_ADDRESS:
-        entry.reset(new BuiltinLocal("%global_data_address", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%global_data_address", TYPE_INT32, type);
         return entry.get();
     case Type::UNIFORM_ADDRESS:
-        entry.reset(new BuiltinLocal("%uniform_address", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%uniform_address", TYPE_INT32, type);
         return entry.get();
     case Type::MAX_GROUP_ID_X:
-        entry.reset(new BuiltinLocal("%max_group_id_x", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%max_group_id_x", TYPE_INT32, type);
         return entry.get();
     case Type::MAX_GROUP_ID_Y:
-        entry.reset(new BuiltinLocal("%max_group_id_y", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%max_group_id_y", TYPE_INT32, type);
         return entry.get();
     case Type::MAX_GROUP_ID_Z:
-        entry.reset(new BuiltinLocal("%max_group_id_z", TYPE_INT32, type));
+        entry = std::make_unique<BuiltinLocal>("%max_group_id_z", TYPE_INT32, type);
         return entry.get();
     default:;
     }
@@ -226,7 +226,7 @@ bool Method::isLocallyLimited(InstructionWalker curIt, const Local* locale, cons
 
 static std::atomic_size_t tmpIndex{0};
 
-const Value Method::addNewLocal(DataType type, const std::string& prefix, const std::string& postfix)
+Value Method::addNewLocal(DataType type, const std::string& prefix, const std::string& postfix)
 {
     const std::string name = createLocalName(prefix, postfix);
     return createLocal(type, name)->createReference();
@@ -276,7 +276,7 @@ void Method::forAllInstructions(const std::function<void(const intermediate::Int
         for(const auto& instr : bb.instructions)
         {
             if(instr)
-                consumer(*instr.get());
+                consumer(*instr);
         }
     }
 }

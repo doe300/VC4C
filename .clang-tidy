@@ -1,5 +1,20 @@
 ---
-Checks:          '*,-abseil*,-android*,-boost*,-fuchsia*,-google*,-llvm*,-*objc*,-openmp*,-hicpp-braces-around-statements,-readability-braces-around-statements,-misc-unused-parameters,-clang-diagnostic-shadow-field-in-constructor,-modernize-use-auto,-clang-diagnostic-c++98-*,-clang-diagnostic-padded,-cppcoreguidelines-pro-type-reinterpret-cast,-cert-err58-cpp,-hicpp-special-member-functions,-cppcoreguidelines-pro-bounds-array-to-pointer-decay,-modernize-use-using,-readability-else-after-return,-clang-analyzer-osx*,-clang-diagnostic-shadow,-clang-diagnostic-missing-braces,-clang-diagnostic-missing-prototypes,-misc-non-private-member-variables-in-classes,-cppcoreguidelines-non-private-member-variables-in-classes,-hicpp-uppercase-literal-suffix,-readability-uppercase-literal-suffix,-modernize-use-transparent-functors,-readability-implicit-bool-conversion,-cppcoreguidelines-pro-bounds-constant-array-index,-readability-magic-numbers,-cppcoreguidelines-avoid-magic-numbers,-readability-redundant-member-init,-cppcoreguidelines-pro-type-union-access,-hicpp-no-array-decay,-readability-named-parameter,-misc-unconventional-assign-operator,-cppcoreguidelines-c-copy-assignment-signature,-modernize-use-default-member-init,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-modernize-return-braced-init-list,-hicpp-use-auto,-bugprone-forward-declaration-namespace,-cppcoreguidelines-owning-memory'
+Checks:          '*,-abseil*,-android*,-boost*,-fuchsia*,-google*,-llvm*,-*objc*,-openmp*,-clang-analyzer-osx*,-hicpp*,
+                  -readability-braces-around-statements,-readability-else-after-return,-readability-uppercase-literal-suffix,
+                  -readability-implicit-bool-conversion,-readability-magic-numbers,-readability-redundant-member-init,-readability-qualified-auto,
+                  -readability-convert-member-functions-to-static,-readability-named-parameter,
+                  -misc-unused-parameters,-misc-non-private-member-variables-in-classes,-misc-unconventional-assign-operator,
+                  -clang-diagnostic-shadow-field-in-constructor,-clang-diagnostic-c++98-*,-clang-diagnostic-padded,-clang-diagnostic-shadow,
+                  -clang-diagnostic-missing-braces,-clang-diagnostic-missing-prototypes,
+                  -modernize-use-auto,-modernize-use-trailing-return-type,-modernize-use-using,-modernize-use-transparent-functors,
+                  -modernize-use-default-member-init,-modernize-return-braced-init-list,
+                  -cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+                  -cppcoreguidelines-non-private-member-variables-in-classes,-cppcoreguidelines-pro-bounds-constant-array-index,
+                  -cppcoreguidelines-avoid-magic-numbers,-cppcoreguidelines-pro-type-union-access,-cppcoreguidelines-c-copy-assignment-signature,
+                  -cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-owning-memory,-cppcoreguidelines-pro-type-member-init,
+                  -cppcoreguidelines-special-member-functions,
+                  -cert-err58-cpp,-cert-dcl21-cpp,-cert-env33-c,
+                  -performance-move-const-arg'
 WarningsAsErrors: ''
 HeaderFilterRegex: '.*'
 AnalyzeTemporaryDtors: true

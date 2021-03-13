@@ -29,7 +29,7 @@ namespace vc4c
 
         struct ModuleOperation final : ParsedInstruction
         {
-            ~ModuleOperation() noexcept;
+            ~ModuleOperation() noexcept override;
 
             spv::Op getOpcode() const noexcept override;
             uint32_t getResultId() const noexcept override;

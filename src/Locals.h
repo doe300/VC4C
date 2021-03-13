@@ -220,8 +220,8 @@ namespace vc4c
             if(data && !get<T>())
                 throw CompilationError(
                     CompilationStep::GENERAL, "Cannot overwrite LocalData of different type", to_string(true));
-            data = std::make_unique<T>(std::move(val));
-            return dynamic_cast<T&>(*data.get());
+            data = std::make_unique<T>(std::forward<T>(val));
+            return dynamic_cast<T&>(*data);
         }
 
         template <typename T>
@@ -341,8 +341,12 @@ namespace vc4c
     {
         Parameter(
             const std::string& name, DataType type, ParameterDecorations decorations = ParameterDecorations::NONE);
+        Parameter(const Parameter&) = delete;
         Parameter(Parameter&&) noexcept = default;
         ~Parameter() noexcept override = default;
+
+        Parameter& operator=(const Parameter&) = delete;
+        Parameter& operator=(Parameter&&) noexcept = delete;
 
         std::string to_string(bool withContent = false) const override;
 
@@ -402,8 +406,12 @@ namespace vc4c
     struct StackAllocation final : public Local
     {
         StackAllocation(const std::string& name, DataType type, std::size_t size = 0, std::size_t alignment = 1);
+        StackAllocation(const StackAllocation&) = delete;
         StackAllocation(StackAllocation&&) noexcept = default;
         ~StackAllocation() noexcept override = default;
+
+        StackAllocation& operator=(const StackAllocation&) = delete;
+        StackAllocation& operator=(StackAllocation&&) noexcept = delete;
 
         /*
          * Since the "stack" is located in memory, so are allocations on it
@@ -482,8 +490,12 @@ namespace vc4c
         static constexpr auto NUM_LOCALS = static_cast<std::size_t>(Type::NUM_ENTRIES);
 
         BuiltinLocal(const std::string& name, DataType dataType, Type builtinType);
+        BuiltinLocal(const BuiltinLocal&) = delete;
         BuiltinLocal(BuiltinLocal&&) noexcept = delete;
         ~BuiltinLocal() noexcept override;
+
+        BuiltinLocal& operator=(const BuiltinLocal&) = delete;
+        BuiltinLocal& operator=(BuiltinLocal&&) noexcept = delete;
 
         /**
          * The type of builtin represented by this local
@@ -499,7 +511,12 @@ namespace vc4c
     struct MultiRegisterData : public LocalData
     {
         MultiRegisterData(const Local* lowerPart, const Local* upperPart);
+        MultiRegisterData(const MultiRegisterData&) = delete;
+        MultiRegisterData(MultiRegisterData&&) noexcept = default;
         ~MultiRegisterData() noexcept override;
+
+        MultiRegisterData& operator=(const MultiRegisterData&) = delete;
+        MultiRegisterData& operator=(MultiRegisterData&&) noexcept = delete;
 
         std::string to_string() const override;
 
@@ -518,7 +535,12 @@ namespace vc4c
     struct ReferenceData : public LocalData
     {
         ReferenceData(const Local& ref, int index);
+        ReferenceData(const ReferenceData&) = default;
+        ReferenceData(ReferenceData&&) noexcept = default;
         ~ReferenceData() noexcept override;
+
+        ReferenceData& operator=(const ReferenceData&) = delete;
+        ReferenceData& operator=(ReferenceData&&) noexcept = delete;
 
         std::string to_string() const override;
 

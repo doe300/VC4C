@@ -815,7 +815,7 @@ intermediate::IntermediateInstruction* Expression::toInstruction(const Value& ou
         // check for fake opcodes
         return nullptr;
 
-    intermediate::Operation* inst;
+    intermediate::Operation* inst = nullptr;
     auto firstVal = arg0.checkValue();
     auto secondVal = arg1.checkValue();
     if(firstVal && code.numOperands == 1)

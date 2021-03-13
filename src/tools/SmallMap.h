@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <map>
+#include <stdexcept>
 #include <type_traits>
 
 namespace vc4c
@@ -119,7 +120,7 @@ namespace vc4c
 
             size_type size() const noexcept
             {
-                return findInner(reinterpret_cast<K>(TOMBSTONE)) - begin();
+                return static_cast<size_type>(findInner(reinterpret_cast<K>(TOMBSTONE)) - begin());
             }
 
             size_type max_size() const noexcept

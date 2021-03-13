@@ -23,8 +23,8 @@ namespace vc4c
 
     namespace intermediate
     {
-        class MoveOperation;
-        class Operation;
+        struct MoveOperation;
+        struct Operation;
     } // namespace intermediate
 
     namespace optimizations

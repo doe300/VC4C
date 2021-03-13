@@ -12,6 +12,7 @@
 #include "LoadInstruction.h"
 #include "SemaphoreInstruction.h"
 
+#include <array>
 #include <cstdbool>
 #include <memory>
 
@@ -130,10 +131,10 @@ std::string Instruction::toExtrasString(const Signaling sig, const ConditionCode
 std::string qpu_asm::toHexString(const uint64_t code)
 {
     // lower half before upper half
-    char buffer[64];
-    snprintf(buffer, sizeof(buffer), "0x%08x, 0x%08x, ", static_cast<uint32_t>(code & 0xFFFFFFFFLL),
+    std::array<char, 64> buffer{};
+    snprintf(buffer.data(), buffer.size(), "0x%08x, 0x%08x, ", static_cast<uint32_t>(code & 0xFFFFFFFFLL),
         static_cast<uint32_t>((code & 0xFFFFFFFF00000000LL) >> 32));
-    return buffer;
+    return buffer.data();
 }
 
 std::string DecoratedInstruction::toASMString(bool addComments) const

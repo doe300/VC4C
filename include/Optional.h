@@ -229,7 +229,7 @@ namespace vc4c
         ~Optional() noexcept = default;
 
         Optional& operator=(const Optional&) = default;
-        Optional& operator=(Optional&&) = default;
+        Optional& operator=(Optional&&) noexcept = default;
 
         T value_or(const T& defaultValue) const
         {

@@ -247,7 +247,7 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
     }
 
     std::array<char, BUFFER_SIZE> buffer{};
-    ssize_t numBytes;
+    ssize_t numBytes = 0;
     int exitStatus = 0;
     bool childFinished = false;
 

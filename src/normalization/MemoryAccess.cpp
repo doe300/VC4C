@@ -342,11 +342,10 @@ static bool mayHaveCrossWorkItemMemoryDependency(const Local* memoryObject, cons
     {
         unsigned minFactor = std::numeric_limits<unsigned>::max();
         unsigned maxSize = 0;
-        bool dummy = false;
-        if((dummy = std::all_of(info.ranges->begin(), info.ranges->end(),
-                [&](const MemoryAccessRange& range) -> bool {
-                    return hasOnlyAddressesDerivateOfLocalId(range, minFactor, maxSize);
-                })) &&
+        if(std::all_of(info.ranges->begin(), info.ranges->end(),
+               [&](const MemoryAccessRange& range) -> bool {
+                   return hasOnlyAddressesDerivateOfLocalId(range, minFactor, maxSize);
+               }) &&
             maxSize <= minFactor)
             // If we manged to figure out the dynamic address parts to be (a derivation of) the local or global id, and
             // the maximum accessed vector size is not larger than the minimum accessed local/global id factor, then we

@@ -278,7 +278,7 @@ const std::vector<MergeCondition> optimizations::MERGE_CONDITIONS = {
             // fail if we write to two physical registers on the same file, even if it is the same register
             return false;
 
-        if(firstOutReg->file == RegisterFile::ACCUMULATOR && firstOutReg->file == RegisterFile::ACCUMULATOR &&
+        if(firstOutReg->file == RegisterFile::ACCUMULATOR && secondOutReg->file == RegisterFile::ACCUMULATOR &&
             *firstOutReg == *secondOutReg && !firstInst->getCondition().isInversionOf(secondInst->getCondition()))
             // fail if we write the same accumulator, unless we have inverted conditions for writing
             return false;

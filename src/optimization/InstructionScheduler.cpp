@@ -90,13 +90,13 @@ struct NodeSorter : public std::less<intermediate::IntermediateInstruction*>
 
     bool operator()(intermediate::IntermediateInstruction* x, intermediate::IntermediateInstruction* y)
     {
-        int prioX;
+        int prioX = 0;
         auto it = priorities.find(x);
         if(it != priorities.end())
             prioX = it->second;
         else
             prioX = priorities[x] = ratePriority(x);
-        int prioY;
+        int prioY = 0;
         it = priorities.find(y);
         if(it != priorities.end())
             prioY = it->second;

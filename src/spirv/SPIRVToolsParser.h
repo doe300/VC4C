@@ -69,6 +69,11 @@ namespace vc4c
             {
                 throw CompilationError(CompilationStep::GENERAL, "SPIR-V Tools is not available!");
             }
+
+            std::vector<uint32_t> assembleTextToBinary(const std::vector<uint32_t>& module) override
+            {
+                throw CompilationError(CompilationStep::PARSER, "SPIR-V Tools is not available!");
+            }
         };
 
         inline void linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output)

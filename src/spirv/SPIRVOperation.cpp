@@ -67,7 +67,7 @@ SPIRVOperation::SPIRVOperation(
 {
 }
 
-SPIRVOperation::~SPIRVOperation() {}
+SPIRVOperation::~SPIRVOperation() noexcept = default;
 
 SPIRVInstruction::SPIRVInstruction(const uint32_t id, SPIRVMethod& method, const std::string& opcode,
     const uint32_t resultType, std::vector<uint32_t>&& operands,
@@ -538,7 +538,7 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
     if(type == ConversionType::BITCAST)
     {
         ignoreReturnValue(
-            intermediate::insertBitcast(method.method->appendToEnd(), *method.method.get(), source, dest, decorations));
+            intermediate::insertBitcast(method.method->appendToEnd(), *method.method, source, dest, decorations));
         return;
     }
     if(type == ConversionType::FLOATING)
@@ -561,13 +561,13 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
         (type == ConversionType::SIGNED_TO_SIGNED || type == ConversionType::SIGNED_TO_UNSIGNED))
     {
         tmp = method.method->addNewLocal(resultType);
-        method.method->appendToEnd((new intermediate::IntrinsicOperation("sext", Value(tmp), std::move(source))));
+        method.method->appendToEnd((new intermediate::IntrinsicOperation("sext", Value(tmp), Value(source))));
     }
     if(source.type.getScalarBitCount() < referenceSize &&
         (type == ConversionType::UNSIGNED_TO_SIGNED || type == ConversionType::UNSIGNED_TO_UNSIGNED))
     {
         tmp = method.method->addNewLocal(resultType);
-        method.method->appendToEnd((new intermediate::IntrinsicOperation("zext", Value(tmp), std::move(source)))
+        method.method->appendToEnd((new intermediate::IntrinsicOperation("zext", Value(tmp), Value(source)))
                                        ->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT));
     }
 
@@ -612,7 +612,7 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
             throw CompilationError(CompilationStep::LLVM_2_IR, "Unhandled conversion type!");
         }
         ignoreReturnValue(
-            intermediate::insertSaturation(method.method->appendToEnd(), *method.method.get(), tmp, dest, outType));
+            intermediate::insertSaturation(method.method->appendToEnd(), *method.method, tmp, dest, outType));
         return;
     }
     else if(type == ConversionType::SIGNED_TO_SIGNED)
@@ -932,6 +932,8 @@ void SPIRVShuffle::mapInstruction(TypeMapping& types, ConstantMapping& constants
 
         if(allIndicesUndef)
             index = UNDEFINED_VALUE;
+        else if(allIndicesZero)
+            index = Value(Literal(0), TYPE_INT8.toVectorType(numIndex));
         else
             index = method.method->module.storeVector(std::move(indices), TYPE_INT8.toVectorType(numIndex));
     }
@@ -1010,7 +1012,7 @@ void SPIRVIndexOf::mapInstruction(TypeMapping& types, ConstantMapping& constants
             << logging::endl);
 
     ignoreReturnValue(intermediate::insertCalculateIndices(
-        method.method->appendToEnd(), *method.method.get(), container, dest, indexValues, ptrAccessChain));
+        method.method->appendToEnd(), *method.method, container, dest, indexValues, ptrAccessChain));
 }
 
 Optional<Value> SPIRVIndexOf::precalculate(

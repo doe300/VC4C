@@ -90,9 +90,9 @@ namespace vc4c
             file << "concentrate=true" << std::endl;
             // global graph settings: draw edges as splines and remove overlap between edges and nodes, draw nodes over
             // edges
-            file << "graph [splines=true, overlap=\"prism\", outputorder=\"edgesfirst\"];" << std::endl;
+            file << R"(graph [splines=true, overlap="prism", outputorder="edgesfirst"];)" << std::endl;
             // fill background of nodes white
-            file << "node [style=\"filled\", fillcolor=\"white\"];" << std::endl;
+            file << R"(node [style="filled", fillcolor="white"];)" << std::endl;
         }
 
         ~DebugGraph()

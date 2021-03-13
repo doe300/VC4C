@@ -81,7 +81,7 @@ if(MULTI_THREADED)
 endif()
 
 # clang-tidy
-find_program(CLANG_TIDY NAMES clang-tidy clang-tidy-5.0 clang-tidy-6.0 clang-tidy-7 clang-tidy-8)
+find_program(CLANG_TIDY NAMES clang-tidy clang-tidy-5.0 clang-tidy-6.0 clang-tidy-7 clang-tidy-8 clang-tidy-9 clang-tidy-10)
 if(ADVANCED_CHECKS AND CLANG_TIDY)
     message(STATUS "Enabling clang-tidy compile time checks: ${CLANG_TIDY}")
     set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY}")

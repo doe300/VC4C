@@ -117,7 +117,7 @@ namespace vc4c
         class Comparison final : public LLVMInstruction
         {
         public:
-            Comparison(Value&& dest, std::string&& comp, Value&& op1, Value&& op2, bool isFloat);
+            Comparison(Value&& dest, std::string&& comp, Value&& op1, Value&& op2);
             ~Comparison() noexcept override = default;
 
             bool mapInstruction(Method& method) override;
@@ -125,7 +125,6 @@ namespace vc4c
         private:
             Value dest;
             std::string comp;
-            bool isFloat;
             Value op1;
             Value op2;
         };

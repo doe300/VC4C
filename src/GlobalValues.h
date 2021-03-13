@@ -75,8 +75,12 @@ namespace vc4c
     struct Global final : public Local
     {
         Global(const std::string& name, DataType globalType, CompoundConstant&& initialValue, bool isConstant);
+        Global(const Global&) = delete;
         Global(Global&&) noexcept = delete;
         ~Global() noexcept override = default;
+
+        Global& operator=(const Global&) = delete;
+        Global& operator=(Global&&) noexcept = delete;
 
         std::string to_string(bool withContent = false) const override;
 

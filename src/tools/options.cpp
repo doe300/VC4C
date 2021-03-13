@@ -162,7 +162,7 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
             // optimization parameter
             std::string value = passName.substr(passName.find('=') + 1);
             const std::string paramName = passName.substr(0, passName.find('='));
-            int intValue;
+            int intValue = 0;
             try
             {
                 intValue = std::stoi(value);

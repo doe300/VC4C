@@ -248,7 +248,7 @@ FastSet<const Local*> LivenessAnalysis::analyzeIncomingLiveLocals(
     {
         --it;
         if(*it)
-            prevVal = updateLiveness(std::move(prevVal), analyzeLivenessChangesInner(*it->get(), c, trackR5Usage));
+            prevVal = updateLiveness(std::move(prevVal), analyzeLivenessChangesInner(**it, c, trackR5Usage));
     } while(it != block.begin());
     return prevVal;
 }
@@ -354,7 +354,7 @@ static void runAnalysis(const CFGNode& node, FastMap<const BasicBlock*, std::uni
     auto& analyzer = results[node.key];
     if(!analyzer)
     {
-        analyzer.reset(new LivenessAnalysis(std::move(cacheEntry)));
+        analyzer = std::make_unique<LivenessAnalysis>(std::move(cacheEntry));
         analyzer->analyzeWithChanges(*node.key, changes.at(node.key));
     }
     else
@@ -646,7 +646,7 @@ static SortedSet<LocalUsageRange> determineUsageRanges(const BasicBlock& block, 
 
     while(it != block.end())
     {
-        if(!it->get())
+        if(!*it)
         {
             ++it;
             ++instructionIndex;
@@ -722,7 +722,7 @@ void LocalUsageRangeAnalysis::operator()(Method& method)
     auto actualLiveness = livenessAnalysis;
     if(!livenessAnalysis)
     {
-        globalLiveness.reset(new GlobalLivenessAnalysis(false));
+        globalLiveness = std::make_unique<GlobalLivenessAnalysis>(false);
         (*globalLiveness)(method);
         actualLiveness = globalLiveness.get();
     }

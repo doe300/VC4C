@@ -574,7 +574,7 @@ static intermediate::InstructionDecorations toInstructionDecorations(const llvm:
     return deco;
 }
 
-static std::pair<std::string, bool> toComparison(llvm::CmpInst::Predicate pred)
+static std::string toComparison(llvm::CmpInst::Predicate pred)
 {
     using P = llvm::CmpInst::Predicate;
     static constexpr std::array<const char*, P::LAST_FCMP_PREDICATE + 1> floatComparisons{
@@ -628,9 +628,9 @@ static std::pair<std::string, bool> toComparison(llvm::CmpInst::Predicate pred)
     static_assert(intComparisons[P::ICMP_SLE ^ 32] == intermediate::COMP_SIGNED_LE, "");
 
     if(pred <= P::LAST_FCMP_PREDICATE)
-        return std::make_pair(floatComparisons[pred], true);
+        return floatComparisons[pred];
     if(pred >= P::FIRST_ICMP_PREDICATE && pred <= P::LAST_ICMP_PREDICATE)
-        return std::make_pair(intComparisons[pred ^ 32], false);
+        return intComparisons[pred ^ 32];
 
     throw CompilationError(CompilationStep::PARSER, "Unhandled comparison predicate", std::to_string(pred));
 }
@@ -922,10 +922,9 @@ void BitcodeReader::parseInstruction(
     case OtherOps::ICmp:
     {
         const llvm::CmpInst* comp = llvm::cast<const llvm::CmpInst>(&inst);
-        auto tmp = toComparison(comp->getPredicate());
-        instructions.emplace_back(new Comparison(toValue(method, &inst, &instructions), std::move(tmp.first),
-            toValue(method, inst.getOperand(0), &instructions), toValue(method, inst.getOperand(1), &instructions),
-            std::move(tmp.second)));
+        auto compName = toComparison(comp->getPredicate());
+        instructions.emplace_back(new Comparison(toValue(method, &inst, &instructions), std::move(compName),
+            toValue(method, inst.getOperand(0), &instructions), toValue(method, inst.getOperand(1), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -1044,7 +1043,7 @@ Value BitcodeReader::toValue(Method& method, const llvm::Value* val, LLVMInstruc
     {
         return it->second->createReference();
     }
-    const Local* loc;
+    const Local* loc = nullptr;
     const std::string valueName = val->getName().empty() ? "" : (std::string("%") + val->getName()).str();
     if((loc = method.findParameter(valueName)) != nullptr || (loc = method.findStackAllocation(valueName)) != nullptr ||
         (loc = method.findGlobal((std::string("@") + val->getName()).str())) != nullptr)

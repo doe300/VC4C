@@ -475,7 +475,7 @@ AccessRanges analysis::determineAccessRanges(Method& method)
             if(it.has() && (it->writesRegister(REG_VPM_DMA_LOAD_ADDR) || it->writesRegister(REG_VPM_DMA_STORE_ADDR)))
             {
                 if(auto range = determineAccessRange(method, *it.get(), it))
-                    result[range->memoryObject].emplace_back(std::move(range).value());
+                    result[range->memoryObject].emplace_back(range.value());
             }
             it.nextInBlock();
         }

@@ -283,7 +283,7 @@ namespace vc4c
          */
         BitMask operator()(BitMask mask, bool isFloatOperation) const;
 
-        static const Unpack unpackTo32Bit(DataType type);
+        static Unpack unpackTo32Bit(DataType type);
     };
 
     /*

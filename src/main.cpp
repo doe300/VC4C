@@ -29,7 +29,7 @@
 using namespace std;
 using namespace vc4c;
 
-extern void disassemble(const std::string& input, const std::string& output, const OutputMode outputMode);
+extern void disassemble(const std::string& input, const std::string& output, OutputMode outputMode);
 
 static void printHelp()
 {
@@ -145,7 +145,7 @@ static void printInfo()
     }
 
     std::cout << "Tool locations:" << std::endl;
-    for(auto tool : std::vector<std::pair<std::string, std::string>>{{"clang", CLANG_PATH},
+    for(const auto& tool : std::vector<std::pair<std::string, std::string>>{{"clang", CLANG_PATH},
             {"llvm-spirv", SPIRV_LLVM_SPIRV_PATH}, {"llvm-link", LLVM_LINK_PATH}, {"opt", OPT_PATH},
             {"llvm-dis", LLVM_DIS_PATH}, {"llvm-as", LLVM_AS_PATH}, {"spirv-link", SPIRV_LINK_PATH}})
     {
@@ -225,7 +225,7 @@ int main(int argc, char** argv)
             else
             {
                 colorLog = false;
-                fileLog.reset(new std::wofstream(argv[i + 1]));
+                fileLog = std::make_unique<std::wofstream>(argv[i + 1]);
                 logStream = *fileLog;
             }
             ++i;
@@ -339,7 +339,7 @@ int main(int argc, char** argv)
             fileStreams.emplace_back(ifs);
             inputs.emplace(fileStreams.back().get(), Optional<std::string>(file));
         }
-        input.reset(new std::stringstream());
+        input = std::make_unique<std::stringstream>();
         SourceType linkedType = Precompiler::linkSourceCode(inputs, *reinterpret_cast<std::ostream*>(input.get()));
         if(!isSupportedByFrontend(linkedType, config.frontend))
         {

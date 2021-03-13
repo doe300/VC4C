@@ -359,7 +359,7 @@ namespace test_data
     ResultVerification checkParameterMatches(
         std::size_t index, std::size_t numValues, Func&& func, const std::string& expectedMessage)
     {
-        return [index, numValues, func{std::move(func)}, expectedMessage](TestRunner& runner) -> Result {
+        return [index, numValues, func{std::forward<Func>(func)}, expectedMessage](TestRunner& runner) -> Result {
             std::vector<T> resultData(numValues);
             auto result = runner.getKernelArgument(index, resultData.data(), resultData.size() * sizeof(T));
             if(!result)
@@ -555,7 +555,7 @@ namespace test_data
     template <typename T, typename Func = std::function<Result(const std::vector<T>&)>>
     ResultVerification checkParameter(std::size_t index, std::size_t numEntries, Func&& predicate)
     {
-        return [index, numEntries, predicate{std::move(predicate)}](TestRunner& runner) -> Result {
+        return [index, numEntries, predicate{std::forward<Func>(predicate)}](TestRunner& runner) -> Result {
             std::vector<T> resultData(numEntries);
             auto result = runner.getKernelArgument(index, resultData.data(), resultData.size() * sizeof(T));
             if(!result)

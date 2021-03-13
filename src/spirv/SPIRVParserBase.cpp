@@ -215,14 +215,14 @@ ParseResultCode SPIRVParserBase::parseDecoration(const ParsedInstruction& parsed
     case spv::Decoration::Constant:       // global data is constant, is never written
     case spv::Decoration::Restrict:       // memory behind pointer is restricted, e.g. not aliased to another pointer
     case spv::Decoration::Volatile:       // data behind pointer is volatile
-        decorationMappings[target].push_back({static_cast<spv::Decoration>(parsed_instruction.getWord(2)), value});
+        decorationMappings[target].emplace_back(static_cast<spv::Decoration>(parsed_instruction.getWord(2)), value);
         return ParseResultCode::SUCCESS;
     case spv::Decoration::AlignmentId: // known alignment of pointer, but as constant, not literal value
-        decorationMappings[target].push_back({spv::Decoration::Alignment, value});
+        decorationMappings[target].emplace_back(spv::Decoration::Alignment, value);
         return ParseResultCode::SUCCESS;
     case spv::Decoration::MaxByteOffsetId: // known maximum offset (in bytes) from base address, this pointer is
                                            // accessed at, but as constant, not literal value
-        decorationMappings[target].push_back({spv::Decoration::MaxByteOffset, value});
+        decorationMappings[target].emplace_back(spv::Decoration::MaxByteOffset, value);
         return ParseResultCode::SUCCESS;
     case spv::Decoration::BuiltIn: // entity (object, struct-member) represents given built-in
         switch(static_cast<spv::BuiltIn>(value))
@@ -235,7 +235,7 @@ ParseResultCode SPIRVParserBase::parseDecoration(const ParsedInstruction& parsed
         case spv::BuiltIn::NumWorkgroups:
         case spv::BuiltIn::WorkgroupId:
         case spv::BuiltIn::GlobalOffset:
-            decorationMappings[target].push_back({spv::Decoration::BuiltIn, value});
+            decorationMappings[target].emplace_back(spv::Decoration::BuiltIn, value);
             return ParseResultCode::SUCCESS;
         default:
             logging::error() << "Met unsupported builtin decoration " << value << logging::endl;
@@ -811,8 +811,7 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
     }
     case spv::Op::OpFunctionParameter:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        currentMethod->parameters.push_back(
-            std::make_pair(parsed_instruction.getResultId(), parsed_instruction.getTypeId()));
+        currentMethod->parameters.emplace_back(parsed_instruction.getResultId(), parsed_instruction.getTypeId());
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Reading parameter: " << typeMappings.at(parsed_instruction.getTypeId()).to_string() << " %"
                 << parsed_instruction.getResultId() << logging::endl);

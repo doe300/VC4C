@@ -96,7 +96,7 @@ static void demangleAndPrint(char* line, int i)
         *offset_begin++ = '\0';
         *offset_end++ = '\0';
 
-        int status;
+        int status = 0;
         char* real_name = abi::__cxa_demangle(mangled_name, nullptr, nullptr, &status);
 
         // if demangling is successful, output the demangled function name

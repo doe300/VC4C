@@ -441,8 +441,8 @@ bool IndexOf::mapInstruction(Method& method)
     return true;
 }
 
-Comparison::Comparison(Value&& dest, std::string&& comp, Value&& op1, Value&& op2, const bool isFloat) :
-    dest(dest), comp(comp), isFloat(isFloat), op1(op1), op2(op2)
+Comparison::Comparison(Value&& dest, std::string&& comp, Value&& op1, Value&& op2) :
+    dest(dest), comp(comp), op1(op1), op2(op2)
 {
 }
 

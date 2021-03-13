@@ -5,9 +5,9 @@
 #include "CompilationError.h"
 #include "log.h"
 
+#include <csignal>
 #include <cstdio>
 #include <initializer_list>
-#include <signal.h>
 
 static const char* toName(int signal)
 {

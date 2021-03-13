@@ -78,7 +78,8 @@ std::string ALUInstruction::toASMString() const
     std::string addPart;
     std::string mulPart;
     bool hasImmediate = getSig() == SIGNAL_ALU_IMMEDIATE;
-    std::string addArgs, mulArgs;
+    std::string addArgs;
+    std::string mulArgs;
     bool addCanUnpack = false;
     bool mulCanUnpack = false;
     if(opAdd.numOperands > 0)

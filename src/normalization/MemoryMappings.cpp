@@ -81,7 +81,7 @@ std::string MemoryInfo::to_string() const
     case MemoryAccessType::VPM_SHARED_ACCESS:
         return "shared VPM area " + (area ? area->to_string() : "(null)");
     case MemoryAccessType::RAM_LOAD_TMU:
-        return "read-only memory access via TMU" + std::string(tmuFlag ? "1" : "0");
+        return "read-only memory access via TMU" + std::string(tmuFlag ? "0" : "1");
     case MemoryAccessType::RAM_READ_WRITE_VPM:
         return "read-write memory access via VPM" + (area ? " (cached in " + area->to_string() + ")" : "");
     }

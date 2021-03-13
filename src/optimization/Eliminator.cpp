@@ -750,7 +750,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 for(std::size_t i = 0; i < (*destinationReader)->getArguments().size(); ++i)
                 {
                     if((*destinationReader)->assertArgument(i).hasLocal(oldLocal))
-                        (*destinationReader)->setArgument(i, std::move(newInput));
+                        (*destinationReader)->setArgument(i, newInput);
                 }
                 if((*destinationReader)->checkOutputLocal() &&
                     !Local::getLocalData<LocalData>((*destinationReader)->checkOutputLocal()))

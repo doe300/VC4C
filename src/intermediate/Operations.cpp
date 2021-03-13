@@ -390,7 +390,7 @@ const Value& Operation::getFirstArg() const
     return assertArgument(0);
 }
 
-const Optional<Value> Operation::getSecondArg() const
+Optional<Value> Operation::getSecondArg() const
 {
     return getArgument(1);
 }
@@ -495,7 +495,7 @@ const Value& IntrinsicOperation::getFirstArg() const
     return assertArgument(0);
 }
 
-const Optional<Value> IntrinsicOperation::getSecondArg() const
+Optional<Value> IntrinsicOperation::getSecondArg() const
 {
     return getArgument(1);
 }

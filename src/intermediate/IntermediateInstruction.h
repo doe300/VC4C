@@ -451,7 +451,7 @@ namespace vc4c
             bool isNormalized() const override;
 
             const Value& getFirstArg() const;
-            const Optional<Value> getSecondArg() const;
+            Optional<Value> getSecondArg() const;
             PrecalculatedValue precalculate(std::size_t numIterations) const override;
 
             /**
@@ -487,7 +487,7 @@ namespace vc4c
             bool isNormalized() const override;
 
             const Value& getFirstArg() const;
-            const Optional<Value> getSecondArg() const;
+            Optional<Value> getSecondArg() const;
 
             std::string opCode;
 
@@ -508,7 +508,7 @@ namespace vc4c
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;
             bool isNormalized() const override;
 
-            const DataType getReturnType() const;
+            DataType getReturnType() const;
 
             bool matchesSignature(const Method& method) const;
 
@@ -1169,7 +1169,7 @@ namespace vc4c
         struct MemoryAccessInstruction : IntermediateInstruction
         {
             MemoryAccessInstruction(MemoryOperation op, const std::shared_ptr<periphery::CacheEntry>& cacheEntry);
-            ~MemoryAccessInstruction() override;
+            ~MemoryAccessInstruction() override = 0;
 
             qpu_asm::DecoratedInstruction convertToAsm(const FastMap<const Local*, Register>& registerMapping,
                 const FastMap<const Local*, std::size_t>& labelMapping, std::size_t instructionIndex) const override;

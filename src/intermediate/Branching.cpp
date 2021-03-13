@@ -121,7 +121,7 @@ qpu_asm::DecoratedInstruction Branch::convertToAsm(const FastMap<const Local*, R
         outReg = out->checkLocal() ? registerMapping.at(out->local()) : out->reg();
     auto addOut = outReg.file == RegisterFile::PHYSICAL_A ? outReg : REG_NOP;
     auto mulOut = outReg.file == RegisterFile::PHYSICAL_B ? outReg : REG_NOP;
-    int64_t branchOffset;
+    int64_t branchOffset = 0;
     std::string targetName;
     Optional<Address> addressRegister;
     if(auto label = getSingleTargetLabel())

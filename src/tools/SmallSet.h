@@ -97,7 +97,7 @@ namespace vc4c
 
             size_type size() const noexcept
             {
-                return findInner(reinterpret_cast<T>(TOMBSTONE)) - begin();
+                return static_cast<size_type>(findInner(reinterpret_cast<T>(TOMBSTONE)) - begin());
             }
 
             size_type max_size() const noexcept
