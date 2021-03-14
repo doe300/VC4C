@@ -94,7 +94,8 @@ static std::vector<Entry> allKernels = {
     Entry{EMULATED, FAST, "./testing/test_struct.cl", ""},
     Entry{EMULATED, FAST, "./testing/test_vector.cl", ""},
     Entry{PASSED, FAST, "./testing/test_vector3_layout.cl", ""},
-    Entry{EMULATED, FAST, "./testing/test_vectorization.cl", ""},
+    // XXX LLVM-SPIRV Translator does not support i3 type used for switch in test19
+    Entry{PENDING_SPIRV_PRECOMPILER, FAST, "./testing/test_vectorization.cl", ""},
     Entry{PASSED, FAST, "./testing/test_vpm_read.cl", ""},
     Entry{PASSED, FAST, "./testing/test_vpm_write.cl", ""},
     Entry{EMULATED, FAST, "./testing/test_work_item.cl", ""},

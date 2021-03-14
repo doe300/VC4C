@@ -349,112 +349,130 @@ void test_data::registerGeneralTests()
         toDimensions(1),
         {checkParameterEquals(3, std::vector<uint32_t>{0x03020100, 0x07060505, 0x0B0A090B, 0x0F0E0D0F})}});
 
-    registerTest(TestData{"vectorization1", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test1",
+    // XXX LLVM-SPIRV Translator does not support i3 type used for switch in test19
+    registerTest(TestData{"vectorization1", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test1",
         {toBufferParameter(std::vector<float>(1000)), toBufferParameter(std::vector<float>(1000))}, toDimensions(1),
         {checkParameterEquals(0, toRange(-0.0f, -1000.0f, -1.0f)),
             checkParameterEquals(1, toRange(-0.0f, -1000.0f, -1.0f))}});
 
-    registerTest(TestData{"vectorization2", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test2",
+    registerTest(TestData{"vectorization2", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test2",
         {toBufferParameter(toRange(1.0f, 10.0f)), toBufferParameter(toRange(1.0f, 10.0f)), toScalarParameter(7.0f),
             toScalarParameter(1u), toScalarParameter(6u)},
         toDimensions(1),
         {checkParameterEquals(0, std::vector<float>{1.0f, 18.0f, 30.0f, 44.0f, 60.0f, 78.0f, 7.0f, 8.0f, 9.0f})}});
 
-    registerTest(TestData{"vectorization3", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test3",
+    registerTest(TestData{"vectorization3", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test3",
         {toBufferParameter(toRange(1.0f, 801.0f)), toBufferParameter(toRange(1.0f, 801.0f)), toScalarParameter(7.0f)},
         toDimensions(1),
         {checkParameterEquals(0, std::vector<float>{8.0f, 18.0f, 30.0f, 44.0f, 60.0f, 78.0f, 98.0f, 120.0f, 144.0f})}});
 
-    registerTest(TestData{"vectorization4", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test4",
-        {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(std::vector<uint32_t>(1))}, toDimensions(1),
-        {checkParameterEquals(1, std::vector<uint32_t>{(1023 * 1024) / 2 + (5 * 1024)})}});
+    registerTest(
+        TestData{"vectorization4", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED, &test_vectorization_cl_string,
+            "", "test4", {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(std::vector<uint32_t>(1))},
+            toDimensions(1), {checkParameterEquals(1, std::vector<uint32_t>{(1023 * 1024) / 2 + (5 * 1024)})}});
 
-    registerTest(TestData{"vectorization5", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test5",
-        {toBufferParameter(std::vector<float>(1024))}, toDimensions(1),
+    registerTest(TestData{"vectorization5", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test5", {toBufferParameter(std::vector<float>(1024))}, toDimensions(1),
         {checkParameterEquals(0, toRange(0.0f, 1024.0f))}});
 
-    registerTest(TestData{"vectorization6", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test6",
-        {toBufferParameter(std::vector<int32_t>(1024, 2)), toBufferParameter(toRange(-510, 514))}, toDimensions(1),
-        {checkParameterEquals(1, std::vector<int32_t>{512 * (2 + 5)})}});
+    registerTest(
+        TestData{"vectorization6", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED, &test_vectorization_cl_string,
+            "", "test6", {toBufferParameter(std::vector<int32_t>(1024, 2)), toBufferParameter(toRange(-510, 514))},
+            toDimensions(1), {checkParameterEquals(1, std::vector<int32_t>{512 * (2 + 5)})}});
 
     auto vectorization7Result = toRange(1, 1025);
     vectorization7Result[0] = 0;
-    registerTest(TestData{"vectorization7", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test7",
-        {toBufferParameter(toRange(0, 1024))}, toDimensions(1),
+    registerTest(TestData{"vectorization7", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test7", {toBufferParameter(toRange(0, 1024))}, toDimensions(1),
         {checkParameterEquals(0, std::move(vectorization7Result))}});
 
-    registerTest(TestData{"vectorization8", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test8",
-        {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(toRange<int>(0, 4096))}, toDimensions(1),
-        {checkParameterEquals(0, std::vector<uint32_t>{0, 5, 10, 15, 20, 25, 30, 35, 40})}});
+    registerTest(
+        TestData{"vectorization8", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED, &test_vectorization_cl_string,
+            "", "test8", {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(toRange<int>(0, 4096))},
+            toDimensions(1), {checkParameterEquals(0, std::vector<uint32_t>{0, 5, 10, 15, 20, 25, 30, 35, 40})}});
 
-    registerTest(TestData{"vectorization9", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test9",
+    registerTest(TestData{"vectorization9", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test9",
         {toBufferParameter(toRange<int>(0, 4096)), toBufferParameter(toRange<int>(0, 4096))}, toDimensions(1),
         {checkParameterEquals(0, std::vector<uint32_t>{0, 1, 2, 3, 5, 5, 6, 7, 10, 9, 10, 11, 15, 13, 14, 15, 20})}});
 
-    registerTest(TestData{"vectorization10", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test10",
+    registerTest(TestData{"vectorization10", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test10",
         {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(toRange<int>(0, 1024))}, toDimensions(1),
         {checkParameterEquals(0, std::vector<uint32_t>{0, 1, 2, 3, 8, 5, 6, 7, 16, 9, 10, 11, 24})}});
 
-    registerTest(TestData{"vectorization11", DataFilter::CONTROL_FLOW | DataFilter::TYPE_HANDLING,
-        &test_vectorization_cl_string, "", "test11", {toBufferParameter(toRange<int>(0, 256))}, toDimensions(1),
-        {checkParameterEquals(0, std::vector<uint32_t>{100, 100, 100, 100, 100, 100, 100, 100, 100})}});
+    registerTest(
+        TestData{"vectorization11", DataFilter::CONTROL_FLOW | DataFilter::TYPE_HANDLING | DataFilter::SPIRV_DISABLED,
+            &test_vectorization_cl_string, "", "test11", {toBufferParameter(toRange<int>(0, 256))}, toDimensions(1),
+            {checkParameterEquals(0, std::vector<uint32_t>{100, 100, 100, 100, 100, 100, 100, 100, 100})}});
 
     auto vectorization12Result = toRange<float>(0.0f + 42.0f, 1024.0f + 42.0f);
     // only elements 200 to 500 are modified
     std::fill_n(vectorization12Result.begin(), 200, 17.0f);
     std::fill_n(vectorization12Result.begin() + 500, vectorization12Result.size() - 500, 17.0f);
-    registerTest(
-        TestData{"vectorization12_partial", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test12",
-            {toBufferParameter(std::vector<float>(1024, 17.0f)), toBufferParameter(toRange<float>(0.0f, 1024.0f)),
-                toScalarParameter<float>(42.0f), toScalarParameter(200), toScalarParameter(500)},
-            toDimensions(1), {checkParameterEquals(0, std::move(vectorization12Result))}});
+    registerTest(TestData{"vectorization12_partial", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test12",
+        {toBufferParameter(std::vector<float>(1024, 17.0f)), toBufferParameter(toRange<float>(0.0f, 1024.0f)),
+            toScalarParameter<float>(42.0f), toScalarParameter(200), toScalarParameter(500)},
+        toDimensions(1), {checkParameterEquals(0, std::move(vectorization12Result))}});
 
-    registerTest(TestData{"vectorization12", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test12",
+    registerTest(TestData{"vectorization12", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test12",
         {toBufferParameter(std::vector<float>(1024, 17.0f)), toBufferParameter(toRange<float>(0.0f, 1024.0f)),
             toScalarParameter<float>(42.0f), toScalarParameter(0), toScalarParameter(1024)},
         toDimensions(1), {checkParameterEquals(0, toRange<float>(0.0f + 42.0f, 1024.0f + 42.0f))}});
 
-    registerTest(TestData{"vectorization13", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test13",
+    registerTest(TestData{"vectorization13", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test13",
         {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(std::vector<uint32_t>(1)),
             toScalarParameter(1000)},
         toDimensions(1), {checkParameterEquals(1, std::vector<uint32_t>{(999 * 1000) / 2 + (5 * 1000)})}});
 
     // Tests less than a full loop iteration used
-    registerTest(
-        TestData{"vectorization13_partial", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test13",
-            {toBufferParameter(toRange<int>(0, 5)), toBufferParameter(std::vector<uint32_t>(1)), toScalarParameter(5)},
-            toDimensions(1), {checkParameterEquals(1, std::vector<uint32_t>{(4 * 5) / 2 + (5 * 5)})}});
+    registerTest(TestData{"vectorization13_partial", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test13",
+        {toBufferParameter(toRange<int>(0, 5)), toBufferParameter(std::vector<uint32_t>(1)), toScalarParameter(5)},
+        toDimensions(1), {checkParameterEquals(1, std::vector<uint32_t>{(4 * 5) / 2 + (5 * 5)})}});
 
-    registerTest(TestData{"vectorization14", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test14",
+    registerTest(TestData{"vectorization14", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test14",
         {toBufferParameter(std::vector<int32_t>(1024, 2)), toBufferParameter(toRange(-510, 514)),
             toScalarParameter(1024)},
         toDimensions(1), {checkParameterEquals(1, std::vector<int32_t>{512 * (2 + 5)})}});
 
     // Tests less than a full loop iteration used
-    registerTest(
-        TestData{"vectorization14_partial", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test14",
-            {toBufferParameter(std::vector<int32_t>(5, 2)), toBufferParameter(toRange(0, 5)), toScalarParameter(5)},
-            toDimensions(1), {checkParameterEquals(1, std::vector<int32_t>{2 * (2 + 5)})}});
+    registerTest(TestData{"vectorization14_partial", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test14",
+        {toBufferParameter(std::vector<int32_t>(5, 2)), toBufferParameter(toRange(0, 5)), toScalarParameter(5)},
+        toDimensions(1), {checkParameterEquals(1, std::vector<int32_t>{2 * (2 + 5)})}});
 
-    registerTest(TestData{"vectorization15", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test15",
+    registerTest(TestData{"vectorization15", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test15",
         {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(std::vector<uint32_t>(1))}, toDimensions(1),
         {checkParameterEquals(1, std::vector<uint32_t>{17 + (1023 * 1024) / 2 + (5 * 1024)})}});
 
-    registerTest(TestData{"vectorization16", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test16",
+    registerTest(TestData{"vectorization16", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test16",
         {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(std::vector<uint32_t>(1))}, toDimensions(1),
         {checkParameterEquals(1, std::vector<float>{(1023 * 1024) / 2 + (5 * 1024)})}});
 
-    registerTest(TestData{"vectorization17", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test17",
+    registerTest(TestData{"vectorization17", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test17",
         {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(std::vector<uint32_t>(1))}, toDimensions(1),
         {checkParameterEquals(1, std::vector<uint32_t>{267264})}});
 
-    registerTest(TestData{"vectorization18", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test18",
+    registerTest(TestData{"vectorization18", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test18",
         {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(std::vector<uint32_t>(6))},
         toDimensions(3, 1, 1, 2),
         {checkParameterEquals(
             1, std::vector<uint32_t>{5 * 1024, (1023 * 1024) / 2, 5 * 1024, 5 * 1024, (1023 * 1024) / 2, 5 * 1024})}});
 
-    registerTest(TestData{"vectorization19", DataFilter::CONTROL_FLOW, &test_vectorization_cl_string, "", "test19",
+    registerTest(TestData{"vectorization19", DataFilter::CONTROL_FLOW | DataFilter::SPIRV_DISABLED,
+        &test_vectorization_cl_string, "", "test19",
         {toBufferParameter(toRange<int>(0, 1024)), toBufferParameter(std::vector<uint32_t>(1))}, toDimensions(1),
         {checkParameterEquals(1, std::vector<uint32_t>{324088})}});
 

@@ -127,7 +127,14 @@ add_library(TestData STATIC
 	${BINARY_DEPENCENCIES}
 	${TEST_FILES_SOURCE}
 )
+set_target_properties(TestData PROPERTIES OUTPUT_NAME "vc4c_testdata")
 target_include_directories(TestData PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_include_directories(TestData PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(TestData PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>  $<INSTALL_INTERFACE:include/vc4cc>)
 target_compile_options(TestData PRIVATE ${VC4C_ENABLED_WARNINGS})
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/TestData.h ${CMAKE_CURRENT_BINARY_DIR}/TestData.h COPYONLY)
+
+# Package TestData into separate archive to be "installed" only for VC4CL testing
+install(TARGETS TestData EXPORT TestData-target ARCHIVE DESTINATION lib COMPONENT TestData)
+install(EXPORT TestData-target DESTINATION share/vc4cc COMPONENT TestData)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/TestData.h DESTINATION include/vc4cc COMPONENT TestData)
+export(TARGETS TestData FILE vc4cc-testdata-exports.cmake)

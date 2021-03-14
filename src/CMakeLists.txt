@@ -141,18 +141,18 @@ add_dependencies(${VC4C_PROGRAM_NAME} GetGitCommit)
 # Adds the public headers to the target, so they are exported
 target_include_directories(${VC4C_LIBRARY_NAME} PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>  $<INSTALL_INTERFACE:include/vc4cc>)
 # Creates the install target for the library and the compiler
-install(TARGETS ${VC4C_LIBRARY_NAME} EXPORT VC4CC-targets LIBRARY DESTINATION lib)
-install(TARGETS ${VC4C_PROGRAM_NAME} EXPORT VC4C-targets RUNTIME DESTINATION bin)
+install(TARGETS ${VC4C_LIBRARY_NAME} EXPORT VC4CC-targets LIBRARY DESTINATION lib COMPONENT Main)
+install(TARGETS ${VC4C_PROGRAM_NAME} EXPORT VC4C-targets RUNTIME DESTINATION bin COMPONENT Main)
 # Creates the export target (to be used by CMake to find the INSTALLED library)
-install(EXPORT VC4CC-targets DESTINATION share/vc4cc)
+install(EXPORT VC4CC-targets DESTINATION share/vc4cc COMPONENT Main)
 # Creates the install target for the headers
-install(DIRECTORY "${PROJECT_SOURCE_DIR}/include/" DESTINATION include/vc4cc FILES_MATCHING PATTERN "*.h")
+install(DIRECTORY "${PROJECT_SOURCE_DIR}/include/" DESTINATION include/vc4cc COMPONENT Main FILES_MATCHING PATTERN "*.h")
 # Precompiles the headers
 # TODO replace with usage of generator expression once CMake 3.14 is in Raspbian buster repository
 get_property(VC4C_PROGRAM_LOCATION TARGET ${VC4C_PROGRAM_NAME} PROPERTY LOCATION)
 # NOTE: Building the precompiled modules into a packaged directory will include them in the package.
 # This is not applied for the cross build (the one where the Debian package actually matters), since the pre-compilation fails there (because of architecture mismatch)
-install(CODE "execute_process(COMMAND ${VC4C_PROGRAM_LOCATION} --quiet --precompile-stdlib -o $DESTDIR/${CMAKE_INSTALL_PREFIX}/share/vc4cc/ ${VC4CL_STDLIB_DIR}/VC4CLStdLib.h)")
+install(CODE "execute_process(COMMAND ${VC4C_PROGRAM_LOCATION} --quiet --precompile-stdlib -o $DESTDIR/${CMAKE_INSTALL_PREFIX}/share/vc4cc/ ${VC4CL_STDLIB_DIR}/VC4CLStdLib.h)" COMPONENT Main)
 # Exports the target (to be used by CMake to find the SOURCE library)
 export(TARGETS ${VC4C_LIBRARY_NAME} FILE vc4cc-exports.cmake)
 # Adds custom uninstall command
