@@ -1790,7 +1790,7 @@ bool QPU::execute()
                     offset += regVal.first[15].signedInt() /
                         static_cast<int32_t>(sizeof(uint64_t)) /* register value is in bytes */;
                 }
-                ProgramCounter targetPC;
+                ProgramCounter targetPC{};
                 if(br->getBranchRelative() == BranchRel::BRANCH_RELATIVE)
                     targetPC = nextPC + 4 /* Branch starts at PC + 4 */ + static_cast<ProgramCounter>(offset);
                 else
@@ -1962,7 +1962,7 @@ static std::pair<SIMDVector, bool> applyVectorRotation(std::pair<SIMDVector, boo
     if(input.first.isUndefined() || input.first.getAllSame())
         return std::move(input);
 
-    unsigned char distance;
+    unsigned char distance = 0;
     if(offset == VECTOR_ROTATE_R5)
         //"Mul output vector rotation is taken from accumulator r5, element 0, bits [3:0]"
         // - Broadcom Specification, page 30
@@ -2218,7 +2218,7 @@ void QPU::writeConditional(Register dest, const SIMDVector& in, ConditionCode co
 bool QPU::isConditionMet(BranchCond cond) const
 {
     ConditionCode singleCond = COND_NEVER;
-    bool checkAll;
+    bool checkAll = false;
     switch(cond)
     {
     case BRANCH_ALL_C_CLEAR:
@@ -2345,7 +2345,7 @@ std::vector<MemoryAddress> tools::buildUniforms(Memory& memory, MemoryAddress ba
         throw CompilationError(CompilationStep::GENERAL,
             "Emulator of multiple work-groups requires work-group-loop optimization to be enabled!");
 
-    for(uint8_t q = 0; q < numQPUs; ++q)
+    for(uint32_t q = 0; q < numQPUs; ++q)
     {
         std::array<Word, 3> localIDs = {q % config.localSizes[0], (q / config.localSizes[0]) % config.localSizes[1],
             (q / config.localSizes[0]) / config.localSizes[1]};
@@ -2720,8 +2720,8 @@ EmulationResult tools::emulate(const EmulationData& data)
                 ") does not match the number of kernel arguments (" +
                 std::to_string(static_cast<unsigned>(kernelInfo->getParamCount())) + ')');
 
-    MemoryAddress uniformAddress;
-    MemoryAddress globalDataAddress;
+    MemoryAddress uniformAddress{};
+    MemoryAddress globalDataAddress{};
     std::vector<MemoryAddress> paramAddresses;
     Memory mem(fillMemory(globals, data, uniformAddress, globalDataAddress, paramAddresses));
 
@@ -2760,7 +2760,7 @@ EmulationResult tools::emulate(const EmulationData& data)
     // Map and dump instrumentation results
     std::unique_ptr<std::ofstream> dumpInstrumentation;
     if(!data.instrumentationDump.empty())
-        dumpInstrumentation.reset(new std::ofstream(data.instrumentationDump));
+        dumpInstrumentation = std::make_unique<std::ofstream>(data.instrumentationDump);
     std::size_t baseIndex = (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue();
     result.instrumentation.reserve(static_cast<std::size_t>(kernelInfo->getLength().getValue()));
     for(std::size_t i = 0; i < kernelInfo->getLength().getValue(); ++i)
@@ -2810,7 +2810,7 @@ LowLevelEmulationResult tools::emulate(const LowLevelEmulationData& data)
     // Map and dump instrumentation results
     std::unique_ptr<std::ofstream> dumpInstrumentation;
     if(!data.instrumentationDump.empty())
-        dumpInstrumentation.reset(new std::ofstream(data.instrumentationDump));
+        dumpInstrumentation = std::make_unique<std::ofstream>(data.instrumentationDump);
     result.instrumentation.reserve(data.numInstructions);
     for(std::size_t i = 0; i < data.numInstructions; ++i)
     {

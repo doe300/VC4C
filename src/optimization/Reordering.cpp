@@ -226,6 +226,9 @@ static NODISCARD InstructionWalker findReplacementCandidate(
     case DelayType::WAIT_TMU:
     {
         // can insert any instruction which doesn't access SFU/TMU or accumulator r4
+        const InstructionWalker lastInstruction = findPreviousInstruction(basicBlock, pos);
+        if(!lastInstruction.isStartOfBlock())
+            excludedValues.insert(lastInstruction->getOutput().value());
         excludedValues.emplace(Value(REG_SFU_EXP2, TYPE_FLOAT));
         excludedValues.emplace(Value(REG_SFU_LOG2, TYPE_FLOAT));
         excludedValues.emplace(Value(REG_SFU_OUT, TYPE_FLOAT));

@@ -120,6 +120,20 @@ static bool doesWritePhiInput(InstructionWalker it, const Value& phiInput)
     return it->hasDecoration(intermediate::InstructionDecorations::PHI_NODE) && it->getOutput() == phiInput;
 }
 
+static Optional<std::pair<Literal, Literal>> is64BitLiteralLoad(const Local* input)
+{
+    if(auto loc = Local::getLocalData<MultiRegisterData>(input))
+    {
+        auto lowSource = intermediate::getSourceValue(loc->lower->createReference());
+        auto upSource = intermediate::getSourceValue(loc->upper->createReference());
+        auto lowLit = lowSource.getConstantValue() & &Value::getLiteralValue;
+        auto upLit = upSource.getConstantValue() & &Value::getLiteralValue;
+        if(lowLit && upLit)
+            return std::make_pair(*lowLit, *upLit);
+    }
+    return {};
+}
+
 static void mapPhi(const intermediate::PhiNode& node, Method& method, InstructionWalker it)
 {
     while(!it.isStartOfBlock())
@@ -193,31 +207,27 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
             blockIt.emplace(new intermediate::MoveOperation(NOP_REGISTER, condition, COND_ALWAYS, SetFlag::SET_FLAGS));
             blockIt.nextInBlock();
         }
-        if(auto loc = Local::getLocalData<MultiRegisterData>(pair.second.checkLocal()))
+        if(auto literalParts = is64BitLiteralLoad(pair.second.checkLocal()))
         {
-            // for phi-nodes moving 64-bit values, the source constant is not directly used as the argument for the
-            // phi-node (like it is for max 32-bit type-sizes), but instead loaded in separate instructions into the
+            // for phi-nodes moving 64-bit literal values, the source constant is not directly used as the argument for
+            // the phi-node (like it is for max 32-bit type-sizes), but instead loaded in separate instructions into the
             // lower and upper parts. To not read values which are not written yet, we need to move the original loaded
             // values.
             // We do not care for non-constant values, since in this case the writing is anyway split up in the block we
             // insert the phi-node into (since phi-nodes are always at the very beginning of a block, no calculation can
-            // be done before them).
-            auto lowSource = intermediate::getSourceValue(loc->lower->createReference());
-            auto upSource = intermediate::getSourceValue(loc->upper->createReference());
-            lowSource = lowSource.getConstantValue().value_or(lowSource);
-            upSource = upSource.getConstantValue().value_or(upSource);
+            // be done before them) by the successive normalization step splitting up all other 64-bit operations.
 
             Value lowDest = UNDEFINED_VALUE;
             Value upDest = UNDEFINED_VALUE;
             std::tie(lowDest, upDest) = normalization::getLowerAndUpperWords(node.getOutput().value());
 
             blockIt.emplace(
-                (new intermediate::MoveOperation(lowDest, lowSource, jumpCondition))
+                (new intermediate::LoadImmediate(lowDest, literalParts->first, jumpCondition))
                     ->copyExtrasFrom(&node)
                     ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
             blockIt.nextInBlock();
             blockIt.emplace(
-                (new intermediate::MoveOperation(upDest, upSource, jumpCondition))
+                (new intermediate::LoadImmediate(upDest, literalParts->second, jumpCondition))
                     ->copyExtrasFrom(&node)
                     ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
         }
