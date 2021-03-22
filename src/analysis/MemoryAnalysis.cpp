@@ -31,10 +31,8 @@ std::string MemoryAccessRange::to_string() const
         (memoryObject->to_string() +
             (groupUniformAddressParts.empty() ? " with" : " with work-group uniform offset and") +
             " dynamic elements") +
-        (offsetRange ? (" in range [" + (std::to_string(offsetRange->minValue) + ", ") +
-                           (std::to_string(offsetRange->maxValue) + "]")) :
-                       " with indeterminate range") +
-        (constantOffset ? " offset by " + constantOffset->to_string() : "") + exprPart;
+        " in range " + offsetRange.to_string() + (constantOffset ? " offset by " + constantOffset->to_string() : "") +
+        exprPart;
 }
 LCOV_EXCL_STOP
 
@@ -178,7 +176,7 @@ static Optional<ValueRange> addNumEntries(const Local* baseAddress, Optional<Val
     if(auto lit = numEntries.getConstantValue() & &Value::getLiteralValue)
     {
         auto maxOffset = static_cast<double>(lit->unsignedInt() - 1u) * typeFactor;
-        return ValueRange{range->minValue, range->maxValue + maxOffset};
+        return *range | (*range + maxOffset);
     }
     if(auto writer = numEntries.getSingleWriter())
     {
@@ -187,12 +185,12 @@ static Optional<ValueRange> addNumEntries(const Local* baseAddress, Optional<Val
             if(auto lit = expr->getConstantExpression() & &Value::getLiteralValue)
             {
                 auto maxOffset = static_cast<double>(lit->unsignedInt() - 1u) * typeFactor;
-                return ValueRange{range->minValue, range->maxValue + maxOffset};
+                return *range | (*range + maxOffset);
             }
             if(auto tmpRange = ValueRange::getValueRange(*expr))
             {
                 auto maxOffset = (tmpRange.maxValue - 1.0) * typeFactor;
-                return ValueRange{range->minValue, range->maxValue + maxOffset};
+                return *range | (*range + maxOffset);
             }
         }
     }
@@ -353,7 +351,7 @@ static Optional<MemoryAccessRange> determineAccessRange(
             MemoryAccessRange range;
             range.addressWrite = memIt;
             range.memoryObject = checkLocal;
-            range.offsetRange = addNumEntries(range.memoryObject, ValueRange{0.0, 0.0}, memInst, checkLocal);
+            range.offsetRange = addNumEntries(range.memoryObject, ValueRange{0.0}, memInst, checkLocal);
             if(auto writer = checkLocal->getSingleWriter())
                 range.addressExpression = Expression::createRecursiveExpression(*writer);
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -369,8 +367,7 @@ static Optional<MemoryAccessRange> determineAccessRange(
         MemoryAccessRange range;
         range.addressWrite = memIt;
         range.memoryObject = inst.assertArgument(0).local()->getBase(false);
-        range.offsetRange =
-            addNumEntries(range.memoryObject, ValueRange{0.0, 0.0}, memInst, inst.assertArgument(0).local());
+        range.offsetRange = addNumEntries(range.memoryObject, ValueRange{0.0}, memInst, inst.assertArgument(0).local());
         range.addressExpression = Expression::createRecursiveExpression(inst);
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Memory address is directly set to a parameter/global address: " << range.to_string()
@@ -379,7 +376,7 @@ static Optional<MemoryAccessRange> determineAccessRange(
     }
     MemoryAccessRange range;
     range.addressWrite = memIt;
-    range.offsetRange = ValueRange{0.0, 0.0};
+    range.offsetRange = ValueRange{0.0};
     // if the instruction is a move, handle/skip it here, so the add with the shifted offset +
     // base-pointer is found correctly
     auto trackInst = &inst;
@@ -436,10 +433,7 @@ static Optional<MemoryAccessRange> determineAccessRange(
                 if(auto singleRange = analysis::ValueRange::getValueRangeRecursive(val.first, &method))
                 {
                     if(range.offsetRange && *range.offsetRange)
-                    {
-                        range.offsetRange->minValue += singleRange.minValue;
-                        range.offsetRange->maxValue += singleRange.maxValue;
-                    }
+                        *range.offsetRange += singleRange;
                 }
                 else
                 {
@@ -579,10 +573,7 @@ std::pair<bool, analysis::ValueRange> analysis::checkWorkGroupUniformParts(
         if(auto range = entry.offsetRange)
         {
             if(offsetRange)
-            {
-                offsetRange.minValue = std::min(offsetRange.minValue, range->minValue);
-                offsetRange.maxValue = std::max(offsetRange.maxValue, range->maxValue);
-            }
+                offsetRange |= *range;
             else
                 // for the first entry, the combined range is still unknown/undefined
                 offsetRange = *range;
@@ -616,15 +607,11 @@ std::pair<bool, analysis::ValueRange> analysis::checkWorkGroupUniformParts(
                     if(differingUniformParts.find(it->first) != differingUniformParts.end())
                     {
                         if(entry.offsetRange)
-                        {
-                            entry.offsetRange->minValue += it->first.getLiteralValue()->signedInt();
-                            entry.offsetRange->maxValue += it->first.getLiteralValue()->signedInt();
-                        }
+                            *entry.offsetRange += it->first.getLiteralValue()->signedInt();
                         else
                             // TODO correct??
                             entry.offsetRange =
-                                analysis::ValueRange{static_cast<double>(it->first.getLiteralValue()->signedInt()),
-                                    static_cast<double>(it->first.getLiteralValue()->signedInt())};
+                                analysis::ValueRange{static_cast<double>(it->first.getLiteralValue()->signedInt())};
 
                         entry.dynamicAddressParts.emplace(*it);
                         it = entry.groupUniformAddressParts.erase(it);

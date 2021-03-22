@@ -280,15 +280,15 @@ void TestInstructions::testUnpackModes()
 
     TEST_ASSERT_EQUALS(shortRange, UNPACK_16A_32(shortRange, true))
     TEST_ASSERT_EQUALS(shortRange, UNPACK_16A_32(shortRange, false))
-    TEST_ASSERT_EQUALS(ValueRange(TYPE_INT32), UNPACK_16A_32(notSoShortRange, false))
+    TEST_ASSERT_EQUALS(ValueRange(std::numeric_limits<int16_t>::min(), 17), UNPACK_16A_32(notSoShortRange, false))
 
     TEST_ASSERT_EQUALS(ValueRange(17.0 / 255.0, 127.0 / 255.0), UNPACK_8A_32(ValueRange{17.0, 127.0}, true))
-    TEST_ASSERT_EQUALS(ValueRange(TYPE_FLOAT), UNPACK_8A_32(ValueRange{-17.0, 2127.0}, true))
+    TEST_ASSERT_EQUALS(ValueRange(0.0, 1.0), UNPACK_8A_32(ValueRange{-17.0, 2127.0}, true))
     TEST_ASSERT_EQUALS(ValueRange(17.0, 42.0), UNPACK_8A_32(ValueRange(17.0, 42.0), false))
-    TEST_ASSERT_EQUALS(ValueRange(TYPE_INT32), UNPACK_8A_32(shortRange, false))
+    TEST_ASSERT_EQUALS(ValueRange(0.0, 255.0), UNPACK_8A_32(shortRange, false))
 
     TEST_ASSERT_EQUALS(shortRange, UNPACK_R4_16A_32(shortRange, true))
-    TEST_ASSERT_EQUALS(ValueRange(TYPE_FLOAT), UNPACK_R4_16A_32(ValueRange(-70000.0, 80000.0), true))
+    TEST_ASSERT_EQUALS(ValueRange(TYPE_HALF), UNPACK_R4_16A_32(ValueRange(-70000.0, 80000.0), true))
     // TODO actually needs to test "not-so-half" range
     TEST_ASSERT_EQUALS(notSoShortRange, UNPACK_R4_16A_32(notSoShortRange, false))
 
@@ -429,7 +429,7 @@ void TestInstructions::testPackModes()
 
     TEST_ASSERT_EQUALS(shortRange, PACK_32_16A(shortRange, true))
     TEST_ASSERT_EQUALS(ValueRange(TYPE_HALF), PACK_32_16A(ValueRange(-70000.0, 80000.0), true))
-    TEST_ASSERT_EQUALS(ValueRange(TYPE_INT32), PACK_32_16A(shortRange, false))
+    TEST_ASSERT_EQUALS(shortRange, PACK_32_16A(shortRange, false))
     TEST_ASSERT_EQUALS(ValueRange(17.0, 1227.0), PACK_32_16A(ValueRange(17.0, 1227.0), false))
 
     TEST_ASSERT_EQUALS(RANGE_UCHAR, PACK_32_8A(shortRange, false))
@@ -1906,30 +1906,32 @@ void TestInstructions::testLoadInstruction()
 
 void TestInstructions::testValueRanges()
 {
+    using namespace analysis;
     // undefined/unlimited range
     {
-        auto range = analysis::ValueRange::getValueRange(UNDEFINED_VALUE);
+        auto range = ValueRange::getValueRange(UNDEFINED_VALUE);
         TEST_ASSERT(!range.hasExplicitBoundaries())
         TEST_ASSERT(!range.fitsIntoType(TYPE_INT32))
         TEST_ASSERT(!range.fitsIntoType(TYPE_VOID))
-        TEST_ASSERT(!range.fitsIntoRange(analysis::ValueRange(-17.0, 42.0)))
-        TEST_ASSERT_EQUALS(analysis::ValueRange(), range)
+        TEST_ASSERT(!range.fitsIntoRange(ValueRange(-17.0, 42.0)))
+        TEST_ASSERT_EQUALS(ValueRange(), range)
         TEST_ASSERT(!range.getLowerLimit(TYPE_FLOAT))
         TEST_ASSERT(!range.getLowerLimit(TYPE_VOID))
         TEST_ASSERT(!range.getUpperLimit(TYPE_INT32))
         TEST_ASSERT(!range.getUpperLimit(TYPE_VOID))
         TEST_ASSERT(!range.toAbsoluteRange().hasExplicitBoundaries())
+        TEST_ASSERT_EQUALS(std::numeric_limits<double>::infinity(), range.getRange());
     }
 
     // constant range
     {
         Value constant(Literal(0.5f), TYPE_FLOAT);
-        auto range = analysis::ValueRange::getValueRange(constant);
+        auto range = ValueRange::getValueRange(constant);
         TEST_ASSERT(range.hasExplicitBoundaries())
         TEST_ASSERT(range.isUnsigned())
         TEST_ASSERT(range.fitsIntoType(TYPE_HALF))
-        TEST_ASSERT(range.fitsIntoRange(analysis::ValueRange(0.0, 1.0)))
-        TEST_ASSERT(!range.fitsIntoRange(analysis::ValueRange(0.0, 0.1)))
+        TEST_ASSERT(range.fitsIntoRange(ValueRange(0.0, 1.0)))
+        TEST_ASSERT(!range.fitsIntoRange(ValueRange(0.0, 0.1)))
         TEST_ASSERT_EQUALS(constant, range.getLowerLimit(TYPE_FLOAT))
         TEST_ASSERT_EQUALS(constant, range.getUpperLimit(TYPE_FLOAT))
         TEST_ASSERT_EQUALS(INT_ZERO, range.getLowerLimit(TYPE_INT32))
@@ -1937,75 +1939,181 @@ void TestInstructions::testValueRanges()
         TEST_ASSERT(!!range.getSingletonValue())
         TEST_ASSERT_ULP(0.5, *range.getSingletonValue(), 1)
         TEST_ASSERT_EQUALS(range, range.toAbsoluteRange())
+        TEST_ASSERT_EQUALS(0.0, range.getRange());
     }
 
     // constant vector range
     {
         SIMDVector vec({Literal(-16.4f), Literal(15.0f), Literal(-3.2f)});
         Value constant(&vec, TYPE_FLOAT);
-        auto range = analysis::ValueRange::getValueRange(constant);
+        auto range = ValueRange::getValueRange(constant);
         TEST_ASSERT(range.hasExplicitBoundaries())
         TEST_ASSERT(!range.isUnsigned())
         TEST_ASSERT(range.fitsIntoType(TYPE_HALF))
-        TEST_ASSERT(range.fitsIntoRange(analysis::ValueRange(-23.0, 18.0)))
-        TEST_ASSERT(!range.fitsIntoRange(analysis::ValueRange(0.0, 0.1)))
+        TEST_ASSERT(range.fitsIntoRange(ValueRange(-23.0, 18.0)))
+        TEST_ASSERT(!range.fitsIntoRange(ValueRange(0.0, 0.1)))
         TEST_ASSERT_EQUALS(Value(Literal(-16.4f), TYPE_FLOAT), range.getLowerLimit(TYPE_FLOAT))
         TEST_ASSERT_EQUALS(Value(Literal(15.0f), TYPE_FLOAT), range.getUpperLimit(TYPE_FLOAT))
         TEST_ASSERT_EQUALS(Value(Literal(-17), TYPE_INT32), range.getLowerLimit(TYPE_INT32))
         TEST_ASSERT_EQUALS(Value(Literal(15), TYPE_INT8), range.getUpperLimit(TYPE_INT8))
         TEST_ASSERT(!range.getSingletonValue())
+        TEST_ASSERT_DELTA(15.0 + 16.4, range.getRange(), 0.0005);
 
         vec = SIMDVector{};
         constant = Value(&vec, TYPE_INT32);
-        range = analysis::ValueRange::getValueRange(constant);
+        range = ValueRange::getValueRange(constant);
         TEST_ASSERT(!range.hasExplicitBoundaries())
     }
 
     // negative range
     {
-        analysis::ValueRange range{-420000.0, -17.0};
+        ValueRange range{-420000.0, -17.0};
         TEST_ASSERT(range.hasExplicitBoundaries())
         TEST_ASSERT(!range.isUnsigned())
         TEST_ASSERT(!range.fitsIntoType(TYPE_HALF))
         TEST_ASSERT(!range.fitsIntoType(TYPE_INT16))
         TEST_ASSERT(range.fitsIntoType(TYPE_INT32))
         TEST_ASSERT(!range.fitsIntoType(TYPE_VOID_POINTER))
-        TEST_ASSERT(range.fitsIntoRange(analysis::ValueRange(-600000.0, 1.0)))
-        TEST_ASSERT(!range.fitsIntoRange(analysis::ValueRange(0.0, 0.1)))
+        TEST_ASSERT(range.fitsIntoRange(ValueRange(-600000.0, 1.0)))
+        TEST_ASSERT(!range.fitsIntoRange(ValueRange(0.0, 0.1)))
         TEST_ASSERT_EQUALS(Value(Literal(-420000.0f), TYPE_FLOAT), range.getLowerLimit(TYPE_FLOAT))
         TEST_ASSERT_EQUALS(Value(Literal(-17.0f), TYPE_FLOAT), range.getUpperLimit(TYPE_FLOAT))
         TEST_ASSERT_EQUALS(Value(Literal(-420000), TYPE_INT32), range.getLowerLimit(TYPE_INT32))
         TEST_ASSERT_EQUALS(Value(Literal(-17), TYPE_INT32), range.getUpperLimit(TYPE_INT8))
         TEST_ASSERT_EQUALS(NO_VALUE, range.getLowerLimit(TYPE_VOID_POINTER))
         TEST_ASSERT(!range.getSingletonValue())
-        TEST_ASSERT_EQUALS(analysis::ValueRange(17.0, 420000.0), range.toAbsoluteRange())
+        TEST_ASSERT_EQUALS(ValueRange(17.0, 420000.0), range.toAbsoluteRange())
+        TEST_ASSERT_EQUALS(420000.0 - 17.0, range.getRange());
     }
 
     // signed range
     {
-        analysis::ValueRange range{-42.0, 17.0};
+        ValueRange range{-42.0, 17.0};
         TEST_ASSERT(range.hasExplicitBoundaries())
         TEST_ASSERT(!range.isUnsigned())
         TEST_ASSERT(range.fitsIntoType(TYPE_HALF))
         TEST_ASSERT(range.fitsIntoType(TYPE_INT16))
-        TEST_ASSERT(range.fitsIntoRange(analysis::ValueRange(-60.0, 18.0)))
-        TEST_ASSERT(!range.fitsIntoRange(analysis::ValueRange(0.0, 0.1)))
+        TEST_ASSERT(range.fitsIntoRange(ValueRange(-60.0, 18.0)))
+        TEST_ASSERT(!range.fitsIntoRange(ValueRange(0.0, 0.1)))
         TEST_ASSERT_EQUALS(Value(Literal(-42.0f), TYPE_FLOAT), range.getLowerLimit(TYPE_FLOAT))
         TEST_ASSERT_EQUALS(Value(Literal(17.0f), TYPE_FLOAT), range.getUpperLimit(TYPE_FLOAT))
         TEST_ASSERT_EQUALS(Value(Literal(-42), TYPE_INT32), range.getLowerLimit(TYPE_INT32))
         TEST_ASSERT_EQUALS(Value(Literal(17), TYPE_INT32), range.getUpperLimit(TYPE_INT8))
         TEST_ASSERT(!range.getSingletonValue())
-        TEST_ASSERT_EQUALS(analysis::ValueRange(0.0, 42.0), range.toAbsoluteRange())
+        TEST_ASSERT_EQUALS(ValueRange(0.0, 42.0), range.toAbsoluteRange())
+        TEST_ASSERT_EQUALS(17.0 + 42.0, range.getRange());
     }
 
-    TEST_ASSERT_EQUALS(analysis::ValueRange(0.0, 11.0),
-        analysis::ValueRange::getValueRange(intermediate::InstructionDecorations::BUILTIN_LOCAL_ID))
-    TEST_ASSERT_EQUALS(analysis::ValueRange(0.0, 12.0),
-        analysis::ValueRange::getValueRange(intermediate::InstructionDecorations::BUILTIN_LOCAL_SIZE))
-    TEST_ASSERT_EQUALS(analysis::RANGE_UINT,
-        analysis::ValueRange::getValueRange(intermediate::InstructionDecorations::BUILTIN_GROUP_ID))
-    TEST_ASSERT_EQUALS(analysis::ValueRange(1.0, 3.0),
-        analysis::ValueRange::getValueRange(intermediate::InstructionDecorations::BUILTIN_WORK_DIMENSIONS))
+    TEST_ASSERT_EQUALS(
+        ValueRange(0.0, 11.0), ValueRange::getValueRange(intermediate::InstructionDecorations::BUILTIN_LOCAL_ID))
+    TEST_ASSERT_EQUALS(
+        ValueRange(0.0, 12.0), ValueRange::getValueRange(intermediate::InstructionDecorations::BUILTIN_LOCAL_SIZE))
+    TEST_ASSERT_EQUALS(RANGE_UINT, ValueRange::getValueRange(intermediate::InstructionDecorations::BUILTIN_GROUP_ID))
+    TEST_ASSERT_EQUALS(
+        ValueRange(1.0, 3.0), ValueRange::getValueRange(intermediate::InstructionDecorations::BUILTIN_WORK_DIMENSIONS))
+
+    // operators
+    {
+        const ValueRange indeterminateRange{};
+        const ValueRange constantRange{0.5};
+        const ValueRange fixedRange{-20.0, 22.0};
+
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange * 15.0);
+        TEST_ASSERT_EQUALS(ValueRange(0.5 * 15.0), constantRange * 15.0);
+        TEST_ASSERT_EQUALS(ValueRange(-20.0 * 15.0, 22.0 * 15.0), fixedRange * 15.0);
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange * -15.0);
+        TEST_ASSERT_EQUALS(ValueRange(0.5 * -15.0), constantRange * -15.0);
+        TEST_ASSERT_EQUALS(ValueRange(-20.0 * -15.0, 22.0 * -15.0), fixedRange * -15.0);
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange * 0.1);
+        TEST_ASSERT_EQUALS(ValueRange(0.5 * 0.1), constantRange * 0.1);
+        TEST_ASSERT_EQUALS(ValueRange(-20.0 * 0.1, 22.0 * 0.1), fixedRange * 0.1);
+
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange / 15.0);
+        TEST_ASSERT_EQUALS(ValueRange(0.5 / 15.0), constantRange / 15.0);
+        TEST_ASSERT_EQUALS(ValueRange(-20.0 / 15.0, 22.0 / 15.0), fixedRange / 15.0);
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange / -15.0);
+        TEST_ASSERT_EQUALS(ValueRange(0.5 / -15.0), constantRange / -15.0);
+        TEST_ASSERT_EQUALS(ValueRange(-20.0 / -15.0, 22.0 / -15.0), fixedRange / -15.0);
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange / 0.1);
+        TEST_ASSERT_EQUALS(ValueRange(0.5 / 0.1), constantRange / 0.1);
+        TEST_ASSERT_EQUALS(ValueRange(-20.0 / 0.1, 22.0 / 0.1), fixedRange / 0.1);
+
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange + 15.0);
+        TEST_ASSERT_EQUALS(ValueRange(0.5 + 15.0), constantRange + 15.0);
+        TEST_ASSERT_EQUALS(ValueRange(-20.0 + 15.0, 22.0 + 15.0), fixedRange + 15.0);
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange + -15.0);
+        TEST_ASSERT_EQUALS(ValueRange(0.5 + -15.0), constantRange + -15.0);
+        TEST_ASSERT_EQUALS(ValueRange(-20.0 + -15.0, 22.0 + -15.0), fixedRange + -15.0);
+
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange - 15.0);
+        TEST_ASSERT_EQUALS(ValueRange(0.5 - 15.0), constantRange - 15.0);
+        TEST_ASSERT_EQUALS(ValueRange(-20.0 - 15.0, 22.0 - 15.0), fixedRange - 15.0);
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange - -15.0);
+        TEST_ASSERT_EQUALS(ValueRange(0.5 - -15.0), constantRange - -15.0);
+        TEST_ASSERT_EQUALS(ValueRange(-20.0 - -15.0, 22.0 - -15.0), fixedRange - -15.0);
+
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange + indeterminateRange);
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange + constantRange);
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange + fixedRange);
+        TEST_ASSERT_EQUALS(indeterminateRange, constantRange + indeterminateRange);
+        TEST_ASSERT_EQUALS(ValueRange(1.0), constantRange + constantRange);
+        TEST_ASSERT_EQUALS(ValueRange(-19.5, 22.5), constantRange + fixedRange);
+        TEST_ASSERT_EQUALS(indeterminateRange, fixedRange + indeterminateRange);
+        TEST_ASSERT_EQUALS(ValueRange(-19.5, 22.5), fixedRange + constantRange);
+        TEST_ASSERT_EQUALS(ValueRange(-40.0, 44.0), fixedRange + fixedRange);
+
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange - indeterminateRange);
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange - constantRange);
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange - fixedRange);
+        TEST_ASSERT_EQUALS(indeterminateRange, constantRange - indeterminateRange);
+        TEST_ASSERT_EQUALS(ValueRange(0.0), constantRange - constantRange);
+        TEST_ASSERT_EQUALS(ValueRange(-21.5, 20.5), constantRange - fixedRange);
+        TEST_ASSERT_EQUALS(indeterminateRange, fixedRange - indeterminateRange);
+        TEST_ASSERT_EQUALS(ValueRange(-20.5, 21.5), fixedRange - constantRange);
+        TEST_ASSERT_EQUALS(ValueRange(-42.0, 42.0), fixedRange - fixedRange);
+
+        // set union
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange | indeterminateRange);
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange | constantRange);
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange | fixedRange);
+        TEST_ASSERT_EQUALS(indeterminateRange, constantRange | indeterminateRange);
+        TEST_ASSERT_EQUALS(constantRange, constantRange | constantRange);
+        TEST_ASSERT_EQUALS(fixedRange, constantRange | fixedRange);
+        TEST_ASSERT_EQUALS(indeterminateRange, fixedRange | indeterminateRange);
+        TEST_ASSERT_EQUALS(fixedRange, fixedRange | constantRange);
+        TEST_ASSERT_EQUALS(fixedRange, fixedRange | fixedRange);
+
+        // set intersection
+        TEST_ASSERT_EQUALS(indeterminateRange, indeterminateRange & indeterminateRange);
+        TEST_ASSERT_EQUALS(constantRange, indeterminateRange & constantRange);
+        TEST_ASSERT_EQUALS(fixedRange, indeterminateRange & fixedRange);
+        TEST_ASSERT_EQUALS(constantRange, constantRange & indeterminateRange);
+        TEST_ASSERT_EQUALS(constantRange, constantRange & constantRange);
+        TEST_ASSERT_EQUALS(constantRange, constantRange & fixedRange);
+        TEST_ASSERT_EQUALS(fixedRange, fixedRange & indeterminateRange);
+        TEST_ASSERT_EQUALS(constantRange, fixedRange & constantRange);
+        TEST_ASSERT_EQUALS(fixedRange, fixedRange & fixedRange);
+
+        TEST_ASSERT_EQUALS(indeterminateRange, min(indeterminateRange, indeterminateRange));
+        TEST_ASSERT_EQUALS(indeterminateRange, min(indeterminateRange, constantRange));
+        TEST_ASSERT_EQUALS(indeterminateRange, min(indeterminateRange, fixedRange));
+        TEST_ASSERT_EQUALS(indeterminateRange, min(constantRange, indeterminateRange));
+        TEST_ASSERT_EQUALS(constantRange, min(constantRange, constantRange));
+        TEST_ASSERT_EQUALS(ValueRange(-20.0, 0.5), min(constantRange, fixedRange));
+        TEST_ASSERT_EQUALS(indeterminateRange, min(fixedRange, indeterminateRange));
+        TEST_ASSERT_EQUALS(ValueRange(-20.0, 0.5), min(fixedRange, constantRange));
+        TEST_ASSERT_EQUALS(fixedRange, min(fixedRange, fixedRange));
+
+        TEST_ASSERT_EQUALS(indeterminateRange, max(indeterminateRange, indeterminateRange));
+        TEST_ASSERT_EQUALS(indeterminateRange, max(indeterminateRange, constantRange));
+        TEST_ASSERT_EQUALS(indeterminateRange, max(indeterminateRange, fixedRange));
+        TEST_ASSERT_EQUALS(indeterminateRange, max(constantRange, indeterminateRange));
+        TEST_ASSERT_EQUALS(constantRange, max(constantRange, constantRange));
+        TEST_ASSERT_EQUALS(ValueRange(0.5, 22.0), max(constantRange, fixedRange));
+        TEST_ASSERT_EQUALS(indeterminateRange, max(fixedRange, indeterminateRange));
+        TEST_ASSERT_EQUALS(ValueRange(0.5, 22.0), max(fixedRange, constantRange));
+        TEST_ASSERT_EQUALS(fixedRange, max(fixedRange, fixedRange));
+    }
 }
 
 void TestInstructions::testInstructionEquality()

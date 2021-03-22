@@ -9,7 +9,6 @@
 #include "../InstructionWalker.h"
 #include "../Values.h"
 #include "../analysis/MemoryAnalysis.h"
-#include "../analysis/ValueRange.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../performance.h"
 #include "../tools/SmallSet.h"

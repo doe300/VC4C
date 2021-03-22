@@ -7,15 +7,16 @@
 #ifndef VC4C_VALUE_RANGE_H
 #define VC4C_VALUE_RANGE_H
 
-#include "../HalfType.h"
 #include "../performance.h"
 #include "../tools/SmallSet.h"
 #include "Analysis.h"
 #include "Optional.h"
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <memory>
+#include <string>
 
 namespace vc4c
 {
@@ -36,6 +37,16 @@ namespace vc4c
     {
         struct ValueRanges;
 
+        enum class RangeType : uint8_t
+        {
+            // The range cannot be determined, it is "infinite"
+            INDETERMINATE,
+            // The actual dynamic value range cannot exceed this range (e.g. the range allowed by a data type)
+            MAXIMUM,
+            // The actual dynamic value represents this exact range
+            FIXED
+        };
+
         /*
          * Contains a the value range for a certain value/expression
          *
@@ -49,10 +60,14 @@ namespace vc4c
         class ValueRange
         {
         public:
-            explicit ValueRange() = default;
+            explicit ValueRange();
             explicit ValueRange(Literal lit, DataType type);
             explicit ValueRange(DataType type);
-            constexpr ValueRange(double min, double max) : minValue(min), maxValue(max) {}
+            explicit constexpr ValueRange(double val) : minValue(val), maxValue(val), type(RangeType::FIXED) {}
+            constexpr ValueRange(double min, double max) :
+                minValue(std::min(min, max)), maxValue(std::max(min, max)), type(RangeType::MAXIMUM)
+            {
+            }
 
             /*
              * Returns whether all possible values are positive
@@ -72,7 +87,10 @@ namespace vc4c
                 return minValue >= other.minValue && maxValue <= other.maxValue;
             }
 
-            bool hasExplicitBoundaries() const;
+            constexpr bool hasExplicitBoundaries() const
+            {
+                return type != RangeType::INDETERMINATE;
+            }
 
             inline explicit operator bool() const noexcept
             {
@@ -93,6 +111,13 @@ namespace vc4c
              */
             ValueRange toAbsoluteRange() const noexcept;
 
+            constexpr double getRange() const noexcept
+            {
+                if(type == RangeType::INDETERMINATE)
+                    return std::numeric_limits<double>::infinity();
+                return maxValue - minValue;
+            }
+
             std::string to_string() const;
 
             static Optional<ValueRange> getValueRange(
@@ -103,28 +128,50 @@ namespace vc4c
             static ValueRange getValueRangeRecursive(const Value& val, const Method* method = nullptr);
             static ValueRange getValueRange(const Expression& expr, const Method* method = nullptr);
 
-            constexpr ValueRange operator*(double val) const noexcept
+            ValueRange operator*(double val) const noexcept
             {
-                return ValueRange{minValue * val, maxValue * val};
+                return ValueRange{*this} *= val;
             }
+            ValueRange& operator*=(double val) noexcept;
 
-            constexpr ValueRange operator/(double val) const noexcept
+            ValueRange operator/(double val) const noexcept
             {
-                return ValueRange{minValue / val, maxValue / val};
+                return ValueRange{*this} /= val;
             }
+            ValueRange& operator/=(double val) noexcept;
 
-            constexpr ValueRange operator+(double val) const noexcept
+            ValueRange operator+(double val) const noexcept
             {
-                return ValueRange{minValue + val, maxValue + val};
+                return ValueRange{*this} += val;
             }
-
-            constexpr ValueRange operator-(double val) const noexcept
+            ValueRange& operator+=(double val) noexcept;
+            ValueRange operator+(const ValueRange& other) const noexcept
             {
-                return ValueRange{minValue - val, maxValue - val};
+                return ValueRange{*this} += other;
             }
+            ValueRange& operator+=(const ValueRange& other) noexcept;
 
-            ValueRange operator|(const ValueRange& other) const noexcept;
+            ValueRange operator-(double val) const noexcept
+            {
+                return ValueRange{*this} -= val;
+            }
+            ValueRange& operator-=(double val) noexcept;
+            ValueRange operator-(const ValueRange& other) const noexcept
+            {
+                return ValueRange{*this} -= other;
+            }
+            ValueRange& operator-=(const ValueRange& other) noexcept;
+
+            ValueRange operator|(const ValueRange& other) const noexcept
+            {
+                return ValueRange{*this} |= other;
+            }
             ValueRange& operator|=(const ValueRange& other) noexcept;
+            ValueRange operator&(const ValueRange& other) const noexcept
+            {
+                return ValueRange{*this} &= other;
+            }
+            ValueRange& operator&=(const ValueRange& other) noexcept;
 
             bool operator==(const ValueRange& other) const;
             bool operator!=(const ValueRange& other) const
@@ -132,15 +179,16 @@ namespace vc4c
                 return !(*this == other);
             }
 
-            double minValue = -std::numeric_limits<double>::infinity();
-            double maxValue = std::numeric_limits<double>::infinity();
+            ValueRange transform(const std::function<double(double)>& func) const;
+
+            double minValue;
+            double maxValue;
 
         private:
-            void extendBoundaries(double newMin, double newMax);
+            RangeType type;
+
             void extendBoundaries(const ValueRange& other);
             void extendBoundaries(Literal literal, bool isFloat);
-            void extendBoundariesToUnknown(bool isKnownToBeUnsigned = false);
-            void shrinkToIntersection(const ValueRange& other);
             void update(const Optional<Value>& constant, const FastMap<const Local*, ValueRange>& ranges,
                 const intermediate::IntermediateInstruction* it = nullptr, const Method* method = nullptr);
 
@@ -155,6 +203,9 @@ namespace vc4c
 
             friend class ValueRangeAnalysis;
         };
+
+        ValueRange min(const ValueRange& one, const ValueRange& other) noexcept;
+        ValueRange max(const ValueRange& one, const ValueRange& other) noexcept;
 
         extern ValueRange RANGE_HALF;
         constexpr ValueRange RANGE_FLOAT{static_cast<double>(std::numeric_limits<float>::lowest()),

@@ -1241,7 +1241,7 @@ static const periphery::VPMArea* checkCacheMemoryAccessRanges(
     GroupedAccessRanges result;
 
     bool allUniformPartsEqual = false;
-    analysis::ValueRange offsetRange;
+    analysis::ValueRange offsetRange{};
     std::tie(allUniformPartsEqual, offsetRange) = analysis::checkWorkGroupUniformParts(memoryAccessRanges);
     if(!allUniformPartsEqual)
     {
@@ -1254,24 +1254,23 @@ static const periphery::VPMArea* checkCacheMemoryAccessRanges(
         LCOV_EXCL_STOP
         return nullptr;
     }
-    if((offsetRange.maxValue - offsetRange.minValue) >= maxNumVectors || (offsetRange.maxValue < offsetRange.minValue))
+    if(offsetRange.getRange() >= maxNumVectors)
     {
         // this also checks for any over/underflow when converting the range to unsigned int in the next steps
         LCOV_EXCL_START
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Cannot cache memory location " << baseAddr->to_string()
-                << " in VPM, the accessed range is too big: [" << offsetRange.minValue << ", " << offsetRange.maxValue
-                << "]" << logging::endl);
+                << " in VPM, the accessed range is too big: " << offsetRange.to_string() << logging::endl);
         LCOV_EXCL_STOP
         return nullptr;
     }
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Memory location " << baseAddr->to_string() << " is accessed via DMA in the dynamic range ["
-            << offsetRange.minValue << ", " << offsetRange.maxValue << "]" << logging::endl);
+        log << "Memory location " << baseAddr->to_string() << " is accessed via DMA in the dynamic range "
+            << offsetRange.to_string() << logging::endl);
 
     // TODO correct type?? Shouldn't it be baseAddr->type.getElmentType().toArrayType(...??
-    auto accessedType = method.createArrayType(baseAddr->type,
-        static_cast<unsigned>(offsetRange.maxValue - offsetRange.minValue + 1 /* bounds of range are inclusive! */));
+    auto accessedType = method.createArrayType(
+        baseAddr->type, static_cast<unsigned>(offsetRange.getRange() + 1 /* bounds of range are inclusive! */));
 
     // XXX the local is not correct, at least not if there is a work-group uniform offset, but since all work-items
     // use the same work-group offset, it doesn't matter
@@ -1279,8 +1278,8 @@ static const periphery::VPMArea* checkCacheMemoryAccessRanges(
     if(vpmArea == nullptr)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Memory location " << baseAddr->to_string() << " with dynamic access range [" << offsetRange.minValue
-                << ", " << offsetRange.maxValue << "] cannot be cached in VPM, since it does not fit" << logging::endl);
+            log << "Memory location " << baseAddr->to_string() << " with dynamic access range "
+                << offsetRange.to_string() << " cannot be cached in VPM, since it does not fit" << logging::endl);
         return nullptr;
     }
     return vpmArea;
