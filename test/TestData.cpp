@@ -573,9 +573,9 @@ void test_data::registerGeneralTests()
     // XXX passes for SPIR-V locally, but fails in CI
     registerTest(TestData{"OpenCL_CTS_async_copy", DataFilter::ASYNC_BARRIER | DataFilter::SPIRV_DISABLED,
         &OpenCL_CTS_async_copy_global_to_local_cl_string, "", "test_async_copy_global_to_local",
-        {toBufferParameter(toRange<uint32_t>(0, 64)), toBufferParameter(std::vector<uint32_t>(64)),
-            toBufferParameter(std::vector<uint32_t>(64)), toScalarParameter(64), toScalarParameter(8)},
-        toDimensions(8), {checkParameterEquals(1, toRange<uint32_t>(0, 64))}});
+        {toBufferParameter(toRange<uint8_t>(0, 2 * 4 * 3 * 8)), toBufferParameter(std::vector<uint8_t>(2 * 4 * 3 * 8)),
+            toBufferParameter(std::vector<uint8_t>(4 * 3 * 8)), toScalarParameter(4 * 3), toScalarParameter(3)},
+        toDimensions(4, 1, 1, 2, 1, 1), {checkParameterEquals(1, toRange<uint8_t>(0, 2 * 4 * 3 * 8))}});
 
     registerTest(
         TestData{"OpenCL_CTS_barrier", DataFilter::ASYNC_BARRIER, &OpenCL_CTS_barrier_cl_string, "", "compute_sum",
@@ -759,6 +759,7 @@ void test_data::registerGeneralTests()
         {checkParameterEquals(2,
             std::vector<uint16_t>{0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF})}});
 
+    // TODO fails on hardware
     registerTest(TestData{"boost_serial_merge", DataFilter::CONTROL_FLOW | DataFilter::TYPE_HANDLING,
         &boost_compute_test_merge_cl_string, "", "serial_merge",
         {toScalarParameter(16u), toScalarParameter(16u),

@@ -655,7 +655,7 @@ void TMUs::setTMURegisterS(uint8_t tmu, const SIMDVector& val)
 
     if(requestQueue.size() >= 8)
         throw CompilationError(CompilationStep::GENERAL, "TMU request queue is full!");
-    requestQueue.emplace(readMemoryAddress(val));
+    requestQueue.emplace(readMemoryAddress(tmu, val));
 }
 
 void TMUs::setTMURegisterT(uint8_t tmu, const SIMDVector& val)
@@ -713,7 +713,7 @@ void TMUs::checkTMUWriteCycle() const
         throw CompilationError(CompilationStep::GENERAL, "Writing to TMU within 3 cycles of last TMU no-swap change!");
 }
 
-std::future<SIMDVector> TMUs::readMemoryAddress(const SIMDVector& address) const
+std::future<SIMDVector> TMUs::readMemoryAddress(uint8_t tmu, const SIMDVector& address) const
 {
     auto handle = createHandle<AsynchronousHandle<SIMDVector>>();
     auto future = handle->get_future();
@@ -728,7 +728,7 @@ std::future<SIMDVector> TMUs::readMemoryAddress(const SIMDVector& address) const
         {
             auto wordHandle = createHandle<AsynchronousHandle<Word>>();
             wordResults.emplace_back(std::make_shared<std::future<Word>>(wordHandle->get_future()));
-            pendingLoads.emplace_back(slice.startTMURead(std::move(wordHandle), address[i].toImmediate()));
+            pendingLoads.emplace_back(slice.startTMURead(tmu, std::move(wordHandle), address[i].toImmediate()));
         }
     }
     clock.schedule({"TMU read",
@@ -743,6 +743,12 @@ std::future<SIMDVector> TMUs::readMemoryAddress(const SIMDVector& address) const
                     ++it;
             }
             if(!pending.empty())
+                return false;
+
+            if(std::any_of(
+                   results.begin(), results.end(), [](const std::shared_ptr<std::future<Word>>& result) -> bool {
+                       return result->wait_for(std::chrono::seconds{0}) != std::future_status::ready;
+                   }))
                 return false;
 
             SIMDVector res;
@@ -1361,6 +1367,9 @@ AsynchronousExecution L2Cache::startCacheLineRead(
         cacheLine.containsAddress(address) && cacheLine.cycleWritten <= clock.currentCycle);
     if(!cacheLine.containsAddress(address))
     {
+        if(cacheLine.isBeingFilled)
+            throw CompilationError(CompilationStep::GENERAL, "Can't evict cache line being filled for another read!");
+
         // we read the values now...
         decltype(cacheLine.data) tmpData;
         auto baseAddress = getBaseCacheLineAddress(cache, address);
@@ -1431,6 +1440,9 @@ AsynchronousExecution L2Cache::startCacheLineRead(
         cacheLine.containsAddress(address) && cacheLine.cycleWritten <= clock.currentCycle);
     if(!cacheLine.containsAddress(address))
     {
+        if(cacheLine.isBeingFilled)
+            throw CompilationError(CompilationStep::GENERAL, "Can't evict cache line being filled for another read!");
+
         // we read the values now...
         std::array<uint64_t, 8> tmpData;
         auto baseAddress = getBaseCacheLineAddress(cache, address);
@@ -1490,8 +1502,9 @@ AsynchronousExecution L2Cache::startCacheLineRead(
 
 void L2Cache::validateMemoryWord(MemoryAddress address, Word word) const
 {
-    if(memory.readWord(address) != word)
+    if(false && memory.readWord(address) != word)
     {
+        // FIXME this is printed very often! Either we have a lot of aliasing issues or this is wrong!
         CPPLOG_LAZY_BLOCK(logging::Level::WARNING, {
             logging::warn() << "Content of memory does not match word read from cache, this might be an error in the "
                                "emulator or due to aliasing!"
@@ -1528,6 +1541,9 @@ AsynchronousExecution Slice::startUniformRead(AsynchronousHandle<Word>&& handle,
         cacheLine.containsAddress(address) && cacheLine.cycleWritten <= clock.currentCycle);
     if(!cacheLine.containsAddress(address))
     {
+        if(cacheLine.isBeingFilled)
+            throw CompilationError(CompilationStep::GENERAL, "Can't evict cache line being filled for another read!");
+
         auto handle = createHandle<AsynchronousHandle<std::array<Word, 16>>>();
         auto fut = std::make_shared<std::future<std::array<Word, 16>>>(handle->get_future());
         auto l2Read = l2Cache.startCacheLineRead(std::move(handle), address);
@@ -1577,12 +1593,12 @@ AsynchronousExecution Slice::startUniformRead(AsynchronousHandle<Word>&& handle,
         }};
 }
 
-AsynchronousExecution Slice::startTMURead(AsynchronousHandle<Word>&& handle, MemoryAddress address)
+AsynchronousExecution Slice::startTMURead(uint8_t tmuIndex, AsynchronousHandle<Word>&& handle, MemoryAddress address)
 {
     // According to http://imrc.noip.me/blog/vc4/QT31/, the TMU cache is direct associative (see
     // https://en.wikipedia.org/wiki/CPU_cache#Associativity), meaning any cache miss overwrites the previous cached
     // value (if any)
-    auto& cacheLine = getDirectAssociatedCacheLine(tmuCache, address);
+    auto& cacheLine = getDirectAssociatedCacheLine(tmuIndex == 0 ? tmu0Cache : tmu1Cache, address);
     // Since we run the QPUs serially (and have no memory access delay so far), one QPU might already load some value
     // into cache read by the other QPU in the same cycle. Thus, we need to pretend anything loaded in the current cycle
     // was not loaded yet.
@@ -1590,23 +1606,44 @@ AsynchronousExecution Slice::startTMURead(AsynchronousHandle<Word>&& handle, Mem
         cacheLine.containsAddress(address) && cacheLine.cycleWritten <= clock.currentCycle);
     if(!cacheLine.containsAddress(address))
     {
+        if(cacheLine.isBeingFilled)
+        {
+            // we need to wait until the previous read is done before evicting its cache line immediately again
+            // TODO log for performance, since this is a very bad case!
+            return {"TMU cache blocked",
+                [remainingCycles{1}, handle{std::move(handle)}, address, &cacheLine, this, tmuIndex](
+                    uint32_t currentCycle) mutable -> bool {
+                    if(cacheLine.isBeingFilled)
+                        return false;
+
+                    if(remainingCycles > 0)
+                    {
+                        --remainingCycles;
+                        return false;
+                    }
+
+                    clock.schedule(startTMURead(tmuIndex, std::move(handle), address));
+                    return true;
+                }};
+        }
+
         auto handle = createHandle<AsynchronousHandle<std::array<Word, 16>>>();
         auto fut = std::make_shared<std::future<std::array<Word, 16>>>(handle->get_future());
         auto l2Read = l2Cache.startCacheLineRead(std::move(handle), address);
-        auto baseAddress = getBaseCacheLineAddress(tmuCache, address);
+        auto baseAddress = getBaseCacheLineAddress(tmuIndex == 0 ? tmu0Cache : tmu1Cache, address);
 
         if(cacheLine.isSet)
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Evicting TMU cache line " << static_cast<unsigned>(cacheLine.lineNum) << " of slice "
-                    << static_cast<unsigned>(id) << " mapping memory address " << toAddressString(cacheLine.baseAddress)
-                    << logging::endl);
+                log << "Evicting TMU" << static_cast<unsigned>(tmuIndex) << " cache line "
+                    << static_cast<unsigned>(cacheLine.lineNum) << " of slice " << static_cast<unsigned>(id)
+                    << " mapping memory address " << toAddressString(cacheLine.baseAddress) << logging::endl);
 
         cacheLine.baseAddress = baseAddress;
         cacheLine.isSet = true;
         cacheLine.isBeingFilled = true;
 
         clock.schedule({"TMU cache fill",
-            [id{id}, &cacheLine, memoryRead{std::move(l2Read)}, loadedData{fut}](
+            [id{id}, &cacheLine, memoryRead{std::move(l2Read)}, loadedData{fut}, tmuIndex](
                 uint32_t currentCycle) mutable -> bool {
                 if(!memoryRead(currentCycle))
                     return false;
@@ -1615,24 +1652,31 @@ AsynchronousExecution Slice::startTMURead(AsynchronousHandle<Word>&& handle, Mem
                 cacheLine.isBeingFilled = false;
                 cacheLine.cycleWritten = currentCycle;
                 CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Written into TMU cache line " << static_cast<unsigned>(cacheLine.lineNum) << " of slice "
-                        << static_cast<unsigned>(id) << ": " << toDataString(cacheLine.data) << logging::endl);
+                    log << "Written into TMU" << static_cast<unsigned>(tmuIndex) << " cache line "
+                        << static_cast<unsigned>(cacheLine.lineNum) << " of slice " << static_cast<unsigned>(id) << ": "
+                        << toDataString(cacheLine.data) << logging::endl);
                 return true;
             }});
     }
     // read from cache, takes 9 cycles
     return {"TMU cache read",
-        [remainingCycles{9}, &cacheLine, this, address, handle](uint32_t currentCycle) mutable -> bool {
+        [remainingCycles{9}, &cacheLine, this, address, handle, result{0u}](uint32_t currentCycle) mutable -> bool {
             if(cacheLine.isBeingFilled)
                 return false;
+
+            // since the delay is between the cache and the data available at the TMU, read the value as soon as it
+            // becomes ready in cache
+            if(remainingCycles == 9)
+            {
+                result = cacheLine.readElement(address);
+                l2Cache.validateMemoryWord(address, result);
+            }
 
             if(remainingCycles > 0)
             {
                 --remainingCycles;
                 return false;
             }
-            auto result = cacheLine.readElement(address);
-            l2Cache.validateMemoryWord(address, result);
             handle->set_value(result);
             return true;
         }};
@@ -1649,6 +1693,8 @@ std::pair<qpu_asm::Instruction, bool> Slice::readInstruction(ProgramCounter pc)
     if(!cacheLine.containsAddress(instructionAddress))
     {
         PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 57, "Instruction cache hits/reads", 0);
+        if(cacheLine.isBeingFilled)
+            throw CompilationError(CompilationStep::GENERAL, "Can't evict cache line being filled for another read!");
 
         auto handle = createHandle<AsynchronousHandle<std::array<uint64_t, 8>>>();
         auto fut = std::make_shared<std::future<std::array<uint64_t, 8>>>(handle->get_future());

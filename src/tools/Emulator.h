@@ -178,7 +178,7 @@ namespace vc4c
             std::queue<std::future<SIMDVector>> tmu1Queue;
 
             void checkTMUWriteCycle() const;
-            std::future<SIMDVector> readMemoryAddress(const SIMDVector& address) const;
+            std::future<SIMDVector> readMemoryAddress(uint8_t tmu, const SIMDVector& address) const;
             uint8_t toRealTMU(uint8_t tmu) const;
         };
 
@@ -317,15 +317,18 @@ namespace vc4c
         public:
             Slice(uint8_t id, EmulationClock& clock, L2Cache& l2Cache) : id(id), clock(clock), l2Cache(l2Cache)
             {
-                tmuCache.fill(CacheLine<16>{});
+                tmu0Cache.fill(CacheLine<16>{});
+                tmu1Cache.fill(CacheLine<16>{});
                 uniformCache.fill(CacheLine<16>{});
                 instructionCache.fill(CacheLine<8, uint64_t>{});
-                for(uint16_t i = 0; i < tmuCache.size(); ++i)
-                    tmuCache[i].lineNum = uniformCache[i].lineNum = instructionCache[i].lineNum = i;
+                for(uint16_t i = 0; i < tmu0Cache.size(); ++i)
+                    tmu0Cache[i].lineNum = tmu1Cache[i].lineNum = uniformCache[i].lineNum =
+                        instructionCache[i].lineNum = i;
             }
 
             AsynchronousExecution startUniformRead(AsynchronousHandle<MemoryAddress>&& handle, MemoryAddress address);
-            AsynchronousExecution startTMURead(AsynchronousHandle<Word>&& handle, MemoryAddress address);
+            AsynchronousExecution startTMURead(
+                uint8_t tmuIndex, AsynchronousHandle<Word>&& handle, MemoryAddress address);
             std::pair<qpu_asm::Instruction, bool> readInstruction(ProgramCounter pc);
 
         private:
@@ -333,7 +336,8 @@ namespace vc4c
             EmulationClock& clock;
             L2Cache& l2Cache;
 
-            std::array<CacheLine<64 / 4>, 64> tmuCache;
+            std::array<CacheLine<64 / 4>, 64> tmu0Cache;
+            std::array<CacheLine<64 / 4>, 64> tmu1Cache;
             std::array<CacheLine<64 / 8, uint64_t>, 64> instructionCache;
             std::array<CacheLine<64 / 4>, 64> uniformCache;
         };
