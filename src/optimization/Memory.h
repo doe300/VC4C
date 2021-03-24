@@ -30,6 +30,12 @@ namespace vc4c
          * Tries to find and group memory accesses to reduce the number of accesses while increasing utilization.
          */
         bool groupMemoryAccess(const Module& module, Method& method, const Configuration& config);
+
+        /**
+         * Tries to find TMU loads within loops where we can pre-calculate the address for loads in the next loop
+         * iteration and thus we can pre-fetch the data loaded for the next loop iteration into the TMU FIFO.
+         */
+        bool prefetchTMULoads(const Module& module, Method& method, const Configuration& config);
     } // namespace optimizations
 } // namespace vc4c
 

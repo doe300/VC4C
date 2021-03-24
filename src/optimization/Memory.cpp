@@ -10,13 +10,22 @@
 #include "../GlobalValues.h"
 #include "../Method.h"
 #include "../Profiler.h"
+#include "../analysis/ControlFlowGraph.h"
+#include "../analysis/ControlFlowLoop.h"
+#include "../analysis/DataDependencyGraph.h"
+#include "../analysis/DominatorTree.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
+#include "../intermediate/operators.h"
+#include "../performance.h"
 #include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
 #include "log.h"
 
+#include <array>
+
 using namespace vc4c;
+using namespace vc4c::operators;
 
 // TODO rewrite combination of VPM accesses to use MemoryAccessInstructions instead? Need to move before memory lowering
 // and somehow be able to explicitly set stride/etc.
@@ -699,4 +708,306 @@ bool optimizations::groupMemoryAccess(const Module& module, Method& method, cons
     if(didChanges)
         method.cleanEmptyInstructions();
     return didChanges;
+}
+
+struct TMULoadOffset
+{
+    const Local* baseLocal;
+    analysis::InductionVariable inductionVariable;
+    SubExpression offsetExpression;
+};
+
+static FastMap<InstructionWalker, TMULoadOffset> findTMULoadsInLoop(
+    analysis::ControlFlowLoop& loop, Method& method, const analysis::DataDependencyGraph& dependencyGraph)
+{
+    std::array<FastMap<InstructionWalker, TMULoadOffset>, 2> relevantTMULoads{};
+    std::array<unsigned, 2> numTMULoads{};
+    auto inductionVariables = loop.findInductionVariables(dependencyGraph, false);
+    const auto* globalDataAddress = method.findBuiltin(BuiltinLocal::Type::GLOBAL_DATA_ADDRESS);
+    for(auto node : loop)
+    {
+        for(auto it = node->key->walk(); !it.isEndOfBlock(); it.nextInBlock())
+        {
+            auto ramAccess = it.get<intermediate::RAMAccessInstruction>();
+            if(ramAccess && ramAccess->getTMUCacheEntry())
+            {
+                auto cacheEntry = ramAccess->getTMUCacheEntry();
+                ++numTMULoads[cacheEntry->getTMUIndex()];
+
+                auto addressWriter = ramAccess->getMemoryAddress().getSingleWriter();
+                if(!addressWriter)
+                    continue;
+
+                auto expr = Expression::createRecursiveExpression(*addressWriter);
+                if(!expr || expr->code != OP_ADD)
+                    continue;
+
+                const Local* baseLocal = nullptr;
+                SubExpression addressOffset{};
+                auto leftLocal = expr->arg0.checkLocal();
+                if(leftLocal &&
+                    (leftLocal->is<Parameter>() || leftLocal->residesInMemory() || leftLocal == globalDataAddress))
+                {
+                    baseLocal = leftLocal;
+                    addressOffset = expr->arg1;
+                }
+                auto rightLocal = expr->arg1.checkLocal();
+                if(rightLocal &&
+                    (rightLocal->is<Parameter>() || rightLocal->residesInMemory() || rightLocal == globalDataAddress))
+                {
+                    baseLocal = rightLocal;
+                    addressOffset = expr->arg0;
+                }
+
+                // TODO allow also for base address + offset + induction-variable depending offset
+                // does this allow for any more hits??
+
+                if(!baseLocal)
+                    continue;
+
+                const analysis::InductionVariable* matchingInductionVar = nullptr;
+
+                if(auto offsetLoc = addressOffset.checkLocal())
+                {
+                    auto varIt = std::find_if(inductionVariables.begin(), inductionVariables.end(),
+                        [&](const analysis::InductionVariable& var) -> bool { return var.local == offsetLoc; });
+                    if(varIt != inductionVariables.end())
+                        matchingInductionVar = &(*varIt);
+                }
+                else if(auto offsetExpr = addressOffset.checkExpression())
+                {
+                    auto varIt = std::find_if(inductionVariables.begin(), inductionVariables.end(),
+                        [&](const analysis::InductionVariable& var) -> bool {
+                            return (var.local == offsetExpr->arg0.checkLocal() &&
+                                       offsetExpr->arg1.getConstantExpression()) ||
+                                (var.local == offsetExpr->arg1.checkLocal() &&
+                                    offsetExpr->arg0.getConstantExpression());
+                        });
+                    if(varIt != inductionVariables.end())
+                        matchingInductionVar = &(*varIt);
+                }
+
+                if(!matchingInductionVar)
+                    continue;
+
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Found TMU RAM address derived from induction variable with base '" << baseLocal->to_string()
+                        << "' and offset: " << addressOffset.to_string() << " (induction variable: "
+                        << matchingInductionVar->local->to_string() << ')' << logging::endl);
+
+                relevantTMULoads[cacheEntry->getTMUIndex()].emplace(
+                    it, TMULoadOffset{baseLocal, *matchingInductionVar, addressOffset});
+            }
+        }
+    }
+
+    // TODO for now only optimize for a single TMU load.
+    // We could extend this up to 2/4/8? TMU loads (per TMU?), if we can guarantee the order
+    // Tests on hardware running Pearson16 have shown that even allowing single load per TMU causes wrong values to be
+    // loaded, same as on emulator
+    if(numTMULoads[0] + numTMULoads[1] != 1)
+        return {};
+
+    FastMap<InstructionWalker, TMULoadOffset> result;
+    result.insert(relevantTMULoads[0].begin(), relevantTMULoads[0].end());
+    result.insert(relevantTMULoads[1].begin(), relevantTMULoads[1].end());
+
+    return result;
+}
+
+static Value calculateAddress(InstructionWalker& it, const analysis::InductionVariable& inductionVariable,
+    const SubExpression& offsetExpression, Method& method, DataType addressType, const Local* baseLocal)
+{
+    Value tmpOffset = inductionVariable.local->createReference();
+    if(auto expr = offsetExpression.checkExpression())
+    {
+        tmpOffset = method.addNewLocal(inductionVariable.local->type, "%prefetch_tmu_offset");
+        it.emplace(expr->toInstruction(tmpOffset));
+        it.nextInBlock();
+    }
+    return assign(it, addressType, "%prefetch_tmu_address") = (baseLocal->createReference() + tmpOffset);
+}
+
+NODISCARD static bool prefetchTMULoadsInLoop(analysis::ControlFlowLoop& loop, Method& method,
+    const analysis::DataDependencyGraph& dependencyGraph, const analysis::DominatorTree& dominators)
+{
+    auto preheader = loop.findPreheader(dominators);
+    auto successor = loop.findSuccessor();
+    auto header = loop.getHeader();
+    auto tail = loop.getTail();
+    auto repeatEdge = tail->getEdge(header);
+
+    if(!preheader || !successor || !header || !tail || !repeatEdge)
+        // fail fast, since we won't be able to insert the moved/copied instructions anywhere
+        return false;
+
+    auto matchingTMULoads = findTMULoadsInLoop(loop, method, dependencyGraph);
+
+    for(auto& load : matchingTMULoads)
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Prefetching TMU RAM load in loop '" << loop.to_string(false) << "': " << load.first->to_string()
+                << logging::endl);
+        auto initialPrefetchIt = preheader->key->findWalkerForInstruction(
+            load.second.inductionVariable.initialAssignment, preheader->key->walkEnd());
+        auto successivePrefetchIt = repeatEdge->data.getPredecessor(tail->key);
+        if(!initialPrefetchIt)
+            continue;
+
+        auto originalAccess = load.first.get<intermediate::RAMAccessInstruction>();
+
+        // move original TMU RAM load before the loop
+        auto it = initialPrefetchIt->copy().nextInBlock();
+        auto assignmentInst = initialPrefetchIt->get<intermediate::ExtendedInstruction>();
+        if(assignmentInst && assignmentInst->hasConditionalExecution())
+        {
+            /*
+             * In some cases where the loop might be skipped completely, the induction variable is only written
+             * conditionally (if the loop will be taken).
+             *
+             * To make sure the address offset is written unconditionally (since we cannot conditionally read from
+             * memory), insert a dummy offset in case the loop is not entered.
+             */
+            if(auto constant = assignmentInst->getMoveSource() & &Value::getLiteralValue)
+                // if we write a constant value (have no data dependencies) just make the assignment unconditional
+                assignmentInst->setCondition(COND_ALWAYS);
+            else
+                assign(it, load.second.inductionVariable.local->createReference()) =
+                    (INT_ZERO, assignmentInst->getCondition().invert());
+        }
+        auto firstIterationAddress = calculateAddress(it, load.second.inductionVariable, load.second.offsetExpression,
+            method, originalAccess->getMemoryAddress().type, load.second.baseLocal);
+        it.emplace(const_cast<InstructionWalker&>(load.first).release());
+        it.get<intermediate::RAMAccessInstruction>()->setMemoryAddress(firstIterationAddress);
+
+        // add instruction prefetching the value for the next iteration into the TMU FIFO
+        it = successivePrefetchIt.copy().previousInBlock();
+        auto nextIterationAddress = calculateAddress(it, load.second.inductionVariable, load.second.offsetExpression,
+            method, originalAccess->getMemoryAddress().type, load.second.baseLocal);
+        if(auto branch = successivePrefetchIt.get<intermediate::Branch>())
+        {
+            /*
+             * If the loop is not repeated anymore (this is our last iteration), we would prefetch a memory address
+             * which is not intended to be addressed and therefore might not be allocated at all.
+             *
+             * To mitigate this, we re-load the first address instead, if we don't repeat the loop anymore. This memory
+             * address should already be cached and also has already been accessed, so we know we can access it anyway.
+             */
+            auto branchCond = branch->branchCondition;
+            if(branch->getSingleTargetLabel() == header->key->getLabel()->getLabel())
+                branchCond = branchCond.invert();
+            assign(it, nextIterationAddress) = (firstIterationAddress, branchCond.toConditionCode());
+        }
+        it.emplace(new intermediate::RAMAccessInstruction(
+            intermediate::MemoryOperation::READ, nextIterationAddress, originalAccess->cache));
+
+        // add instruction to drain the TMU FIFO after loop
+        bool successorFollowsPreheader = false;
+        successor->forAllIncomingEdges(
+            [&](const analysis::CFGNode& predecessor, const analysis::CFGEdge& edge) -> bool {
+                if(&predecessor == preheader)
+                {
+                    successorFollowsPreheader = true;
+                    return false;
+                }
+                return true;
+            });
+        auto discardIt = successor->key->walk();
+        if(!successorFollowsPreheader)
+        {
+            /*
+             * If we have a proper preheader (i.e. a block from which control flow unconditionally jumps into the loop),
+             * this preheader block is not executed if the loop is not taken at all. Since we do insert our prefetch TMU
+             * RAM access into that block, no data is prefetched at all if the loop is not taken at all.
+             *
+             * To not hang indefinitely on the TMU FIFO drain instruction if the loop is not taken, we need to make sure
+             * the drain is also only executed if the loop is actually taken.
+             *
+             * TODO improve on this by always inserting a proper preheader block and inserting the prefetch there? And
+             * then also always insert a separate loop successor block which is only reached from the loop body?
+             */
+            auto newLabel = method.addNewLocal(TYPE_LABEL, "%loop_successor");
+            discardIt = method.emplaceLabel(successor->key->walk(), new intermediate::BranchLabel(*newLabel.local()));
+
+            auto exitEdge = loop.findExitEdge();
+            if(!exitEdge)
+                throw CompilationError(CompilationStep::OPTIMIZER,
+                    "Failed to determine exit edge for TMU load prefetch", loop.to_string());
+            if(exitEdge->isOutput(*successor))
+            {
+                // if the old successor block still has an edge from the loop itself (i.e. the edge from the loop to the
+                // old successor block was not a fall-through), we need to redirect this edge to the new successor
+                // block.
+                // TODO make all this way cleaner (for all possible CFG constellations) and move to control flow loop?!
+                auto& exitNode = exitEdge->getOtherNode(*successor);
+                auto exitBranch = exitEdge->data.getPredecessor(exitNode.key).get<intermediate::Branch>();
+                if(exitBranch && exitBranch->getSingleTargetLabel() == successor->key->getLabel()->getLabel())
+                    exitBranch->setTarget(newLabel.local());
+                else
+                    throw CompilationError(CompilationStep::OPTIMIZER,
+                        "Unhandled case of redirecting loop successor branch for TMU prefetch drain", loop.to_string());
+            }
+        }
+
+        it = discardIt.nextInBlock();
+        it.emplace(new intermediate::CacheAccessInstruction(
+            intermediate::MemoryOperation::READ, NOP_REGISTER, originalAccess->cache));
+    }
+
+    return !matchingTMULoads.empty();
+}
+
+static bool containsSynchronizationInstruction(const analysis::ControlFlowLoop& loop)
+{
+    for(auto block : loop)
+    {
+        for(auto it = block->key->walk(); it.isEndOfBlock(); it.nextInBlock())
+        {
+            if(it.get<intermediate::MemoryBarrier>() || it.get<intermediate::SemaphoreAdjustment>())
+                return true;
+        }
+    }
+    return false;
+}
+
+bool optimizations::prefetchTMULoads(const Module& module, Method& method, const Configuration& config)
+{
+    // 1. find (innermost) loops
+    // 2. check number of TMU loads (per TMU)
+    // 3. try to determine TMU addresses and whether they are derived from induction variable/can be statically
+    // pre-computed
+    // 4. move first load (RAM access) out of loop, further loads to previous iteration
+    // 5. insert dropping of pre-loaded value after loop
+
+    auto& cfg = method.getCFG();
+    auto dominatorTree = analysis::DominatorTree::createDominatorTree(cfg);
+    auto loops = cfg.findLoops(false, true, dominatorTree.get());
+    auto dependencyGraph = analysis::DataDependencyGraph::createDependencyGraph(method);
+
+    bool movedLoads = false;
+
+    for(auto& loop : loops)
+    {
+        if(loop.size() > 1)
+            /*
+             * For now do not prefetch from loops with multiple blocks.
+             *
+             * TODO If we allow this, we need to have special handling for conditional loads (e.g. if-block in loop) and
+             * either skip those explicitly (TMU RAM loads from within conditional blocks) or in the else-block (if
+             * there is none, insert one) also discard the loaded value. This might lead to accessing out-of-bounds
+             * memory?!
+             *
+             * Examples test-cases for this are vectorization17, vectorization19
+             */
+            continue;
+        if(containsSynchronizationInstruction(loop))
+            continue;
+        if(prefetchTMULoadsInLoop(loop, method, *dependencyGraph, *dominatorTree))
+            movedLoads = true;
+    }
+
+    if(movedLoads)
+        method.cleanEmptyInstructions();
+
+    return movedLoads;
 }

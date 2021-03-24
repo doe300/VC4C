@@ -677,6 +677,7 @@ namespace vc4c
             SideEffectType getSideEffects() const override;
 
             const Value& getTarget() const;
+            void setTarget(const Local* target);
 
             /**
              * @return the single branch target, if there is such (e.g. static branch), NULL pointer otherwise

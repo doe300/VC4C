@@ -177,6 +177,13 @@ const Value& Branch::getTarget() const
     return assertArgument(0);
 }
 
+void Branch::setTarget(const Local* target)
+{
+    setArgument(0, target->createReference());
+    if(target->type != TYPE_LABEL && target->type != TYPE_CODE_ADDRESS)
+        throw CompilationError(CompilationStep::GENERAL, "Can only jump to label or code address", target->to_string());
+}
+
 const Local* Branch::getSingleTargetLabel() const
 {
     auto loc = getTarget().local();

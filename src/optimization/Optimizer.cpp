@@ -258,6 +258,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "merges adjacent basic blocks if there are no other conflicting transitions", OptimizationType::INITIAL),
     OptimizationPass("VectorizeLoops", "vectorize-loops", vectorizeLoops, "vectorizes supported types of loops",
         OptimizationType::INITIAL),
+    OptimizationPass("PrefetchLoads", "prefetch-loads", prefetchTMULoads, "pre-fetches read-only memory loaded in loops",
+        OptimizationType::INITIAL),
     /*
      * Optimization run before this have access to the MemoryAccessInstructions and their accessed CacheEntries.
      * After this step is run, the direct hardware instructions are available instead.
@@ -353,6 +355,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("remove-conditional-flags");
         passes.emplace("move-loop-invariant-code");
         passes.emplace("group-memory");
+        passes.emplace("prefetch-loads");
         FALL_THROUGH
     case OptimizationLevel::BASIC:
         passes.emplace("reorder-blocks");
