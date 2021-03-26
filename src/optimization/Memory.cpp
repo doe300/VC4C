@@ -17,6 +17,7 @@
 #include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/operators.h"
+#include "../intrinsics/Intrinsics.h"
 #include "../performance.h"
 #include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
@@ -822,8 +823,24 @@ static Value calculateAddress(InstructionWalker& it, const analysis::InductionVa
     if(auto expr = offsetExpression.checkExpression())
     {
         tmpOffset = method.addNewLocal(inductionVariable.local->type, "%prefetch_tmu_offset");
-        it.emplace(expr->toInstruction(tmpOffset));
-        it.nextInBlock();
+        if(expr->code == Expression::FAKEOP_UMUL && expr->arg0.checkValue() && expr->arg1.checkValue())
+        {
+            // need to manually insert and lower the multiplication instruction
+            it.emplace(new intermediate::IntrinsicOperation(
+                "mul", Value(tmpOffset), *expr->arg0.checkValue(), *expr->arg1.checkValue()));
+            it->addDecorations(expr->deco);
+            auto copyIt = it.copy().nextInBlock();
+            intrinsics::intrinsify(method.module, method, it, {});
+            it = copyIt;
+        }
+        else if(auto offsetCalculation = expr->toInstruction(tmpOffset))
+        {
+            it.emplace(offsetCalculation);
+            it.nextInBlock();
+        }
+        else
+            throw CompilationError(CompilationStep::OPTIMIZER, "Failed to create expression for TMU offset calculation",
+                expr->to_string());
     }
     return assign(it, addressType, "%prefetch_tmu_address") = (baseLocal->createReference() + tmpOffset);
 }

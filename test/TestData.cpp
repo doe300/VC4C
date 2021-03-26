@@ -589,6 +589,20 @@ void test_data::registerGeneralTests()
             toBufferParameter(std::vector<float>{5.0f, 5.0f, 5.0f}), toBufferParameter(std::vector<float>(3))},
         toDimensions(3), {checkParameterEquals(3, std::vector<float>{5.0f, 1.0f, 3.0f})}});
 
+    registerTest(
+        TestData{"OpenCL_CTS_constant", DataFilter::NONE, &OpenCL_CTS_constant_cl_string, "", "constant_kernel",
+            {toBufferParameter(std::vector<float>(32)), toBufferParameter(toRange<float>(0.0f, 32.0f)),
+                toBufferParameter(toRange<int32_t>(0, 32))},
+            calculateDimensions(32, 1),
+            {checkParameterEquals(
+                0, transform<float>(toRange<float>(0.0f, 32.0f), [](float f) -> float { return f * f; }))}});
+
+    registerTest(TestData{"OpenCL_CTS_constant_loop", DataFilter::NONE, &OpenCL_CTS_constant_cl_string, "",
+        "loop_constant_kernel",
+        {toBufferParameter(std::vector<float>(32)), toBufferParameter(toRange<float>(0.0f, 32.0f)),
+            toScalarParameter(2)},
+        calculateDimensions(32, 1), {checkParameterEquals(0, std::vector<float>(32, 0.0f + 3.0f))}});
+
     registerTest(TestData{"OpenCL_CTS_cross", DataFilter::VECTOR_OPERATIONS | DataFilter::FLOAT_ARITHMETIC,
         &OpenCL_CTS_cross_product_cl_string, "", "test_cross",
         {toBufferParameter(std::vector<float>{1.0f, 2.0f, 3.0f}),

@@ -15,7 +15,6 @@
 #include "../intrinsics/Intrinsics.h"
 #include "../optimization/ControlFlow.h"
 #include "../optimization/Eliminator.h"
-#include "../optimization/Reordering.h"
 #include "../spirv/SPIRVBuiltins.h"
 #include "Inliner.h"
 #include "LiteralValues.h"
@@ -235,7 +234,7 @@ const static std::vector<std::pair<std::string, NormalizationStep>> adjustmentSt
     // values
     {"HandleUseWithImmediate", handleUseWithImmediate},
     // moves all sources of vector-rotations to accumulators (if too large usage-range)
-    {"MoveRotationSourcesToAccs", optimizations::moveRotationSourcesToAccumulators},
+    {"MoveRotationSourcesToAccs", moveRotationSourcesToAccumulators},
     // inserts moves to splits up uses of locals fixes to a register-file (e.g. Unpack/Pack) together
     {"SplitRegisterConflicts", splitRegisterConflicts}};
 // TODO split read-after-writes?

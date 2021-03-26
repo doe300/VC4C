@@ -51,6 +51,14 @@ namespace vc4c
         void extendBranches(const Module& module, Method& method, const Configuration& config);
 
         void eliminatePhiNodes(const Module& module, Method& method, const Configuration& config);
+
+        /**
+         * Prevents register-mapping errors by guaranteeing the source of a vector-rotation to be mappable to an
+         * accumulator. To do this, long-living used in a vector-rotation are moved to a temporary local which then can
+         * be mapped to an accumulator.
+         */
+        InstructionWalker moveRotationSourcesToAccumulators(
+            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
     } // namespace normalization
 } // namespace vc4c
 

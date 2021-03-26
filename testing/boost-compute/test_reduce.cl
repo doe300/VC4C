@@ -84,3 +84,12 @@ if(lid == 0){
 }
 
 }
+
+__kernel void extra_serial_reduce(uint count, uint offset, __global float2* output, uint output_offset, __global float2* _buf0)
+{
+float2 result = _buf0[offset];
+for(uint i = offset + 1; i < count; i++)
+    result = (float2)(result.x*_buf0[i].x-result.y*_buf0[i].y,result.y*_buf0[i].x+result.x*_buf0[i].y);
+output[output_offset] = result;
+
+}

@@ -284,3 +284,77 @@ void normalization::eliminatePhiNodes(const Module& module, Method& method, cons
             it.nextInMethod();
     }
 }
+
+InstructionWalker normalization::moveRotationSourcesToAccumulators(
+    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+{
+    // makes sure, all sources for vector-rotations have a usage-range small enough to be on an accumulator
+    /*
+     * "The full horizontal vector rotate is only available when both of the mul ALU input arguments are taken from
+     * accumulators r0-r3."
+     * - Broadcom specification, page 20
+     *
+     */
+    auto vectorRotation = it.has() ? it->getVectorRotation() : Optional<intermediate::RotationInfo>{};
+    if(vectorRotation && vectorRotation->isFullRotationAllowed())
+    {
+        for(auto& arg : it->getArguments())
+        {
+            // NOTE: can either run on if-full-rotation allowed, this is greedy, will rewrite some cases where not
+            // necessary or on if-quad-rotation-not-allowed, this is generous, will only rewrite when necessary, but
+            // might cause register allocation errors
+            if(auto loc = arg.checkLocal())
+            {
+                InstructionWalker writer = it.copy().previousInBlock();
+                while(!writer.isStartOfBlock())
+                {
+                    if(writer.has() && writer->writesLocal(loc))
+                        break;
+                    writer.previousInBlock();
+                }
+                // if the local is either written in another block or the usage-range exceeds the accumulator threshold,
+                // move to temporary
+                if(writer.isStartOfBlock() ||
+                    !writer.getBasicBlock()->isLocallyLimited(
+                        writer, loc, config.additionalOptions.accumulatorThreshold))
+                {
+                    InstructionWalker mapper = it.copy().previousInBlock();
+                    // insert mapper before first NOP
+                    while(!mapper.isStartOfBlock() && mapper.copy().previousInBlock().get<intermediate::Nop>())
+                        mapper.previousInBlock();
+                    if(mapper.isStartOfBlock())
+                        mapper.nextInBlock();
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Moving source of vector-rotation to temporary for: " << it->to_string()
+                            << logging::endl);
+                    const Value tmp = method.addNewLocal(loc->type, "%vector_rotation");
+                    mapper.emplace(new intermediate::MoveOperation(tmp, loc->createReference()));
+                    if(mapper.nextInBlock() == it)
+                        /*
+                         * I.e. if the vector rotation is the first (non-label) instruction in a block, there are no
+                         * other instructions that we can insert the move before, so we need to manually insert an
+                         * instruction to not violate the rule:
+                         * "An instruction that does a vector rotate must not immediately follow an instruction that
+                         * writes to the accumulator that is being rotated."
+                         * - Broadcom specification, page 37
+                         */
+                        mapper.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER));
+                    it->replaceLocal(loc, tmp.local(), LocalUse::Type::READER);
+                }
+            }
+            else if(arg.checkRegister() && (!arg.reg().isAccumulator() || arg.reg().getAccumulatorNumber() > 3) &&
+                arg != ROTATION_REGISTER)
+            {
+                // e.g. inserting into vector from reading VPM
+                // insert temporary local to be read into, rotate local and NOP, since it is required
+                auto tmp = method.addNewLocal(arg.type, "%vector_rotation");
+                it.emplace(new intermediate::MoveOperation(tmp, arg));
+                it.nextInBlock();
+                it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER));
+                it.nextInBlock();
+                it->replaceValue(arg, tmp, LocalUse::Type::READER);
+            }
+        }
+    }
+    return it;
+}
