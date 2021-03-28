@@ -24,6 +24,8 @@ TestExpressions::TestExpressions()
     TEST_ADD(TestExpressions::testCombination);
     TEST_ADD(TestExpressions::testConvergence);
     TEST_ADD(TestExpressions::testValueRange);
+    TEST_ADD(TestExpressions::testSplit);
+    TEST_ADD(TestExpressions::testAssociativeParts);
 }
 
 TestExpressions::~TestExpressions() = default;
@@ -328,6 +330,7 @@ void TestExpressions::testCombination()
         // 2 operands, special code-specific rules
         auto a = method.addNewLocal(TYPE_FLOAT);
         auto b = method.addNewLocal(TYPE_FLOAT);
+        auto c = method.addNewLocal(TYPE_FLOAT);
 
         // fadd(fmul(a, constB), a) = fmul(a, constB+1)
         auto innerMul = expression(a * Value(Literal(42.0f), TYPE_FLOAT));
@@ -403,20 +406,49 @@ void TestExpressions::testCombination()
         result = Expression{OP_FSUB, FLOAT_ZERO, b};
         TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
 
-        // (a << const) + a = a + (a << const) -> a * ((1 << const) + 1)
+        // (a + b) - (a + c) = b - c
+        auto leftAdd = expression(a + b);
+        auto rightAdd = expression(a + c);
+        outer = std::make_shared<Expression>(OP_FSUB, leftAdd, rightAdd);
+        result = Expression{OP_FSUB, b, c};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
+
+        // (b + c) - (c + a) = b - c
+        leftAdd = expression(b + a);
+        rightAdd = expression(c + a);
+        outer = std::make_shared<Expression>(OP_FSUB, leftAdd, rightAdd);
+        result = Expression{OP_FSUB, b, c};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
+
+        // (a << b) << c) = a << (b + c)
         auto innerShift = expression(loc0 << 12_val);
         inner = method.addNewLocal(TYPE_INT32);
         expressions.emplace(inner.local(), innerShift);
+        outer = expression(inner << 13_val);
+        result = Expression{OP_SHL, loc0, 25_val};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
+
+        // (a >> b) >> c) = a >> (b + c)
+        innerShift = expression(as_unsigned{loc0} >> 12_val);
+        auto someOffset = method.addNewLocal(TYPE_INT32);
+        expressions.at(inner.local()) = innerShift;
+        outer = expression(as_unsigned{inner} >> someOffset);
+        result = Expression{OP_SHR, loc0, std::make_shared<Expression>(OP_ADD, 12_val, someOffset)};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
+
+        // (a << const) + a = a + (a << const) -> a * ((1 << const) + 1)
+        innerShift = expression(loc0 << 12_val)->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS);
+        expressions.at(inner.local()) = innerShift;
         outer = expression(inner + loc0);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 4097_val};
         TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
 
-        outer = expression(loc0 + inner);
+        outer = expression(loc0 + inner)->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 4097_val};
         TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
 
         // (a << const) - a = a * ((1 << const) - 1)
-        outer = expression(inner - loc0);
+        outer = expression(inner - loc0)->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 4095_val};
         TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
 
@@ -430,7 +462,19 @@ void TestExpressions::testCombination()
         innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 27_val, loc0);
         expressions.at(inner.local()) = innerMul;
         outer = expression(inner << 13_val);
-        result = Expression{Expression::FAKEOP_UMUL, loc0, 221184_val};
+        result = Expression{Expression::FAKEOP_UMUL, 221184_val, loc0};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
+
+        // (a << constA) * constB = constB * (a << constA) -> a * (constB << constA)
+        innerShift = std::make_shared<Expression>(OP_SHL, loc0, 27_val)
+                         ->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS);
+        expressions.at(inner.local()) = innerShift;
+        outer = std::make_shared<Expression>(Expression::FAKEOP_UMUL, inner, 17_val);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, Value(Literal(17 << 27), TYPE_INT32)};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
+
+        outer = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 17_val, inner);
+        result = Expression{Expression::FAKEOP_UMUL, Value(Literal(17 << 27), TYPE_INT32), loc0};
         TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
 
         // (a * constA) + a = a * (constA + 1)
@@ -474,6 +518,75 @@ void TestExpressions::testCombination()
         outer = expression(inner - loc0);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 16_val};
         TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
+
+        // (a + b) + a = b + (2 * a)
+        innerAdd = std::make_shared<Expression>(OP_FADD, loc0, loc1);
+        expressions.at(inner.local()) = innerAdd;
+        outer = std::make_shared<Expression>(OP_FADD, inner, loc0);
+        result = Expression{OP_FADD, loc1, std::make_shared<Expression>(OP_FMUL, 2_val, loc0)};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
+
+        // (b + a) + a = b + (2 * a)
+        innerAdd = std::make_shared<Expression>(OP_FADD, loc1, loc0);
+        expressions.at(inner.local()) = innerAdd;
+        outer = std::make_shared<Expression>(OP_FADD, inner, loc0);
+        result = Expression{OP_FADD, loc1, std::make_shared<Expression>(OP_FMUL, 2_val, loc0)};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
+
+        // a + (a + b) = b + (2 * a)
+        innerAdd = std::make_shared<Expression>(OP_ADD, loc0, loc1);
+        expressions.at(inner.local()) = innerAdd;
+        outer = std::make_shared<Expression>(OP_ADD, loc0, inner);
+        result = Expression{OP_ADD, loc1, std::make_shared<Expression>(Expression::FAKEOP_UMUL, 2_val, loc0)};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
+
+        // a + (b + a) = b + (2 * a)
+        innerAdd = std::make_shared<Expression>(OP_ADD, loc1, loc0);
+        expressions.at(inner.local()) = innerAdd;
+        outer = std::make_shared<Expression>(OP_ADD, loc0, inner);
+        result = Expression{OP_ADD, loc1, std::make_shared<Expression>(Expression::FAKEOP_UMUL, 2_val, loc0)};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
+
+        // (a * b) + (a * c) = a * (b + c)
+        static_assert(((13 * 17) + (13 * 21)) == (13 * (17 + 21)), "");
+        SubExpression leftMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, loc0, loc1);
+        SubExpression rightMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, loc0, loc2);
+        outer = std::make_shared<Expression>(OP_ADD, leftMul, rightMul);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, std::make_shared<Expression>(OP_ADD, loc1, loc2)};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
+
+        // a * b) - (a * c) = a * (b - c)
+        static_assert(((13 * 17) - (13 * 21)) == (13 * (17 - 21)), "");
+        outer = std::make_shared<Expression>(OP_SUB, leftMul, rightMul);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, std::make_shared<Expression>(OP_SUB, loc1, loc2)};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
+
+        // (a * b) + (a << constA) = a * (b + (1 << constA))
+        static_assert(((17 * 13) + (17 << 4)) == (17 * (13 + (1 << 4))), "");
+        innerShift = std::make_shared<Expression>(OP_SHL, loc0, 4_val)
+                         ->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS);
+        innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, loc0, loc1);
+        outer = std::make_shared<Expression>(OP_ADD, innerMul, innerShift);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, std::make_shared<Expression>(OP_ADD, loc1, 16_val)};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
+
+        // (a << constA) - (a * b) = a * ((1 << constA) - b)
+        static_assert(((17 << 4) - (17 * 13)) == (17 * ((1 << 4) - 13)), "");
+        outer = std::make_shared<Expression>(OP_SUB, innerShift, innerMul);
+        result = Expression{Expression::FAKEOP_UMUL, loc0, std::make_shared<Expression>(OP_SUB, 16_val, loc1)};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
+
+        // (a * constA) * constB = a * (constA * constB)
+        innerMul = std::make_shared<Expression>(OP_FMUL, loc0, 4.0_val);
+        outer = std::make_shared<Expression>(OP_FMUL, innerMul, 5.0_val);
+        result = Expression{OP_FMUL, loc0, 20.0_val};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
+
+        // constA * (constB * a) = a * (constA * constB)
+        innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 4_val, loc0);
+        outer = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 5_val, innerMul);
+        result = Expression{Expression::FAKEOP_UMUL, 20_val, loc0};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
     }
 
     {
@@ -504,6 +617,41 @@ void TestExpressions::testCombination()
         outer = std::make_shared<Expression>(OP_ADD, someLoc, subExpr);
         // pointer-equality checked on purpose!
         TEST_ASSERT_EQUALS(someExpr, outer->combineWith(expressions))
+    }
+
+    {
+        // recursive expression tests
+        auto inner = method.addNewLocal(TYPE_INT32);
+        auto middle = method.addNewLocal(TYPE_INT32);
+
+        // a + ((a + b) + a) = b + (3 * a)
+        auto innerAdd = expression(loc0 + loc1);
+        expressions.emplace(inner.local(), innerAdd);
+
+        auto middleAdd = expression(inner + loc0)->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS);
+        expressions.emplace(middle.local(), middleAdd);
+
+        auto outer = expression(loc0 + middle)->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS);
+
+        auto resultInner = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 3_val, loc0);
+        Expression result{OP_ADD, loc1, resultInner};
+        TEST_ASSERT_EQUALS(result, *outer);
+
+        // a + ((a * constA) + b) = b + ((constA + 1) * a)
+        auto innerMul = expression(as_float{loc0} * as_float{17.0_val});
+        middleAdd = std::make_shared<Expression>(OP_FADD, innerMul, loc1);
+        outer = std::make_shared<Expression>(OP_FADD, loc0, middleAdd)->combineWith(expressions);
+
+        resultInner = expression(as_float{18.0_val} * as_float{loc0});
+        result = Expression{OP_FADD, resultInner, loc1};
+        TEST_ASSERT_EQUALS(result, *outer);
+
+        // (b + (constA * a)) + a = b + ((constA + 1) * a)
+        innerMul = expression(as_float{17.0_val} * as_float{loc0});
+        middleAdd = std::make_shared<Expression>(OP_FADD, loc1, innerMul);
+        outer = std::make_shared<Expression>(OP_FADD, middleAdd, loc0)->combineWith(expressions);
+
+        TEST_ASSERT_EQUALS(result, *outer);
     }
 }
 
@@ -820,4 +968,138 @@ void TestExpressions::testValueRange()
     }
 
     // TODO (un)pack modes
+}
+
+void TestExpressions::testSplit()
+{
+    Configuration config{};
+    Module mod{config};
+    Method method(mod);
+
+    auto loc0 = method.addNewLocal(TYPE_INT32);
+    auto loc1 = method.addNewLocal(TYPE_INT32);
+
+    auto dynamicExpression = expression(loc1 & loc0);
+    auto constantExpression = expression(17_val + 16_val);
+    auto workGroupUniformExpression =
+        expression((loc1 - 23_val, intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
+    auto mixedExpression = expression(loc0 + 42_val);
+
+    // add: ((dynA + constA) + (dynB + constB) = (dynA + dynB) + (constA + constB)
+    {
+        auto innerAdd = std::make_shared<Expression>(OP_ADD, dynamicExpression, constantExpression);
+        auto middleAdd = std::make_shared<Expression>(OP_ADD, innerAdd, workGroupUniformExpression);
+        auto outerAdd = std::make_shared<Expression>(OP_ADD, middleAdd, mixedExpression);
+
+        auto resultParts = outerAdd->splitIntoDynamicAndConstantPart(false);
+        auto expectedInner = std::make_shared<Expression>(OP_ADD, dynamicExpression, workGroupUniformExpression);
+        auto expectedOuter = std::make_shared<Expression>(OP_ADD, expectedInner, loc0);
+        TEST_ASSERT_EQUALS(SubExpression{expectedOuter}, resultParts.first);
+        TEST_ASSERT_EQUALS(SubExpression{75_val}, resultParts.second);
+
+        resultParts = outerAdd->splitIntoDynamicAndConstantPart(true);
+        auto expectedDynamic = std::make_shared<Expression>(OP_ADD, dynamicExpression, loc0);
+        auto expectedConstant = std::make_shared<Expression>(OP_ADD, 75_val, workGroupUniformExpression);
+        TEST_ASSERT_EQUALS(SubExpression{expectedDynamic}, resultParts.first);
+        TEST_ASSERT_EQUALS(SubExpression{expectedConstant}, resultParts.second);
+    }
+
+    // shl: (dynA + constA) << factor = (dynA << factor) + (constA << factor) (baring overflow!)
+    {
+        auto innerAdd = std::make_shared<Expression>(OP_ADD, dynamicExpression, constantExpression);
+        auto outerShift = std::make_shared<Expression>(OP_SHL, innerAdd, 9_val);
+        auto resultParts = outerShift->splitIntoDynamicAndConstantPart(false);
+
+        auto expectedDynamic = std::make_shared<Expression>(OP_SHL, dynamicExpression, 9_val);
+        TEST_ASSERT_EQUALS(SubExpression{expectedDynamic}, resultParts.first);
+        TEST_ASSERT_EQUALS(SubExpression{Value(Literal(((17 + 16) << 9)), TYPE_INT32)}, resultParts.second);
+    }
+
+    // shr: (dynA + constA) >> factor = (dynA >> factor) + (constA >> factor) (baring overflow!)
+    {
+        auto innerAdd = std::make_shared<Expression>(OP_ADD, dynamicExpression, constantExpression);
+        auto outerShift = std::make_shared<Expression>(OP_SHR, innerAdd, 9_val);
+        auto resultParts = outerShift->splitIntoDynamicAndConstantPart(false);
+
+        auto expectedDynamic = std::make_shared<Expression>(OP_SHR, dynamicExpression, 9_val);
+        TEST_ASSERT_EQUALS(SubExpression{expectedDynamic}, resultParts.first);
+        TEST_ASSERT_EQUALS(SubExpression{Value(Literal(((17 + 16) >> 9)), TYPE_INT32)}, resultParts.second);
+    }
+
+    // umul: ((dynA + constA) * factor = (dynA * factor) + (constA * factor)
+    {
+        auto innerAdd = std::make_shared<Expression>(OP_ADD, dynamicExpression, constantExpression);
+        auto outerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, innerAdd, 9_val);
+        auto resultParts = outerMul->splitIntoDynamicAndConstantPart(false);
+
+        auto expectedDynamic = std::make_shared<Expression>(Expression::FAKEOP_UMUL, dynamicExpression, 9_val);
+        TEST_ASSERT_EQUALS(SubExpression{expectedDynamic}, resultParts.first);
+        TEST_ASSERT_EQUALS(SubExpression{Value(Literal(((17 + 16) * 9)), TYPE_INT32)}, resultParts.second);
+    }
+
+    // umul: factor * ((dynA + constA) = (dynA * factor) + (constA * factor)
+    {
+        auto innerAdd = std::make_shared<Expression>(OP_ADD, dynamicExpression, constantExpression);
+        auto outerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 9_val, innerAdd);
+        auto resultParts = outerMul->splitIntoDynamicAndConstantPart(false);
+
+        auto expectedDynamic = std::make_shared<Expression>(Expression::FAKEOP_UMUL, dynamicExpression, 9_val);
+        TEST_ASSERT_EQUALS(SubExpression{expectedDynamic}, resultParts.first);
+        TEST_ASSERT_EQUALS(SubExpression{Value(Literal(((17 + 16) * 9)), TYPE_INT32)}, resultParts.second);
+    }
+
+    // other opcode
+    {
+        auto innerAdd = std::make_shared<Expression>(OP_ADD, dynamicExpression, constantExpression);
+        auto outerOp = std::make_shared<Expression>(OP_FSUB, 9_val, innerAdd);
+        auto resultParts = outerOp->splitIntoDynamicAndConstantPart(false);
+
+        TEST_ASSERT_EQUALS(SubExpression{outerOp}, resultParts.first);
+        TEST_ASSERT_EQUALS(SubExpression{INT_ZERO}, resultParts.second);
+    }
+}
+
+void TestExpressions::testAssociativeParts()
+{
+    Configuration config{};
+    Module mod{config};
+    Method method(mod);
+
+    auto loc0 = method.addNewLocal(TYPE_INT32);
+    auto loc1 = method.addNewLocal(TYPE_INT32);
+
+    auto otherExpression = expression(loc1 & loc0);
+    auto addExpression = expression(17_val + loc1);
+    auto maxExpression = expression(max(loc0, 42_val));
+
+    {
+        auto innerExpr = std::make_shared<Expression>(OP_ADD, otherExpression, addExpression);
+        auto expr = std::make_shared<Expression>(OP_ADD, innerExpr, maxExpression);
+
+        auto parts = expr->getAssociativeParts();
+        TEST_ASSERT_EQUALS(4, parts.size());
+        TEST_ASSERT(std::find(parts.begin(), parts.end(), otherExpression) != parts.end());
+        TEST_ASSERT(std::find(parts.begin(), parts.end(), maxExpression) != parts.end());
+        TEST_ASSERT(std::find(parts.begin(), parts.end(), 17_val) != parts.end());
+        TEST_ASSERT(std::find(parts.begin(), parts.end(), loc1) != parts.end());
+    }
+
+    {
+        auto innerExpr = std::make_shared<Expression>(OP_ADD, otherExpression, addExpression);
+        auto expr = std::make_shared<Expression>(OP_MAX, innerExpr, maxExpression);
+
+        auto parts = expr->getAssociativeParts();
+        TEST_ASSERT_EQUALS(3, parts.size());
+        TEST_ASSERT(std::find(parts.begin(), parts.end(), innerExpr) != parts.end());
+        TEST_ASSERT(std::find(parts.begin(), parts.end(), loc0) != parts.end());
+        TEST_ASSERT(std::find(parts.begin(), parts.end(), 42_val) != parts.end());
+    }
+
+    {
+        auto innerExpr = std::make_shared<Expression>(OP_ADD, otherExpression, addExpression);
+        auto expr = std::make_shared<Expression>(OP_SUB, innerExpr, maxExpression);
+
+        auto parts = expr->getAssociativeParts();
+        TEST_ASSERT(parts.empty());
+    }
 }

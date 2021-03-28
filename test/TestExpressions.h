@@ -19,6 +19,8 @@ public:
     void testCombination();
     void testConvergence();
     void testValueRange();
+    void testSplit();
+    void testAssociativeParts();
 };
 
 #endif /* TEST_EXPRESSIONS_H */

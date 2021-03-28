@@ -13,6 +13,8 @@
 #include "performance.h"
 
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace vc4c
 {
@@ -203,6 +205,33 @@ namespace vc4c
             deco = add_flag(deco, newDeco);
             return *this;
         }
+
+        /**
+         * Writes a graphical representation of this (recursive) expression into the given file
+         */
+        void dumpTree(const std::string& path) const;
+
+        /**
+         * Tries to split this expression into a constant and a dynamic part.
+         *
+         * Adding the resulting subexpressions gives the same result as this expression gives.
+         *
+         * The constant part is any subexpression returning compile-time constant (or if the boolean parameter is set,
+         * also work-group uniform) values.
+         * The dynamic part contains the subexpression with all other parts of this expression.
+         *
+         * NOTE: This can only return the parts for expressions where the two parts can be cleanly separated!
+         */
+        std::pair<SubExpression, SubExpression> splitIntoDynamicAndConstantPart(
+            bool workGroupUniformIsConstant, ExpressionOptions options = ExpressionOptions::NONE);
+
+        /**
+         * Returns the list of operands in this expression, iff this expression represents an associative opcode.
+         * Otherwise returns an empty list.
+         *
+         * E.g. for an expression (a + b) + c, the parts a, b and c are returned.
+         */
+        std::vector<SubExpression> getAssociativeParts() const;
     };
 
     // Extends the operator syntax to create expressions from it

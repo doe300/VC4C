@@ -951,33 +951,33 @@ namespace vc4c
         static const OpCode& findOpCode(const std::string& name);
 
         /*
-         * Returns the left-identity value for the given op-code
+         * Returns the left-identity value for this op-code
          *
          * The left-identity is a value used as the left operand, which results in the result being the right operand
          * (e.g. 0 for additions, 1 for multiplications)
          */
-        static Optional<Value> getLeftIdentity(const OpCode& code);
+        Optional<Value> getLeftIdentity() const;
         /*
-         * Returns the right-identity value for the given op-code
+         * Returns the right-identity value for this op-code
          *
          * The right-identity is a value used as the right operand, which results in the result being the left operand
          * (e.g. all-bits set for AND, 1 for multiplications)
          */
-        static Optional<Value> getRightIdentity(const OpCode& code);
+        Optional<Value> getRightIdentity() const;
         /*
-         * Returns the left absorbing element for the given op-code
+         * Returns the left absorbing element for this op-code
          *
          * The left absorbing element is a value used as the left operand, which results in the result being the
          * absorbing element (e.g. 0 for multiplications and for and)
          */
-        static Optional<Value> getLeftAbsorbingElement(const OpCode& code);
+        Optional<Value> getLeftAbsorbingElement() const;
         /*
-         * Returns the right absorbing element for the given op-code
+         * Returns the right absorbing element for this op-code
          *
          * The right absorbing element is a value used as the right operand, which results in the result being the
          * absorbing element (e.g. 0 for multiplications and for and)
          */
-        static Optional<Value> getRightAbsorbingElement(const OpCode& code);
+        Optional<Value> getRightAbsorbingElement() const;
     };
 
     /*

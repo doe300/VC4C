@@ -289,8 +289,8 @@ static void generateConversionFunctions(const std::array<std::string, sizeof...(
         // There is no saturation to floating point types
         options += " -DNO_SATURATION";
 
-    registerTest(TestData{"convert_" + typeNames[InIndex] + "_to_" + typeNames[OutIndex], flags, &CONVERSION_FUNCTION,
-        options, "test",
+    registerTest(TestData{"convert_" + typeNames[InIndex] + "16_to_" + typeNames[OutIndex] + "16", flags,
+        &CONVERSION_FUNCTION, options, "test",
         {toBufferParameter(std::vector<OutType>(input.size(), 0x42)), toBufferParameter(std::vector<InType>(input))},
         calculateDimensions(input.size(), 16),
         {checkParameter<Comparator>(0, transform<OutType, InType>(input, Converter{}))}});
@@ -308,8 +308,8 @@ static void generateConversionFunctions(const std::array<std::string, sizeof...(
                 (std::is_same<InType, uint64_t>::value && std::is_same<OutType, int64_t>::value) ?
             DataFilter::DISABLED :
             DataFilter::NONE;
-        registerTest(TestData{"saturate_" + typeNames[InIndex] + "_to_" + typeNames[OutIndex], flags | additionalFlags,
-            &CONVERSION_FUNCTION, options, "test_saturate",
+        registerTest(TestData{"saturate_" + typeNames[InIndex] + "16_to_" + typeNames[OutIndex] + "16",
+            flags | additionalFlags, &CONVERSION_FUNCTION, options, "test_saturate",
             {toBufferParameter(std::vector<OutType>(input.size(), 0x42)),
                 toBufferParameter(std::vector<InType>(input))},
             calculateDimensions(input.size(), 16),
@@ -323,14 +323,16 @@ static void generateConversionFunctions(const std::array<std::string, sizeof...(
     // TODO also has some conversion errors in CI to float
     auto additonalFlags = std::is_floating_point<OutType>::value ? DataFilter::DISABLED : DataFilter::NONE;
 
-    registerTest(TestData{"reinterpret_address_" + typeNames[InIndex] + "_to_" + typeNames[OutIndex],
+    registerTest(TestData{"reinterpret_address_" + typeNames[InIndex] + std::to_string(inElements) + "_to_" +
+            typeNames[OutIndex] + std::to_string(outElements),
         flags | additonalFlags, &CONVERSION_FUNCTION, options, "test_reinterpret_address",
         {toBufferParameter(std::vector<OutType>(outputSize, 0x42)), toBufferParameter(std::vector<InType>(someValues))},
         calculateDimensions(someValues.size(), inElements),
         {checkParameterEquals(0, ReinterpretCaster<OutType, InType>{}(someValues))}});
 
     // FIXME has errors on emulator from float to any integer type which the hardware execution does not have!
-    registerTest(TestData{"reinterpret_value_" + typeNames[InIndex] + "_to_" + typeNames[OutIndex],
+    registerTest(TestData{"reinterpret_value_" + typeNames[InIndex] + std::to_string(inElements) + "_to_" +
+            typeNames[OutIndex] + std::to_string(outElements),
         flags | DataFilter::VECTOR_OPERATIONS | additonalFlags, &CONVERSION_FUNCTION, options, "test_reinterpret_value",
         {toBufferParameter(std::vector<OutType>(outputSize, 0x42)), toBufferParameter(std::vector<InType>(someValues)),
             toBufferParameter(std::vector<InType>(someValues))},

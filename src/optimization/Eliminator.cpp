@@ -253,10 +253,10 @@ InstructionWalker optimizations::simplifyOperation(
             if(auto writer = (secondArg & &Value::getSingleWriter))
                 secondArg = writer->precalculate(3).first | secondArg;
 
-            Optional<Value> rightIdentity = OpCode::getRightIdentity(op->op);
-            Optional<Value> leftIdentity = OpCode::getLeftIdentity(op->op);
-            Optional<Value> rightAbsorbing = OpCode::getRightAbsorbingElement(op->op);
-            Optional<Value> leftAbsorbing = OpCode::getLeftAbsorbingElement(op->op);
+            Optional<Value> rightIdentity = op->op.getRightIdentity();
+            Optional<Value> leftIdentity = op->op.getLeftIdentity();
+            Optional<Value> rightAbsorbing = op->op.getRightAbsorbingElement();
+            Optional<Value> leftAbsorbing = op->op.getLeftAbsorbingElement();
 
             // one of the operands is the absorbing element, operation can be replaced with move
             if(leftAbsorbing && firstArg.hasLiteral(leftAbsorbing->getLiteralValue().value()))

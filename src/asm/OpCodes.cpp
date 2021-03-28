@@ -1666,119 +1666,119 @@ const OpCode& OpCode::findOpCode(const std::string& name)
     return OP_NOP;
 }
 
-Optional<Value> OpCode::getLeftIdentity(const OpCode& code)
+Optional<Value> OpCode::getLeftIdentity() const
 {
-    if(code == OP_ADD)
+    if(*this == OP_ADD)
         return INT_ZERO;
-    if(code == OP_AND)
+    if(*this == OP_AND)
         return VALUE_ALL_BITS_SET;
-    if(code == OP_FADD)
+    if(*this == OP_FADD)
         return FLOAT_ZERO;
-    if(code == OP_FMIN)
+    if(*this == OP_FMIN)
         return FLOAT_NAN;
-    if(code == OP_FMAX)
+    if(*this == OP_FMAX)
         // -Inf
         return Value(Literal(0xFF800000), TYPE_FLOAT);
-    if(code == OP_FMUL)
+    if(*this == OP_FMUL)
         return FLOAT_ONE;
-    if(code == OP_MUL24)
+    if(*this == OP_MUL24)
         return INT_ONE;
-    if(code == OP_OR)
+    if(*this == OP_OR)
         return INT_ZERO;
-    if(code == OP_XOR)
+    if(*this == OP_XOR)
         return INT_ZERO;
     return NO_VALUE;
 }
 
-Optional<Value> OpCode::getRightIdentity(const OpCode& code)
+Optional<Value> OpCode::getRightIdentity() const
 {
-    if(code == OP_ADD)
+    if(*this == OP_ADD)
         return INT_ZERO;
-    if(code == OP_AND)
+    if(*this == OP_AND)
         return VALUE_ALL_BITS_SET;
-    if(code == OP_ASR)
+    if(*this == OP_ASR)
         return INT_ZERO;
-    if(code == OP_FADD)
+    if(*this == OP_FADD)
         return FLOAT_ZERO;
-    if(code == OP_FMIN)
+    if(*this == OP_FMIN)
         return FLOAT_NAN;
-    if(code == OP_FMUL)
+    if(*this == OP_FMUL)
         return FLOAT_ONE;
-    if(code == OP_FSUB)
+    if(*this == OP_FSUB)
         return FLOAT_ZERO;
-    if(code == OP_MUL24)
+    if(*this == OP_MUL24)
         return INT_ONE;
-    if(code == OP_OR)
+    if(*this == OP_OR)
         return INT_ZERO;
-    if(code == OP_ROR)
+    if(*this == OP_ROR)
         return INT_ZERO;
-    if(code == OP_SHL)
+    if(*this == OP_SHL)
         return INT_ZERO;
-    if(code == OP_SHR)
+    if(*this == OP_SHR)
         return INT_ZERO;
-    if(code == OP_SUB)
+    if(*this == OP_SUB)
         return INT_ZERO;
-    if(code == OP_XOR)
+    if(*this == OP_XOR)
         return INT_ZERO;
     return NO_VALUE;
 }
 
-Optional<Value> OpCode::getLeftAbsorbingElement(const OpCode& code)
+Optional<Value> OpCode::getLeftAbsorbingElement() const
 {
-    if(code == OP_AND)
+    if(*this == OP_AND)
         return INT_ZERO;
-    if(code == OP_ASR)
+    if(*this == OP_ASR)
         // XXX actually all bits set too
         return INT_ZERO;
-    if(code == OP_FMAX)
+    if(*this == OP_FMAX)
         return FLOAT_NAN;
-    if(code == OP_FMAXABS)
+    if(*this == OP_FMAXABS)
         return FLOAT_NAN;
-    if(code == OP_FMINABS)
+    if(*this == OP_FMINABS)
         return FLOAT_ZERO;
-    if(code == OP_FMUL)
+    if(*this == OP_FMUL)
         return FLOAT_ZERO;
-    if(code == OP_MUL24)
+    if(*this == OP_MUL24)
         return INT_ZERO;
-    if(code == OP_OR)
+    if(*this == OP_OR)
         return VALUE_ALL_BITS_SET;
-    if(code == OP_ROR)
+    if(*this == OP_ROR)
         // XXX actually all bits set too
         return INT_ZERO;
-    if(code == OP_SHL)
+    if(*this == OP_SHL)
         return INT_ZERO;
-    if(code == OP_SHR)
+    if(*this == OP_SHR)
         return INT_ZERO;
-    if(code == OP_V8MIN)
+    if(*this == OP_V8MIN)
         return INT_ZERO;
-    if(code == OP_V8MAX)
+    if(*this == OP_V8MAX)
         return VALUE_ALL_BITS_SET;
-    if(code == OP_V8MULD)
+    if(*this == OP_V8MULD)
         return INT_ZERO;
     return NO_VALUE;
 }
 
-Optional<Value> OpCode::getRightAbsorbingElement(const OpCode& code)
+Optional<Value> OpCode::getRightAbsorbingElement() const
 {
-    if(code == OP_AND)
+    if(*this == OP_AND)
         return INT_ZERO;
-    if(code == OP_FMAX)
+    if(*this == OP_FMAX)
         return FLOAT_NAN;
-    if(code == OP_FMAXABS)
+    if(*this == OP_FMAXABS)
         return FLOAT_NAN;
-    if(code == OP_FMINABS)
+    if(*this == OP_FMINABS)
         return FLOAT_ZERO;
-    if(code == OP_FMUL)
+    if(*this == OP_FMUL)
         return FLOAT_ZERO;
-    if(code == OP_MUL24)
+    if(*this == OP_MUL24)
         return INT_ZERO;
-    if(code == OP_OR)
+    if(*this == OP_OR)
         return VALUE_ALL_BITS_SET;
-    if(code == OP_V8MIN)
+    if(*this == OP_V8MIN)
         return INT_ZERO;
-    if(code == OP_V8MAX)
+    if(*this == OP_V8MAX)
         return VALUE_ALL_BITS_SET;
-    if(code == OP_V8MULD)
+    if(*this == OP_V8MULD)
         return INT_ZERO;
     return NO_VALUE;
 }

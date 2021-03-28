@@ -186,7 +186,7 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
     ++costs;
     // our folding implementation takes 3 * ceil(log2(vector-width)) instructions per folding
     auto foldCosts = 3u * static_cast<unsigned>(std::ceil(std::log2(static_cast<double>(vectorizationFactor))));
-    costs += foldCosts * numFoldings;
+    costs += static_cast<int>(foldCosts * numFoldings);
     // additional calculation of the dynamic element mask
     if(isDynamicIterationCount)
     {
@@ -195,7 +195,7 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
         // calculation of dynamic active element count
         costs += 4; // XXX actually per loop iteration
         // additional 1 instruction for masking the LCSSA variable with the element number per folding
-        costs += numFoldings;
+        costs += static_cast<int>(numFoldings);
     }
 
     FastSet<const Local*> readAndWrittenAddresses;
@@ -1145,7 +1145,7 @@ static Optional<AccumulationInfo> determineAccumulation(const Local* loc, const 
         return {};
     }
 
-    if(initialWrite->precalculate().first != OpCode::getLeftIdentity(op->op))
+    if(initialWrite->precalculate().first != op->op.getLeftIdentity())
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Accumulation with non-identity initial value is not yet supported: " << initialWrite->to_string()

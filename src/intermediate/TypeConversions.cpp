@@ -486,10 +486,10 @@ InstructionWalker intermediate::insertFloatingPointConversion(
     if(src.type.getScalarBitCount() == dest.type.getScalarBitCount())
         it.emplace(new MoveOperation(dest, src));
     else if(src.type.getScalarBitCount() == 16 && dest.type.getScalarBitCount() == 32)
-        it.emplace((new Operation(OP_FMUL, dest, src, OpCode::getRightIdentity(OP_FMUL).value()))
+        it.emplace((new Operation(OP_FMUL, dest, src, OP_FMUL.getRightIdentity().value()))
                        ->setUnpackMode(UNPACK_HALF_TO_FLOAT));
     else if(src.type.getScalarBitCount() == 32 && dest.type.getScalarBitCount() == 16)
-        it.emplace((new intermediate::Operation(OP_FMUL, dest, src, OpCode::getRightIdentity(OP_FMUL).value()))
+        it.emplace((new intermediate::Operation(OP_FMUL, dest, src, OP_FMUL.getRightIdentity().value()))
                        ->setPackMode(PACK_FLOAT_TO_HALF_TRUNCATE));
     else
         // XXX conversion from/to double would not be that hard (extract exponent, deduct bias, add new bias, extract

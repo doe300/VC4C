@@ -969,12 +969,11 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
         throw CompilationError(CompilationStep::GENERAL, "Invalid operation to fold vectors", foldingOp.name);
 
     // fix-up 3-element vector input to use the 4-element input fold expression
-    if(src.type.getVectorWidth() == 3 && OpCode::getLeftIdentity(foldingOp) &&
-        OpCode::getLeftIdentity(foldingOp) == OpCode::getRightIdentity(foldingOp))
+    if(src.type.getVectorWidth() == 3 && foldingOp.getLeftIdentity() &&
+        foldingOp.getLeftIdentity() == foldingOp.getRightIdentity())
     {
         // XXX could write own custom implementation for better performance
-        auto tmp = assign(it, src.type.toVectorType(4), "%vector_fold") =
-            (*OpCode::getLeftIdentity(foldingOp), decorations);
+        auto tmp = assign(it, src.type.toVectorType(4), "%vector_fold") = (*foldingOp.getLeftIdentity(), decorations);
         auto cond = assignNop(it) = selectSIMDElements(std::bitset<NATIVE_VECTOR_SIZE>{0x7});
         assign(it, tmp) = (src, cond, decorations);
         return insertFoldVector(it, method, dest, tmp, foldingOp, decorations);

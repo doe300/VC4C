@@ -706,25 +706,25 @@ void TestInstructions::testOpCodeProperties()
             }
         }
 
-        auto special = OpCode::getLeftIdentity(op);
+        auto special = op.getLeftIdentity();
         if(special && (op(*special, arg2).first != arg2))
         {
             TEST_ASSERT_EQUALS(op(*special, arg2).first, arg2)
             TEST_ASSERT_EQUALS("left identity", op.name)
         }
-        special = OpCode::getRightIdentity(op);
+        special = op.getRightIdentity();
         if(special && (op(arg2, special).first != arg2))
         {
             TEST_ASSERT_EQUALS(op(arg2, special).first, arg2)
             TEST_ASSERT_EQUALS("right identity", op.name)
         }
-        special = OpCode::getLeftAbsorbingElement(op);
+        special = op.getLeftAbsorbingElement();
         if(special && (op(*special, arg2).first != special))
         {
             TEST_ASSERT_EQUALS(op(*special, arg2).first, special)
             TEST_ASSERT_EQUALS("left absorbing element", op.name)
         }
-        special = OpCode::getRightAbsorbingElement(op);
+        special = op.getRightAbsorbingElement();
         if(special && (op(arg2, special).first != special))
         {
             TEST_ASSERT_EQUALS(op(arg2, special).first, special)
