@@ -30,7 +30,6 @@ using namespace vc4c::operators;
 
 // TODO rewrite combination of VPM accesses to use MemoryAccessInstructions instead? Need to move before memory lowering
 // and somehow be able to explicitly set stride/etc.
-// TODO also rewrite to use expression to find base/offset?
 
 bool optimizations::lowerMemoryAccess(const Module& module, Method& method, const Configuration& config)
 {
@@ -61,94 +60,98 @@ bool optimizations::lowerMemoryAccess(const Module& module, Method& method, cons
 
 struct BaseAndOffset
 {
-    Optional<Value> base;
-    Optional<int32_t> offset;
-
-    explicit BaseAndOffset() : base(NO_VALUE), offset{} {}
-
-    BaseAndOffset(const Optional<Value>& base, Optional<int32_t> offset) : base(base), offset(std::move(offset)) {}
+    const Local* baseAddress;
+    SubExpression dynamicOffset;
+    SubExpression workGroupConstantOffset;
 };
 
-static BaseAndOffset findOffset(const Value& val)
+static std::pair<SubExpression, SubExpression> findOffsets(const SubExpression& expr)
 {
-    if(!val.checkLocal())
-        return BaseAndOffset();
-    if(auto writer = val.getSingleWriter())
-    {
-        const Optional<Value> offset = writer->precalculate(8).first;
-        if(offset && offset->isLiteralValue())
-        {
-            return BaseAndOffset(NO_VALUE, offset->getLiteralValue()->signedInt());
-        }
-    }
-    return BaseAndOffset();
+    if(auto constantOffset = expr.getConstantExpression())
+        return std::make_pair(SubExpression{INT_ZERO}, SubExpression{*constantOffset});
+
+    if(auto otherExpr = expr.checkExpression())
+        return otherExpr->splitIntoDynamicAndConstantPart(
+            true, add_flag(ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::STOP_AT_BUILTINS));
+    return std::make_pair(expr, SubExpression{INT_ZERO});
 }
 
-static BaseAndOffset findBaseAndOffset(const Value& val)
+static Optional<BaseAndOffset> findBaseAndOffset(const Value& address)
 {
-    // TODO add support for offsets via getlocal/global_id, etc.
-    // need to the set base to addr + offset and the offset to the offset of the offset (e.g. param[get_local_id(0) +
-    // 7])  but how to determine?
-    if(!val.checkLocal())
-        return BaseAndOffset();
-    if(val.local()->is<Parameter>() || val.local()->is<Global>() || val.local()->is<StackAllocation>())
-        return BaseAndOffset(val, 0);
+    const auto* loc = intermediate::getSourceValue(address).checkLocal();
+    if(!loc)
+        loc = address.checkLocal();
+    if(!loc)
+        return {};
 
-    // follow the references
-    const Local* ref = val.local()->getBase(false);
-    if(ref != val.local())
-        return findBaseAndOffset(ref->createReference());
-    if(auto data = val.local()->get<ReferenceData>())
+    if(loc->is<Parameter>() || loc->residesInMemory())
+        // direct access of memory location
+        return BaseAndOffset{loc, INT_ZERO, INT_ZERO};
+
+    auto addressWriter = loc->getSingleWriter();
+    auto expr = addressWriter ? Expression::createRecursiveExpression(*addressWriter, 24) : nullptr;
+    if(expr && expr->isMoveExpression() && expr->arg0.checkLocal())
+        return BaseAndOffset{expr->arg0.checkLocal(), INT_ZERO, INT_ZERO};
+    if(!expr || expr->code != OP_ADD)
+        return {};
+
+    // direct base + offset
+    if(auto loc = expr->arg0.checkLocal())
     {
-        if(data->offset != ANY_ELEMENT)
-            return BaseAndOffset(data->base->createReference(), data->offset);
+        auto offsets = findOffsets(expr->arg1);
+        return BaseAndOffset{loc, offsets.first, offsets.second};
+    }
+    if(auto loc = expr->arg1.checkLocal())
+    {
+        auto offsets = findOffsets(expr->arg0);
+        return BaseAndOffset{loc, offsets.first, offsets.second};
     }
 
-    const auto writers = val.local()->getUsers(LocalUse::Type::WRITER);
-    if(writers.size() != 1)
-        return BaseAndOffset();
-
-    // The reader can be one of several valid cases:
-    // 1. a move from another local -> need to follow the move
-    if(auto source = (*writers.begin())->getMoveSource())
-        return findBaseAndOffset(*source);
-    const auto& args = (*writers.begin())->getArguments();
-    // 2. an addition with a local and a literal -> the local is the base, the literal the offset
-    if(dynamic_cast<const intermediate::Operation*>((*writers.begin())) != nullptr &&
-        dynamic_cast<const intermediate::Operation*>((*writers.begin()))->op == OP_ADD && args.size() == 2 &&
-        std::any_of(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.checkLocal(); }) &&
-        std::any_of(
-            args.begin(), args.end(), [](const Value& arg) -> bool { return arg.getLiteralValue().has_value(); }))
+    // (base + offset) + some more offset
+    auto offsets = findOffsets(expr);
+    auto constantExpr = offsets.second.checkExpression();
+    if(constantExpr && constantExpr->code == OP_ADD)
     {
-        return BaseAndOffset(
-            std::find_if(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.checkLocal(); })
-                ->local()
-                ->getBase(false)
-                ->createReference(),
-            (*std::find_if(
-                 args.begin(), args.end(), [](const Value& arg) -> bool { return arg.getLiteralValue().has_value(); }))
-                    .getLiteralValue()
-                    ->signedInt() /
-                /* in-memory width can't be > 2^30 anyway */
-                static_cast<int32_t>(val.type.getElementType().getInMemoryWidth()));
-    }
+        // the base local is considered work-group uniform, if it is a parameter or otherwise set in a work-group
+        // uniform fashion
+        // flatten the expression structure to be able to extract the base local from any (top-level associative)
+        // position, e.g. from loc + (one + other) as well as one + (loc + other), etc.
+        auto constantParts = constantExpr->getAssociativeParts();
+        auto localIt = constantParts.end();
+        for(auto it = constantParts.begin(); it != constantParts.end(); ++it)
+        {
+            if(it->checkLocal())
+            {
+                if(localIt != constantParts.end())
+                    // multiple uniform locals, don't know which is base
+                    // TODO could do some more advanced checking here, e.g. check for pointer type, reference base, etc.
+                    return {};
+                localIt = it;
+            }
+        }
+        if(localIt == constantParts.end())
+            // no uniform base local found
+            return {};
 
-    // 3. an addition with two locals -> one is the base, the other the calculation of the literal
-    if(dynamic_cast<const intermediate::Operation*>((*writers.begin())) != nullptr &&
-        dynamic_cast<const intermediate::Operation*>((*writers.begin()))->op == OP_ADD && args.size() == 2 &&
-        std::all_of(args.begin(), args.end(), [](const Value& arg) -> bool { return arg.checkLocal(); }))
-    {
-        const auto offset0 = findOffset(args[0]);
-        const auto offset1 = findOffset(args[1]);
-        if(offset0.offset && args[1].checkLocal())
-            return BaseAndOffset(args[1].local()->getBase(false)->createReference(),
-                offset0.offset.value() / static_cast<int32_t>(val.type.getElementType().getInMemoryWidth()));
-        if(offset1.offset && args[0].checkLocal())
-            return BaseAndOffset(args[0].local()->getBase(false)->createReference(),
-                offset1.offset.value() / static_cast<int32_t>(val.type.getElementType().getInMemoryWidth()));
+        // no we need to assemble the constant parts again, just without the local
+        SubExpression constantPart{INT_ZERO};
+        for(auto it = constantParts.begin(); it != constantParts.end(); ++it)
+        {
+            if(it == localIt)
+                // don't add the base local
+                continue;
+            if(constantPart.getLiteralValue() == 0_lit)
+                // rewrite our default 0 + x to just x
+                constantPart = *it;
+            else
+                constantPart = std::make_shared<Expression>(OP_ADD, constantPart, *it);
+        }
+        return BaseAndOffset{localIt->checkLocal(), offsets.first, constantPart};
     }
+    else if(auto loc = offsets.second.checkLocal())
+        return BaseAndOffset{loc, offsets.first, INT_ZERO};
 
-    return BaseAndOffset();
+    return {};
 }
 
 struct VPMAccessGroup
@@ -159,9 +162,8 @@ struct VPMAccessGroup
     FastAccessList<InstructionWalker> strideSetups;
     FastAccessList<InstructionWalker> genericSetups;
     FastAccessList<InstructionWalker> addressWrites;
-    // this is the distance/offset (start of row to start of row, 1 = consecutive) between two vectors in number of
-    // vectors that would fit in between
-    int stride = 1;
+    // this is the distance/offset (start of row to start of row, 1 = consecutive) between two vectors in bytes
+    unsigned stride = 1;
 
     /*
      * E.g. for memory-fills or -copies, the setup-instructions are re-used,
@@ -326,11 +328,13 @@ static VPMInstructions findRelatedVPMInstructions(InstructionWalker anyVPMInstru
 }
 
 NODISCARD static InstructionWalker findGroupOfVPMAccess(
-    periphery::VPM& vpm, InstructionWalker start, const InstructionWalker end, VPMAccessGroup& group)
+    periphery::VPM& vpm, InstructionWalker start, VPMAccessGroup& group)
 {
-    Optional<Value> baseAddress = NO_VALUE;
-    int32_t nextOffset = -1;
-    // the number of elements between two entries in memory
+    const Local* baseAddress = nullptr;
+    SubExpression dynamicOffset{};
+    SubExpression initialConstantOffset{};
+    SubExpression nextConstantOffset{};
+    // the number of bytes between two entries in memory
     group.stride = 0;
     group.groupType = TYPE_UNKNOWN;
     group.dmaSetups.clear();
@@ -347,7 +351,7 @@ NODISCARD static InstructionWalker findGroupOfVPMAccess(
     // a few cycles per write (incl. delay for wait DMA)
 
     auto it = start;
-    for(; !it.isEndOfBlock() && it != end; it.nextInBlock())
+    for(; !it.isEndOfBlock(); it.nextInBlock())
     {
         if(it.get() == nullptr)
             continue;
@@ -368,17 +372,20 @@ NODISCARD static InstructionWalker findGroupOfVPMAccess(
                 CompilationStep::OPTIMIZER, "Setting VPM address with non-move is not supported", it->to_string());
         const auto baseAndOffset = findBaseAndOffset(*source);
         const bool isVPMWrite = it->writesRegister(REG_VPM_DMA_STORE_ADDR);
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Found base address " << baseAndOffset.base.to_string() << " with offset "
-                << std::to_string(baseAndOffset.offset.value_or(-1L)) << " for "
-                << (isVPMWrite ? "writing into" : "reading from") << " memory" << logging::endl);
 
-        if(!baseAndOffset.base)
+        if(!baseAndOffset || !baseAndOffset->baseAddress)
             // this address-write could not be fixed to a base and an offset
             // skip this address write for the next check
             return it.nextInBlock();
-        if(baseAndOffset.base && baseAndOffset.base->checkLocal() && baseAndOffset.base->local()->is<Parameter>() &&
-            has_flag(baseAndOffset.base->local()->as<Parameter>()->decorations, ParameterDecorations::VOLATILE))
+
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Found base address " << baseAndOffset->baseAddress->to_string() << " with dynamic offset "
+                << baseAndOffset->dynamicOffset.to_string() << " and work-group uniform offset "
+                << baseAndOffset->workGroupConstantOffset.to_string() << " for "
+                << (isVPMWrite ? "writing into" : "reading from") << " memory" << logging::endl);
+
+        if(baseAndOffset->baseAddress->is<Parameter>() &&
+            has_flag(baseAndOffset->baseAddress->as<Parameter>()->decorations, ParameterDecorations::VOLATILE))
             // address points to a volatile parameter, which explicitly forbids combining reads/writes
             // skip this address write for the next check
             return it.nextInBlock();
@@ -386,19 +393,30 @@ NODISCARD static InstructionWalker findGroupOfVPMAccess(
         // check if this address is consecutive to the previous one (if any)
         if(baseAddress)
         {
-            if(baseAndOffset.base && baseAddress.value() != baseAndOffset.base.value())
+            if(baseAndOffset->baseAddress != baseAddress)
                 // a group exists, but the base addresses don't match
                 break;
-            if(group.addressWrites.size() == 1 && baseAndOffset.offset && group.stride == 0)
+            if(baseAndOffset->dynamicOffset != dynamicOffset)
+                // a group exists, but the dynamic offsets don't match
+                break;
+            if(group.addressWrites.size() == 1 && group.stride == 0)
             {
                 // special case for first offset - use it to determine stride
-                group.stride = baseAndOffset.offset.value() -
-                    findBaseAndOffset(group.addressWrites[0]->getMoveSource().value()).offset.value();
+                auto strideVal =
+                    std::make_shared<Expression>(OP_SUB, baseAndOffset->workGroupConstantOffset, initialConstantOffset)
+                        ->combineWith({})
+                        ->getConstantExpression() &
+                    &Value::getLiteralValue;
+                if(!strideVal || strideVal->signedInt() <= 0)
+                    // a group exists, but can't calculate a constant stride literal
+                    break;
+                group.stride = strideVal->unsignedInt();
+                nextConstantOffset = baseAndOffset->workGroupConstantOffset;
                 CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Using a stride of " << group.stride << " elements between consecutive access to memory"
+                    log << "Using a stride of " << group.stride << " bytes between consecutive access to memory"
                         << logging::endl);
             }
-            if(!baseAndOffset.offset || baseAndOffset.offset.value() != (nextOffset * group.stride))
+            if(baseAndOffset->workGroupConstantOffset != nextConstantOffset)
                 // a group exists, but the offsets do not match
                 break;
         }
@@ -436,9 +454,9 @@ NODISCARD static InstructionWalker findGroupOfVPMAccess(
         }
 
         // check for complex types
-        DataType elementType = baseAndOffset.base->type.getPointerType() ?
-            baseAndOffset.base->type.getPointerType()->elementType :
-            baseAndOffset.base->type;
+        DataType elementType = baseAndOffset->baseAddress->type.getPointerType() ?
+            baseAndOffset->baseAddress->type.getPointerType()->elementType :
+            baseAndOffset->baseAddress->type;
         elementType = elementType.getArrayType() ? elementType.getArrayType()->elementType : elementType;
         if(!elementType.isSimpleType())
             // XXX for now, skip combining any access to complex types (here: only struct, image)
@@ -447,8 +465,10 @@ NODISCARD static InstructionWalker findGroupOfVPMAccess(
 
         // all matches so far, add to group (or create a new one)
         group.isVPMWrite = isVPMWrite;
-        group.groupType = baseAndOffset.base->type;
-        baseAddress = baseAndOffset.base.value();
+        group.groupType = source->type;
+        baseAddress = baseAndOffset->baseAddress;
+        dynamicOffset = baseAndOffset->dynamicOffset;
+        initialConstantOffset = baseAndOffset->workGroupConstantOffset;
         group.addressWrites.push_back(it);
         if(dmaSetup)
             // not always given, e.g. for caching in VPM without accessing RAM
@@ -459,7 +479,11 @@ NODISCARD static InstructionWalker findGroupOfVPMAccess(
         if(strideSetup)
             // not always given, e.g. if small stride
             group.strideSetups.push_back(strideSetup.value());
-        nextOffset = (baseAndOffset.offset.value_or(-1) / (group.stride == 0 ? 1 : group.stride)) + 1;
+        nextConstantOffset =
+            std::make_shared<Expression>(OP_ADD, nextConstantOffset, Value(Literal(group.stride), TYPE_INT32))
+                ->combineWith({});
+        if(auto constantOffset = nextConstantOffset.getConstantExpression())
+            nextConstantOffset = *constantOffset;
 
         if(group.isVPMWrite && group.addressWrites.size() >= vpm.getMaxCacheVectors(elementType, true))
         {
@@ -527,9 +551,8 @@ NODISCARD static bool groupVPMWrites(periphery::VPM& vpm, VPMAccessGroup& group)
         // This line is to calculate the stride in actually written vectors, e.g. for vload/vstore in scalar pointers
         // FIXME this is wrong for mixed vload/vstore, e.g. I/O with different vector types
         auto numElements = dmaSetupValue.dmaSetup.getDepth() / group.groupType.getElementType().getVectorWidth();
-        auto strideInElements = static_cast<unsigned>(group.stride == 0 ? 0 : group.stride - numElements);
-        strideSetup.strideSetup.setStride(
-            static_cast<uint16_t>(strideInElements * group.groupType.getElementType().getInMemoryWidth()));
+        auto numBytes = static_cast<unsigned>(numElements) * group.groupType.getElementType().getInMemoryWidth();
+        strideSetup.strideSetup.setStride(static_cast<uint16_t>(group.stride == 0 ? 0 : (group.stride - numBytes)));
     }
     std::size_t numRemoved = 0;
     vpm.updateScratchSize(static_cast<unsigned char>(group.addressWrites.size()));
@@ -620,8 +643,7 @@ NODISCARD static bool groupVPMReads(periphery::VPM& vpm, VPMAccessGroup& group)
     {
         auto strideSetup = wrapVPMSetup<periphery::VPRSetupWrapper>(group.strideSetups.at(0).get());
         // in contrast to writing memory, the pitch is the distance from start to start of successive rows
-        strideSetup.strideSetup.setPitch(static_cast<uint16_t>(
-            static_cast<unsigned>(group.stride) * group.groupType.getElementType().getInMemoryWidth()));
+        strideSetup.strideSetup.setPitch(static_cast<uint16_t>(group.stride));
     }
 
     // 2. Remove all but the first generic and DMA setups
@@ -668,17 +690,7 @@ NODISCARD static bool groupVPMReads(periphery::VPM& vpm, VPMAccessGroup& group)
     return true;
 }
 
-/*
- * Combine consecutive configuration of VPW/VPR with the same settings
- *
- * In detail, this combines VPM read/writes of uniform type of access (read or write), uniform data-type and consecutive
- * memory-addresses
- *
- * NOTE: Combining VPM accesses merges their mutex-lock blocks which can cause other QPUs to stall for a long time.
- * Also, this optimization currently only supports access memory <-> QPU, data exchange between only memory and VPM are
- * not optimized
- */
-bool optimizations::groupMemoryAccess(const Module& module, Method& method, const Configuration& config)
+bool optimizations::groupVPMAccess(const Module& module, Method& method, const Configuration& config)
 {
     // TODO for now, this cannot handle RAM->VPM, VPM->RAM only access as well as VPM->QPU or QPU->VPM
     bool didChanges = false;
@@ -690,7 +702,7 @@ bool optimizations::groupMemoryAccess(const Module& module, Method& method, cons
         while(!it.isEndOfBlock())
         {
             VPMAccessGroup group;
-            it = findGroupOfVPMAccess(*method.vpm, it, block.walkEnd(), group);
+            it = findGroupOfVPMAccess(*method.vpm, it, group);
             if(group.addressWrites.size() > 1)
             {
                 group.cleanDuplicateInstructions();

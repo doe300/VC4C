@@ -193,7 +193,8 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
     auto wholeRegister = srcInfo.convertedRegisterOrAreaType &&
         copiesWholeRegister(
             mem->getNumEntries(), mem->getDestinationElementType(), *srcInfo.convertedRegisterOrAreaType);
-    if(!srcInfo.convertedRegisterOrAreaType && srcInfo.mappedRegisterOrConstant & &Value::checkLiteral)
+    if(!srcInfo.convertedRegisterOrAreaType && srcInfo.mappedRegisterOrConstant &&
+        srcInfo.mappedRegisterOrConstant->getConstantValue(false))
         // check additionally, whether we copy the whole constant "vector"
         wholeRegister |= copiesWholeRegister(
             mem->getNumEntries(), mem->getDestinationElementType(), srcInfo.mappedRegisterOrConstant->type);
@@ -224,7 +225,7 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
                 srcInfo.mappedRegisterOrConstant->type.getArrayType())
             {
                 // XXX This is a work-around for when we manage to "lower" e.g. an i8[128] zeroinitializer into a
-                // read-only regster, which at least happens for SPIR-V. Since we cannot actually write the array to
+                // read-only register, which at least happens for SPIR-V. Since we cannot actually write the array to
                 // VPM/etc., we write every single entry, which will then be rewritten to a larger data type as needed
                 // (e.g. 2 uint16 writes for the i8[128] example).
                 auto arrayType = srcInfo.mappedRegisterOrConstant->type.getArrayType();

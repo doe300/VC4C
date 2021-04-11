@@ -344,7 +344,7 @@ void RAMAccessInstruction::setNumEntries(const Value& numEntries)
 
 bool RAMAccessInstruction::innerEquals(const IntermediateInstruction& other) const
 {
-    if(auto otherMem = dynamic_cast<const RAMAccessInstruction*>(&other))
+    if(dynamic_cast<const RAMAccessInstruction*>(&other))
         return MemoryAccessInstruction::innerEquals(other);
     return false;
 }
@@ -413,6 +413,6 @@ Optional<Value> CacheAccessInstruction::getDestination() const
 bool CacheAccessInstruction::innerEquals(const IntermediateInstruction& other) const
 {
     if(auto otherMem = dynamic_cast<const CacheAccessInstruction*>(&other))
-        return MemoryAccessInstruction::innerEquals(other);
+        return MemoryAccessInstruction::innerEquals(other) && upperWord == otherMem->upperWord;
     return false;
 }

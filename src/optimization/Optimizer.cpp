@@ -266,8 +266,7 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      */
     OptimizationPass("LowerMemoryAccess", "lower-memory-access", lowerMemoryAccess,
         "MANDATORY: lowers the memory access instructions to actual hardware instructions", OptimizationType::INITIAL),
-    // TODO enable once tested and working
-    OptimizationPass("GroupMemoryAccess", "group-memory", groupMemoryAccess,
+    OptimizationPass("GroupVPMAccess", "group-memory", groupVPMAccess,
         "merges memory accesses for adjacent memory and cache areas", OptimizationType::INITIAL),
     /*
      * The second block executes optimizations only within a single basic block.

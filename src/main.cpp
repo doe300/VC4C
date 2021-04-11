@@ -47,11 +47,14 @@ static void printHelp()
 
     std::cout << "optimizations:" << std::endl;
     std::cout << "\t-O0,-O1,-O2,-O3\t\t\tSwitches to the specific optimization level, defaults to -O2" << std::endl;
+    std::map<std::string, std::string> sortedPasses;
     for(const auto& pass : vc4c::optimizations::Optimizer::ALL_PASSES)
+        sortedPasses.emplace(pass.parameterName, pass.description);
+    for(const auto& pass : sortedPasses)
     {
-        std::cout << "\t--f" << std::left << std::setw(28) << pass.parameterName << pass.description << std::endl;
+        std::cout << "\t--f" << std::left << std::setw(28) << pass.first << pass.second << std::endl;
         // TODO print which optimization level includes optimization
-        std::cout << "\t--fno-" << std::left << std::setw(25) << pass.parameterName << "Disables the above optimization"
+        std::cout << "\t--fno-" << std::left << std::setw(25) << pass.first << "Disables the above optimization"
                   << std::endl;
     }
 

@@ -27,9 +27,16 @@ namespace vc4c
         bool lowerMemoryAccess(const Module& module, Method& method, const Configuration& config);
 
         /**
-         * Tries to find and group memory accesses to reduce the number of accesses while increasing utilization.
+         * Combine consecutive configuration of VPW/VPR with the same settings
+         *
+         * In detail, this combines VPM read/writes of uniform type of access (read or write), uniform data-type and
+         * consecutive memory-addresses
+         *
+         * NOTE: Combining VPM accesses merges their mutex-lock blocks which can cause other QPUs to stall for a long
+         * time. Also, this optimization currently only supports access memory <-> QPU, data exchange between only
+         * memory and VPM are not optimized
          */
-        bool groupMemoryAccess(const Module& module, Method& method, const Configuration& config);
+        bool groupVPMAccess(const Module& module, Method& method, const Configuration& config);
 
         /**
          * Tries to find TMU loads within loops where we can pre-calculate the address for loads in the next loop
