@@ -100,7 +100,7 @@ test_mismatch					PASSED
 test_multiple_objects			PASSED
 test_next_permutation			PASSED
 test_no_device_found			PASSED
-test_normal_distribution		result value mismatch ("normal_distribution_statistics", got inf/nan, expected 10/2)
+test_normal_distribution		PASSED
 test_nth_element				PASSED
 test_opencl_error				PASSED
 test_pair						PASSED

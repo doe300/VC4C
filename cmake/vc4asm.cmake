@@ -15,14 +15,14 @@ else()
 		GIT_REPOSITORY 		https://github.com/maazl/vc4asm.git
 		UPDATE_COMMAND 		git pull -f https://github.com/maazl/vc4asm.git
 		STEP_TARGETS 		build
-	 		EXCLUDE_FROM_ALL	TRUE
-	 		TIMEOUT 			30		#Timeout for downloads, in seconds
-	 		CMAKE_ARGS
-	 		  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-	 		  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-	 		  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
-	 		  -DCMAKE_CXX_FLAGS="-fPIC"
-	 		  -DCMAKE_C_FLAGS="-fPIC"
+		EXCLUDE_FROM_ALL	TRUE
+		TIMEOUT 			30		#Timeout for downloads, in seconds
+		CMAKE_ARGS
+		  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+		  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+		  -DCMAKE_FIND_ROOT_PATH=${CMAKE_FIND_ROOT_PATH}
+		  -DCMAKE_CXX_FLAGS="-fPIC"
+		  -DCMAKE_C_FLAGS="-fPIC"
 	)
 
 	ExternalProject_Get_Property(vc4asm-project BINARY_DIR)
