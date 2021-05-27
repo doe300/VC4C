@@ -37,9 +37,6 @@ jobs:
       - store_artifacts:
           path: build/vc4cl-stdlib-0.4-Linux.deb
           distination: vc4cl-stdlib-0.4-Linux.deb
-      - store_artifacts:
-          path: build/vc4c_testdata-0.4-Linux.deb
-          distination: vc4c_testdata-0.4-Linux.deb
   build:
     docker:
       - image: doe300/native

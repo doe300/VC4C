@@ -126,7 +126,8 @@ BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : cont
         llvm::SMDiagnostic error;
         llvmModule = llvm::parseIR(buf->getMemBufferRef(), error, context);
         if(!llvmModule)
-            throw CompilationError(CompilationStep::PARSER, "Error parsing LLVM IR module", error.getMessage());
+            throw CompilationError(
+                CompilationStep::PARSER, "Error parsing LLVM IR module", static_cast<std::string>(error.getMessage()));
     }
     else
         throw CompilationError(CompilationStep::PARSER, "Unhandled source-type for LLVM bitcode reader",
@@ -176,7 +177,7 @@ static void extractKernelMetadata(
             if(operand->getMetadataID() == llvm::Metadata::MDStringKind)
             {
                 const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
-                kernel.parameters.at(i).origTypeName = name->getString();
+                kernel.parameters.at(i).origTypeName = static_cast<std::string>(name->getString());
             }
             else
             {
@@ -225,7 +226,7 @@ static void extractKernelMetadata(
             if(operand->getMetadataID() == llvm::Metadata::MDStringKind)
             {
                 const llvm::MDString* name = llvm::cast<const llvm::MDString>(operand);
-                kernel.parameters.at(i).parameterName = name->getString();
+                kernel.parameters.at(i).parameterName = static_cast<std::string>(name->getString());
             }
             else
             {
@@ -289,8 +290,8 @@ void BitcodeReader::parse(Module& module)
     {
         if(func.getCallingConv() == llvm::CallingConv::SPIR_KERNEL)
         {
-            CPPLOG_LAZY(
-                logging::Level::DEBUG, log << "Found SPIR kernel-function: " << func.getName() << logging::endl);
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Found SPIR kernel-function: " << static_cast<std::string>(func.getName()) << logging::endl);
             Method& kernelFunc = parseFunction(module, func);
             extractKernelMetadata(kernelFunc, func, *llvmModule, context);
             kernelFunc.flags = add_flag(kernelFunc.flags, MethodFlags::KERNEL);
@@ -323,8 +324,9 @@ DataType BitcodeReader::toDataType(Module& module, const llvm::Type* type, Optio
         return it->second;
     if(type->isVectorTy())
     {
-        return toDataType(module, type->getVectorElementType())
-            .toVectorType(static_cast<unsigned char>(llvm::cast<const llvm::VectorType>(type)->getVectorNumElements()));
+        const llvm::VectorType* vec = llvm::cast<const llvm::VectorType>(type);
+        return toDataType(module, vec->getElementType())
+            .toVectorType(static_cast<unsigned char>(vec->getNumElements()));
     }
     if(type->isVoidTy())
         return TYPE_VOID;
@@ -404,8 +406,8 @@ DataType BitcodeReader::toDataType(Module& module, const llvm::Type* type, Optio
             return TYPE_EVENT;
         // need to be added to the map before iterating over the children to prevent stack-overflow
         // (since the type itself could be recursive)
-        auto structType =
-            module.createStructType(type->getStructName(), {}, llvm::cast<const llvm::StructType>(type)->isPacked());
+        auto structType = module.createStructType(
+            static_cast<std::string>(type->getStructName()), {}, llvm::cast<const llvm::StructType>(type)->isPacked());
         DataType& dataType = addToMap(DataType(structType), type, typesMap);
         structType->elementTypes.reserve(type->getStructNumElements());
         for(unsigned i = 0; i < type->getStructNumElements(); ++i)
@@ -413,7 +415,8 @@ DataType BitcodeReader::toDataType(Module& module, const llvm::Type* type, Optio
             structType->elementTypes.emplace_back(toDataType(module, type->getStructElementType(i)));
         }
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Struct " << type->getStructName() << ": " << structType->getContent() << logging::endl);
+            log << "Struct " << static_cast<std::string>(type->getStructName()) << ": " << structType->getContent()
+                << logging::endl);
         return dataType;
     }
     if(type->isArrayTy())
@@ -457,8 +460,8 @@ static ParameterDecorations toParameterDecorations(const llvm::Argument& arg, Da
     if(arg.hasInAllocaAttr() && isKernel)
     {
         dumpLLVM(&arg);
-        throw CompilationError(
-            CompilationStep::PARSER, "Kernel parameter decorated with inalloca are not supported", arg.getName());
+        throw CompilationError(CompilationStep::PARSER, "Kernel parameter decorated with inalloca are not supported",
+            static_cast<std::string>(arg.getName()));
     }
     if(arg.hasByValAttr())
     {
@@ -488,7 +491,7 @@ Method& BitcodeReader::parseFunction(Module& module, const llvm::Function& func)
     module.methods.emplace_back(method);
     parsedFunctions[&func] = std::make_pair(method, LLVMInstructionList{});
 
-    method->name = cleanMethodName(func.getName());
+    method->name = cleanMethodName(static_cast<std::string>(func.getName()));
     method->returnType = toDataType(module, func.getReturnType());
 
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -854,8 +857,12 @@ void BitcodeReader::parseInstruction(
         const llvm::Function* func = call->getCalledFunction();
         if(func == nullptr)
         {
-            // e.g. for alias - see https://stackoverflow.com/questions/22143143/
+// e.g. for alias - see https://stackoverflow.com/questions/22143143/
+#if LLVM_LIBRARY_VERSION >= 100
+            if(auto alias = llvm::dyn_cast<const llvm::GlobalAlias>(call->getCalledOperand()))
+#else
             if(auto alias = llvm::dyn_cast<const llvm::GlobalAlias>(call->getCalledValue()))
+#endif
             {
                 if(auto constExpr = llvm::dyn_cast<const llvm::ConstantExpr>(alias->getAliasee()))
                 {
@@ -868,20 +875,20 @@ void BitcodeReader::parseInstruction(
                     func = llvm::dyn_cast<const llvm::Function>(alias->getAliasee());
                 if(func)
                     CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Aliasing function '" << alias->getName() << "' to function: " << func->getName()
-                            << logging::endl);
+                        log << "Aliasing function '" << static_cast<std::string>(alias->getName())
+                            << "' to function: " << static_cast<std::string>(func->getName()) << logging::endl);
             }
         }
         if(func == nullptr)
         {
             dumpLLVM(call);
-            throw CompilationError(
-                CompilationStep::PARSER, "Unhandled type of indirect function call!", call->getName());
+            throw CompilationError(CompilationStep::PARSER, "Unhandled type of indirect function call!",
+                static_cast<std::string>(call->getName()));
         }
         if(func->isDeclaration())
         {
             // functions without definitions (e.g. intrinsic functions)
-            std::string funcName = func->getName();
+            std::string funcName = static_cast<std::string>(func->getName());
             instructions.emplace_back(new CallSite(toValue(method, call, &instructions),
                 cleanMethodName(funcName.find("_Z") == 0 ? std::string("@") + funcName : funcName), std::move(args)));
         }
@@ -982,7 +989,11 @@ void BitcodeReader::parseInstruction(
         instructions.emplace_back(new ShuffleVector(toValue(method, shuffle, &instructions),
             toValue(method, shuffle->getOperand(0), &instructions),
             toValue(method, shuffle->getOperand(1), &instructions),
+#if LLVM_LIBRARY_VERSION >= 110
+            toValue(method, shuffle->getShuffleMaskForBitcode(), &instructions)));
+#else
             toValue(method, shuffle->getMask(), &instructions)));
+#endif
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -1264,7 +1275,8 @@ Value BitcodeReader::precalculateConstantExpression(
         {
             dumpLLVM(expr);
             throw CompilationError(CompilationStep::PARSER,
-                "Only constant global getelementptr without offsets are supported for now", expr->getName());
+                "Only constant global getelementptr without offsets are supported for now",
+                static_cast<std::string>(expr->getName()));
         }
     }
     if(expr->getOpcode() == llvm::Instruction::CastOps::PtrToInt ||

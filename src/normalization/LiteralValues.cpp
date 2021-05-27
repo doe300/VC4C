@@ -19,150 +19,17 @@
 using namespace vc4c;
 using namespace vc4c::normalization;
 
-static Optional<Literal> getMostCommonElement(const SIMDVector& container, uint8_t numRelevantEntries)
-{
-    FastMap<Literal, unsigned> histogram;
-    histogram.reserve(container.size());
-    for(uint8_t i = 0; i < std::min(container.size(), numRelevantEntries); ++i)
-    {
-        ++histogram[container[i]];
-    }
-
-    auto maxVal = histogram.begin();
-    for(auto it = histogram.begin(); it != histogram.end(); ++it)
-    {
-        if(it->second > maxVal->second)
-            maxVal = it;
-    }
-    // if all are equal, default to first element
-    return maxVal->second == 1 ? Optional<Literal>{} : maxVal->first;
-}
-
-static bool fitsIntoUnsignedMaskedLoad(Literal lit)
-{
-    return lit.unsignedInt() == 0 || lit.unsignedInt() == 1 || lit.unsignedInt() == 2 || lit.unsignedInt() == 3;
-}
-
-static bool fitsIntoSignedMaskedLoad(Literal lit)
-{
-    return lit.signedInt() == 0 || lit.signedInt() == 1 || lit.signedInt() == -2 || lit.signedInt() == -1;
-}
-
 static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker it, const Value& out, const Value& in)
 {
-    const auto& inContainer = in.vector();
-    if(inContainer.isUndefined())
-    {
-        // if all values within a container are the same, there is no need to extract them separately, a simple move
-        // (e.g. load) will do
-        it.emplace((new intermediate::MoveOperation(out, Value(UNDEFINED_LITERAL, in.type.getElementType())))
-                       ->copyExtrasFrom(it.get()));
-        return it.nextInBlock();
-    }
-    if(auto elem = inContainer.getAllSame())
-    {
-        // if all values within a container are the same, there is no need to extract them separately, a simple move
-        // (e.g. load) will do
-        it.emplace(
-            (new intermediate::MoveOperation(out, Value(*elem, in.type.getElementType())))->copyExtrasFrom(it.get()));
-        return it.nextInBlock();
-    }
-    if(inContainer.isElementNumber(false, false, true))
-    {
-        // if the value in the container corresponds to the element-number, simply copy it
-        it.emplace((new intermediate::MoveOperation(out, ELEMENT_NUMBER_REGISTER))->copyExtrasFrom(it.get()));
-        return it.nextInBlock();
-    }
-    if(inContainer.isElementNumber(true, false, true))
-    {
-        // if the value in the container corresponds to the element number plus an offset (a general ascending range),
-        // convert to addition
-        auto offset = inContainer[0].signedInt();
-        it.emplace((new intermediate::Operation(OP_ADD, out, ELEMENT_NUMBER_REGISTER, Value(Literal(offset), in.type)))
-                       ->copyExtrasFrom(it.get()));
-        return it.nextInBlock();
-    }
-    if(inContainer.isElementNumber(false, true, true) && inContainer[NATIVE_VECTOR_SIZE - 1].unsignedInt() < (1 << 16))
-    {
-        // if the value in the container corresponds to the element number times a factor (a general ascending range
-        // with step of more than 1), convert to multiplication (only if it fits in mul24)
-        auto factor = inContainer[1].signedInt();
-        it.emplace(
-            (new intermediate::Operation(OP_MUL24, out, ELEMENT_NUMBER_REGISTER, Value(Literal(factor), in.type)))
-                ->copyExtrasFrom(it.get()));
-        return it.nextInBlock();
-    }
-    if(std::all_of(inContainer.begin(), inContainer.end(), fitsIntoUnsignedMaskedLoad))
-    {
-        // if the container elements all fit into the results of an unsigned bit-masked load, use such an instruction
-        auto mask =
-            intermediate::LoadImmediate::fromLoadedValues(inContainer, intermediate::LoadType::PER_ELEMENT_UNSIGNED);
-        it.emplace(new intermediate::LoadImmediate(out, mask, intermediate::LoadType::PER_ELEMENT_UNSIGNED));
-        it->copyExtrasFrom(it.get());
-        return it.nextInBlock();
-    }
-    if(std::all_of(inContainer.begin(), inContainer.end(), fitsIntoSignedMaskedLoad))
-    {
-        // if the container elements all fit into the results of an signed bit-masked load, use such an instruction
-        auto mask =
-            intermediate::LoadImmediate::fromLoadedValues(inContainer, intermediate::LoadType::PER_ELEMENT_SIGNED);
-        it.emplace(new intermediate::LoadImmediate(out, mask, intermediate::LoadType::PER_ELEMENT_SIGNED));
-        it->copyExtrasFrom(it.get());
-        return it.nextInBlock();
-    }
-    if(auto sources = intermediate::checkVectorCanBeAssembled(in.type, inContainer))
-    {
-        // try the more complex vector assembly before falling back to almost complete element-wise
-        return intermediate::insertAssembleVector(it, method, out, *std::move(sources));
-    }
     Value realOut = out;
     if(!out.checkLocal())
-    {
         realOut = method.addNewLocal(in.type, "%container");
-    }
-    if(!out.checkRegister() && !out.type.isUnknown() && in.type.getVectorWidth() > out.type.getVectorWidth())
-    {
-        throw CompilationError(CompilationStep::OPTIMIZER, "Input vector has invalid type", in.to_string(false, true));
-    }
 
-    // the input could be an array lowered into register, so the type is not required to be a vector
-    auto typeWidth =
-        in.type.getArrayType() ? static_cast<uint8_t>(in.type.getArrayType()->size) : in.type.getVectorWidth();
-    auto elemType = in.type.getElementType();
-    // copy first element without test for flags, so the register allocator finds an unconditional write of the
-    // container
-    it.emplace(new intermediate::MoveOperation(realOut, Value(inContainer[0], elemType)));
-    it.nextInBlock();
-    // optimize this by looking for the most common value and initializing all (but the first) elements with this one
-    // all other elements (not in the original data, but part of the SIMD vector, e.g. if source has less than 16
-    // elements), we don't care about their value
-    auto maxOccurrence = getMostCommonElement(inContainer, typeWidth);
-    if(maxOccurrence && maxOccurrence.value() != inContainer[0])
-    {
-        it.emplace(new intermediate::Operation(
-            OP_SUB, NOP_REGISTER, INT_ZERO, ELEMENT_NUMBER_REGISTER, COND_ALWAYS, SetFlag::SET_FLAGS));
-        it.nextInBlock();
-        it.emplace(new intermediate::MoveOperation(realOut, Value(maxOccurrence.value(), elemType), COND_NEGATIVE_SET));
-        it->addDecorations(intermediate::InstructionDecorations::ELEMENT_INSERTION);
-        it.nextInBlock();
-    }
-    for(uint8_t i = 0; i < typeWidth; ++i)
-    {
-        if(maxOccurrence && inContainer[i] == maxOccurrence.value())
-            continue;
-        // 1) set flags for element i
-        it.emplace(new intermediate::Operation(OP_XOR, NOP_REGISTER, ELEMENT_NUMBER_REGISTER,
-            Value(SmallImmediate(i), TYPE_INT8), COND_ALWAYS, SetFlag::SET_FLAGS));
-        it.nextInBlock();
+    it = intermediate::insertAssembleVector(it, method, realOut, in.type, in.vector());
 
-        // 2) copy element i of the input vector to the output
-        it.emplace(new intermediate::MoveOperation(realOut, Value(inContainer[i], elemType), COND_ZERO_SET));
-        it->addDecorations(intermediate::InstructionDecorations::ELEMENT_INSERTION);
-        it.nextInBlock();
-    }
     if(realOut != out)
     {
-        it.emplace((new intermediate::MoveOperation(out, realOut))->copyExtrasFrom(it.get()));
+        it.emplace(new intermediate::MoveOperation(out, realOut));
         it.nextInBlock();
     }
     return it;

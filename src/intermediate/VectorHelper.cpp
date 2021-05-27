@@ -512,6 +512,64 @@ NODISCARD InstructionWalker intermediate::insertVectorConcatenation(
     return it;
 }
 
+/**
+ * Types of input sources for generating vector elements
+ *
+ * The source types are sorted by the number of instructions they require.
+ */
+enum class SourceType
+{
+    // For undefined values, the source is of no importance,
+    ANY,
+    // Read the elem_num register
+    ELEMENT_NUMBER,
+    // Load the given constant value
+    CONSTANT,
+    // Load the given unsigned value [0,3]
+    LOAD_UNSIGNED_MASK,
+    // Load the given signed value [-2,1]
+    LOAD_SIGNED_MASK,
+    // Replicate (elem_num/4) per quad to get the quad number (0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3)
+    REPLICATE_QUAD_NUMBER
+};
+
+/**
+ * Types of modification to apply to the vector element source
+ *
+ * The modification types are sorted by the number of instructions they require.
+ */
+enum class ModificationType
+{
+    // Do not modify the source
+    NONE,
+    // Multiply (mul24) the given constant factor
+    MULTIPLY,
+    // Add the given constant offset
+    ADD,
+    // Rotate by the given constant factor
+    ROTATE
+};
+
+/**
+ * Information to assemble part of a vector (e.g. for assembling constant vectors or for shuffling).
+ */
+struct ElementSource
+{
+    SourceType sourceType;
+    // The additional source value, e.g. constant value, load value
+    Optional<Literal> sourceValue;
+    ModificationType modificationType = ModificationType::NONE;
+    // The additional modification value, e.g. addition offset, multiplication factor or rotation offset
+    Optional<Literal> modificationValue = {};
+    // TODO modification value could also be elem_num!
+
+    bool operator<(const ElementSource& other) const noexcept;
+    bool operator==(const ElementSource& other) const noexcept;
+
+    bool isCompatible(const ElementSource& other) const noexcept;
+    std::string to_string() const;
+};
+
 bool ElementSource::operator<(const ElementSource& other) const noexcept
 {
     // "Smaller" source types have precedence, since they use less instructions
@@ -790,7 +848,7 @@ static std::vector<std::set<ElementSource>> getElementSources(DataType type, con
     return sources;
 }
 
-Optional<std::vector<ElementSource>> intermediate::checkVectorCanBeAssembled(DataType type, const SIMDVector& vector)
+Optional<std::vector<ElementSource>> checkVectorCanBeAssembled(DataType type, const SIMDVector& vector)
 {
     PROFILE_START(getElementSources);
     auto sources = getElementSources(type, vector);
@@ -856,7 +914,7 @@ Optional<std::vector<ElementSource>> intermediate::checkVectorCanBeAssembled(Dat
     return results;
 }
 
-InstructionWalker intermediate::insertAssembleVector(
+InstructionWalker insertAssembleVector(
     InstructionWalker it, Method& method, const Value& dest, std::vector<ElementSource>&& sources)
 {
     if(sources.empty())
@@ -940,26 +998,141 @@ InstructionWalker intermediate::insertAssembleVector(
     return it;
 }
 
+static Optional<Value> getMostCommonElement(const std::vector<Value>& container)
+{
+    FastMap<Value, unsigned> histogram;
+    histogram.reserve(container.size());
+    for(const auto& val : container)
+        ++histogram[val];
+
+    auto maxVal = histogram.begin();
+    for(auto it = histogram.begin(); it != histogram.end(); ++it)
+    {
+        if(it->second > maxVal->second)
+            maxVal = it;
+    }
+    // if all are equal, default to first element
+    return maxVal->second == 1 ? NO_VALUE : maxVal->first;
+}
+
+NODISCARD static InstructionWalker insertAssembleVectorFallback(
+    InstructionWalker it, Method& method, const Value& dest, const std::vector<Value>& elements)
+{
+    // copy first element without test for flags, so the register allocator finds an unconditional write of the
+    // container
+    it.emplace(new intermediate::MoveOperation(dest, elements[0]));
+    it.nextInBlock();
+    // optimize this by looking for the most common value and initializing all (but the first) elements with this one
+    // all other elements (not in the original data, but part of the SIMD vector, e.g. if source has less than 16
+    // elements), we don't care about their value
+    auto maxOccurrence = getMostCommonElement(elements);
+    if(maxOccurrence && maxOccurrence.value() != elements.front())
+    {
+        assignNop(it) = (INT_ZERO - ELEMENT_NUMBER_REGISTER, SetFlag::SET_FLAGS);
+        assign(it, dest) =
+            (maxOccurrence.value(), COND_NEGATIVE_SET, intermediate::InstructionDecorations::ELEMENT_INSERTION);
+    }
+    for(uint8_t i = 0; i < elements.size(); ++i)
+    {
+        if(maxOccurrence && elements[i] == maxOccurrence.value())
+            continue;
+        it = insertVectorInsertion(it, method, dest, Value(SmallImmediate(i), TYPE_INT8), elements[i]);
+    }
+    return it;
+}
+
 InstructionWalker intermediate::insertAssembleVector(
     InstructionWalker it, Method& method, const Value& dest, const std::vector<Value>& elements)
 {
     if(elements.empty())
         throw CompilationError(CompilationStep::GENERAL, "Can't assemble vector without elements", dest.to_string());
+    if(elements.size() > NATIVE_VECTOR_SIZE)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Can't assemble vector with more than 16 elements", dest.to_string());
+
+    if(std::all_of(elements.begin(), elements.end(), [](const Value& val) { return val.isUndefined(); }))
+    {
+        assign(it, dest) = UNDEFINED_VALUE;
+        return it;
+    }
 
     if(std::all_of(elements.begin(), elements.end(), [&](const Value& val) { return val == elements.front(); }))
         return insertReplication(it, elements.front(), dest);
 
-    // insert per element
-    if(elements.size() < NATIVE_VECTOR_SIZE)
-        // just to make sure we have an unconditional write, so our register allocation is happy
-        assign(it, dest) = INT_ZERO;
-    uint8_t index = 0;
-    for(auto& elem : elements)
+    if(std::all_of(elements.begin(), elements.end(), [](const Value& val) { return val.getLiteralValue(); }))
     {
-        it = insertVectorInsertion(it, method, dest, Value(SmallImmediate(index), TYPE_INT8), elem);
-        ++index;
+        SIMDVector literalValues{};
+        bool isFloatType = true;
+        uint8_t scalarBitCount = 0;
+        for(uint8_t i = 0; i < elements.size(); ++i)
+        {
+            literalValues[i] = elements[i].getLiteralValue().value();
+            scalarBitCount = std::max(scalarBitCount, elements[i].type.getScalarBitCount());
+            isFloatType = isFloatType && elements[i].type.isFloatingType();
+        }
+        return insertAssembleVector(it, method, dest,
+            DataType(scalarBitCount, static_cast<uint8_t>(elements.size()), isFloatType), literalValues);
     }
-    return it;
+
+    return insertAssembleVectorFallback(it, method, dest, elements);
+}
+
+InstructionWalker intermediate::insertAssembleVector(
+    InstructionWalker it, Method& method, const Value& dest, DataType inputType, const SIMDVector& elements)
+{
+    if(elements.isUndefined())
+    {
+        assign(it, dest) = UNDEFINED_VALUE;
+        return it;
+    }
+
+    if(auto elem = elements.getAllSame())
+    {
+        assign(it, dest) = Value(*elem, dest.type);
+        return it;
+    }
+
+    if(elements.isElementNumber(false, false, true))
+    {
+        // if the value in the container corresponds to the element-number, simply copy it
+        assign(it, dest) = (ELEMENT_NUMBER_REGISTER);
+        return it;
+    }
+    if(elements.isElementNumber(true, false, true))
+    {
+        // if the value in the container corresponds to the element number plus an offset (a general ascending range),
+        // convert to addition
+        auto offset = elements[0].signedInt();
+        assign(it, dest) = (ELEMENT_NUMBER_REGISTER + Value(Literal(offset), inputType));
+        return it;
+    }
+    if(elements.isElementNumber(false, true, true) &&
+        std::all_of(elements.begin(), elements.end(),
+            [](const Literal& lit) { return lit.isUndefined() || lit.unsignedInt() < (1 << 16); }))
+    {
+        // if the value in the container corresponds to the element number times a factor (a general ascending range
+        // with step of more than 1), convert to multiplication (only if it fits in mul24)
+        auto factor = elements[1].unsignedInt();
+        assign(it, dest) = mul24(ELEMENT_NUMBER_REGISTER, Value(Literal(factor), inputType));
+        return it;
+    }
+
+    if(auto sources = checkVectorCanBeAssembled(dest.type, elements))
+        return insertAssembleVector(it, method, dest, *std::move(sources));
+
+    auto elementType = inputType.getElementType();
+    auto numEntries = NATIVE_VECTOR_SIZE;
+    if(inputType.isVectorType())
+        numEntries = inputType.getVectorWidth();
+    if(auto array = inputType.getArrayType())
+        numEntries = array->size;
+
+    std::vector<Value> inValues;
+    inValues.reserve(numEntries);
+    for(uint8_t i = 0; i < numEntries; ++i)
+        inValues.push_back(Value(elements[i], elementType));
+
+    return insertAssembleVectorFallback(it, method, dest, inValues);
 }
 
 InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& method, const Value& dest,
