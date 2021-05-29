@@ -25,7 +25,7 @@ static std::atomic_uint tmuCacheEntryCounter{0};
 TMUCacheEntry::TMUCacheEntry(const TMU& tmu, const Value& addr, DataType originalType) :
     index(tmuCacheEntryCounter++), tmu(tmu), addresses(addr),
     numVectorElements(Value(Literal(originalType.getPointerType() ? 1 : originalType.getVectorWidth()), TYPE_INT8)),
-    elementStrideInBytes(originalType.getScalarBitCount() / 8)
+    elementStrideInBytes(originalType.getScalarBitCount() / 8), customAddressCalculation(false)
 {
     if(!originalType.isSimpleType() && !originalType.getPointerType())
         throw CompilationError(
@@ -96,7 +96,7 @@ static NODISCARD InstructionWalker insertCalculateAddressOffsets(Method& method,
         it = intermediate::insertReplication(it, baseAddress, replicatedAddress);
     }
 
-    if(elementCount == 1)
+    if(elementCount == 1 || elementStrideInBytes == 0)
     {
         // We don't actually need to load anything into the upper SIMD vector elements. But since we cannot "not load
         // anything" for single elements, we just load the same data into all elements, which at least requires only a
@@ -124,7 +124,8 @@ static NODISCARD InstructionWalker insertCalculateAddressOffsets(Method& method,
     // anything" for single elements, we just load the successive data into the upper elements. Since the data is most
     // likely anyway on the same TMU cache line and/or will be queried in a successive (work-group) loop iteration, this
     // gives us little overhead.
-    auto finalAddresses = assign(it, outputAddress.type) =
+    Value finalAddresses = UNDEFINED_VALUE;
+    finalAddresses = assign(it, outputAddress.type) =
         (replicatedAddress + addressOffsets, intermediate::InstructionDecorations::UNSIGNED_RESULT);
 
     if(!realNumElements.getLiteralValue())
@@ -310,8 +311,9 @@ InstructionWalker periphery::insertReadVectorFromTMU(
 NODISCARD static InstructionWalker lowerReadRAM(Method& method, InstructionWalker it,
     const intermediate::RAMAccessInstruction& access, const TMUCacheEntry& cacheEntry)
 {
-    it = insertCalculateAddressOffsets(method, it, access.getMemoryAddress(), cacheEntry.numVectorElements,
-        cacheEntry.elementStrideInBytes, cacheEntry.addresses);
+    if(!cacheEntry.customAddressCalculation)
+        it = insertCalculateAddressOffsets(method, it, access.getMemoryAddress(), cacheEntry.numVectorElements,
+            cacheEntry.elementStrideInBytes, cacheEntry.addresses);
 
     //"General-memory lookups are performed by writing to just the s-parameter, using the absolute memory address" (page
     // 41)  1) write address to TMU_S register

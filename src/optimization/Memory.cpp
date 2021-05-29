@@ -16,6 +16,7 @@
 #include "../analysis/DominatorTree.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
+#include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
 #include "../intrinsics/Intrinsics.h"
 #include "../performance.h"
@@ -23,13 +24,15 @@
 #include "../periphery/VPM.h"
 #include "log.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 
 using namespace vc4c;
 using namespace vc4c::operators;
 
 // TODO rewrite combination of VPM accesses to use MemoryAccessInstructions instead? Need to move before memory lowering
-// and somehow be able to explicitly set stride/etc.
+// and somehow be able to explicitly set stride/etc. If rewritten, merge with groupTMUAccess optimization step
 
 bool optimizations::lowerMemoryAccess(const Module& module, Method& method, const Configuration& config)
 {
@@ -723,6 +726,658 @@ bool optimizations::groupVPMAccess(const Module& module, Method& method, const C
     return didChanges;
 }
 
+struct TMUAccessGroup
+{
+    std::shared_ptr<periphery::TMUCacheEntry> cacheEntry;
+    FastAccessList<InstructionWalker> ramReads;
+    FastAccessList<InstructionWalker> cacheLoads;
+    FastAccessList<SubExpression> uniformAddressParts;
+    uint8_t usedVectorSize;
+};
+
+static tools::SmallSortedPointerSet<const Local*> getUsedLocals(const SubExpression& expr)
+{
+    if(auto loc = expr.checkLocal())
+        return {loc};
+    if(auto inner = expr.checkExpression())
+    {
+        tools::SmallSortedPointerSet<const Local*> result;
+        for(auto loc : getUsedLocals(inner->arg0))
+            result.emplace(loc);
+        for(auto loc : getUsedLocals(inner->arg1))
+            result.emplace(loc);
+        return result;
+    }
+    return tools::SmallSortedPointerSet<const Local*>{};
+}
+
+static bool checkAllLocalsAreKnown(const tools::SmallSortedPointerSet<const Local*>& haystack,
+    const tools::SmallSortedPointerSet<const Local*> needles)
+{
+    return std::includes(haystack.begin(), haystack.end(), needles.begin(), needles.end());
+}
+
+NODISCARD static InstructionWalker findGroupOfTMUAccess(InstructionWalker it, TMUAccessGroup& group)
+{
+    BaseAndOffset groupBaseAndOffset;
+    for(; !it.isEndOfBlock(); it.nextInBlock())
+    {
+        if(auto load = it.get<intermediate::RAMAccessInstruction>())
+        {
+            auto tmuCacheEntry = load->getTMUCacheEntry();
+            if(load->op == intermediate::MemoryOperation::READ && tmuCacheEntry)
+            {
+                auto cacheReadInst = tmuCacheEntry->getCacheReader();
+                auto cacheReadIt = cacheReadInst ?
+                    it.getBasicBlock()->findWalkerForInstruction(cacheReadInst, it.getBasicBlock()->walkEnd()) :
+                    Optional<InstructionWalker>{};
+                if(!cacheReadIt)
+                    // this load does not have exactly 1 cache read (or we could not find it), so skip
+                    return it.nextInBlock();
+
+                auto numVectorElements = tmuCacheEntry->numVectorElements.getLiteralValue();
+                if(!numVectorElements)
+                    // this load reads a non-constant number of vector elements
+                    // skip this address write for the next check
+                    return it.nextInBlock();
+
+                // check if the TMU accessed is the same as for the group (if any)
+                if(group.cacheEntry && group.cacheEntry->getTMUIndex() != tmuCacheEntry->getTMUIndex())
+                    break;
+
+                const auto baseAndOffset = findBaseAndOffset(load->getMemoryAddress());
+
+                if(!baseAndOffset || !baseAndOffset->baseAddress)
+                    // this address-write could not be fixed to a base and an offset
+                    // skip this address write for the next check
+                    return it.nextInBlock();
+
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Found base address " << baseAndOffset->baseAddress->to_string() << " with dynamic offset "
+                        << baseAndOffset->dynamicOffset.to_string() << " and work-group uniform offset "
+                        << baseAndOffset->workGroupConstantOffset.to_string() << " for "
+                        << "reading from memory via TMU" << logging::endl);
+
+                if(baseAndOffset->baseAddress->is<Parameter>() &&
+                    has_flag(baseAndOffset->baseAddress->as<Parameter>()->decorations, ParameterDecorations::VOLATILE))
+                    // address points to a volatile parameter, which explicitly forbids combining reads/writes
+                    // skip this address write for the next check
+                    return it.nextInBlock();
+
+                if(group.ramReads.empty())
+                {
+                    // create new group
+                    groupBaseAndOffset = *baseAndOffset;
+                    group.cacheEntry = tmuCacheEntry;
+                    group.usedVectorSize = 0;
+                }
+
+                // check whether this read belongs to the same group
+                if(groupBaseAndOffset.baseAddress != baseAndOffset->baseAddress)
+                    // a group exists, but the base addresses don't match
+                    break;
+                if(groupBaseAndOffset.dynamicOffset != baseAndOffset->dynamicOffset)
+                    // a group exists, but the dynamic offsets don't match
+                    break;
+                // make sure we already know all locals accessed by the successive loads at the point of the first load
+                auto knownLocals = getUsedLocals(groupBaseAndOffset.workGroupConstantOffset);
+                auto usedLocals = getUsedLocals(baseAndOffset->workGroupConstantOffset);
+
+                if(!checkAllLocalsAreKnown(knownLocals, usedLocals))
+                    // accesses locals not accessed in the first RAM load instruction, which might be written afterwards
+                    // and therefore we cannot move their usage to the initial RAM access
+                    break;
+
+                if(group.usedVectorSize + static_cast<uint8_t>(numVectorElements->unsignedInt()) > NATIVE_VECTOR_SIZE)
+                    // group is too big when adding this new load
+                    break;
+
+                // add to group
+                group.usedVectorSize += static_cast<uint8_t>(numVectorElements->unsignedInt());
+                group.ramReads.emplace_back(it);
+                group.cacheLoads.emplace_back(*cacheReadIt);
+                group.uniformAddressParts.emplace_back(baseAndOffset->workGroupConstantOffset);
+            }
+        }
+    }
+    return it;
+}
+
+NODISCARD static InstructionWalker insertCustomAddressesCalculation(InstructionWalker it, Method& method,
+    const Value& baseAddress, const Value& addressOffsets, uint8_t numVectorElements, const Value& outputAddress)
+{
+    Value replicatedAddress = baseAddress;
+    if(!baseAddress.isAllSame())
+    {
+        replicatedAddress = method.addNewLocal(
+            method.createPointerType(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE)), "%tmu_group_replicated_address");
+        it = intermediate::insertReplication(it, baseAddress, replicatedAddress);
+    }
+
+    assign(it, outputAddress) =
+        (replicatedAddress + addressOffsets, intermediate::InstructionDecorations::UNSIGNED_RESULT);
+    /*
+     * Since the address offsets might be large (or have undefined values for the not-accessed upper SIMD vector
+     * elements), loading these addresses might read unallocated memory. To mitigate this, only set the addresses for
+     * the elements actually loaded.
+     *
+     * See TMU.cpp#insertCalculateAddressOffsets(...) for details.
+     */
+    if(numVectorElements != NATIVE_VECTOR_SIZE)
+    {
+        auto cond = assignNop(it) =
+            as_signed{ELEMENT_NUMBER_REGISTER} >= as_signed{Value(Literal(numVectorElements), TYPE_INT8)};
+        assign(it, outputAddress) = (INT_ZERO, cond);
+    }
+
+    return it;
+}
+
+static std::vector<SubExpression> getAddParts(const SubExpression& expr)
+{
+    if(auto exp = expr.checkExpression())
+    {
+        if(exp->code == OP_ADD)
+            return exp->getAssociativeParts();
+    }
+    return {expr};
+}
+
+static std::vector<SubExpression> addConstantOffset(const std::vector<SubExpression>& parts, uint32_t offset)
+{
+    std::vector<SubExpression> result = parts;
+    for(auto& res : result)
+    {
+        auto val = res.checkValue();
+        if(auto lit = val & &Value::getLiteralValue)
+        {
+            // update existing constant value
+            res = Value(Literal(lit->unsignedInt() + offset), val->type);
+            return result;
+        }
+    }
+    // add new constant entry
+    result.emplace_back(Value(Literal(offset), TYPE_INT32));
+    return result;
+}
+
+NODISCARD static bool checkSecondAddressCalculation(InstructionWalker start, InstructionWalker end,
+    const Local* openLocal, FastAccessList<InstructionWalker>& calculatingInstructions)
+{
+    if(!openLocal)
+        return false;
+
+    while(start != end)
+    {
+        if(start.has() && start->writesLocal(openLocal))
+        {
+            if(start->hasConditionalExecution() || start->readsRegister())
+                // just to keep it simple, abort on conditional writes and e.g. replications
+                return false;
+            calculatingInstructions.emplace_back(start);
+            for(auto& arg : start->getArguments())
+            {
+                if(auto loc = arg.checkLocal())
+                {
+                    if(!checkSecondAddressCalculation(
+                           start.copy().previousInBlock(), end, loc, calculatingInstructions))
+                        return false;
+                }
+            }
+            return true;
+        }
+        start.previousInBlock();
+    }
+    // local was not written at all in between, so it has to (assuming the code before was correct) be written before
+    // the end iterator and thus is already available
+    return true;
+}
+
+static std::pair<std::vector<SubExpression>, std::vector<std::vector<SubExpression>>> getElementOffsetsAndStrides(
+    TMUAccessGroup& group, const std::vector<SubExpression>& baseUniformParts)
+{
+    auto previousUniformOffset = group.uniformAddressParts.at(0);
+    std::vector<SubExpression> elementStrides;
+    std::vector<std::vector<SubExpression>> elementOffsetsParts;
+    elementStrides.reserve(group.usedVectorSize);
+    elementOffsetsParts.reserve(group.usedVectorSize);
+    for(std::size_t i = 0; i < group.ramReads.size(); ++i)
+    {
+        auto cacheEntry = group.ramReads[i].get<intermediate::RAMAccessInstruction>()->getTMUCacheEntry();
+        auto numVectorElements = cacheEntry->numVectorElements.getLiteralValue().value().unsignedInt();
+        auto loadStrideExpr = std::make_shared<Expression>(OP_SUB, group.uniformAddressParts[i], previousUniformOffset)
+                                  ->combineWith({},
+                                      add_flag(ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::STOP_AT_BUILTINS,
+                                          ExpressionOptions::RECURSIVE));
+
+        std::vector<SubExpression> uniformOffsetParts;
+        if(i == 0)
+            uniformOffsetParts = baseUniformParts;
+        else
+        {
+            uniformOffsetParts = getAddParts(group.uniformAddressParts.at(i));
+            uniformOffsetParts.erase(std::remove_if(uniformOffsetParts.begin(), uniformOffsetParts.end(),
+                                         [&](const SubExpression& part) -> bool {
+                                             return !part.getLiteralValue() &&
+                                                 std::find(baseUniformParts.begin(), baseUniformParts.end(), part) !=
+                                                 baseUniformParts.end();
+                                         }),
+                uniformOffsetParts.end());
+        }
+        if(uniformOffsetParts.empty())
+            uniformOffsetParts.emplace_back(INT_ZERO);
+
+        /*
+         * For the elements loaded by a single RAM load, the following strides (to the previous element in the resulting
+         * RAM load) are calculated:
+         * - the first element has a stride of: work-group uniform offset - previous stride
+         * - all other elements have a stride of the fixed stride value in the TMU cache entry
+         */
+        SubExpression loadStride = loadStrideExpr;
+        if(auto constantStride = loadStrideExpr->getConstantExpression())
+            loadStride = *constantStride;
+
+        elementStrides.emplace_back(loadStride);
+        elementOffsetsParts.emplace_back(uniformOffsetParts);
+
+        for(uint8_t i = 1; i < numVectorElements; ++i)
+        {
+            elementStrides.emplace_back(Value(Literal(cacheEntry->elementStrideInBytes), TYPE_INT32));
+            elementOffsetsParts.emplace_back(
+                addConstantOffset(uniformOffsetParts, i * cacheEntry->elementStrideInBytes));
+        }
+
+        std::shared_ptr<Expression> nextOffsetExpr;
+        if(numVectorElements == 1)
+            nextOffsetExpr = group.uniformAddressParts[i].checkExpression() ?
+                group.uniformAddressParts[i].checkExpression() :
+                std::make_shared<Expression>(OP_V8MIN, group.uniformAddressParts[i], group.uniformAddressParts[i]);
+        else
+            nextOffsetExpr = std::make_shared<Expression>(OP_ADD, group.uniformAddressParts[i],
+                Value(Literal((numVectorElements - 1) * cacheEntry->elementStrideInBytes), TYPE_INT32))
+                                 ->combineWith({},
+                                     add_flag(ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::STOP_AT_BUILTINS,
+                                         ExpressionOptions::RECURSIVE));
+        previousUniformOffset = nextOffsetExpr;
+        if(auto constantOffset = nextOffsetExpr->getConstantExpression())
+            previousUniformOffset = *constantOffset;
+    }
+    return std::make_pair(std::move(elementStrides), std::move(elementOffsetsParts));
+}
+
+struct HierarchicalStrides
+{
+    uint32_t powerOfTwo;
+    std::shared_ptr<Expression> primaryStride;
+    Literal secondaryStride;
+};
+
+static Optional<HierarchicalStrides> checkTwoDistinctStrides(const std::vector<SubExpression>& elementStrides)
+{
+    // only allow if "primary" stride has element stride with a power of 2 (e.g. 0th, 4th, 8th and 12th element) for
+    // easier and faster code generation.
+    if(elementStrides.size() < 3 || !isPowerTwo(static_cast<uint32_t>(elementStrides.size())))
+        return {};
+
+    // ignore stride of 0th element, since there is no previous element and therefore no stride to it
+    auto secondaryStride = elementStrides.at(1).getConstantExpression() & &Value::getLiteralValue;
+    auto halfIndex = elementStrides.size() / 2;
+    auto primaryStride = elementStrides.at(halfIndex);
+
+    if(!secondaryStride || secondaryStride->signedInt() < 0)
+        return {};
+
+    for(auto powerTwo : {8u, 4u, 2u})
+    {
+        bool allElementsMatch = true;
+        for(std::size_t i = 1; i < elementStrides.size(); ++i)
+        {
+            if((i % powerTwo == 0) && elementStrides.at(i) != primaryStride)
+            {
+                allElementsMatch = false;
+                break;
+            }
+            if((i % powerTwo != 0) &&
+                (elementStrides.at(i).getConstantExpression() & &Value::getLiteralValue) != secondaryStride)
+            {
+                allElementsMatch = false;
+                break;
+            }
+        }
+        if(allElementsMatch)
+        {
+            // convert primary stride from stride to previous secondary to stride to previous primary
+            // e.g. primary offsets are X * N and the applicable power is 4, then primary stride is X - 3 * sizeof(type)
+            // we convert to X
+            auto primaryPrimaryStride = std::make_shared<Expression>(
+                OP_ADD, primaryStride, Value(Literal((powerTwo - 1) * secondaryStride->unsignedInt()), TYPE_INT32));
+            primaryPrimaryStride = primaryPrimaryStride->combineWith(
+                {}, add_flag(ExpressionOptions::RECURSIVE, ExpressionOptions::STOP_AT_BUILTINS));
+            return HierarchicalStrides{powerTwo, primaryPrimaryStride, *secondaryStride};
+        }
+    }
+    return {};
+}
+
+NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
+{
+    if(group.ramReads.size() != group.cacheLoads.size())
+    {
+        LCOV_EXCL_START
+        CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
+            logging::debug() << "Number of instructions do not match for combining TMU reads!" << logging::endl;
+            logging::debug() << group.ramReads.size() << " RAM loads and " << group.cacheLoads.size()
+                             << " TMU cache reads" << logging::endl;
+        });
+        LCOV_EXCL_STOP
+        return false;
+    }
+    if(group.ramReads.size() <= 1)
+        return false;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Combining " << group.ramReads.size() << " reads of memory into one TMU load... " << logging::endl);
+
+    // 1. Calculate all element offsets and strides
+    std::vector<SubExpression> elementStrides;
+    std::vector<std::vector<SubExpression>> elementOffsetsParts;
+    auto baseUniformParts = getAddParts(group.uniformAddressParts.at(0));
+    std::tie(elementStrides, elementOffsetsParts) = getElementOffsetsAndStrides(group, baseUniformParts);
+
+    auto currentOffset = group.cacheEntry->numVectorElements.getLiteralValue().value().unsignedInt();
+
+    // The 1st offset does not have to match the others, since it is added separately anyway and the stride is only
+    // valid from the 2nd element on!
+    auto commonStride = elementStrides.at(1);
+    auto commonConstantStride = commonStride.getConstantExpression() & &Value::getLiteralValue;
+    auto hasConstantCommonStride = [&](const Value& val) -> bool {
+        return val.hasLiteral(commonConstantStride.value());
+    };
+    FastAccessList<InstructionWalker> secondAddressCalculations;
+
+    // 2. Update TMU cache entry to the number and stride/offsets of elements read
+    auto it = group.ramReads.front();
+    if(commonConstantStride && commonConstantStride->signedInt() >= 0 &&
+        /* TODO currently this needs to be a positive power of 2, since TMU lowering does not handle anything else! */
+        isPowerTwo(commonConstantStride->unsignedInt()) &&
+        std::all_of(elementStrides.begin() + 1, elementStrides.end(), [&](const SubExpression& stride) -> bool {
+            return stride.getConstantExpression() & hasConstantCommonStride;
+        }))
+    {
+        /*
+         * If all elements have the same constant literal stride (within and between single group elements/loads to be
+         * merged), we can just adapt the element stride information of the the TMU RAM load to be lowered.
+         */
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Using literal TMU access group stride of: " << commonConstantStride->unsignedInt()
+                << logging::endl);
+        group.cacheEntry->elementStrideInBytes = commonConstantStride->unsignedInt();
+    }
+    else if(commonConstantStride &&
+        std::all_of(elementStrides.begin() + 1, elementStrides.end(),
+            [&](const SubExpression& stride) -> bool { return stride == commonStride; }))
+    {
+        /*
+         * If all elements have the same literal stride (within and between single group elements/loads to be
+         * merged), we can manually calculate the addresses by applying this stride to all vector elements and make sure
+         * they are not overwritten by the lowering of the TMU load.
+         *
+         * NOTE: We here also only handle literal strides, since otherwise we would also use an address calculation
+         * instruction (of the second load) which is located after the first load (see general case).
+         */
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Using common constant TMU access group stride of: " << commonStride.to_string() << logging::endl);
+
+        // need to manually insert and lower the multiplication instruction
+        auto customAddressOffsets =
+            method.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%tmu_group_offsets");
+        it.emplace(new intermediate::IntrinsicOperation("mul", Value(customAddressOffsets),
+            Value(ELEMENT_NUMBER_REGISTER), Value(*commonConstantStride, TYPE_INT32)));
+        it->addDecorations(intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+        auto copyIt = it.copy().nextInBlock();
+        intrinsics::intrinsify(method.module, method, it, {});
+
+        auto initialRAMLoad = group.ramReads.front().get<intermediate::RAMAccessInstruction>();
+        it = insertCustomAddressesCalculation(copyIt, method, initialRAMLoad->getMemoryAddress(), customAddressOffsets,
+            group.usedVectorSize, group.cacheEntry->addresses);
+        group.cacheEntry->customAddressCalculation = true;
+        initialRAMLoad->setMemoryAddress(group.cacheEntry->addresses);
+    }
+    else if(std::all_of(elementOffsetsParts.begin(), elementOffsetsParts.end(),
+                [](const std::vector<SubExpression>& parts) -> bool {
+                    return parts.size() == 1 && parts.front().getLiteralValue();
+                }))
+    {
+        /*
+         * If all elements have a literal work-group uniform address offsets, use this to calculate the upper element
+         * addresses.
+         */
+        std::vector<Value> addressOffsets;
+        addressOffsets.reserve(group.usedVectorSize);
+
+        auto baseOffset = baseUniformParts.front().getLiteralValue().value();
+        for(std::size_t i = 0; i < group.usedVectorSize; ++i)
+        {
+            Literal offset(elementOffsetsParts.at(i).front().getLiteralValue()->signedInt() - baseOffset.signedInt());
+            addressOffsets.emplace_back(offset, TYPE_INT32);
+        }
+
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Using constant address offsets of: " << to_string<Value>(addressOffsets) << logging::endl);
+
+        auto customAddressOffsets =
+            method.addNewLocal(TYPE_INT32.toVectorType(group.usedVectorSize), "%tmu_group_offsets");
+
+        it = intermediate::insertAssembleVector(it, method, customAddressOffsets, addressOffsets);
+
+        auto initialRAMLoad = group.ramReads.front().get<intermediate::RAMAccessInstruction>();
+        it = insertCustomAddressesCalculation(it, method, initialRAMLoad->getMemoryAddress(), customAddressOffsets,
+            group.usedVectorSize, group.cacheEntry->addresses);
+        group.cacheEntry->customAddressCalculation = true;
+        initialRAMLoad->setMemoryAddress(group.cacheEntry->addresses);
+    }
+    else if(currentOffset == 1 /* needed to calculate the stride via sub of second to first address */ &&
+        std::all_of(elementStrides.begin() + 1, elementStrides.end(),
+            [=](const SubExpression& stride) -> bool { return stride == commonStride; }) &&
+        checkSecondAddressCalculation(group.ramReads.at(1), group.ramReads.at(0),
+            group.ramReads.at(1).get<intermediate::RAMAccessInstruction>()->getMemoryAddress().checkLocal(),
+            secondAddressCalculations))
+    {
+        /*
+         * If all elements have the same (non-constant literal) stride (within and between single group elements/loads
+         * to be merged), we can manually calculate the addresses by applying this stride to all vector elements and
+         * make sure they are not overwritten by the lowering of the TMU load.
+         *
+         * We calculate the stride as the difference between the second and the firsth element address. Since in this
+         * general case (in contrast to the constant-literal case handled above), the instructions calculating the
+         * stride might not exist at the point of the first RAM load, we need to move all dependent instructions too
+         * before the new group load instruction.
+         *
+         * TODO generalize by allowing e.g. the offsets: 0, 0+constA, 0+2*constA, 0+3*constA, x, x+constB, x+2*constB,
+         * x+3*constB, ...
+         * TODO Need to make sure we do not insert too many instructions
+         */
+        auto initialRAMLoad = group.ramReads.front().get<intermediate::RAMAccessInstruction>();
+
+        auto elementStride = assign(it, TYPE_INT32.toVectorType(group.usedVectorSize), "%tmu_group_stride") =
+            (group.ramReads.at(1).get<intermediate::RAMAccessInstruction>()->getMemoryAddress() -
+                initialRAMLoad->getMemoryAddress());
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Using common non-constant TMU access group stride of: " << elementStride.to_string()
+                << logging::endl);
+
+        // move all necessary address-calculating instructions before the new group load (in inverse order)
+        auto insertIt = it;
+        for(auto& calc : secondAddressCalculations)
+        {
+            insertIt.previousInBlock();
+            insertIt.emplace(calc.release());
+            calc.safeErase();
+        }
+
+        // need to manually insert and lower the multiplication instruction
+        auto customAddressOffsets =
+            method.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%tmu_group_offsets");
+        it.emplace(new intermediate::IntrinsicOperation(
+            "mul", Value(customAddressOffsets), Value(ELEMENT_NUMBER_REGISTER), std::move(elementStride)));
+        auto copyIt = it.copy().nextInBlock();
+        intrinsics::intrinsify(method.module, method, it, {});
+
+        it = insertCustomAddressesCalculation(copyIt, method, initialRAMLoad->getMemoryAddress(), customAddressOffsets,
+            group.usedVectorSize, group.cacheEntry->addresses);
+        group.cacheEntry->customAddressCalculation = true;
+        initialRAMLoad->setMemoryAddress(group.cacheEntry->addresses);
+    }
+    else if(auto strides = checkTwoDistinctStrides(elementStrides))
+    {
+        // In contrast to most of the above cases, this also applies for vloadN (N = 2, 4 or 8) cases, where the stride
+        // between loads is not identical to the stride between vector elements.
+        // Since we do check for the "primary" stride to be a power of 2, we can use the element numbers to speed up
+        // offset calculation.
+        auto initialRAMLoad = group.ramReads.front().get<intermediate::RAMAccessInstruction>();
+        auto secondRAMLoad = group.ramReads.at(1).get<intermediate::RAMAccessInstruction>();
+        if(initialRAMLoad->getTMUCacheEntry()->numVectorElements.getLiteralValue().value_or(Literal(0)).unsignedInt() !=
+            strides->powerOfTwo)
+            // we use the difference of the second to the first original TMU RAM read addresses to calculate the primary
+            // stride. For this to work, the distance in elements between primary strides has to actually be the number
+            // of elements in the first RAM load. Or in other words: the first primary stride needs to actually come
+            // from the second RAM load instruction.
+            return false;
+        if(!checkSecondAddressCalculation(group.ramReads.at(1), group.ramReads.at(0),
+               secondRAMLoad->getMemoryAddress().local(), secondAddressCalculations))
+            // Same reasoning as above, we use the address of the second load to calculate the primary stride, so we
+            // need to be able to move its calculating instructions before the first load.
+            return false;
+        auto primaryStride = assign(it, TYPE_INT32.toVectorType(group.usedVectorSize), "%tmu_group_primary_stride") =
+            (secondRAMLoad->getMemoryAddress() - initialRAMLoad->getMemoryAddress());
+
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Using two distinct hierarchical strides with offset " << strides->powerOfTwo << ": "
+                << strides->primaryStride->to_string() << " and " << strides->secondaryStride.to_string()
+                << logging::endl);
+
+        // move all necessary address-calculating instructions before the new group load (in inverse order)
+        auto insertIt = it;
+        for(auto& calc : secondAddressCalculations)
+        {
+            insertIt.previousInBlock();
+            insertIt.emplace(calc.release());
+            calc.safeErase();
+        }
+
+        auto replicatedStride =
+            method.addNewLocal(TYPE_INT32.toVectorType(group.usedVectorSize), "%tmu_group_primary_stride");
+        it = intermediate::insertReplication(it, primaryStride, replicatedStride);
+
+        // primary offset = primary stride * (element number / power of two)
+        auto tmp = assign(it, replicatedStride.type) = ELEMENT_NUMBER_REGISTER / Literal(strides->powerOfTwo);
+        // TODO is mul24 here enough?? Should be for positive strides only?!
+        auto primaryOffset = assign(it, replicatedStride.type, "%tmu_group_primary_offset") = mul24(primaryStride, tmp);
+
+        // full offset = primary offset + (element number % power of two) * secondary stride
+        tmp = assign(it, replicatedStride.type) = ELEMENT_NUMBER_REGISTER % Literal(strides->powerOfTwo);
+        auto secondaryOffset = assign(it, replicatedStride.type, "%tmu_group_secondary_offset") =
+            isPowerTwo(strides->secondaryStride.unsignedInt()) ?
+            (tmp * strides->secondaryStride) :
+            mul24(tmp, Value(strides->secondaryStride, TYPE_INT32));
+        auto customAddressOffsets = assign(it, replicatedStride.type, "%tmu_group_offsets") =
+            primaryOffset + secondaryOffset;
+
+        // full address = base (first RAM load address) + full offset
+        it = insertCustomAddressesCalculation(it, method, initialRAMLoad->getMemoryAddress(), customAddressOffsets,
+            group.usedVectorSize, group.cacheEntry->addresses);
+        group.cacheEntry->customAddressCalculation = true;
+        initialRAMLoad->setMemoryAddress(group.cacheEntry->addresses);
+    }
+    else
+    {
+        /*
+         * We have different strides of the single loaded vector elements, so we can't use the TMU load lowering
+         * calculation based on a fixed stride.
+         *
+         * Thus, we need to calculate the addresses of all SIMD elements for each (used) vector element and set
+         * these as manual addresses.
+         *
+         * TODO Some of these (e.g. for clpeak/global_bandwidth kernels) have (a multiple of) the local/global size
+         * (or some other common value) as stride/offset. To be able to improve on them, would need to determine the
+         * associated instructions (more precisely the output local) from the expression to be used as stride/offset.
+         *
+         * TODO To be able to optimize the remaining cases, we need to be very careful, since the addresses of the
+         * successive elements are most likely not yet calculated when the first value is loaded from RAM. So we
+         * would need to recalculate the absolute addresses/offsets and make sure all used values are already
+         * accessible before using them. Also, at some point (e.g. if calculating and inserting the addresses for
+         * every element) the instructions inserted might outweigh the stall cycles saved due to combining the
+         * memory accesses...
+         */
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "General combination of TMU memory reads is not implemented yet!" << logging::endl);
+        return false;
+    }
+
+    // only after we found a way to rewrite the stride/element offsets, actually apply some changes to be able to
+    // cleanly abort above
+    group.cacheEntry->numVectorElements = Value(Literal(group.usedVectorSize), TYPE_INT8);
+
+    // 3. Extract all data with first cache read
+    auto firstCacheReadIt = group.cacheLoads.front();
+    auto firstCacheRead = firstCacheReadIt.get<intermediate::CacheAccessInstruction>();
+    auto tmpData =
+        method.addNewLocal(firstCacheRead->getData().type.toVectorType(group.usedVectorSize), "%grouped_tmu_loads");
+    if(auto oldCacheReadOutput = firstCacheRead->getOutput())
+    {
+        // "extract" 0th element by simply copying the value
+        it = firstCacheReadIt.copy().nextInBlock();
+        it = intermediate::insertVectorExtraction(it, method, tmpData, INT_ZERO, *oldCacheReadOutput);
+    }
+    firstCacheRead->setOutput(tmpData);
+
+    // 4. Replace all other cache reads with vector extraction
+    for(std::size_t i = 1; i < group.cacheLoads.size(); ++i)
+    {
+        auto cacheRead = group.cacheLoads[i].get<intermediate::CacheAccessInstruction>();
+        auto tmpIt = intermediate::insertVectorExtraction(
+            group.cacheLoads[i], method, tmpData, Value(Literal(currentOffset), TYPE_INT8), cacheRead->getData());
+        currentOffset += cacheRead->getTMUCacheEntry()->numVectorElements.getLiteralValue().value().unsignedInt();
+        tmpIt.erase();
+    }
+
+    // 5. remove all but the first RAM load
+    for(std::size_t i = 1; i < group.ramReads.size(); ++i)
+        group.ramReads[i].erase();
+
+    return true;
+}
+
+bool optimizations::groupTMUAccess(const Module& module, Method& method, const Configuration& config)
+{
+    bool didChanges = false;
+
+    // run within all basic blocks
+    for(auto& block : method)
+    {
+        auto it = block.walk();
+        while(!it.isEndOfBlock())
+        {
+            TMUAccessGroup group;
+            it = findGroupOfTMUAccess(it, group);
+            if(group.ramReads.size() > 1)
+            {
+                if(groupTMUReads(method, group))
+                {
+                    didChanges = true;
+                    PROFILE_COUNTER(
+                        vc4c::profiler::COUNTER_OPTIMIZATION + 6010, "TMU access groups", group.ramReads.size());
+                }
+            }
+        }
+    }
+
+    // clean up empty instructions
+    if(didChanges)
+        method.cleanEmptyInstructions();
+
+    return didChanges;
+}
+
 struct TMULoadOffset
 {
     const Local* baseLocal;
@@ -835,7 +1490,12 @@ static Value calculateAddress(InstructionWalker& it, const analysis::InductionVa
     if(auto expr = offsetExpression.checkExpression())
     {
         tmpOffset = method.addNewLocal(inductionVariable.local->type, "%prefetch_tmu_offset");
-        if(expr->code == Expression::FAKEOP_UMUL && expr->arg0.checkValue() && expr->arg1.checkValue())
+        if(auto offsetCalculation = expr->toInstruction(tmpOffset))
+        {
+            it.emplace(offsetCalculation);
+            it.nextInBlock();
+        }
+        else if(expr->code == Expression::FAKEOP_UMUL && expr->arg0.checkValue() && expr->arg1.checkValue())
         {
             // need to manually insert and lower the multiplication instruction
             it.emplace(new intermediate::IntrinsicOperation(
@@ -844,11 +1504,6 @@ static Value calculateAddress(InstructionWalker& it, const analysis::InductionVa
             auto copyIt = it.copy().nextInBlock();
             intrinsics::intrinsify(method.module, method, it, {});
             it = copyIt;
-        }
-        else if(auto offsetCalculation = expr->toInstruction(tmpOffset))
-        {
-            it.emplace(offsetCalculation);
-            it.nextInBlock();
         }
         else
             throw CompilationError(CompilationStep::OPTIMIZER, "Failed to create expression for TMU offset calculation",

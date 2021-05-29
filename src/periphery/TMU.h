@@ -82,6 +82,11 @@ namespace vc4c
              * element stride of more than 4 will result in memory being skipped and not read into any output element.
              */
             uint32_t elementStrideInBytes;
+            /**
+             * If this flag is is set, the addresses are assumed to be already calculated (e.g. by optimization or some
+             * special case handling) and will not be overwritten on lowering the RAM access for this TMU cache entry.
+             */
+            bool customAddressCalculation;
         };
 
         /**
