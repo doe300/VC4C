@@ -97,7 +97,9 @@ namespace vc4c
         // unsigned multiplication
         ALLOW_FAKE_OPS = 1,
         // Stop at any built-in work-item and work-group value, e.g. local/global ids, work-group size.
-        STOP_AT_BUILTINS = 2
+        STOP_AT_BUILTINS = 2,
+        // Recursively combine the expressions until it cannot be simplified anymore
+        RECURSIVE = 4
     };
 
     /**
@@ -140,7 +142,7 @@ namespace vc4c
         static std::shared_ptr<Expression> createRecursiveExpression(const intermediate::IntermediateInstruction& instr,
             unsigned maxDepth = 6,
             ExpressionOptions options = add_flag(
-                ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::STOP_AT_BUILTINS));
+                ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::STOP_AT_BUILTINS, ExpressionOptions::RECURSIVE));
 
         bool operator==(const Expression& other) const;
         inline bool operator!=(const Expression& other) const

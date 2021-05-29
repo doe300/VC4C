@@ -457,13 +457,15 @@ void TestExpressions::testCombination()
         expressions.at(inner.local()) = innerMul;
         outer = expression(inner << 13_val);
         result = Expression{Expression::FAKEOP_UMUL, loc0, 221184_val};
-        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
+        TEST_ASSERT_EQUALS(result,
+            *outer->combineWith(expressions, add_flag(ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::RECURSIVE)))
 
         innerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 27_val, loc0);
         expressions.at(inner.local()) = innerMul;
         outer = expression(inner << 13_val);
         result = Expression{Expression::FAKEOP_UMUL, 221184_val, loc0};
-        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
+        TEST_ASSERT_EQUALS(result,
+            *outer->combineWith(expressions, add_flag(ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::RECURSIVE)))
 
         // (a << constA) * constB = constB * (a << constA) -> a * (constB << constA)
         innerShift = std::make_shared<Expression>(OP_SHL, loc0, 27_val)
@@ -587,6 +589,18 @@ void TestExpressions::testCombination()
         outer = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 5_val, innerMul);
         result = Expression{Expression::FAKEOP_UMUL, 20_val, loc0};
         TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions, ExpressionOptions::ALLOW_FAKE_OPS))
+
+        // a - (b + c) = (a - b) - c
+        innerAdd = std::make_shared<Expression>(OP_ADD, b, c);
+        outer = std::make_shared<Expression>(OP_SUB, a, innerAdd);
+        result = Expression{OP_SUB, std::make_shared<Expression>(OP_SUB, a, b), c};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
+
+        // a - (b - c) = (a - b) + c
+        innerAdd = std::make_shared<Expression>(OP_SUB, b, c);
+        outer = std::make_shared<Expression>(OP_SUB, a, innerAdd);
+        result = Expression{OP_ADD, std::make_shared<Expression>(OP_SUB, a, b), c};
+        TEST_ASSERT_EQUALS(result, *outer->combineWith(expressions))
     }
 
     {
@@ -652,6 +666,70 @@ void TestExpressions::testCombination()
         outer = std::make_shared<Expression>(OP_FADD, middleAdd, loc0)->combineWith(expressions);
 
         TEST_ASSERT_EQUALS(result, *outer);
+    }
+
+    {
+        // more advanced cases
+        auto a = method.addNewLocal(TYPE_INT32);
+        auto b = method.addNewLocal(TYPE_INT32);
+        auto c = method.addNewLocal(TYPE_INT32);
+
+        // (((c * a) + (b * 14)) - ((c * a) + (b * 13))) * 4 = c * 4
+        auto commonInnerExpr = std::make_shared<Expression>(Expression::FAKEOP_UMUL, c, a);
+        auto differingInnerExpr = std::make_shared<Expression>(Expression::FAKEOP_UMUL, b, 14_val);
+        auto leftAdd = std::make_shared<Expression>(OP_ADD, commonInnerExpr, differingInnerExpr)
+                           ->combineWith({}, ExpressionOptions::ALLOW_FAKE_OPS);
+        differingInnerExpr = std::make_shared<Expression>(Expression::FAKEOP_UMUL, b, 13_val);
+        auto rightAdd = std::make_shared<Expression>(OP_ADD, commonInnerExpr, differingInnerExpr)
+                            ->combineWith({}, ExpressionOptions::ALLOW_FAKE_OPS);
+        auto outer = std::make_shared<Expression>(OP_SUB, leftAdd, rightAdd)
+                         ->combineWith({}, add_flag(ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::RECURSIVE));
+        outer = std::make_shared<Expression>(Expression::FAKEOP_UMUL, outer, 4_val);
+
+        auto result = Expression{Expression::FAKEOP_UMUL, b, 4_val};
+        TEST_ASSERT_EQUALS(
+            result, *outer->combineWith({}, add_flag(ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::RECURSIVE)));
+
+        // (a * constA) - ((a * constB) + c) = (a * (constA - constB)) - c
+        auto leftMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, a, 64_val);
+        auto rightMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, a, 32_val);
+        rightAdd =
+            std::make_shared<Expression>(OP_ADD, rightMul, c)->combineWith({}, ExpressionOptions::ALLOW_FAKE_OPS);
+        outer = std::make_shared<Expression>(OP_SUB, leftMul, rightAdd);
+
+        auto resultInner = std::make_shared<Expression>(Expression::FAKEOP_UMUL, a, 32_val);
+        result = Expression{OP_SUB, resultInner, c};
+        TEST_ASSERT_EQUALS(
+            result, *outer->combineWith({}, add_flag(ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::RECURSIVE)));
+
+        // ((b * const) - (b * (const - 1)) = b
+        leftMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, b, 32_val);
+        rightMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, b, 31_val);
+        outer = std::make_shared<Expression>(OP_SUB, leftMul, rightMul);
+
+        result = Expression{OP_V8MIN, b, b};
+        TEST_ASSERT_EQUALS(
+            result, *outer->combineWith({}, add_flag(ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::RECURSIVE)));
+
+        // (constA * a) - (constB * a) = (constA - constB) * a
+        leftMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 64_val, a);
+        rightMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 32_val, a);
+        outer = std::make_shared<Expression>(OP_SUB, leftMul, rightMul);
+
+        result = Expression{Expression::FAKEOP_UMUL, 32_val, a};
+        TEST_ASSERT_EQUALS(
+            result, *outer->combineWith({}, add_flag(ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::RECURSIVE)));
+
+        // (a * (b * const)) - (a * (b * (const - 1))) = a * b
+        leftMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, b, 32_val);
+        leftMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, a, leftMul);
+        rightMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, b, 31_val);
+        rightMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, a, rightMul);
+        outer = std::make_shared<Expression>(OP_SUB, leftMul, rightMul);
+
+        result = Expression{Expression::FAKEOP_UMUL, a, b};
+        TEST_ASSERT_EQUALS(
+            result, *outer->combineWith({}, add_flag(ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::RECURSIVE)));
     }
 }
 
