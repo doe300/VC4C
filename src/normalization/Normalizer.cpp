@@ -40,6 +40,8 @@ static bool checkWorkGroupUniform(const Value& arg)
     {
         if(local->is<Parameter>() || local->is<Global>())
             return true;
+        if(auto builtin = local->get<BuiltinLocal>())
+            return builtin->isWorkGroupUniform();
         // Some values might not have a writer yet, e.g. parameter, parts of 64-bit integers. And since all_of(empty) is
         // true, we need to check that we have writer to actually check
         bool hasWriters = false;

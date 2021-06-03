@@ -501,6 +501,8 @@ namespace vc4c
          * The type of builtin represented by this local
          */
         const Type builtinType;
+
+        bool isWorkGroupUniform() const;
     };
 
     /**

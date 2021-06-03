@@ -263,6 +263,36 @@ BuiltinLocal::BuiltinLocal(const std::string& name, DataType dataType, Type buil
 
 BuiltinLocal::~BuiltinLocal() noexcept = default;
 
+bool BuiltinLocal::isWorkGroupUniform() const
+{
+    switch(builtinType)
+    {
+    case Type::GLOBAL_DATA_ADDRESS:
+    case Type::GLOBAL_OFFSET_X:
+    case Type::GLOBAL_OFFSET_Y:
+    case Type::GLOBAL_OFFSET_Z:
+    case Type::GROUP_ID_X:
+    case Type::GROUP_ID_Y:
+    case Type::GROUP_ID_Z:
+    case Type::GROUP_IDS:
+    case Type::LOCAL_SIZES:
+    case Type::MAX_GROUP_ID_X:
+    case Type::MAX_GROUP_ID_Y:
+    case Type::MAX_GROUP_ID_Z:
+    case Type::NUM_GROUPS_X:
+    case Type::NUM_GROUPS_Y:
+    case Type::NUM_GROUPS_Z:
+    case Type::UNIFORM_ADDRESS:
+    case Type::WORK_DIMENSIONS:
+        return true;
+    case Type::LOCAL_IDS:
+    case Type::NUM_ENTRIES:
+        return false;
+    }
+    throw CompilationError(
+        CompilationStep::GENERAL, "Unhandled built-in type", std::to_string(static_cast<unsigned>(builtinType)));
+}
+
 MultiRegisterData::MultiRegisterData(const Local* lowerPart, const Local* upperPart) :
     lower(lowerPart), upper(upperPart)
 {

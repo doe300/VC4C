@@ -86,6 +86,23 @@ bool SubExpression::isConstant() const
     return false;
 }
 
+static bool isWorkGroupUniform(const SubExpression& exp)
+{
+    auto expr = exp.checkExpression();
+    auto builtin = exp.checkLocal()->as<BuiltinLocal>();
+    return (expr && has_flag(expr->deco, intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE)) ||
+        (builtin && builtin->isWorkGroupUniform()) || exp.getConstantExpression();
+}
+
+Expression::Expression(const OpCode& op, const SubExpression& first, const SubExpression& second, Unpack unpack,
+    Pack pack, intermediate::InstructionDecorations decorations) :
+    code(op),
+    arg0(first), arg1(second), unpackMode(unpack), packMode(pack), deco(decorations)
+{
+    if(isWorkGroupUniform(first) && isWorkGroupUniform(second))
+        deco = add_flag(deco, intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+}
+
 std::shared_ptr<Expression> Expression::createExpression(const intermediate::IntermediateInstruction& instr)
 {
     if(instr.hasSideEffects())

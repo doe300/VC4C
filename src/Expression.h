@@ -121,11 +121,7 @@ namespace vc4c
         intermediate::InstructionDecorations deco = intermediate::InstructionDecorations::NONE;
 
         Expression(const OpCode& op, const SubExpression& first, const SubExpression& second = SubExpression{},
-            Unpack unpack = UNPACK_NOP, Pack pack = PACK_NOP, intermediate::InstructionDecorations decorations = {}) :
-            code(op),
-            arg0(first), arg1(second), unpackMode(unpack), packMode(pack), deco(decorations)
-        {
-        }
+            Unpack unpack = UNPACK_NOP, Pack pack = PACK_NOP, intermediate::InstructionDecorations decorations = {});
 
         /**
          * Tries to create an expression representing the single instruction
