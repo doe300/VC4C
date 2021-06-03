@@ -1014,21 +1014,26 @@ struct HierarchicalStrides
 
 static Optional<HierarchicalStrides> checkTwoDistinctStrides(const std::vector<SubExpression>& elementStrides)
 {
-    // only allow if "primary" stride has element stride with a power of 2 (e.g. 0th, 4th, 8th and 12th element) for
-    // easier and faster code generation.
-    if(elementStrides.size() < 3 || !isPowerTwo(static_cast<uint32_t>(elementStrides.size())))
+    if(elementStrides.size() < 3)
         return {};
 
     // ignore stride of 0th element, since there is no previous element and therefore no stride to it
     auto secondaryStride = elementStrides.at(1).getConstantExpression() & &Value::getLiteralValue;
-    auto halfIndex = elementStrides.size() / 2;
-    auto primaryStride = elementStrides.at(halfIndex);
 
+    // only allow literal secondary stride, so we do not have to worry about moving all calculating instructions before
+    // the first load. Also, this is the most common case, since the secondary stride is usually between elements of a
+    // single vector load (stride is the literal type size).
     if(!secondaryStride || secondaryStride->signedInt() < 0)
         return {};
 
+    // only allow if "primary" stride has element stride with a power of 2 (e.g. 0th, 4th, 8th and 12th element) for
+    // easier and faster code generation.
     for(auto powerTwo : {8u, 4u, 2u})
     {
+        if(elementStrides.size() < 2 * powerTwo)
+            continue;
+
+        auto primaryStride = elementStrides.at(powerTwo);
         bool allElementsMatch = true;
         for(std::size_t i = 1; i < elementStrides.size(); ++i)
         {
@@ -1206,10 +1211,9 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
                 << logging::endl);
 
         // move all necessary address-calculating instructions before the new group load (in inverse order)
-        auto insertIt = it;
+        auto insertIt = it.copy().previousInBlock();
         for(auto& calc : secondAddressCalculations)
         {
-            insertIt.previousInBlock();
             insertIt.emplace(calc.release());
             calc.safeErase();
         }
@@ -1256,10 +1260,9 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
                 << logging::endl);
 
         // move all necessary address-calculating instructions before the new group load (in inverse order)
-        auto insertIt = it;
+        auto insertIt = it.copy().previousInBlock();
         for(auto& calc : secondAddressCalculations)
         {
-            insertIt.previousInBlock();
             insertIt.emplace(calc.release());
             calc.safeErase();
         }
