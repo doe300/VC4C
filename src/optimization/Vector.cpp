@@ -4,13 +4,15 @@
  * See the file "LICENSE" for the full license governing this code.
  */
 
-#include "Vectorizer.h"
+#include "Vector.h"
 
 #include "../Profiler.h"
+#include "../SIMDVector.h"
 #include "../analysis/ControlFlowGraph.h"
 #include "../analysis/ControlFlowLoop.h"
 #include "../analysis/DataDependencyGraph.h"
 #include "../analysis/FlagsAnalysis.h"
+#include "../analysis/PatternMatching.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
@@ -1388,4 +1390,154 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
     }
 
     return hasChanged;
+}
+
+struct VectorFolding
+{
+    OpCode foldingOp;
+    Value container;
+    Value output;
+    uint8_t numElements;
+    uint8_t elementOffset;
+    InstructionWalker lastFoldIt;
+};
+
+static Optional<VectorFolding> findElementwiseVectorFolding(InstructionWalker& it)
+{
+    using namespace pattern;
+    /*
+     * Both LLVM and SPIR-V front-ends generate vector folding like this:
+     * - "extract" 0th element into temporary
+     *   -> simple move of container
+     * - extract Nth element into temporary
+     *   -> rotate container down by the given index N (up by 16 - N)
+     * - apply folding operation on previous result and value extracted from Nth element
+     */
+
+    Value container = UNDEFINED_VALUE;
+    Value rotationOffset = UNDEFINED_VALUE;
+    Value previousResult = UNDEFINED_VALUE;
+    OpCode foldingOp = OP_NOP;
+    Value foldingOutput = UNDEFINED_VALUE;
+    Pattern firstElementFoldingPattern{{
+        capture(pattern::V1) = (match(FAKEOP_ROTATE), capture(container), capture(rotationOffset)),
+        capture(foldingOutput) =
+            (capture(foldingOp), capture(previousResult), capture(pattern::V1), allowCommutation()),
+    }};
+
+    if(!(it = search(it, firstElementFoldingPattern, true)).isEndOfBlock())
+    {
+        std::bitset<NATIVE_VECTOR_SIZE> coveredIndices{};
+        auto lastFoldIt = it;
+
+        if(!foldingOp.isAssociative())
+            return {};
+
+        auto offset = check(rotationOffset.checkImmediate()) & &SmallImmediate::getRotationOffset;
+
+        if(offset)
+            coveredIndices.set(NATIVE_VECTOR_SIZE - *offset);
+        else
+            return {};
+
+        // implicitly include base value (which for element offset of 0 is the container itself and therefore not
+        // rotated and therefore not detected)
+        auto baseOffset = static_cast<uint8_t>(NATIVE_VECTOR_SIZE - *offset - 1u);
+        coveredIndices.set(baseOffset);
+
+        if(baseOffset == 0 && intermediate::getSourceValue(previousResult) != intermediate::getSourceValue(container))
+            return {};
+        else if(baseOffset != 0)
+        {
+            // make sure the other input of the first folding operation is actually the previous element
+            auto writer = dynamic_cast<const intermediate::VectorRotation*>(previousResult.getSingleWriter());
+            if(!writer ||
+                intermediate::getSourceValue(writer->getSource()) != intermediate::getSourceValue(container) ||
+                writer->getVectorRotation()->offset.getRotationOffset() !=
+                    static_cast<uint8_t>(NATIVE_VECTOR_SIZE - baseOffset))
+                return {};
+        }
+
+        while(!it.isEndOfBlock())
+        {
+            // we need to recreate the pattern every time, since the previous folding output is captured by copy, and we
+            // need to set it to the output of the previous iteration, not the first folding output
+            Pattern successiveElementFoldingPattern{{
+                capture(pattern::V1) = (match(FAKEOP_ROTATE), match(container), capture(rotationOffset)),
+                capture(foldingOutput) =
+                    (match(foldingOp), capture(pattern::V1), match(foldingOutput), allowCommutation()),
+            }};
+
+            auto nextIt = it;
+            if((nextIt = search(it, successiveElementFoldingPattern, true)).isEndOfBlock())
+            {
+                // make sure we have a continuous range of indices
+                if((((1u << coveredIndices.count()) - 1u) << baseOffset) != coveredIndices.to_ulong())
+                    // something weird is going on with the indices used, abort
+                    break;
+
+                if(!isPowerTwo(static_cast<uint32_t>(coveredIndices.count())) || coveredIndices.count() < 4)
+                    // our improved folding is only applicable/faster for powers of 2 of at least 4
+                    break;
+
+                // end of this folding
+                return VectorFolding{
+                    foldingOp, container, foldingOutput, static_cast<uint8_t>(coveredIndices.count()), baseOffset, it};
+            }
+            // only forward global iterator if we found something, to not skip all other possible vector foldings in the
+            // block
+            it = nextIt;
+
+            lastFoldIt = it;
+            auto offset = check(rotationOffset.checkImmediate()) & &SmallImmediate::getRotationOffset;
+            if(!offset || coveredIndices.test(NATIVE_VECTOR_SIZE - *offset))
+                // something weird is going on with the indices used, abort
+                break;
+            coveredIndices.set(NATIVE_VECTOR_SIZE - *offset);
+        }
+    }
+    return {};
+}
+
+bool optimizations::compactVectorFolding(const Module& module, Method& method, const Configuration& config)
+{
+    bool didRewrites = false;
+
+    for(auto& block : method)
+    {
+        auto it = block.walk();
+        while(!it.isEndOfBlock())
+        {
+            if(auto folding = findElementwiseVectorFolding(it))
+            {
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Compacting vector folding of " << static_cast<unsigned>(folding->numElements)
+                        << " elements with offset " << static_cast<unsigned>(folding->elementOffset) << " from "
+                        << folding->container.to_string() << " into " << folding->output.to_string() << " over "
+                        << folding->foldingOp.name << logging::endl);
+
+                auto container = folding->container;
+                if(folding->elementOffset != 0)
+                {
+                    container =
+                        method.addNewLocal(folding->container.type.toVectorType(folding->numElements), "%vector_fold");
+                    it = intermediate::insertVectorRotation(folding->lastFoldIt, folding->container,
+                        Value(Literal(folding->elementOffset), TYPE_INT8), container, intermediate::Direction::DOWN);
+                }
+                else if(folding->numElements != container.type.getVectorWidth())
+                    // need to truncate to container with the number of elements to actually fold
+                    container = assign(it, folding->container.type.toVectorType(folding->numElements), "%vector_fold") =
+                        container;
+
+                it = insertFoldVector(
+                    it, method, folding->output, container, folding->foldingOp, folding->lastFoldIt->decoration);
+                // remove original last write so our new code is used and the whole original folding cascade can be
+                // removed as unused code
+                folding->lastFoldIt.erase();
+                didRewrites = true;
+            }
+        }
+    }
+
+    return didRewrites;
 }

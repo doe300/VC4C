@@ -112,6 +112,53 @@ void TestPatternMatching::testInstructionMatch()
         TEST_ASSERT(flags == SetFlag::SET_FLAGS)
     }
 
+    // successful test - match rotation
+    {
+        auto out = m.addNewLocal(TYPE_INT32);
+        it.emplace(new intermediate::VectorRotation(
+            out, 17_val, SmallImmediate::fromRotationOffset(3), intermediate::RotationType::FULL));
+
+        Value arg = UNDEFINED_VALUE;
+        auto part = anyValue() =
+            (match(FAKEOP_ROTATE), capture(arg), match(Value(SmallImmediate::fromRotationOffset(3), TYPE_INT8)));
+
+        TEST_ASSERT(matches(it.get(), part))
+        TEST_ASSERT_EQUALS(17_val, arg)
+
+        it.nextInBlock();
+    }
+
+    // successful test - capture rotation
+    {
+        auto out = m.addNewLocal(TYPE_INT32);
+        it.emplace(
+            new intermediate::VectorRotation(out, 42_val, VECTOR_ROTATE_R5, intermediate::RotationType::PER_QUAD));
+
+        Value arg = UNDEFINED_VALUE;
+        Value offset = UNDEFINED_VALUE;
+        auto part = anyValue() = (match(FAKEOP_ROTATE), capture(arg), capture(offset));
+
+        TEST_ASSERT(matches(it.get(), part))
+        TEST_ASSERT_EQUALS(42_val, arg)
+        TEST_ASSERT_EQUALS(ROTATION_REGISTER, offset);
+
+        it.nextInBlock();
+    }
+
+    // successful match - commutative match
+    {
+        auto tmp = m.addNewLocal(TYPE_INT32);
+        auto out = assign(it, TYPE_INT32) = tmp + 42_val;
+        auto inst = (it.copy().previousInBlock()).get();
+        (void) out;
+
+        Value arg = UNDEFINED_VALUE;
+        auto part = anyValue() = (match(OP_ADD), capture(arg), match(tmp), allowCommutation());
+
+        TEST_ASSERT(matches(inst, part))
+        TEST_ASSERT_EQUALS(42_val, arg)
+    }
+
     // failing test - value mismatch
     {
         auto in = m.addNewLocal(TYPE_INT32);
@@ -264,6 +311,20 @@ void TestPatternMatching::testInstructionMatch()
         TEST_ASSERT(arg.isUndefined())
     }
 
+    // failing match - commutative match
+    {
+        auto tmp = m.addNewLocal(TYPE_INT32);
+        auto out = assign(it, TYPE_INT32) = tmp + 42_val;
+        auto inst = (it.copy().previousInBlock()).get();
+        (void) out;
+
+        Value arg = UNDEFINED_VALUE;
+        auto part = anyValue() = (match(OP_ADD), capture(arg), match(tmp) /* no  allowCommutation() */);
+
+        TEST_ASSERT(!matches(inst, part))
+        TEST_ASSERT(arg.isUndefined())
+    }
+
     // TODO successful and failing test for supported arithmetic properties
 }
 
@@ -307,6 +368,17 @@ void TestPatternMatching::testExpressionMatch()
         TEST_ASSERT(out.isUndefined())
         TEST_ASSERT(OP_V8ADDS == code)
         TEST_ASSERT_EQUALS(42_val, arg)
+    }
+
+    // successful match - commutative match
+    {
+        Expression expr{OP_FADD, 42_val, 17_val};
+
+        Value arg = UNDEFINED_VALUE;
+        auto part = anyValue() = (match(OP_FADD), capture(arg), match(42_val), allowCommutation());
+
+        TEST_ASSERT(matches(expr, part))
+        TEST_ASSERT_EQUALS(17_val, arg)
     }
 
     // failing test - value mismatch
@@ -378,7 +450,16 @@ void TestPatternMatching::testExpressionMatch()
         TEST_ASSERT(arg.isUndefined())
     }
 
-    // TODO successful and failing test for supported arithmetic properties
+    // failing test - commutative match
+    {
+        Expression expr{OP_FADD, 42_val, 17_val};
+
+        Value arg = UNDEFINED_VALUE;
+        auto part = anyValue() = (match(OP_FADD), capture(arg), match(42_val) /* no allowCommutation() */);
+
+        TEST_ASSERT(!matches(expr, part))
+        TEST_ASSERT(arg.isUndefined())
+    }
 }
 
 void TestPatternMatching::testSingleSearch()
@@ -419,6 +500,24 @@ void TestPatternMatching::testSingleSearch()
         auto part = anyValue() = (anyOperation(), capture(arg), capture(arg));
         TEST_ASSERT(!search(start, part).isEndOfBlock())
         TEST_ASSERT_EQUALS(19_val, arg)
+    }
+
+    // successful test - reset of commutative flag
+    {
+        assignNop(it) = 13_val | 17_val;
+        assignNop(it) = 11_val | 13_val;
+
+        Value arg = UNDEFINED_VALUE;
+        auto start = block.walk().nextInBlock();
+        auto part = anyValue() = (match(OP_OR), capture(arg), match(13_val), allowCommutation());
+        auto it = search(start, part);
+        TEST_ASSERT(!it.isEndOfBlock())
+        TEST_ASSERT_EQUALS(17_val, arg)
+
+        it.nextInBlock();
+        TEST_ASSERT(!it.isEndOfBlock())
+        TEST_ASSERT(!search(it, part).isEndOfBlock())
+        TEST_ASSERT_EQUALS(11_val, arg)
     }
 
     // failing test - start is end of block

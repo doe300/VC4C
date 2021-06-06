@@ -20,7 +20,7 @@ InstructionPattern ValuePattern::operator=(UnaryInstructionPattern&& unary) &&
 InstructionPattern ValuePattern::operator=(BinaryInstructionPattern&& binary) &&
 {
     return InstructionPattern{std::move(*this), std::move(binary.operation), std::move(binary.firstArgument),
-        std::move(binary.secondArgument), std::move(binary.condition), std::move(binary.flags)};
+        std::move(binary.secondArgument), std::move(binary.condition), std::move(binary.flags), binary.commutative};
 }
 
 InstructionPattern ValuePattern::operator=(vc4c::operators::OperationWrapper&& op) &&
@@ -107,7 +107,8 @@ std::string InstructionPattern::to_string(FastMap<const void*, std::string>& pla
     tmp += " " + firstArgument.to_string(placeholderNames);
     tmp += ", " + secondArgument.to_string(placeholderNames);
     tmp += " (" + condition.to_string(placeholderNames) + ", ";
-    tmp += flags.to_string(placeholderNames) + ")";
+    tmp += flags.to_string(placeholderNames);
+    tmp += std::string(commutative != CommutationFlag::DISALLOW ? ", commutative" : "") + ")";
     return output.to_string(placeholderNames) + " = " + std::move(tmp);
 }
 
@@ -361,23 +362,36 @@ static bool matchesOnly(const intermediate::IntermediateInstruction* inst, Instr
     if(!inst)
         return false;
 
+    // reset any reused commutation flag
+    pattern.commutative =
+        pattern.commutative == CommutationFlag::SWITCH_ARGUMENTS ? CommutationFlag::ALLOW : pattern.commutative;
+
     // pack/unpack modes and signals with side-effects are not supported
     if(inst->hasPackMode() || inst->hasUnpackMode() || inst->getSignal().hasSideEffects())
         return false;
 
     if(!matchesValue(inst->getOutput(), pattern.output, previousCache, newCache))
         return false;
-    if(auto op = determineOpCode(inst))
+    auto op = determineOpCode(inst);
+    if(!op)
+        return false;
+    if(!matchesOperation(*op, pattern.operation, previousCache, newCache))
+        return false;
+    // we cannot reuse the same cache for both versions, since they will conflict with each other
+    auto tmpCache = newCache;
+    if(!matchesValue(inst->getArgument(0), pattern.firstArgument, previousCache, tmpCache) ||
+        !matchesValue(inst->getArgument(1), pattern.secondArgument, previousCache, tmpCache))
     {
-        if(!matchesOperation(*op, pattern.operation, previousCache, newCache))
+        if(op && op->isCommutative() && pattern.commutative != CommutationFlag::DISALLOW &&
+            matchesValue(inst->getArgument(1), pattern.firstArgument, previousCache, newCache) &&
+            matchesValue(inst->getArgument(0), pattern.secondArgument, previousCache, newCache))
+            pattern.commutative = CommutationFlag::SWITCH_ARGUMENTS;
+        else
             return false;
     }
     else
-        return false;
-    if(!matchesValue(inst->getArgument(0), pattern.firstArgument, previousCache, newCache))
-        return false;
-    if(!matchesValue(inst->getArgument(1), pattern.secondArgument, previousCache, newCache))
-        return false;
+        newCache = tmpCache;
+
     auto cond = (check(dynamic_cast<const intermediate::ExtendedInstruction*>(inst)) &
         &intermediate::ExtendedInstruction::getCondition)
                     .value_or(COND_ALWAYS);
@@ -394,10 +408,16 @@ static void updateOnly(const intermediate::IntermediateInstruction* inst, Instru
     updateMatch(inst->getOutput(), pattern.output);
     if(auto op = determineOpCode(inst))
         updateMatch(*op, pattern.operation);
-    // TODO apply for commutative property of opcode, if given
-    // -> how to (for capture) decide, which way around to capture??
-    updateMatch(inst->getArgument(0), pattern.firstArgument);
-    updateMatch(inst->getArgument(1), pattern.secondArgument);
+    if(pattern.commutative == CommutationFlag::SWITCH_ARGUMENTS)
+    {
+        updateMatch(inst->getArgument(1), pattern.firstArgument);
+        updateMatch(inst->getArgument(0), pattern.secondArgument);
+    }
+    else
+    {
+        updateMatch(inst->getArgument(0), pattern.firstArgument);
+        updateMatch(inst->getArgument(1), pattern.secondArgument);
+    }
     auto cond = (check(dynamic_cast<const intermediate::ExtendedInstruction*>(inst)) &
         &intermediate::ExtendedInstruction::getCondition)
                     .value_or(COND_ALWAYS);
@@ -424,7 +444,9 @@ bool pattern::matches(const Expression& expr, InstructionPattern& pattern)
 {
     PROFILE_START(PatternMatching);
 
-    // TODO also support arithmetic properties?
+    // reset any reused commutation flag
+    pattern.commutative =
+        pattern.commutative == CommutationFlag::SWITCH_ARGUMENTS ? CommutationFlag::ALLOW : pattern.commutative;
 
     MatchCache cache{};
 
@@ -439,20 +461,35 @@ bool pattern::matches(const Expression& expr, InstructionPattern& pattern)
         PROFILE_END(PatternMatching);
         return false;
     }
-    if(!matchesValue(expr.arg0, pattern.firstArgument, cache, cache))
+    // we cannot reuse the same cache for both versions, since they will conflict with each other
+    auto tmpCache = cache;
+    if(!matchesValue(expr.arg0, pattern.firstArgument, cache, tmpCache) ||
+        !matchesValue(expr.arg1, pattern.secondArgument, cache, tmpCache))
     {
-        PROFILE_END(PatternMatching);
-        return false;
+        if(expr.code.isCommutative() && pattern.commutative != CommutationFlag::DISALLOW &&
+            matchesValue(expr.arg1, pattern.firstArgument, cache, cache) &&
+            matchesValue(expr.arg0, pattern.secondArgument, cache, cache))
+            pattern.commutative = CommutationFlag::SWITCH_ARGUMENTS;
+        else
+        {
+            PROFILE_END(PatternMatching);
+            return false;
+        }
     }
-    if(!matchesValue(expr.arg1, pattern.secondArgument, cache, cache))
-    {
-        PROFILE_END(PatternMatching);
-        return false;
-    }
+    else
+        cache = tmpCache;
 
     updateMatch(expr.code, pattern.operation);
-    updateMatch(expr.arg0, pattern.firstArgument);
-    updateMatch(expr.arg1, pattern.secondArgument);
+    if(pattern.commutative == CommutationFlag::SWITCH_ARGUMENTS)
+    {
+        updateMatch(expr.arg1, pattern.firstArgument);
+        updateMatch(expr.arg0, pattern.secondArgument);
+    }
+    else
+    {
+        updateMatch(expr.arg0, pattern.firstArgument);
+        updateMatch(expr.arg1, pattern.secondArgument);
+    }
 
     PROFILE_END(PatternMatching);
     return true;

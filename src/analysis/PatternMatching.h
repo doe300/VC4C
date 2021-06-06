@@ -316,6 +316,21 @@ namespace vc4c
             return FlagPattern{Ignored{}};
         }
 
+        enum class CommutationFlag
+        {
+            // Do not allow switching arguments for commutative operations
+            DISALLOW,
+            // Allow switching (capturing/matching switched) arguments for commutative operations
+            ALLOW,
+            // Internally set if the switch should actually be applied when capturing values
+            SWITCH_ARGUMENTS
+        };
+
+        constexpr CommutationFlag allowCommutation() noexcept
+        {
+            return CommutationFlag::ALLOW;
+        }
+
         /**
          * Pattern to match against a single instruction
          */
@@ -327,6 +342,7 @@ namespace vc4c
             ValuePattern secondArgument;
             ConditionPattern condition = anyCondition();
             FlagPattern flags = anyFlags();
+            CommutationFlag commutative = CommutationFlag::DISALLOW;
 
             std::string to_string(FastMap<const void*, std::string>& placeholderNames) const;
             std::string to_string() const;
@@ -337,8 +353,8 @@ namespace vc4c
         {
             OperationPattern operation;
             ValuePattern firstArgument;
-            ConditionPattern condition = anyCondition();
-            FlagPattern flags = anyFlags();
+            ConditionPattern condition;
+            FlagPattern flags;
         };
 
         // Helper type to store temporary binary instruction
@@ -347,31 +363,32 @@ namespace vc4c
             OperationPattern operation;
             ValuePattern firstArgument;
             ValuePattern secondArgument;
-            ConditionPattern condition = anyCondition();
-            FlagPattern flags = anyFlags();
+            ConditionPattern condition;
+            FlagPattern flags;
+            CommutationFlag commutative;
         };
 
         inline UnaryInstructionPattern operator,(OperationPattern&& operation, ValuePattern&& arg)
         {
-            return UnaryInstructionPattern{std::move(operation), std::move(arg)};
+            return UnaryInstructionPattern{std::move(operation), std::move(arg), anyCondition(), anyFlags()};
         }
 
         inline BinaryInstructionPattern operator,(UnaryInstructionPattern&& unary, ValuePattern&& secondArg)
         {
             return BinaryInstructionPattern{std::move(unary.operation), std::move(unary.firstArgument),
-                std::move(secondArg), std::move(unary.condition)};
+                std::move(secondArg), std::move(unary.condition), std::move(unary.flags), CommutationFlag::DISALLOW};
         }
 
         inline UnaryInstructionPattern operator,(UnaryInstructionPattern&& unary, ConditionPattern&& condition)
         {
-            return UnaryInstructionPattern{
-                std::move(unary.operation), std::move(unary.firstArgument), std::move(condition)};
+            return UnaryInstructionPattern{std::move(unary.operation), std::move(unary.firstArgument),
+                std::move(condition), std::move(unary.flags)};
         }
 
         inline BinaryInstructionPattern operator,(BinaryInstructionPattern&& binary, ConditionPattern&& condition)
         {
             return BinaryInstructionPattern{std::move(binary.operation), std::move(binary.firstArgument),
-                std::move(binary.secondArgument), std::move(condition)};
+                std::move(binary.secondArgument), std::move(condition), std::move(binary.flags), binary.commutative};
         }
 
         inline UnaryInstructionPattern operator,(UnaryInstructionPattern&& unary, FlagPattern&& flag)
@@ -383,7 +400,13 @@ namespace vc4c
         inline BinaryInstructionPattern operator,(BinaryInstructionPattern&& binary, FlagPattern&& flag)
         {
             return BinaryInstructionPattern{std::move(binary.operation), std::move(binary.firstArgument),
-                std::move(binary.secondArgument), std::move(binary.condition), std::move(flag)};
+                std::move(binary.secondArgument), std::move(binary.condition), std::move(flag), binary.commutative};
+        }
+
+        inline BinaryInstructionPattern operator,(BinaryInstructionPattern&& binary, CommutationFlag flag)
+        {
+            return BinaryInstructionPattern{std::move(binary.operation), std::move(binary.firstArgument),
+                std::move(binary.secondArgument), std::move(binary.condition), std::move(binary.flags), flag};
         }
 
         /**

@@ -10,5 +10,5 @@ target_sources(${VC4C_LIBRARY_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/Peephole.cpp
     ${CMAKE_CURRENT_LIST_DIR}/Reordering.cpp
     ${CMAKE_CURRENT_LIST_DIR}/InstructionScheduler.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/Vectorizer.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/Vector.cpp
 )

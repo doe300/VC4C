@@ -19,7 +19,7 @@
 #include "LocalCompression.h"
 #include "Memory.h"
 #include "Reordering.h"
-#include "Vectorizer.h"
+#include "Vector.h"
 #include "log.h"
 
 using namespace vc4c;
@@ -270,6 +270,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "MANDATORY: lowers the memory access instructions to actual hardware instructions", OptimizationType::INITIAL),
     OptimizationPass("GroupVPMAccess", "group-memory", groupVPMAccess,
         "merges memory accesses for adjacent memory and cache areas", OptimizationType::INITIAL),
+    OptimizationPass("CompactVectorFolding", "compact-vector-folding", compactVectorFolding,
+        "optimizes element-wise vector folding with binary-tree folding", OptimizationType::INITIAL),
     /*
      * The second block executes optimizations only within a single basic block.
      * These optimizations may be executed in a loop until there are not more changes to the instructions
@@ -357,6 +359,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("move-loop-invariant-code");
         passes.emplace("group-memory");
         passes.emplace("prefetch-loads");
+        passes.emplace("compact-vector-folding");
         FALL_THROUGH
     case OptimizationLevel::BASIC:
         passes.emplace("reorder-blocks");

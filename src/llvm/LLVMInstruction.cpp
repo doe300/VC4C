@@ -500,7 +500,7 @@ bool ContainerExtraction::mapInstruction(Method& method)
 {
     const DataType elementType = container.type.getElementType();
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Generation extraction of " << elementType.to_string() << " at " << index.to_string() << " from "
+        log << "Generating extraction of " << elementType.to_string() << " at " << index.to_string() << " from "
             << container.to_string() << " into " << dest.to_string() << logging::endl);
 
     if(container.type.isVectorType() || index.hasLiteral(Literal(0u)))
