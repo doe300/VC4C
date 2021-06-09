@@ -1203,14 +1203,23 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
          */
         auto initialRAMLoad = group.ramReads.front().get<intermediate::RAMAccessInstruction>();
 
-        auto elementStride = assign(it, TYPE_INT32.toVectorType(group.usedVectorSize), "%tmu_group_stride") =
-            (group.ramReads.at(1).get<intermediate::RAMAccessInstruction>()->getMemoryAddress() -
-                initialRAMLoad->getMemoryAddress());
+        auto elementStride = method.addNewLocal(TYPE_INT32.toVectorType(group.usedVectorSize), "%tmu_group_stride");
+        auto strideExpression = commonStride.checkExpression();
+        if(auto strideInst = (strideExpression ? strideExpression->toInstruction(elementStride) : nullptr))
+        {
+            it.emplace(strideInst);
+            it.nextInBlock();
+        }
+        else
+            assign(it, elementStride) =
+                (group.ramReads.at(1).get<intermediate::RAMAccessInstruction>()->getMemoryAddress() -
+                    initialRAMLoad->getMemoryAddress());
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Using common non-constant TMU access group stride of: " << elementStride.to_string()
                 << logging::endl);
 
         // move all necessary address-calculating instructions before the new group load (in inverse order)
+        // we also do it if we could convert the stride expression above, in case they are still required for that
         auto insertIt = it.copy().previousInBlock();
         for(auto& calc : secondAddressCalculations)
         {
@@ -1251,8 +1260,17 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
             // Same reasoning as above, we use the address of the second load to calculate the primary stride, so we
             // need to be able to move its calculating instructions before the first load.
             return false;
-        auto primaryStride = assign(it, TYPE_INT32.toVectorType(group.usedVectorSize), "%tmu_group_primary_stride") =
-            (secondRAMLoad->getMemoryAddress() - initialRAMLoad->getMemoryAddress());
+
+        auto primaryStride =
+            method.addNewLocal(TYPE_INT32.toVectorType(group.usedVectorSize), "%tmu_group_primary_stride");
+
+        if(auto strideInst = strides->primaryStride->toInstruction(primaryStride))
+        {
+            it.emplace(strideInst);
+            it.nextInBlock();
+        }
+        else
+            assign(it, primaryStride) = (secondRAMLoad->getMemoryAddress() - initialRAMLoad->getMemoryAddress());
 
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Using two distinct hierarchical strides with offset " << strides->powerOfTwo << ": "
@@ -1260,6 +1278,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
                 << logging::endl);
 
         // move all necessary address-calculating instructions before the new group load (in inverse order)
+        // we also do it if we could convert the stride expression above, in case they are still required for that
         auto insertIt = it.copy().previousInBlock();
         for(auto& calc : secondAddressCalculations)
         {
@@ -1299,10 +1318,6 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
          *
          * Thus, we need to calculate the addresses of all SIMD elements for each (used) vector element and set
          * these as manual addresses.
-         *
-         * TODO Some of these (e.g. for clpeak/global_bandwidth kernels) have (a multiple of) the local/global size
-         * (or some other common value) as stride/offset. To be able to improve on them, would need to determine the
-         * associated instructions (more precisely the output local) from the expression to be used as stride/offset.
          *
          * TODO To be able to optimize the remaining cases, we need to be very careful, since the addresses of the
          * successive elements are most likely not yet calculated when the first value is loaded from RAM. So we

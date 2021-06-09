@@ -119,9 +119,12 @@ namespace vc4c
         Unpack unpackMode = UNPACK_NOP;
         Pack packMode = PACK_NOP;
         intermediate::InstructionDecorations deco = intermediate::InstructionDecorations::NONE;
+        // The optional value this expression is written to
+        const Local* outputValue = nullptr;
 
         Expression(const OpCode& op, const SubExpression& first, const SubExpression& second = SubExpression{},
-            Unpack unpack = UNPACK_NOP, Pack pack = PACK_NOP, intermediate::InstructionDecorations decorations = {});
+            Unpack unpack = UNPACK_NOP, Pack pack = PACK_NOP, intermediate::InstructionDecorations decorations = {},
+            const Local* outLoc = nullptr);
 
         /**
          * Tries to create an expression representing the single instruction
@@ -185,7 +188,8 @@ namespace vc4c
         /**
          * Returns the instruction representing this expression or a nullptr of no such instruction can be formed.
          *
-         * NOTE: Only simple expressions (without sub-expressions) can be converted to instructions!
+         * NOTE: Only simple expressions (without sub-expressions) or expressions where the optional output values for
+         * all sub-expressions are known can be converted to instructions!
          */
         intermediate::IntermediateInstruction* toInstruction(const Value& output) const;
 

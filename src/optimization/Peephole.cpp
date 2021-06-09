@@ -102,14 +102,14 @@ static InstructionWalker findSingleReaderInBlock(InstructionWalker it, Instructi
 }
 
 static bool canRemoveInstructionBetween(
-    InstructionWalker prevIt, InstructionWalker nextIt, const RegisterMap& registerMap)
+    InstructionWalker startIt, InstructionWalker endIt, const RegisterMap& registerMap)
 {
-    if(!prevIt.has() || !nextIt.has() || nextIt.isEndOfMethod())
+    if(!startIt.has() || !endIt.has() || endIt.isEndOfMethod())
         return false;
 
     bool isAborted = false;
     SortedSet<Register> writtenRegisters;
-    prevIt.forAllInstructions([&](const intermediate::IntermediateInstruction& inst) {
+    startIt.forAllInstructions([&](const intermediate::IntermediateInstruction& inst) {
         if(auto reg = inst.checkOutputRegister())
             writtenRegisters.emplace(*reg);
         else if(auto loc = inst.checkOutputLocal())
@@ -125,8 +125,52 @@ static bool canRemoveInstructionBetween(
     if(isAborted)
         return false;
 
+    bool hasDelayInstructions = false;
+    auto getRegister = [&](const Value& val) -> Optional<Register> {
+        if(auto reg = val.checkRegister())
+            return *reg;
+        if(auto loc = val.checkLocal())
+        {
+            auto regIt = registerMap.find(loc);
+            if(regIt != registerMap.end())
+                return regIt->second;
+        }
+        return {};
+    };
+    for(auto checkIt = startIt.copy().nextInBlock(); !checkIt.isEndOfBlock() && checkIt != endIt; checkIt.nextInBlock())
+    {
+        // make sure we do not access any of the written registers in between, neither read from it (in which case we
+        // need it defined) nor write to it (in which case we would override any previous value)
+        if(checkIt.has())
+        {
+            hasDelayInstructions = true;
+            std::vector<const intermediate::IntermediateInstruction*> instructions{checkIt.get()};
+            if(auto combined = checkIt.get<const intermediate::CombinedOperation>())
+                instructions = {combined->getFirstOp(), combined->getSecondOp()};
+            for(auto inst : instructions)
+            {
+                for(const auto& arg : inst->getArguments())
+                {
+                    if(auto reg = getRegister(arg))
+                    {
+                        if(writtenRegisters.find(*reg) != writtenRegisters.end())
+                            return false;
+                    }
+                }
+                if(auto out = inst->getOutput())
+                {
+                    if(auto reg = getRegister(*out))
+                    {
+                        if(writtenRegisters.find(*reg) != writtenRegisters.end())
+                            return false;
+                    }
+                }
+            }
+        }
+    }
+
     SortedSet<Register> readRegisters;
-    nextIt.forAllInstructions([&](const intermediate::IntermediateInstruction& inst) {
+    endIt.forAllInstructions([&](const intermediate::IntermediateInstruction& inst) {
         for(const auto& arg : inst.getArguments())
         {
             if(auto reg = arg.checkRegister())
@@ -152,13 +196,13 @@ static bool canRemoveInstructionBetween(
             isRead = readRegisters.find(REG_ACC5) != readRegisters.end();
         if(isRead && reg.isGeneralPurpose())
             return false;
-        if(isRead && (prevIt->hasPackMode() || nextIt->hasUnpackMode()))
+        if(isRead && (startIt->hasPackMode() || endIt->hasUnpackMode()))
             return false;
-        if(isRead && nextIt->getVectorRotation())
+        if(isRead && endIt->getVectorRotation())
             return false;
     }
 
-    return !intermediate::needsDelay(prevIt.get(), nextIt.get());
+    return hasDelayInstructions || !intermediate::needsDelay(startIt.get(), endIt.get());
 }
 
 static Optional<Register> getSingleRegister(
@@ -287,11 +331,11 @@ void optimizations::removeObsoleteInstructions(
                     findSingleReaderInBlock(it, it.getBasicBlock()->walkEnd(), moveOut, registerMap, inIt->second);
                 if(!readerIt.isEndOfBlock() && readerIt->readsLocal(moveOut) && !readerIt->hasUnpackMode() &&
                     !readerIt->getVectorRotation() && !nextIt.isEndOfMethod() &&
-                    canRemoveInstructionBetween(lastInstruction, nextIt, registerMap))
+                    canRemoveInstructionBetween(lastInstruction, readerIt, registerMap))
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Removing simple move with input and output mapped to the same register file and single "
-                               "read a following instruction: "
+                               "read in a successive instruction: "
                             << it->to_string() << " (registers " << inIt->second.to_string() << " and "
                             << outIt->second.to_string() << ')' << logging::endl);
                     it.erase();

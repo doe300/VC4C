@@ -91,13 +91,13 @@ static bool isWorkGroupUniform(const SubExpression& exp)
     auto expr = exp.checkExpression();
     auto builtin = exp.checkLocal()->as<BuiltinLocal>();
     return (expr && has_flag(expr->deco, intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE)) ||
-        (builtin && builtin->isWorkGroupUniform()) || exp.getConstantExpression();
+        (builtin && builtin->isWorkGroupUniform()) || exp.isConstant();
 }
 
 Expression::Expression(const OpCode& op, const SubExpression& first, const SubExpression& second, Unpack unpack,
-    Pack pack, intermediate::InstructionDecorations decorations) :
+    Pack pack, intermediate::InstructionDecorations decorations, const Local* outLoc) :
     code(op),
-    arg0(first), arg1(second), unpackMode(unpack), packMode(pack), deco(decorations)
+    arg0(first), arg1(second), unpackMode(unpack), packMode(pack), deco(decorations), outputValue(outLoc)
 {
     if(isWorkGroupUniform(first) && isWorkGroupUniform(second))
         deco = add_flag(deco, intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
@@ -136,7 +136,7 @@ std::shared_ptr<Expression> Expression::createExpression(const intermediate::Int
                         .value_or(PACK_NOP);
     return std::make_shared<Expression>(code, instr.getArgument(0).value(),
         instr.getArgument(1) ? instr.getArgument(1) : code == OP_V8MIN ? instr.getArgument(0) : NO_VALUE, unpackMode,
-        packMode, instr.decoration);
+        packMode, instr.decoration, instr.checkOutputLocal());
 }
 
 static std::shared_ptr<Expression> createRecursiveExpressionInner(const intermediate::IntermediateInstruction& instr,
@@ -146,8 +146,8 @@ static std::shared_ptr<Expression> createRecursiveExpressionInner(const intermed
     if(auto expr = Expression::createExpression(instr))
     {
         if(auto constantValue = expr->getConstantExpression())
-            expr = std::make_shared<Expression>(
-                OP_V8MIN, *constantValue, *constantValue, expr->unpackMode, expr->packMode, expr->deco);
+            expr = std::make_shared<Expression>(OP_V8MIN, *constantValue, *constantValue, expr->unpackMode,
+                expr->packMode, expr->deco, expr->outputValue);
         if(stopAtBuiltin && intermediate::isGroupBuiltin(expr->deco, true))
             return expr;
         if(maxDepth > 0)
@@ -188,12 +188,14 @@ bool Expression::operator==(const Expression& other) const
 }
 
 LCOV_EXCL_START
-static std::string toExtraString(Unpack unpackMode, Pack packMode, intermediate::InstructionDecorations deco)
+static std::string toExtraString(
+    Unpack unpackMode, Pack packMode, intermediate::InstructionDecorations deco, const Local* output)
 {
     std::string extra;
     extra += unpackMode.hasEffect() ? unpackMode.to_string() + " " : "";
     extra += packMode.hasEffect() ? packMode.to_string() + " " : "";
     extra += intermediate::toString(deco);
+    extra += output ? (" " + output->name) : "";
     return extra;
 }
 
@@ -201,7 +203,7 @@ std::string Expression::to_string() const
 {
     auto basic =
         std::string(code.name) + " " + arg0.to_string() + (code.numOperands > 1 ? ", " + arg1.to_string() : "");
-    auto extra = toExtraString(unpackMode, packMode, deco);
+    auto extra = toExtraString(unpackMode, packMode, deco, outputValue);
     return basic + (extra.empty() ? "" : (" (" + extra + ')'));
 }
 LCOV_EXCL_STOP
@@ -271,6 +273,17 @@ static std::shared_ptr<Expression> combineIfRecursive(const std::shared_ptr<Expr
     return expression;
 }
 
+static const Local* eitherOutput(const Local* one, const Local* other)
+{
+    return one ? one : other;
+}
+
+static std::shared_ptr<Expression> addOutput(std::shared_ptr<Expression>&& expr, const Local* loc)
+{
+    expr->outputValue = eitherOutput(expr->outputValue, loc);
+    return std::move(expr);
+}
+
 static std::shared_ptr<Expression> combineWithInner(
     Expression& expression, const FastMap<const Local*, std::shared_ptr<Expression>>& inputs, ExpressionOptions options)
 {
@@ -286,6 +299,7 @@ static std::shared_ptr<Expression> combineWithInner(
     auto secondVal = arg1.checkValue();
     auto firstExpr = arg0.checkExpression();
     auto secondExpr = arg1.checkExpression();
+    auto outputValue = expression.outputValue;
 
     if(stopAtBuiltin && intermediate::isGroupBuiltin(deco, true))
         return expression.shared_from_this();
@@ -372,8 +386,8 @@ static std::shared_ptr<Expression> combineWithInner(
         if(code.isIdempotent() && firstExpr->code == code)
             // f(f(a)) = f(a)
             // XXX there are no single-argument idempotent operations
-            return std::make_shared<Expression>(
-                code, firstExpr->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP, add_flag(deco, firstExpr->deco));
+            return std::make_shared<Expression>(code, firstExpr->arg0, NO_VALUE, UNPACK_NOP, PACK_NOP,
+                add_flag(deco, firstExpr->deco), eitherOutput(outputValue, firstExpr->outputValue));
         // NOTE: ftoi(itof(i)) != i, itof(ftoi(f)) != f, since the truncation/rounding would get lost!
         if(code.isSelfInverse() && code == firstExpr->code)
         {
@@ -381,7 +395,7 @@ static std::shared_ptr<Expression> combineWithInner(
             auto inner = firstExpr->arg0.checkExpression();
             return inner ? inner->addDecorations(deco).shared_from_this() :
                            std::make_shared<Expression>(OP_V8MIN, firstExpr->arg0, firstExpr->arg0, UNPACK_NOP,
-                               PACK_NOP, add_flag(deco, firstExpr->deco));
+                               PACK_NOP, add_flag(deco, firstExpr->deco), outputValue);
         }
     }
 
@@ -390,45 +404,48 @@ static std::shared_ptr<Expression> combineWithInner(
         if(code.isIdempotent() && arg0 == arg1)
             // f(a, a) = a
             // XXX this is actually hidden by the isMoveExpression() check above
-            return firstExpr ? firstExpr->addDecorations(deco).shared_from_this() :
-                               std::make_shared<Expression>(OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco);
+            return addOutput(firstExpr ? firstExpr->addDecorations(deco).shared_from_this() :
+                                         std::make_shared<Expression>(OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco),
+                outputValue);
         if(code.isSelfInverse() && arg0 == arg1)
         {
             // f(a, a) = 0, e.g. a - a = 0
             auto zero = code.returnsFloat ? FLOAT_ZERO : INT_ZERO;
-            return std::make_shared<Expression>(OP_V8MIN, zero, zero, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(OP_V8MIN, zero, zero, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
         if(firstVal &&
             (hasValue(firstVal, code.getLeftIdentity() & &Value::getLiteralValue) ||
                 (code == FAKEOP_UMUL && hasValue(firstVal, Literal(1)))))
             // f(id, a) = a
-            return secondExpr ? secondExpr->addDecorations(deco).shared_from_this() :
-                                std::make_shared<Expression>(OP_V8MIN, arg1, arg1, UNPACK_NOP, PACK_NOP, deco);
+            return addOutput(secondExpr ?
+                    secondExpr->addDecorations(deco).shared_from_this() :
+                    std::make_shared<Expression>(OP_V8MIN, arg1, arg1, UNPACK_NOP, PACK_NOP, deco),
+                outputValue);
         if(secondVal &&
             (hasValue(secondVal, code.getRightIdentity() & &Value::getLiteralValue) ||
                 (code == FAKEOP_UMUL && hasValue(secondVal, Literal(1)))))
             // f(a, id) = a
-            return firstExpr ? firstExpr->addDecorations(deco).shared_from_this() :
-                               std::make_shared<Expression>(OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco);
+            return addOutput(firstExpr ? firstExpr->addDecorations(deco).shared_from_this() :
+                                         std::make_shared<Expression>(OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco),
+                outputValue);
         if(firstVal &&
             (hasValue(firstVal, code.getLeftAbsorbingElement() & &Value::getLiteralValue) ||
                 (code == FAKEOP_UMUL && hasValue(firstVal, Literal(0)))))
             // f(absorb, a) = absorb
-            return std::make_shared<Expression>(OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco, outputValue);
         if(secondVal &&
             (hasValue(secondVal, code.getRightAbsorbingElement() & &Value::getLiteralValue) ||
                 (code == FAKEOP_UMUL && hasValue(secondVal, Literal(0)))))
             // f(a, absorb) = absorb
-            return std::make_shared<Expression>(OP_V8MIN, arg1, arg1, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(OP_V8MIN, arg1, arg1, UNPACK_NOP, PACK_NOP, deco, outputValue);
 
         if(firstVal && (code.isAssociative() || code == FAKEOP_UMUL) && secondExpr && secondExpr->code == code &&
             arg0.isConstant() && secondExpr->arg0.isConstant())
         {
             // f(constA, f(constB, a)) = f(f(constA, constB), a), if associative
             if(auto tmp = calculate(code, firstVal, secondExpr->arg0.checkValue()))
-            {
-                return std::make_shared<Expression>(code, *tmp, secondExpr->arg1, UNPACK_NOP, PACK_NOP, deco);
-            }
+                return std::make_shared<Expression>(
+                    code, *tmp, secondExpr->arg1, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         if(secondVal && (code.isAssociative() || code == FAKEOP_UMUL) && firstExpr && firstExpr->code == code &&
@@ -436,9 +453,8 @@ static std::shared_ptr<Expression> combineWithInner(
         {
             // f(f(a, constA), constB) = f(a, f(constA, constB)), if associative
             if(auto tmp = calculate(code, firstExpr->arg1.checkValue(), secondVal))
-            {
-                return std::make_shared<Expression>(code, firstExpr->arg0, tmp, UNPACK_NOP, PACK_NOP, deco);
-            }
+                return std::make_shared<Expression>(
+                    code, firstExpr->arg0, tmp, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         if(firstVal && ((code.isAssociative() && code.isCommutative()) || code == FAKEOP_UMUL) && secondExpr &&
@@ -446,9 +462,8 @@ static std::shared_ptr<Expression> combineWithInner(
         {
             // f(constA, f(a, constB)) = f(f(constA, constB), a), if associative and commutative
             if(auto tmp = calculate(code, firstVal, secondExpr->arg1.checkValue()))
-            {
-                return std::make_shared<Expression>(code, *tmp, secondExpr->arg0, UNPACK_NOP, PACK_NOP, deco);
-            }
+                return std::make_shared<Expression>(
+                    code, *tmp, secondExpr->arg0, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         if(secondVal && ((code.isAssociative() && code.isCommutative()) || code == FAKEOP_UMUL) && firstExpr &&
@@ -456,37 +471,37 @@ static std::shared_ptr<Expression> combineWithInner(
         {
             // f(f(constA, a), constB) = f(f(constA, constB), a), if associative and commutative
             if(auto tmp = calculate(code, firstExpr->arg0.checkValue(), secondVal))
-            {
-                return std::make_shared<Expression>(code, *tmp, firstExpr->arg1, UNPACK_NOP, PACK_NOP, deco);
-            }
+                return std::make_shared<Expression>(
+                    code, *tmp, firstExpr->arg1, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         if(code.isAssociative() && code.isIdempotent() && secondExpr && secondExpr->code == code &&
             secondExpr->arg0 == arg0)
         {
             // f(a, f(a, b)) = f(a, b), if associative and idempotent
-            return std::make_shared<Expression>(code, arg0, secondExpr->arg1, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(code, arg0, secondExpr->arg1, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         if(code.isAssociative() && code.isIdempotent() && firstExpr && firstExpr->code == code &&
             firstExpr->arg1 == arg1)
         {
             // f(f(a, b), b) = f(a, b), if associative and idempotent
-            return std::make_shared<Expression>(code, firstExpr->arg0, arg1, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(code, firstExpr->arg0, arg1, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         if(code.isAssociative() && code.isIdempotent() && code.isCommutative() && secondExpr &&
             secondExpr->code == code && secondExpr->arg1 == arg0)
         {
             // f(a, f(b, a)) = f(a, b), if associative, commutative and idempotent
-            return std::make_shared<Expression>(code, arg0, secondExpr->arg0, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(code, arg0, secondExpr->arg0, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         if(code.isAssociative() && code.isIdempotent() && code.isCommutative() && firstExpr &&
             firstExpr->code == code && firstExpr->arg0 == arg1)
         {
             // f(f(a, b), a) = f(a, b), if associative, commutative and idempotent
-            return std::make_shared<Expression>(code, firstExpr->arg0, firstExpr->arg1, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(
+                code, firstExpr->arg0, firstExpr->arg1, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         if(firstExpr && secondExpr && firstExpr->code == secondExpr->code &&
@@ -496,11 +511,13 @@ static std::shared_ptr<Expression> combineWithInner(
         {
             // g(f(a, b), f(a, c)) = f(a, g(b, c)), if left distributive
             if(auto tmp = calculate(code, firstExpr->arg1.checkValue(), secondExpr->arg1.checkValue()))
-                return std::make_shared<Expression>(firstExpr->code, firstExpr->arg0, tmp, UNPACK_NOP, PACK_NOP, deco);
+                return std::make_shared<Expression>(
+                    firstExpr->code, firstExpr->arg0, tmp, UNPACK_NOP, PACK_NOP, deco, outputValue);
             // general non-constant case
             auto tmp = std::make_shared<Expression>(code, firstExpr->arg1, secondExpr->arg1);
             tmp = combineIfRecursive(tmp, inputs, options);
-            return std::make_shared<Expression>(firstExpr->code, firstExpr->arg0, tmp, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(
+                firstExpr->code, firstExpr->arg0, tmp, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         if(firstExpr && secondExpr && firstExpr->code == secondExpr->code &&
@@ -510,11 +527,13 @@ static std::shared_ptr<Expression> combineWithInner(
         {
             // g(f(a, b), f(c, b)) = f(g(a, c), b), if right distributive
             if(auto tmp = calculate(code, firstExpr->arg0.checkValue(), secondExpr->arg0.checkValue()))
-                return std::make_shared<Expression>(firstExpr->code, *tmp, firstExpr->arg1, UNPACK_NOP, PACK_NOP, deco);
+                return std::make_shared<Expression>(
+                    firstExpr->code, *tmp, firstExpr->arg1, UNPACK_NOP, PACK_NOP, deco, outputValue);
             // general non-constant case
             auto tmp = std::make_shared<Expression>(code, firstExpr->arg0, secondExpr->arg0);
             tmp = combineIfRecursive(tmp, inputs, options);
-            return std::make_shared<Expression>(firstExpr->code, tmp, firstExpr->arg1, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(
+                firstExpr->code, tmp, firstExpr->arg1, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         // TODO more properties to use (e.g. distributive and commutative?)
@@ -526,7 +545,7 @@ static std::shared_ptr<Expression> combineWithInner(
         {
             // doesn't save any instruction, but utilizes mul ALU
             return std::make_shared<Expression>(
-                OP_FMUL, arg0, Value(Literal(2.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP, deco);
+                OP_FMUL, arg0, Value(Literal(2.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         // TODO generalize! E.g. for fsub
@@ -536,12 +555,12 @@ static std::shared_ptr<Expression> combineWithInner(
                 // fadd(fmul(a, constB), a) = fmul(a, constB+1)
                 return std::make_shared<Expression>(OP_FMUL, arg1,
                     Value(Literal(firstExpr->arg1.getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
-                    add_flag(deco, firstExpr->deco));
+                    add_flag(deco, firstExpr->deco), outputValue);
             if(firstExpr->arg1 == arg1 && firstExpr->arg0.getLiteralValue())
                 // fadd(fmul(constB, a), a) = fmul(a, constB+1)
                 return std::make_shared<Expression>(OP_FMUL, arg1,
                     Value(Literal(firstExpr->arg0.getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
-                    add_flag(deco, firstExpr->deco));
+                    add_flag(deco, firstExpr->deco), outputValue);
         }
         if(code == OP_FADD && secondExpr && secondExpr->code == OP_FMUL)
         {
@@ -549,12 +568,12 @@ static std::shared_ptr<Expression> combineWithInner(
                 // fadd(a, fmul(a, constB)) = fmul(a, constB+1)
                 return std::make_shared<Expression>(OP_FMUL, arg0,
                     Value(Literal(secondExpr->arg1.getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
-                    add_flag(deco, secondExpr->deco));
+                    add_flag(deco, secondExpr->deco), outputValue);
             if(secondExpr->arg1 == arg0 && secondExpr->arg0.getLiteralValue())
                 // fadd(a, fmul(constB, a)) = fmul(a, constB+1)
                 return std::make_shared<Expression>(OP_FMUL, arg0,
                     Value(Literal(secondExpr->arg0.getLiteralValue()->real() + 1.0f), TYPE_FLOAT), UNPACK_NOP, PACK_NOP,
-                    add_flag(deco, secondExpr->deco));
+                    add_flag(deco, secondExpr->deco), outputValue);
         }
 
         // TODO generalize! E.g. via mapping opcode -> inverse opcode (inverse according to which of the operands?!)
@@ -569,14 +588,15 @@ static std::shared_ptr<Expression> combineWithInner(
             if((code == OP_SUB && firstExpr->code == OP_ADD) || (code == OP_FSUB && firstExpr->code == OP_FADD) ||
                 (code == OP_ADD && firstExpr->code == OP_SUB && arg1 == firstExpr->arg1) ||
                 (code == OP_FADD && firstExpr->code == OP_FSUB && arg1 == firstExpr->arg1))
-                return otherExpr ?
-                    otherExpr->addDecorations(deco).shared_from_this() :
-                    std::make_shared<Expression>(OP_V8MIN, otherArg, otherArg, UNPACK_NOP, PACK_NOP, deco);
+                return addOutput(otherExpr ?
+                        otherExpr->addDecorations(deco).shared_from_this() :
+                        std::make_shared<Expression>(OP_V8MIN, otherArg, otherArg, UNPACK_NOP, PACK_NOP, deco),
+                    outputValue);
 
             // (a - b) - a = -b
             if((code == OP_SUB && firstExpr->code == OP_SUB && arg1 == firstExpr->arg0) ||
                 (code == OP_FSUB && firstExpr->code == OP_FSUB && arg1 == firstExpr->arg0))
-                return std::make_shared<Expression>(code, INT_ZERO, otherArg, UNPACK_NOP, PACK_NOP, deco);
+                return std::make_shared<Expression>(code, INT_ZERO, otherArg, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
         if(secondExpr && secondExpr->arg1 && (arg0 == secondExpr->arg0 || arg0 == secondExpr->arg1))
         {
@@ -586,14 +606,15 @@ static std::shared_ptr<Expression> combineWithInner(
             // a + (b - a) = b
             if((code == OP_ADD && secondExpr->code == OP_SUB && arg0 == secondExpr->arg1) ||
                 (code == OP_FADD && secondExpr->code == OP_FSUB && arg0 == secondExpr->arg1))
-                return otherExpr ?
-                    otherExpr->addDecorations(deco).shared_from_this() :
-                    std::make_shared<Expression>(OP_V8MIN, otherArg, otherArg, UNPACK_NOP, PACK_NOP, deco);
+                return addOutput(otherExpr ?
+                        otherExpr->addDecorations(deco).shared_from_this() :
+                        std::make_shared<Expression>(OP_V8MIN, otherArg, otherArg, UNPACK_NOP, PACK_NOP, deco),
+                    outputValue);
 
             // a - (b + a) = -b
             // a - (a + b) = -b
             if((code == OP_SUB && secondExpr->code == OP_ADD) || (code == OP_FSUB && secondExpr->code == OP_FADD))
-                return std::make_shared<Expression>(code, INT_ZERO, otherArg, UNPACK_NOP, PACK_NOP, deco);
+                return std::make_shared<Expression>(code, INT_ZERO, otherArg, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         // (a + b) - (a + c) = (b + a) - (c + a) = b - c
@@ -609,7 +630,7 @@ static std::shared_ptr<Expression> combineWithInner(
 
             auto leftArg = matchingArg == firstExpr->arg0 ? firstExpr->arg1 : firstExpr->arg0;
             auto rightArg = matchingArg == secondExpr->arg0 ? secondExpr->arg1 : secondExpr->arg0;
-            return std::make_shared<Expression>(code, leftArg, rightArg, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(code, leftArg, rightArg, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         // (a << b) << c = a << (b + c)
@@ -622,7 +643,7 @@ static std::shared_ptr<Expression> combineWithInner(
             else
                 offset =
                     combineIfRecursive(std::make_shared<Expression>(OP_ADD, firstExpr->arg1, arg1), inputs, options);
-            return std::make_shared<Expression>(code, firstExpr->arg0, offset, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(code, firstExpr->arg0, offset, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         // (a << const) = a * (1 << const)
@@ -631,7 +652,7 @@ static std::shared_ptr<Expression> combineWithInner(
             // this step simplifies all handling of shl as multiplication with power of two for any further combinations
             auto factor = 1u << secondVal->getLiteralValue()->unsignedInt();
             return std::make_shared<Expression>(
-                FAKEOP_UMUL, arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
+                FAKEOP_UMUL, arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         // (a * constA) + a = (constA * a) + a = a + (a * constA) = a + (constA * a) = a * (constA + 1)
@@ -639,29 +660,29 @@ static std::shared_ptr<Expression> combineWithInner(
             (firstExpr->arg0 == arg1) && (firstExpr->arg1.getLiteralValue()))
         {
             auto factor = firstExpr->arg1.getLiteralValue()->unsignedInt() + 1u;
-            return std::make_shared<Expression>(
-                FAKEOP_UMUL, firstExpr->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(FAKEOP_UMUL, firstExpr->arg0, Value(Literal(factor), TYPE_INT32),
+                UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
         if(allowFakeOperations && code == OP_ADD && firstExpr && firstExpr->code == FAKEOP_UMUL && firstExpr->arg1 &&
             firstExpr->arg1 == arg1 && (firstExpr->arg0.getLiteralValue()))
         {
             auto factor = firstExpr->arg0.getLiteralValue()->unsignedInt() + 1u;
-            return std::make_shared<Expression>(
-                FAKEOP_UMUL, firstExpr->arg1, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(FAKEOP_UMUL, firstExpr->arg1, Value(Literal(factor), TYPE_INT32),
+                UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
         if(allowFakeOperations && code == OP_ADD && secondExpr && secondExpr->code == FAKEOP_UMUL &&
             (secondExpr->arg0 == arg0) && (secondExpr->arg1.getLiteralValue()))
         {
             auto factor = secondExpr->arg1.getLiteralValue()->unsignedInt() + 1u;
-            return std::make_shared<Expression>(
-                FAKEOP_UMUL, secondExpr->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(FAKEOP_UMUL, secondExpr->arg0, Value(Literal(factor), TYPE_INT32),
+                UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
         if(allowFakeOperations && code == OP_ADD && secondExpr && secondExpr->code == FAKEOP_UMUL && secondExpr->arg1 &&
             secondExpr->arg1 == arg0 && (secondExpr->arg0.getLiteralValue()))
         {
             auto factor = secondExpr->arg0.getLiteralValue()->unsignedInt() + 1u;
             return std::make_shared<Expression>(
-                FAKEOP_UMUL, arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
+                FAKEOP_UMUL, arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         // (a * constA) - a = (constA * a) - a = a * (constA - 1)
@@ -669,15 +690,15 @@ static std::shared_ptr<Expression> combineWithInner(
             (firstExpr->arg0 == arg1) && (firstExpr->arg1.getLiteralValue()))
         {
             auto factor = firstExpr->arg1.getLiteralValue()->unsignedInt() - 1u;
-            return std::make_shared<Expression>(
-                FAKEOP_UMUL, firstExpr->arg0, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(FAKEOP_UMUL, firstExpr->arg0, Value(Literal(factor), TYPE_INT32),
+                UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
         if(allowFakeOperations && code == OP_SUB && firstExpr && firstExpr->code == FAKEOP_UMUL && firstExpr->arg1 &&
             firstExpr->arg1 == arg1 && (firstExpr->arg0.getLiteralValue()))
         {
             auto factor = firstExpr->arg0.getLiteralValue()->unsignedInt() - 1u;
-            return std::make_shared<Expression>(
-                FAKEOP_UMUL, firstExpr->arg1, Value(Literal(factor), TYPE_INT32), UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(FAKEOP_UMUL, firstExpr->arg1, Value(Literal(factor), TYPE_INT32),
+                UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         // a + (a + b) = a + (b + a) = b + (2 * a)
@@ -688,7 +709,7 @@ static std::shared_ptr<Expression> combineWithInner(
                 code == OP_ADD ? FAKEOP_UMUL : OP_FMUL, Value(Literal(2), TYPE_INT8), arg0);
             mul = combineIfRecursive(mul, inputs, options);
             auto& otherArg = secondExpr->arg0 == arg0 ? secondExpr->arg1 : secondExpr->arg0;
-            return std::make_shared<Expression>(code, otherArg, mul, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(code, otherArg, mul, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
         // (a + b) + a = (b + a) + a = b + (2 * a)
         if(((allowFakeOperations && code == OP_ADD) || code == OP_FADD) && firstExpr && firstExpr->code == code &&
@@ -698,7 +719,7 @@ static std::shared_ptr<Expression> combineWithInner(
                 code == OP_ADD ? FAKEOP_UMUL : OP_FMUL, Value(Literal(2), TYPE_INT8), arg1);
             mul = combineIfRecursive(mul, inputs, options);
             auto& otherArg = firstExpr->arg0 == arg1 ? firstExpr->arg1 : firstExpr->arg0;
-            return std::make_shared<Expression>(code, otherArg, mul, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(code, otherArg, mul, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         // a + ((a * constA) + b) = a + (b + (a * constA) = b + ((constA + 1) * a)
@@ -721,7 +742,7 @@ static std::shared_ptr<Expression> combineWithInner(
 
             auto mul = std::make_shared<Expression>(code == OP_ADD ? FAKEOP_UMUL : OP_FMUL, newFactor, arg0);
             mul = combineIfRecursive(mul, inputs, options);
-            return std::make_shared<Expression>(code, otherArg, mul, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(code, otherArg, mul, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
         // ((a * constA) + b) + a = (b + (a * constA)) + a = b + ((constA + 1) * a)
         if((code == OP_FADD || (allowFakeOperations && code == OP_ADD)) && firstExpr && firstExpr->code == code &&
@@ -737,7 +758,7 @@ static std::shared_ptr<Expression> combineWithInner(
 
             auto mul = std::make_shared<Expression>(code == OP_ADD ? FAKEOP_UMUL : OP_FMUL, newFactor, arg1);
             mul = combineIfRecursive(mul, inputs, options);
-            return std::make_shared<Expression>(code, otherArg, mul, UNPACK_NOP, PACK_NOP, deco);
+            return std::make_shared<Expression>(code, otherArg, mul, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         // a - (b + c) = (a - b) - c
@@ -751,7 +772,7 @@ static std::shared_ptr<Expression> combineWithInner(
             auto innerOp = std::make_shared<Expression>(code, arg0, secondExpr->arg0);
             innerOp = combineIfRecursive(innerOp, inputs, options);
             return std::make_shared<Expression>(mapping.at(secondExpr->code.opAdd), innerOp, secondExpr->arg1,
-                expression.unpackMode, expression.packMode, deco);
+                expression.unpackMode, expression.packMode, deco, outputValue);
         }
     }
 
@@ -767,7 +788,7 @@ static std::shared_ptr<Expression> combineWithInner(
         if(secondExpr)
             newSecond = SubExpression{secondExpr};
         return std::make_shared<Expression>(
-            code, newFirst, newSecond, expression.unpackMode, expression.packMode, deco);
+            code, newFirst, newSecond, expression.unpackMode, expression.packMode, deco, outputValue);
     }
 
     return expression.shared_from_this();
@@ -990,13 +1011,18 @@ intermediate::IntermediateInstruction* Expression::toInstruction(const Value& ou
     intermediate::Operation* inst = nullptr;
     auto firstVal = arg0.checkValue();
     auto secondVal = arg1.checkValue();
+    if(auto firstExp = arg0.checkExpression())
+        firstVal = firstExp->outputValue ? firstExp->outputValue->createReference() : NO_VALUE;
+    if(auto secondExp = arg1.checkExpression())
+        secondVal = secondExp->outputValue ? secondExp->outputValue->createReference() : NO_VALUE;
+
     if(firstVal && code.numOperands == 1)
         inst = new intermediate::Operation(code, output, *firstVal);
     else if(firstVal && secondVal)
         inst = new intermediate::Operation(code, output, *firstVal, *secondVal);
     else
-        // if either input is an expression, there is no instructions generating the values (and we don't know the local
-        // to read), so we cannot generate the instruction.
+        // if either input is an expression (without a known output value), there is no instructions generating the
+        // values (and we don't know the local to read), so we cannot generate the instruction.
         return nullptr;
     inst->setUnpackMode(unpackMode);
     inst->setPackMode(packMode);
@@ -1024,19 +1050,29 @@ bool Expression::insertInstructions(
     auto leftVal = arg0.checkValue();
     if(auto leftExpr = arg0.checkExpression())
     {
-        auto exprIt = existingExpressions.find(leftExpr);
-        if(exprIt == existingExpressions.end())
-            return false;
-        leftVal = exprIt->second.first->getOutput();
+        if(leftExpr->outputValue)
+            leftVal = leftExpr->outputValue->createReference();
+        else
+        {
+            auto exprIt = existingExpressions.find(leftExpr);
+            if(exprIt == existingExpressions.end())
+                return false;
+            leftVal = exprIt->second.first->getOutput();
+        }
     }
 
     auto rightVal = arg1.checkValue();
     if(auto rightExpr = arg1.checkExpression())
     {
-        auto exprIt = existingExpressions.find(rightExpr);
-        if(exprIt == existingExpressions.end())
-            return false;
-        rightVal = exprIt->second.first->getOutput();
+        if(rightExpr->outputValue)
+            rightVal = rightExpr->outputValue->createReference();
+        else
+        {
+            auto exprIt = existingExpressions.find(rightExpr);
+            if(exprIt == existingExpressions.end())
+                return false;
+            rightVal = exprIt->second.first->getOutput();
+        }
     }
 
     if(!leftVal || (code.numOperands > 1 && !rightVal))
@@ -1069,7 +1105,7 @@ NODISCARD static const void* dumpSubExpression(const SubExpression& expr, Expres
 static void dumpExpression(const void* key, const Expression& expr, ExpressionTree& graph)
 {
     std::string label = expr.code.name;
-    auto extra = toExtraString(expr.unpackMode, expr.packMode, expr.deco);
+    auto extra = toExtraString(expr.unpackMode, expr.packMode, expr.deco, expr.outputValue);
     label += (extra.empty() ? "" : (" (" + extra + ')'));
     graph.addNode(key, label);
 

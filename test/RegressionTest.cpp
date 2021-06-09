@@ -287,7 +287,7 @@ static std::vector<Entry> allKernels = {
         "-DOUTLEN=8 -DHASH_LOOPS=4"},
     Entry{PENDING_LLVM | PENDING_SPIRV, FAST, "./testing/JohnTheRipper/pbkdf2_hmac_sha1_kernel.cl",
         "-DOUTLEN=8 -DHASH_LOOPS=4"},
-    Entry{PENDING_LLVM | PENDING_SPIRV, FAST, "./testing/JohnTheRipper/pbkdf2_hmac_sha1_unsplit_kernel.cl",
+    Entry{PENDING_LLVM | PENDING_SPIRV, SLOW, "./testing/JohnTheRipper/pbkdf2_hmac_sha1_unsplit_kernel.cl",
         "-DOUTLEN=8 -DHASH_LOOPS=4 -DKEYLEN=8 -DSALTLEN=16"},
     Entry{PENDING_LLVM | PENDING_SPIRV, FAST, "./testing/JohnTheRipper/pbkdf2_kernel.cl", "-DOUTLEN=8 -DHASH_LOOPS=4"},
     Entry{PENDING_LLVM | PENDING_SPIRV, FAST, "./testing/JohnTheRipper/pbkdf2_ripemd160_kernel.cl",
