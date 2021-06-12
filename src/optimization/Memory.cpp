@@ -819,6 +819,14 @@ NODISCARD static InstructionWalker findGroupOfTMUAccess(InstructionWalker it, TM
                 if(groupBaseAndOffset.dynamicOffset != baseAndOffset->dynamicOffset)
                     // a group exists, but the dynamic offsets don't match
                     break;
+
+                // check whether we load the same type width for all loads
+                // XXX we could combine those, but then we would need to handle the value extraction on a
+                // per-replaced-cache-read basis instead of the current initial value extraction.
+                if(group.cacheEntry->elementStrideInBytes != tmuCacheEntry->elementStrideInBytes)
+                    // a group exists, but the type-width do not match
+                    break;
+
                 // make sure we already know all locals accessed by the successive loads at the point of the first load
                 auto knownLocals = getUsedLocals(groupBaseAndOffset.workGroupConstantOffset);
                 auto usedLocals = getUsedLocals(baseAndOffset->workGroupConstantOffset);
