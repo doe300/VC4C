@@ -1538,20 +1538,9 @@ void TestInstructions::testValue()
     TEST_ASSERT(!Value(REG_TMU0_ADDRESS, TYPE_INT32).isReadable())
     TEST_ASSERT(!Value(REG_TMU1_ADDRESS, TYPE_INT32).isReadable())
 
-    TEST_ASSERT(INT_ONE.isUniform())
-    TEST_ASSERT(UNDEFINED_VALUE.isUniform())
-    SIMDVector vec{Literal{13}};
-    TEST_ASSERT(Value(&vec, TYPE_INT32).isUniform())
-    vec = SIMDVector{};
-    TEST_ASSERT(Value(&vec, TYPE_INT32).isUniform())
-    TEST_ASSERT(UNIFORM_REGISTER.isUniform())
-    TEST_ASSERT(Value(SmallImmediate(5), TYPE_INT8).isUniform())
-    TEST_ASSERT(!ELEMENT_NUMBER_REGISTER.isUniform())
-    TEST_ASSERT(!ELEMENT_NUMBERS.isUniform())
-
     TEST_ASSERT(INT_ONE.isUnsignedInteger())
     TEST_ASSERT(!UNDEFINED_VALUE.isUnsignedInteger())
-    vec = SIMDVector{Literal{13}};
+    SIMDVector vec{Literal{13}};
     TEST_ASSERT(Value(&vec, TYPE_INT32).isUnsignedInteger())
     vec = SIMDVector{};
     TEST_ASSERT(!Value(&vec, TYPE_INT32).isUnsignedInteger())
@@ -1581,9 +1570,15 @@ void TestInstructions::testValue()
 
     TEST_ASSERT(UNIFORM_REGISTER.isAllSame());
     TEST_ASSERT(INT_ZERO.isAllSame());
+    TEST_ASSERT(UNDEFINED_VALUE.isAllSame());
     TEST_ASSERT(Value(UNDEFINED_LITERAL, TYPE_INT16).isAllSame());
     TEST_ASSERT(!ELEMENT_NUMBERS.isAllSame());
     TEST_ASSERT(!ELEMENT_NUMBER_REGISTER.isAllSame());
+    vec = SIMDVector{Literal{13}};
+    TEST_ASSERT(Value(&vec, TYPE_INT32).isAllSame());
+    vec = SIMDVector{};
+    TEST_ASSERT(Value(&vec, TYPE_INT32).isAllSame());
+    TEST_ASSERT(Value(SmallImmediate(5), TYPE_INT8).isAllSame());
 
     TEST_ASSERT_EQUALS(INT_ONE, BOOL_TRUE);
     TEST_ASSERT_EQUALS(INT_ZERO, BOOL_FALSE);

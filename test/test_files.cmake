@@ -84,6 +84,7 @@ create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ OpenCL-CTS/barrier.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ OpenCL-CTS/clamp.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ OpenCL-CTS/cross_product.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ OpenCL-CTS/constant.cl)
+create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ OpenCL-CTS/test_select.cl)
 
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ BabelStream/OCLStream.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ clNN/SpatialUpSamplingNearest.cl)

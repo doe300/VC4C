@@ -78,7 +78,7 @@ __kernel void test_shuffle_upcast(const __global char8* in, const __global uchar
 }
 
 // This is directly taken from OpenCL-CTS/relationals/shuffle_copy for "char1 to char3"
-__kernel void sample_test(__global char* source, __global char* dest)
+__kernel void sample_test_char3(__global char* source, __global char* dest)
 {
     if(get_global_id(0) != 0)
         return;
@@ -180,4 +180,115 @@ __kernel void sample_test(__global char* source, __global char* dest)
     tmp = (char) ((char) 0);
     tmp.S0 = source[31];
     vstore3(tmp, 31, dest);
+}
+
+char shuffle_fn(char source);
+char shuffle_fn(char source)
+{
+    return source;
+}
+
+// This is directly taken from OpenCL-CTS/relationals/shuffle_copy for "char1 to char4"
+__kernel void sample_test_char4(__global char* source, __global char4* dest)
+{
+    if(get_global_id(0) != 0)
+        return;
+    // char src1 /*, src2*/;
+    char4 tmp;
+    tmp = (char4)((char) 0);
+    tmp.s3 = shuffle_fn(source[0]);
+    dest[0] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S3 = shuffle_fn(source[1]);
+    dest[1] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S2 = shuffle_fn(source[2]);
+    dest[2] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S3 = shuffle_fn(source[3]);
+    dest[3] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.s1 = shuffle_fn(source[4]);
+    dest[4] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.s3 = shuffle_fn(source[5]);
+    dest[5] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.s1 = shuffle_fn(source[6]);
+    dest[6] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.s0 = shuffle_fn(source[7]);
+    dest[7] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S2 = shuffle_fn(source[8]);
+    dest[8] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S0 = shuffle_fn(source[9]);
+    dest[9] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S1 = shuffle_fn(source[10]);
+    dest[10] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.s0 = shuffle_fn(source[11]);
+    dest[11] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S0 = shuffle_fn(source[12]);
+    dest[12] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.s3 = shuffle_fn(source[13]);
+    dest[13] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.s1 = shuffle_fn(source[14]);
+    dest[14] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S3 = shuffle_fn(source[15]);
+    dest[15] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S0 = shuffle_fn(source[16]);
+    dest[16] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S3 = shuffle_fn(source[17]);
+    dest[17] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.s0 = shuffle_fn(source[18]);
+    dest[18] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.s2 = shuffle_fn(source[19]);
+    dest[19] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S2 = shuffle_fn(source[20]);
+    dest[20] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.s2 = shuffle_fn(source[21]);
+    dest[21] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S0 = shuffle_fn(source[22]);
+    dest[22] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.s2 = shuffle_fn(source[23]);
+    dest[23] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S0 = shuffle_fn(source[24]);
+    dest[24] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.s2 = shuffle_fn(source[25]);
+    dest[25] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S1 = shuffle_fn(source[26]);
+    dest[26] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S2 = shuffle_fn(source[27]);
+    dest[27] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S3 = shuffle_fn(source[28]);
+    dest[28] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.S2 = shuffle_fn(source[29]);
+    dest[29] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.s3 = shuffle_fn(source[30]);
+    dest[30] = tmp;
+    tmp = (char4)((char) 0);
+    tmp.s1 = shuffle_fn(source[31]);
+    dest[31] = tmp;
 }

@@ -320,13 +320,24 @@ void test_data::registerGeneralTests()
                     0x03, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, // out[5]
                 })}});
 
-    registerTest(TestData{"shuffle_sample", DataFilter::VECTOR_OPERATIONS, &test_shuffle_cl_string, "", "sample_test",
+    registerTest(TestData{"shuffle_sample3", DataFilter::VECTOR_OPERATIONS, &test_shuffle_cl_string, "",
+        "sample_test_char3",
         {toBufferParameter(toRange<uint8_t>(0, 32)), toBufferParameter(std::vector<uint8_t>(3 * 32))}, toDimensions(1),
         {checkParameterEquals(1,
             std::vector<uint32_t>{0x01000000, 0x00020000, 0x03000000, 0x00040000, 0x00000005, 0x07000006, 0x00080000,
                 0x00000009, 0x000B000A, 0x0000000C, 0x0E00000D, 0x000F0000, 0x11001000, 0x00000000, 0x13000012,
                 0x15001400, 0x00160000, 0x17000000, 0x00000018, 0x001A0019, 0x001B0000, 0x001C0000, 0x0000001D,
                 0x00001F1E})}});
+
+    registerTest(TestData{"shuffle_sample4", DataFilter::VECTOR_OPERATIONS, &test_shuffle_cl_string, "",
+        "sample_test_char4",
+        {toBufferParameter(toRange<uint8_t>(0, 32)), toBufferParameter(std::vector<uint8_t>(4 * 32))}, toDimensions(1),
+        {checkParameterEquals(1,
+            std::vector<uint32_t>{0x00000000, 0x01000000, 0x00020000, 0x03000000, 0x00000400, 0x05000000, 0x00000600,
+                0x00000007, 0x00080000, 0x00000009, 0x00000A00, 0x0000000B, 0x0000000C, 0x0D000000, 0x00000E00,
+                0x0F000000, 0x00000010, 0x11000000, 0x00000012, 0x00130000, 0x00140000, 0x00150000, 0x00000016,
+                0x00170000, 0x00000018, 0x00190000, 0x00001A00, 0x001B0000, 0x1C000000, 0x001D0000, 0x1E000000,
+                0x00001F00})}});
 
     registerTest(TestData{"struct", DataFilter::TYPE_HANDLING, &test_struct_cl_string, "", "test_struct",
         {toBufferParameter(std::vector<uint32_t>(20)), toBufferParameter(std::vector<uint32_t>(20))}, toDimensions(1),
@@ -664,6 +675,35 @@ void test_data::registerGeneralTests()
         {toBufferParameter(std::vector<uint8_t>{4, 3, 2, 1}), toBufferParameter(std::vector<uint32_t>(1))},
         toDimensions(1), {checkParameterEquals(1, std::vector<uint32_t>{0x01020304})}});
 
+    registerTest(TestData{"OpenCL_CTS_select_short", DataFilter::CORNER_CASES, &OpenCL_CTS_test_select_cl_string, "",
+        "select_short_short",
+        {toBufferParameter(std::vector<int16_t>(8, 0x42)), toBufferParameter(toRange<int16_t>(0, 8)),
+            toBufferParameter(toRange<int16_t>(8, 16)),
+            /* scalar has different comparison (comp ==/!=0) then vector versions (cmp </>= 0) */
+            toBufferParameter(std::vector<int16_t>{0, 0, 42, 42, 0, 42, 42, 0})},
+        toDimensions(8), {checkParameterEquals(0, std::vector<int16_t>{0, 1, 10, 11, 4, 13, 14, 7})}});
+
+    registerTest(TestData{"OpenCL_CTS_select_uint2", DataFilter::CORNER_CASES, &OpenCL_CTS_test_select_cl_string, "",
+        "select_uint2_int2",
+        {toBufferParameter(std::vector<uint32_t>(8, 0x42)), toBufferParameter(toRange<uint32_t>(0, 8)),
+            toBufferParameter(toRange<uint32_t>(8, 16)),
+            toBufferParameter(std::vector<int32_t>{1, 1, -1, -1, 1, -1, -1, 1})},
+        calculateDimensions(8, 2), {checkParameterEquals(0, std::vector<uint32_t>{0, 1, 10, 11, 4, 13, 14, 7})}});
+
+    registerTest(TestData{"OpenCL_CTS_select_int3", DataFilter::CORNER_CASES, &OpenCL_CTS_test_select_cl_string, "",
+        "select_int3_uint3",
+        {toBufferParameter(std::vector<int32_t>(8, 0x42)), toBufferParameter(toRange<int32_t>(0, 8)),
+            toBufferParameter(toRange<int32_t>(8, 16)),
+            toBufferParameter(std::vector<int32_t>{1, 1, -1, -1, 1, -1, -1, 1})},
+        calculateDimensions(8, 3), {checkParameterEquals(0, std::vector<int32_t>{0, 1, 10, 11, 4, 13, 14, 7})}});
+
+    registerTest(TestData{"OpenCL_CTS_select_char4", DataFilter::CORNER_CASES, &OpenCL_CTS_test_select_cl_string, "",
+        "select_char4_char4",
+        {toBufferParameter(std::vector<int8_t>(8, 0x42)), toBufferParameter(toRange<int8_t>(0, 8)),
+            toBufferParameter(toRange<int8_t>(8, 16)),
+            toBufferParameter(std::vector<int8_t>{1, 1, -1, -1, 1, -1, -1, 1})},
+        calculateDimensions(8, 4), {checkParameterEquals(0, std::vector<int8_t>{0, 1, 10, 11, 4, 13, 14, 7})}});
+
     registerTest(TestData{"OpenCL_CTS_sub_buffers_read", DataFilter::NONE, &OpenCL_CTS_sub_buffers_read_write_cl_string,
         "", "readTest",
         {toBufferParameter(std::vector<uint8_t>{4, 3, 2, 1, 8, 7, 6, 5}), toScalarParameter<int8_t>(0x10)},
@@ -773,7 +813,6 @@ void test_data::registerGeneralTests()
         {checkParameterEquals(2,
             std::vector<uint16_t>{0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF})}});
 
-    // TODO fails on hardware
     registerTest(TestData{"boost_serial_merge", DataFilter::CONTROL_FLOW | DataFilter::TYPE_HANDLING,
         &boost_compute_test_merge_cl_string, "", "serial_merge",
         {toScalarParameter(16u), toScalarParameter(16u),

@@ -49,3 +49,10 @@ __kernel void select_uint2_int2(__global uint2* dest, __global uint2* src1, __gl
     if(tid < get_global_size(0))
         dest[tid] = select(src1[tid], src2[tid], cmp[tid]);
 }
+
+__kernel void select_char4_char4(__global char4* dest, __global char4* src1, __global char4* src2, __global char4* cmp)
+{
+    size_t tid = get_global_id(0);
+    if(tid < get_global_size(0))
+        dest[tid] = select(src1[tid], src2[tid], cmp[tid]);
+}

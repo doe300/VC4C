@@ -702,19 +702,6 @@ const LocalUser* Value::getSingleWriter() const
     return nullptr;
 }
 
-bool Value::isUniform() const
-{
-    if(checkImmediate())
-        return true;
-    if(checkLiteral())
-        return true;
-    if(auto vec = checkVector())
-        return vec->getAllSame() || vec->isUndefined();
-    if(auto reg = checkRegister())
-        return *reg == REG_UNIFORM || *reg == REG_QPU_NUMBER || *reg == REG_REV_FLAG;
-    return isUndefined();
-}
-
 bool Value::isUnsignedInteger() const
 {
     if(!type.isIntegralType())
@@ -786,6 +773,8 @@ Optional<Value> Value::createZeroInitializer(DataType type)
 
 bool Value::isAllSame() const
 {
+    if(isUndefined())
+        return true;
     if(VariantNamespace::get_if<Literal>(&data))
         return true;
     if(auto reg = VariantNamespace::get_if<Register>(&data))
@@ -794,7 +783,7 @@ bool Value::isAllSame() const
         // XXX what values do the vector rotations actually have?
         return !imm->isVectorRotation();
     if(auto vec = VariantNamespace::get_if<const SIMDVector*>(&data))
-        return *vec && static_cast<bool>((*vec)->getAllSame());
+        return *vec && ((*vec)->getAllSame() || (*vec)->isUndefined());
     if(auto loc = VariantNamespace::get_if<Local*>(&data))
     {
         auto writer = (*loc)->getSingleWriter();

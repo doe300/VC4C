@@ -871,17 +871,6 @@ namespace vc4c
         const LocalUser* getSingleWriter() const;
 
         /**
-         * Returns whether this value is an uniform value (a value equal across all SIMD vector elements).
-         *
-         * Uniform values are among others:
-         * - literal values
-         * - SIMD vectors with all same elements
-         * - small immediates
-         * - uniform registers (UNIFORM, QPU number)
-         */
-        bool isUniform() const;
-
-        /**
          * Return whether this value is guaranteed to be an unsigned (positive) integer.
          *
          * Unsigned integers are among others:

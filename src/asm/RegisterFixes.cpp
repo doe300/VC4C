@@ -50,6 +50,49 @@ const std::vector<std::pair<std::string, RegisterFixupStep>> qpu_asm::FIXUP_STEP
         }},
 };
 
+/**
+ * We currently have no concept of "vector of pointers", but is some cases we have a pointer value (which is by default
+ * a scalar value) where we use the upper vector elements (if the value is a splat value), e.g. to calculate the
+ * addresses of the upper TMU elements to load.
+ * Since combining multiple "scalar" pointer locals into a single SIMD vector and then extraction the corresponding
+ * elements again destroys the splat property, we need to check for such usage.
+ */
+static bool isUsedAsSplatValue(const Local* loc)
+{
+    FastSet<const Local*> openSet;
+    FastSet<const Local*> closedSet;
+
+    openSet.emplace(loc);
+
+    while(!openSet.empty())
+    {
+        auto local = *openSet.begin();
+        closedSet.emplace(local);
+        openSet.erase(openSet.begin());
+
+        bool multipleElementsMayBeUsed = false;
+
+        local->forUsers(LocalUse::Type::READER, [&](const LocalUser* reader) {
+            // TODO can be improved by e.g. checking for single-element insertion into other local (if we only
+            // insert 0th element, we have no problem)
+            if(reader->checkOutputRegister() & &Register::isTextureMemoryUnit)
+                multipleElementsMayBeUsed = true;
+            else if(reader->checkOutputRegister() & &Register::isSpecialFunctionsUnit)
+                multipleElementsMayBeUsed = true;
+            else if(auto outputLoc = reader->checkOutputLocal())
+            {
+                if(closedSet.find(outputLoc) == closedSet.end())
+                    openSet.emplace(outputLoc);
+            }
+        });
+
+        if(multipleElementsMayBeUsed)
+            return true;
+    }
+
+    return false;
+}
+
 FixupResult qpu_asm::groupParameters(Method& method, const Configuration& config, const GraphColoring& coloredGraph)
 {
     analysis::LocalUsageRangeAnalysis localUsageRangeAnalysis(&coloredGraph.getLivenessAnalysis());
@@ -151,6 +194,13 @@ FixupResult qpu_asm::groupParameters(Method& method, const Configuration& config
             readerIt = intermediate::insertVectorExtraction(
                 readerIt, method, tmpGroup, Value(SmallImmediate(groupIndex), TYPE_INT8), tmp);
             readerIt->replaceLocal(*paramIt, tmp);
+            if(isUsedAsSplatValue(tmp.local()))
+            {
+                // we need to recreate the splat property by replicating the value
+                auto splatTmp = method.addNewLocal((*paramIt)->type, (*paramIt)->name);
+                readerIt = intermediate::insertReplication(readerIt, tmp, splatTmp);
+                readerIt->replaceLocal(tmp.local(), splatTmp);
+            }
         }
 
         // paramIt is incremented in the loop header
@@ -224,7 +274,7 @@ FixupResult qpu_asm::groupScalarLocals(
             auto readIt = localsReadInBlock.find(pair.first);
             if(readIt != localsReadInBlock.end())
             {
-                if(readIt->second.size() == pair.first->getUsers(LocalUse::Type::READER).size())
+                if(readIt->second.size() == pair.first->countUsers(LocalUse::Type::READER))
                     // exclude all locals which have all readers inside the block they are written in - locals which are
                     // only live inside a single block
                     // TODO to simplify, could skip all locals which have any readers inside the block they are
@@ -313,10 +363,17 @@ FixupResult qpu_asm::groupScalarLocals(
             auto tmpContainer = assign(reader, pos.first->type) = pos.first->createReference();
             reader = intermediate::insertVectorExtraction(
                 reader, method, tmpContainer, Value(SmallImmediate(pos.second), TYPE_INT8), tmpValue);
-            if(reader->hasUnpackMode() || reader->readsLiteral() || reader.get<intermediate::VectorRotation>())
+            if(reader->hasUnpackMode() || reader->readsLiteral() || reader->getVectorRotation())
                 // insert a NOP before the  actually reading instruction to allow for e.g. unpack-modes
                 nop(reader, intermediate::DelayType::WAIT_REGISTER);
             reader->replaceLocal(entry.first, tmpValue);
+            if(isUsedAsSplatValue(tmpValue.local()))
+            {
+                // we need to recreate the splat property by replicating the value
+                auto splatTmp = method.addNewLocal(entry.first->type, entry.first->name);
+                reader = intermediate::insertReplication(reader, tmpValue, splatTmp);
+                reader->replaceLocal(tmpValue.local(), splatTmp);
+            }
         }
     }
     return FixupResult::FIXES_APPLIED_RECREATE_GRAPH;

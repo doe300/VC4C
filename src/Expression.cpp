@@ -94,13 +94,18 @@ static bool isWorkGroupUniform(const SubExpression& exp)
         (builtin && builtin->isWorkGroupUniform()) || exp.isConstant();
 }
 
+static void updateWorkGroupUniformDecoration(Expression& expr)
+{
+    if(isWorkGroupUniform(expr.arg0) && (expr.code.numOperands == 1 || isWorkGroupUniform(expr.arg1)))
+        expr.addDecorations(intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+}
+
 Expression::Expression(const OpCode& op, const SubExpression& first, const SubExpression& second, Unpack unpack,
     Pack pack, intermediate::InstructionDecorations decorations, const Local* outLoc) :
     code(op),
     arg0(first), arg1(second), unpackMode(unpack), packMode(pack), deco(decorations), outputValue(outLoc)
 {
-    if(isWorkGroupUniform(first) && isWorkGroupUniform(second))
-        deco = add_flag(deco, intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+    updateWorkGroupUniformDecoration(*this);
 }
 
 std::shared_ptr<Expression> Expression::createExpression(const intermediate::IntermediateInstruction& instr)
@@ -183,7 +188,7 @@ bool Expression::operator==(const Expression& other) const
 {
     return code == other.code &&
         ((arg0 == other.arg0 && arg1 == other.arg1) ||
-            (code.isCommutative() && arg0 == other.arg1 && arg1 == other.arg0)) &&
+            ((code.isCommutative() || code == FAKEOP_UMUL) && arg0 == other.arg1 && arg1 == other.arg0)) &&
         unpackMode == other.unpackMode && packMode == other.packMode && deco == other.deco;
 }
 
@@ -312,6 +317,7 @@ static std::shared_ptr<Expression> combineWithInner(
             firstVal = NO_VALUE;
             firstExpr = it->second;
             arg0 = firstExpr;
+            updateWorkGroupUniformDecoration(expression);
         }
     }
     if(auto secondLoc = arg1.checkLocal())
@@ -322,6 +328,7 @@ static std::shared_ptr<Expression> combineWithInner(
             secondVal = NO_VALUE;
             secondExpr = it->second;
             arg1 = secondExpr;
+            updateWorkGroupUniformDecoration(expression);
         }
     }
 
@@ -341,6 +348,7 @@ static std::shared_ptr<Expression> combineWithInner(
             firstVal = arg0.checkValue();
             firstExpr = arg0.checkExpression();
         }
+        updateWorkGroupUniformDecoration(expression);
     }
 
     if(secondExpr && secondExpr->isMoveExpression())
@@ -358,6 +366,7 @@ static std::shared_ptr<Expression> combineWithInner(
             secondVal = arg1.checkValue();
             secondExpr = arg1.checkExpression();
         }
+        updateWorkGroupUniformDecoration(expression);
     }
 
     if(stopAtBuiltin && firstExpr && intermediate::isGroupBuiltin(firstExpr->deco, true))
@@ -534,6 +543,25 @@ static std::shared_ptr<Expression> combineWithInner(
             tmp = combineIfRecursive(tmp, inputs, options);
             return std::make_shared<Expression>(
                 firstExpr->code, tmp, firstExpr->arg1, UNPACK_NOP, PACK_NOP, deco, outputValue);
+        }
+
+        if(firstExpr && secondExpr && firstExpr->code == secondExpr->code &&
+            ((firstExpr->code.isCommutative() && firstExpr->code.isRightDistributiveOver(code)) ||
+                (allowFakeOperations && firstExpr->code == FAKEOP_UMUL && (code == OP_ADD || code == OP_SUB))) &&
+            (firstExpr->arg1 == secondExpr->arg0 || firstExpr->arg0 == secondExpr->arg1))
+        {
+            // g(f(a, b), f(b, c)) = g(f(a, b), f(c, a)) = f(a, g(b, c)), if distributive and commutative
+            auto sameArg = firstExpr->arg1 == secondExpr->arg0 ? firstExpr->arg1 : firstExpr->arg0;
+            auto firstOtherArg = sameArg == firstExpr->arg0 ? firstExpr->arg1 : firstExpr->arg0;
+            auto secondOtherArg = sameArg == secondExpr->arg0 ? secondExpr->arg1 : secondExpr->arg0;
+
+            if(auto tmp = calculate(code, firstOtherArg.checkValue(), secondOtherArg.checkValue()))
+                return std::make_shared<Expression>(
+                    firstExpr->code, *tmp, sameArg, UNPACK_NOP, PACK_NOP, deco, outputValue);
+            // general non-constant case
+            auto tmp = std::make_shared<Expression>(code, firstOtherArg, secondOtherArg);
+            tmp = combineIfRecursive(tmp, inputs, options);
+            return std::make_shared<Expression>(firstExpr->code, tmp, sameArg, UNPACK_NOP, PACK_NOP, deco, outputValue);
         }
 
         // TODO more properties to use (e.g. distributive and commutative?)

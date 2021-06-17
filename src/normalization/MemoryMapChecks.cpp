@@ -138,6 +138,44 @@ static Optional<DataType> convertSmallArrayToRegister(const Local* local)
     return {};
 }
 
+/**
+ * Follow all locals derived from the given local (e.g. to calculate address offsets) and see whether any of them is
+ * used in a memory write instruction.
+ */
+static bool hasMemoryWrites(const Local* local)
+{
+    FastSet<const Local*> closed;
+    FastSet<const Local*> open{local};
+    while(!open.empty())
+    {
+        auto loc = *open.begin();
+        open.erase(open.begin());
+        closed.emplace(loc);
+
+        bool isWrittenTo = false;
+        // memory store/fill/etc. instructions "write" the written-to address, so we have to check for address "writers"
+        loc->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) {
+            if(auto memInst = dynamic_cast<const MemoryInstruction*>(writer))
+                isWrittenTo = true;
+        });
+        if(isWrittenTo)
+            return true;
+
+        loc->forUsers(LocalUse::Type::READER, [&](const LocalUser* reader) {
+            if(auto memInst = dynamic_cast<const MemoryInstruction*>(reader))
+                // do not continue tracking the read value (or the copied-to address)
+                return;
+            if(auto out = reader->checkOutputLocal())
+            {
+                if(closed.find(out) == closed.end())
+                    open.emplace(out);
+            }
+        });
+    }
+
+    return false;
+}
+
 static bool isMemoryOnlyRead(const Local* local)
 {
     auto base = local->getBase(true);
@@ -150,8 +188,8 @@ static bool isMemoryOnlyRead(const Local* local)
     if(base->type.getPointerType() && base->type.getPointerType()->addressSpace == AddressSpace::CONSTANT)
         return true;
 
-    // TODO also check for no actual writes. Need to heed index-calculation from base!
-    return false;
+    // as a fallback, check for actual memory writes
+    return !hasMemoryWrites(local);
 }
 
 // Finds the next instruction writing the given value into memory

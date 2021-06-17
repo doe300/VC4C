@@ -1014,8 +1014,8 @@ Value BitcodeReader::parseInlineGetElementPtr(
 {
     // the value is given as an in-line getelementptr instruction, insert as extra instruction calculating
     // indices
-    llvm::ConstantExpr* constExpr =
-        const_cast<llvm::ConstantExpr*>(llvm::cast<const llvm::ConstantExpr>(pointerOperand));
+    // the const_cast is required for the #getAsInstruction() call below for support of LLVM version <10
+    auto constExpr = const_cast<llvm::ConstantExpr*>(llvm::cast<const llvm::ConstantExpr>(pointerOperand));
     if(constExpr->getOpcode() == llvm::Instruction::CastOps::BitCast)
     {
         // bitcast of address can simply be replace by loading of source address

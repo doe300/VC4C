@@ -720,6 +720,15 @@ void TestExpressions::testCombination()
         TEST_ASSERT_EQUALS(
             result, *outer->combineWith({}, add_flag(ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::RECURSIVE)));
 
+        // (a * constA) - (constB * a) = (constA - constB) * a
+        leftMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, a, 64_val);
+        rightMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 32_val, a);
+        outer = std::make_shared<Expression>(OP_SUB, leftMul, rightMul);
+
+        result = Expression{Expression::FAKEOP_UMUL, 32_val, a};
+        TEST_ASSERT_EQUALS(
+            result, *outer->combineWith({}, add_flag(ExpressionOptions::ALLOW_FAKE_OPS, ExpressionOptions::RECURSIVE)));
+
         // (a * (b * const)) - (a * (b * (const - 1))) = a * b
         leftMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, b, 32_val);
         leftMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, a, leftMul);
