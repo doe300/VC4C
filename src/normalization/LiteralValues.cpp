@@ -19,7 +19,8 @@
 using namespace vc4c;
 using namespace vc4c::normalization;
 
-static NODISCARD InstructionWalker copyVector(Method& method, InstructionWalker it, const Value& out, const Value& in)
+static NODISCARD InstructionWalker insertCopyVector(
+    Method& method, InstructionWalker it, const Value& out, const Value& in)
 {
     Value realOut = out;
     if(!out.checkLocal())
@@ -70,10 +71,10 @@ InstructionWalker normalization::handleContainer(
     {
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Rewriting rotation from container " << rot->to_string() << logging::endl);
-        auto tmp = method.addNewLocal(move->getSource().type);
+        auto tmp = method.addNewLocal(move->getSource().type, "%container");
         // insert vector assembly and use the resulting vector in the rotation
-        it = copyVector(method, it, tmp, move->getSource());
-        it->setArgument(0, std::move(tmp));
+        it = insertCopyVector(method, it, tmp, move->getSource());
+        move->setArgument(0, std::move(tmp));
     }
     else if(move != nullptr && move->getSource().checkVector())
     {
@@ -81,8 +82,9 @@ InstructionWalker normalization::handleContainer(
         {
             CPPLOG_LAZY(
                 logging::Level::DEBUG, log << "Rewriting move from container " << move->to_string() << logging::endl);
-            it = copyVector(method, it, move->getOutput().value(), move->getSource());
-            it.erase();
+            auto tmp = method.addNewLocal(move->getSource().type, "%container");
+            it = insertCopyVector(method, it, tmp, move->getSource());
+            move->setArgument(0, std::move(tmp));
             // don't skip next instruction
             it.previousInBlock();
         }
@@ -110,7 +112,7 @@ InstructionWalker normalization::handleContainer(
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Rewriting operation with container-input " << op->to_string() << logging::endl);
             const Value tmpVal = method.addNewLocal(op->getFirstArg().type, "%container");
-            it = copyVector(method, it, tmpVal, op->getFirstArg());
+            it = insertCopyVector(method, it, tmpVal, op->getFirstArg());
             op->setArgument(0, std::move(tmpVal));
             // don't skip next instruction
             it.previousInBlock();
@@ -120,7 +122,7 @@ InstructionWalker normalization::handleContainer(
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Rewriting operation with container-input " << op->to_string() << logging::endl);
             const Value tmpVal = method.addNewLocal(op->assertArgument(1).type, "%container");
-            it = copyVector(method, it, tmpVal, op->assertArgument(1));
+            it = insertCopyVector(method, it, tmpVal, op->assertArgument(1));
             op->setArgument(1, std::move(tmpVal));
             // don't skip next instruction
             it.previousInBlock();

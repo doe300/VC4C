@@ -634,6 +634,21 @@ void test_data::registerGeneralTests()
                 std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), std::numeric_limits<int>::min(),
                 std::numeric_limits<int>::min()})}});
 
+    registerTest(TestData{"OpenCL_CTS_add_sat_ushort4", DataFilter::VECTOR_OPERATIONS | DataFilter::INT_ARITHMETIC,
+        &OpenCL_CTS_integer_add_sat_cl_string, "", "test_add_sat_ushort4",
+        {toBufferParameter(std::vector<uint16_t>{std::numeric_limits<uint16_t>::min(),
+             std::numeric_limits<uint16_t>::max(), std::numeric_limits<uint16_t>::min(),
+             std::numeric_limits<uint16_t>::max(), 0x2F, 0x8C7F, 0x8C7F, 0x1902}),
+            toBufferParameter(
+                std::vector<uint16_t>{std::numeric_limits<uint16_t>::max(), 1, std::numeric_limits<uint16_t>::min(),
+                    std::numeric_limits<uint16_t>::max(), 0x6A, 0x8C7F, 0x1902, 0x1902}),
+            toBufferParameter(std::vector<uint16_t>(8))},
+        toDimensions(2),
+        {checkParameterEquals(2,
+            std::vector<uint16_t>{std::numeric_limits<uint16_t>::max(), std::numeric_limits<uint16_t>::max(),
+                std::numeric_limits<uint16_t>::min(), std::numeric_limits<uint16_t>::max(), 0x99,
+                std::numeric_limits<uint16_t>::max(), 0xA581, 0x3204})}});
+
     registerTest(
         TestData{"OpenCL_CTS_local_kernel_scope", DataFilter::MEMORY_ACCESS, &OpenCL_CTS_local_kernel_scope_cl_string,
             "", "test", {toBufferParameter(toRange<uint32_t>(0, 64)), toBufferParameter(std::vector<uint32_t>(8))},
