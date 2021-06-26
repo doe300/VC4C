@@ -328,21 +328,21 @@ void TestIntrinsicFunctions::testIntMultiplicationWithConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<int, int, 16>(code, newOptions, 31, std::multiplies<int>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<int, int, 16>(code, newOptions, 17, std::multiplies<int>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<int, int, 16>(code, newOptions, 12, std::multiplies<int>{},
@@ -359,21 +359,21 @@ void TestIntrinsicFunctions::testShortMultiplicationWithConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(short)31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<short, short, 16>(code, newOptions, 31, std::multiplies<short>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(short)17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<short, short, 16>(code, newOptions, 17, std::multiplies<short>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(short)12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<short, short, 16>(code, newOptions, 12, std::multiplies<short>{},
@@ -390,21 +390,21 @@ void TestIntrinsicFunctions::testCharMultiplicationWithConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(char)31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<char, char, 16>(code, newOptions, 31, std::multiplies<char>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(char)17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<char, char, 16>(code, newOptions, 17, std::multiplies<char>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(char)12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<char, char, 16>(code, newOptions, 12, std::multiplies<char>{},
@@ -422,21 +422,21 @@ void TestIntrinsicFunctions::testUnsignedIntMultiplicationWithConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned, unsigned, 16>(code, newOptions, 31, std::multiplies<unsigned>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned, unsigned, 16>(code, newOptions, 17, std::multiplies<unsigned>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned, unsigned, 16>(code, newOptions, 12, std::multiplies<unsigned>{},
@@ -454,7 +454,7 @@ void TestIntrinsicFunctions::testUnsignedShortMultiplicationWithConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(ushort)31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned short, unsigned short, 16>(code, newOptions, 31,
@@ -462,7 +462,7 @@ void TestIntrinsicFunctions::testUnsignedShortMultiplicationWithConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(ushort)17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned short, unsigned short, 16>(code, newOptions, 17,
@@ -470,7 +470,7 @@ void TestIntrinsicFunctions::testUnsignedShortMultiplicationWithConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(ushort)12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned short, unsigned short, 16>(code, newOptions, 12,
@@ -489,7 +489,7 @@ void TestIntrinsicFunctions::testUnsignedCharMultiplicationWithConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(uchar)31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned char, unsigned char, 16>(code, newOptions, 31,
@@ -497,7 +497,7 @@ void TestIntrinsicFunctions::testUnsignedCharMultiplicationWithConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(uchar)17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned char, unsigned char, 16>(code, newOptions, 17,
@@ -505,7 +505,7 @@ void TestIntrinsicFunctions::testUnsignedCharMultiplicationWithConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(uchar)12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned char, unsigned char, 16>(code, newOptions, 12,
@@ -524,21 +524,21 @@ void TestIntrinsicFunctions::testIntDivisionByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<int, int, 16>(code, newOptions, 31, std::divides<int>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<int, int, 16>(code, newOptions, 17, std::divides<int>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<int, int, 16>(code, newOptions, 12, std::divides<int>{},
@@ -555,21 +555,21 @@ void TestIntrinsicFunctions::testShortDivisionByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(short)31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<short, short, 16>(code, newOptions, 31, std::divides<short>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(short)17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<short, short, 16>(code, newOptions, 17, std::divides<short>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(short)12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<short, short, 16>(code, newOptions, 12, std::divides<short>{},
@@ -586,21 +586,21 @@ void TestIntrinsicFunctions::testCharDivisionByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(char)31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<char, char, 16>(code, newOptions, 31, std::divides<char>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(char)17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<char, char, 16>(code, newOptions, 17, std::divides<char>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(char)12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<char, char, 16>(code, newOptions, 12, std::divides<char>{},
@@ -617,21 +617,21 @@ void TestIntrinsicFunctions::testIntModuloByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<int, int, 16>(code, newOptions, 31, std::modulus<int>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<int, int, 16>(code, newOptions, 17, std::modulus<int>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<int, int, 16>(code, newOptions, 12, std::modulus<int>{},
@@ -648,21 +648,21 @@ void TestIntrinsicFunctions::testShortModuloByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(short)31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<short, short, 16>(code, newOptions, 31, std::modulus<short>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(short)17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<short, short, 16>(code, newOptions, 17, std::modulus<short>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(short)12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<short, short, 16>(code, newOptions, 12, std::modulus<short>{},
@@ -679,21 +679,21 @@ void TestIntrinsicFunctions::testCharModuloByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(char)31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<char, char, 16>(code, newOptions, 31, std::modulus<char>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(char)17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<char, char, 16>(code, newOptions, 17, std::modulus<char>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(char)12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<char, char, 16>(code, newOptions, 12, std::modulus<char>{},
@@ -711,21 +711,21 @@ void TestIntrinsicFunctions::testUnsignedIntDivisionByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned, unsigned, 16>(code, newOptions, 31, std::divides<unsigned>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned, unsigned, 16>(code, newOptions, 17, std::divides<unsigned>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned, unsigned, 16>(code, newOptions, 12, std::divides<unsigned>{},
@@ -743,7 +743,7 @@ void TestIntrinsicFunctions::testUnsignedShortDivisionByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(ushort)31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned short, unsigned short, 16>(code, newOptions, 31,
@@ -751,7 +751,7 @@ void TestIntrinsicFunctions::testUnsignedShortDivisionByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(ushort)17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned short, unsigned short, 16>(code, newOptions, 17,
@@ -759,7 +759,7 @@ void TestIntrinsicFunctions::testUnsignedShortDivisionByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(ushort)12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned short, unsigned short, 16>(code, newOptions, 12,
@@ -778,7 +778,7 @@ void TestIntrinsicFunctions::testUnsignedCharDivisionByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(uchar)31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned char, unsigned char, 16>(code, newOptions, 31,
@@ -786,7 +786,7 @@ void TestIntrinsicFunctions::testUnsignedCharDivisionByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(uchar)17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned char, unsigned char, 16>(code, newOptions, 17,
@@ -794,7 +794,7 @@ void TestIntrinsicFunctions::testUnsignedCharDivisionByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(uchar)12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned char, unsigned char, 16>(code, newOptions, 12,
@@ -812,21 +812,21 @@ void TestIntrinsicFunctions::testUnsignedIntModuloByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned, unsigned, 16>(code, newOptions, 31, std::modulus<unsigned>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned, unsigned, 16>(code, newOptions, 17, std::modulus<unsigned>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned, unsigned, 16>(code, newOptions, 12, std::modulus<unsigned>{},
@@ -844,7 +844,7 @@ void TestIntrinsicFunctions::testUnsignedShortModuloByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(ushort)31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned short, unsigned short, 16>(code, newOptions, 31,
@@ -852,7 +852,7 @@ void TestIntrinsicFunctions::testUnsignedShortModuloByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(ushort)17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned short, unsigned short, 16>(code, newOptions, 17,
@@ -860,7 +860,7 @@ void TestIntrinsicFunctions::testUnsignedShortModuloByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(ushort)12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned short, unsigned short, 16>(code, newOptions, 12,
@@ -879,7 +879,7 @@ void TestIntrinsicFunctions::testUnsignedCharModuloByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(uchar)31";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned char, unsigned char, 16>(code, newOptions, 31,
@@ -887,7 +887,7 @@ void TestIntrinsicFunctions::testUnsignedCharModuloByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(uchar)17";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned char, unsigned char, 16>(code, newOptions, 17,
@@ -895,7 +895,7 @@ void TestIntrinsicFunctions::testUnsignedCharModuloByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=(uchar)12";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<unsigned char, unsigned char, 16>(code, newOptions, 12,
@@ -914,21 +914,21 @@ void TestIntrinsicFunctions::testFloatMultiplicationWithConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=31.0f";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<float, float, 16>(code, newOptions, 31.0f, std::multiplies<float>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=17.0f";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<float, float, 16>(code, newOptions, 17.0f, std::multiplies<float>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=12.0f";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<float, float, 16>(code, newOptions, 12.0f, std::multiplies<float>{},
@@ -947,7 +947,7 @@ void TestIntrinsicFunctions::testFloatDivisionByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant 2^x - 1
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=31.0f";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<float, float, 16, CompareULP<3>>(code, newOptions, 31.0f,
@@ -955,7 +955,7 @@ void TestIntrinsicFunctions::testFloatDivisionByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=17.0f";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<float, float, 16, CompareULP<3>>(code, newOptions, 17.0f,
@@ -963,7 +963,7 @@ void TestIntrinsicFunctions::testFloatDivisionByConstant()
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
     // constant non-prime
-    code.str("");
+    code = std::stringstream{};
     newOptions = options + " -DSOURCE=12.0f";
     compileBuffer(config, code, BINARY_OPERATION_SECOND_CONTANT, newOptions);
     testBinaryOperationWithSecondConstants<float, float, 16, CompareULP<3>>(code, newOptions, 12.0f,
@@ -1100,7 +1100,7 @@ void TestIntrinsicFunctions::testFtoi()
         code, options, [](float f) -> int { return static_cast<int>(f); },
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = generateInput<float, 1, int>(true)[0];
     options.append(" -DSOURCES=").append(std::to_string(in)).append("f");
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
@@ -1117,7 +1117,7 @@ void TestIntrinsicFunctions::testItof()
     testUnaryFunction<int, float, 1>(code, options, vc4c::RoundToZeroConversion<int, float>{},
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = generateInput<int, 1>(true)[0];
     options.append(" -DSOURCES=").append(std::to_string(in));
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
@@ -1135,7 +1135,7 @@ void TestIntrinsicFunctions::testClz()
     testUnaryFunction<int, int, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = generateInput<int, 1>(true)[0];
     options.append(" -DSOURCES=").append(std::to_string(in));
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
@@ -1153,7 +1153,7 @@ void TestIntrinsicFunctions::testSfuRsqrt()
     testUnaryFunction<float, float, 1, unsigned, CompareULP<8192>>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = generateInput<float, 1, unsigned>(false)[0];
     options.append(" -DSOURCES=").append(std::to_string(in)).append("f");
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
@@ -1169,7 +1169,7 @@ void TestIntrinsicFunctions::testSfuExp2()
     testUnaryFunction<float, float, 1, unsigned, CompareULP<8192>>(code, options, std::exp2f,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = generateInput<float, 1, unsigned>(false)[0];
     options.append(" -DSOURCES=").append(std::to_string(in)).append("f");
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
@@ -1184,7 +1184,7 @@ void TestIntrinsicFunctions::testSfuLog2()
     testUnaryFunction<float, float, 1, unsigned, CompareULP<8192>>(code, options, std::log2f,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = generateInput<float, 1, unsigned>(false)[0];
     options.append(" -DSOURCES=").append(std::to_string(in)).append("f");
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
@@ -1201,7 +1201,7 @@ void TestIntrinsicFunctions::testSfuRecip()
     testUnaryFunction<float, float, 1, unsigned, CompareULP<8192>>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = generateInput<float, 1, unsigned>(false)[0];
     options.append(" -DSOURCES=").append(std::to_string(in)).append("f");
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
@@ -1219,28 +1219,28 @@ void TestIntrinsicFunctions::testIsNaN()
     testUnaryFunction<float, int, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = std::numeric_limits<float>::quiet_NaN();
     auto newOptions = options + " -DSOURCES=NAN";
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, newOptions);
     testUnaryFunctionWithConstant<float, int>(code, newOptions, in, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     in = std::numeric_limits<float>::infinity();
     newOptions = options + " -DSOURCES=INFINITY";
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, newOptions);
     testUnaryFunctionWithConstant<float, int>(code, newOptions, in, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     in = std::numeric_limits<float>::max();
     newOptions = options + " -DSOURCES=" + std::to_string(in) + "f";
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, newOptions);
     testUnaryFunctionWithConstant<float, int>(code, newOptions, in, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     in = std::numeric_limits<float>::min();
     newOptions = options + " -DSOURCES=" + std::to_string(in) + "f";
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, newOptions);
@@ -1258,28 +1258,28 @@ void TestIntrinsicFunctions::testIsInfNaN()
     testUnaryFunction<float, int, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = std::numeric_limits<float>::quiet_NaN();
     auto newOptions = options + " -DSOURCES=NAN";
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, newOptions);
     testUnaryFunctionWithConstant<float, int>(code, newOptions, in, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     in = std::numeric_limits<float>::infinity();
     newOptions = options + " -DSOURCES=INFINITY";
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, newOptions);
     testUnaryFunctionWithConstant<float, int>(code, newOptions, in, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     in = std::numeric_limits<float>::max();
     newOptions = options + " -DSOURCES=" + std::to_string(in) + "f";
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, newOptions);
     testUnaryFunctionWithConstant<float, int>(code, newOptions, in, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     in = std::numeric_limits<float>::min();
     newOptions = options + " -DSOURCES=" + std::to_string(in) + "f";
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, newOptions);
@@ -1297,7 +1297,7 @@ void TestIntrinsicFunctions::testFmax()
     testBinaryFunction<float, float, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in0 = generateInput<float, 1>(true)[0];
     auto in1 = generateInput<float, 1>(true)[0];
     options.append(" -DSOURCES0=")
@@ -1319,7 +1319,7 @@ void TestIntrinsicFunctions::testFmin()
     testBinaryFunction<float, float, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in0 = generateInput<float, 1>(true)[0];
     auto in1 = generateInput<float, 1>(true)[0];
     options.append(" -DSOURCES0=")
@@ -1342,7 +1342,7 @@ void TestIntrinsicFunctions::testFmaxabs()
     testBinaryFunction<float, float, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in0 = generateInput<float, 1>(true)[0];
     auto in1 = generateInput<float, 1>(true)[0];
     options.append(" -DSOURCES0=")
@@ -1364,7 +1364,7 @@ void TestIntrinsicFunctions::testFminabs()
     testBinaryFunction<float, float, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in0 = generateInput<float, 1>(true)[0];
     auto in1 = generateInput<float, 1>(true)[0];
     options.append(" -DSOURCES0=")
@@ -1390,7 +1390,7 @@ void TestIntrinsicFunctions::testMax()
     testBinaryFunction<int, int, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in0 = generateInput<int, 1>(true)[0];
     auto in1 = generateInput<int, 1>(true)[0];
     options.append(" -DSOURCES0=").append(std::to_string(in0)).append(" -DSOURCES1=").append(std::to_string(in1));
@@ -1408,7 +1408,7 @@ void TestIntrinsicFunctions::testMin()
     testBinaryFunction<int, int, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in0 = generateInput<int, 1>(true)[0];
     auto in1 = generateInput<int, 1>(true)[0];
     options.append(" -DSOURCES0=").append(std::to_string(in0)).append(" -DSOURCES1=").append(std::to_string(in1));
@@ -1427,7 +1427,7 @@ void TestIntrinsicFunctions::testAnd()
     testBinaryFunction<short, int, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in0 = generateInput<short, 1>(true)[0];
     auto in1 = generateInput<short, 1>(true)[0];
     options.append(" -DSOURCES0=").append(std::to_string(in0)).append(" -DSOURCES1=").append(std::to_string(in1));
@@ -1447,7 +1447,7 @@ void TestIntrinsicFunctions::testMul24()
     testBinaryFunction<int, int, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in0 = generateInput<int, 1>(true)[0];
     auto in1 = generateInput<int, 1>(true)[0];
     options.append(" -DSOURCES0=").append(std::to_string(in0)).append(" -DSOURCES1=").append(std::to_string(in1));
@@ -1468,7 +1468,7 @@ void TestIntrinsicFunctions::testV8Adds()
     testBinaryFunction<unsigned, unsigned, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in0 = generateInput<unsigned, 1>(true)[0];
     auto in1 = generateInput<unsigned, 1>(true)[0];
     options.append(" -DSOURCES0=").append(std::to_string(in0)).append(" -DSOURCES1=").append(std::to_string(in1));
@@ -1489,7 +1489,7 @@ void TestIntrinsicFunctions::testV8Subs()
     testBinaryFunction<unsigned, unsigned, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in0 = generateInput<unsigned, 1>(true)[0];
     auto in1 = generateInput<unsigned, 1>(true)[0];
     options.append(" -DSOURCES0=").append(std::to_string(in0)).append(" -DSOURCES1=").append(std::to_string(in1));
@@ -1510,7 +1510,7 @@ void TestIntrinsicFunctions::testV8Min()
     testBinaryFunction<unsigned, unsigned, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in0 = generateInput<unsigned, 1>(true)[0];
     auto in1 = generateInput<unsigned, 1>(true)[0];
     options.append(" -DSOURCES0=").append(std::to_string(in0)).append(" -DSOURCES1=").append(std::to_string(in1));
@@ -1531,7 +1531,7 @@ void TestIntrinsicFunctions::testV8Max()
     testBinaryFunction<unsigned, unsigned, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in0 = generateInput<unsigned, 1>(true)[0];
     auto in1 = generateInput<unsigned, 1>(true)[0];
     options.append(" -DSOURCES0=").append(std::to_string(in0)).append(" -DSOURCES1=").append(std::to_string(in1));
@@ -1552,7 +1552,7 @@ void TestIntrinsicFunctions::testBitcastUnsignedChar()
     testUnaryFunction<int, unsigned char, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = generateInput<int, 1>(true)[0];
     options.append(" -DSOURCES=").append(std::to_string(in));
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
@@ -1569,7 +1569,7 @@ void TestIntrinsicFunctions::testBitcastChar()
     testUnaryFunction<int, char, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = generateInput<int, 1>(true)[0];
     options.append(" -DSOURCES=").append(std::to_string(in));
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
@@ -1588,7 +1588,7 @@ void TestIntrinsicFunctions::testBitcastUnsignedShort()
     testUnaryFunction<int, unsigned short, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = generateInput<int, 1>(true)[0];
     options.append(" -DSOURCES=").append(std::to_string(in));
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
@@ -1605,7 +1605,7 @@ void TestIntrinsicFunctions::testBitcastShort()
     testUnaryFunction<int, short, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = generateInput<int, 1>(true)[0];
     options.append(" -DSOURCES=").append(std::to_string(in));
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
@@ -1622,7 +1622,7 @@ void TestIntrinsicFunctions::testBitcastUnsignedInt()
     testUnaryFunction<int, unsigned, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = generateInput<int, 1>(true)[0];
     options.append(" -DSOURCES=").append(std::to_string(in));
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
@@ -1639,7 +1639,7 @@ void TestIntrinsicFunctions::testBitcastInt()
     testUnaryFunction<unsigned, int, 1>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = generateInput<unsigned, 1>(true)[0];
     options.append(" -DSOURCES=").append(std::to_string(in));
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);
@@ -1671,7 +1671,7 @@ void TestIntrinsicFunctions::testBitcastFloat()
     testUnaryFunction<int, float, 1, int, EqualNaN>(code, options, func,
         std::bind(&TestIntrinsicFunctions::onMismatch, this, std::placeholders::_1, std::placeholders::_2));
 
-    code.str("");
+    code = std::stringstream{};
     auto in = generateInput<int, 1>(true)[0];
     options.append(" -DSOURCES=").append(std::to_string(in));
     compileBuffer(config, code, UNARY_FUNCTION_CONSTANT, options);

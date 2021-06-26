@@ -71,7 +71,7 @@ struct EmulationRunner final : public test_data::TestRunner, protected TestCompi
     test_data::Result compile(const std::string& sourceCode, const std::string& options) override
     try
     {
-        currentBinary.str("");
+        currentBinary = std::stringstream{};
         auto it = compilationCache.find(sourceCode + options);
         if(it != compilationCache.end())
             currentBinary.str(it->second);

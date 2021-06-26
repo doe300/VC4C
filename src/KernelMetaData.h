@@ -7,8 +7,8 @@
 #ifndef VC4C_KERNEL_METADATA_H
 #define VC4C_KERNEL_METADATA_H
 
-#include "Bitfield.h"
 #include "config.h"
+#include "shared/BinaryHeader.h"
 
 #include <algorithm>
 #include <array>
@@ -17,36 +17,6 @@
 
 namespace vc4c
 {
-    /**
-     * Contains information about the implicit UNIFORMs (work-group info, etc.) actually used in the kernel
-     */
-    struct KernelUniforms : public Bitfield<uint64_t>
-    {
-        BITFIELD_ENTRY(WorkDimensionsUsed, bool, 0, Bit)
-        BITFIELD_ENTRY(LocalSizesUsed, bool, 1, Bit)
-        BITFIELD_ENTRY(LocalIDsUsed, bool, 2, Bit)
-        BITFIELD_ENTRY(NumGroupsXUsed, bool, 3, Bit)
-        BITFIELD_ENTRY(NumGroupsYUsed, bool, 4, Bit)
-        BITFIELD_ENTRY(NumGroupsZUsed, bool, 5, Bit)
-        BITFIELD_ENTRY(GroupIDXUsed, bool, 6, Bit)
-        BITFIELD_ENTRY(GroupIDYUsed, bool, 7, Bit)
-        BITFIELD_ENTRY(GroupIDZUsed, bool, 8, Bit)
-        BITFIELD_ENTRY(GlobalOffsetXUsed, bool, 9, Bit)
-        BITFIELD_ENTRY(GlobalOffsetYUsed, bool, 10, Bit)
-        BITFIELD_ENTRY(GlobalOffsetZUsed, bool, 11, Bit)
-        BITFIELD_ENTRY(GlobalDataAddressUsed, bool, 12, Bit)
-        BITFIELD_ENTRY(UniformAddressUsed, bool, 13, Bit)
-        BITFIELD_ENTRY(MaxGroupIDXUsed, bool, 14, Bit)
-        BITFIELD_ENTRY(MaxGroupIDYUsed, bool, 15, Bit)
-        BITFIELD_ENTRY(MaxGroupIDZUsed, bool, 16, Bit)
-
-        inline size_t countUniforms() const
-        {
-            std::bitset<64> tmp(value);
-            return tmp.count();
-        }
-    };
-
     /**
      * Container for additional meta-data of kernel-functions
      */

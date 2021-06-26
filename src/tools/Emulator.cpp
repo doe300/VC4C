@@ -36,7 +36,7 @@ static std::mutex instrumentationLock;
 
 static constexpr MemoryAddress INSTRUCTION_BASE_ADDRESS{0x10000000};
 
-extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, StableList<Global>& globals,
+extern void extractBinary(std::istream& binary, ModuleHeader& module, StableList<Global>& globals,
     std::vector<qpu_asm::Instruction>& instructions);
 
 class vc4c::tools::EmulationClock
@@ -2701,31 +2701,31 @@ std::string InstrumentationResult::to_string() const
 
     tmp << "execs: " << numExecutions;
     parts.emplace_back(tmp.str());
-    tmp.str("");
+    tmp = std::stringstream{};
 
     if(numAddALUExecuted + numAddALUSkipped > 0)
     {
         tmp << "add: " << numAddALUExecuted << "/" << numAddALUSkipped;
         parts.emplace_back(tmp.str());
-        tmp.str("");
+        tmp = std::stringstream{};
     }
     if(numMulALUExecuted + numMulALUSkipped > 0)
     {
         tmp << "mul: " << numMulALUExecuted << "/" << numMulALUSkipped;
         parts.emplace_back(tmp.str());
-        tmp.str("");
+        tmp = std::stringstream{};
     }
     if(numBranchTaken > 0)
     {
         tmp << "br: " << numBranchTaken;
         parts.emplace_back(tmp.str());
-        tmp.str("");
+        tmp = std::stringstream{};
     }
     if(numStalls > 0)
     {
         tmp << "stall: " << numStalls;
         parts.emplace_back(tmp.str());
-        tmp.str("");
+        tmp = std::stringstream{};
     }
 
     return vc4c::to_string<std::string>(parts);
@@ -2734,7 +2734,7 @@ LCOV_EXCL_STOP
 
 EmulationResult tools::emulate(const EmulationData& data)
 {
-    qpu_asm::ModuleInfo module;
+    ModuleHeader module;
     StableList<Global> globals;
     std::vector<qpu_asm::Instruction> instructions;
     if(data.module.second != nullptr)
@@ -2746,40 +2746,40 @@ EmulationResult tools::emulate(const EmulationData& data)
     }
     if(instructions.empty())
         throw CompilationError(CompilationStep::GENERAL, "Extracted module has no instructions!");
-    if(module.kernelInfos.empty())
+    if(module.kernels.empty())
         throw CompilationError(CompilationStep::GENERAL, "Extracted module has no kernels!");
 
-    auto kernelInfo = std::find_if(module.kernelInfos.begin(), module.kernelInfos.end(),
-        [&data](const qpu_asm::KernelInfo& info) -> bool { return info.name == data.kernelName; });
-    if(data.kernelName.empty() && module.kernelInfos.size() == 1)
-        kernelInfo = module.kernelInfos.begin();
-    if(kernelInfo == module.kernelInfos.end())
-        throw CompilationError(CompilationStep::GENERAL, "Failed to find kernel-info for kernel", data.kernelName);
+    auto kernel = std::find_if(module.kernels.begin(), module.kernels.end(),
+        [&data](const auto& kernel) -> bool { return kernel.name == data.kernelName; });
+    if(data.kernelName.empty() && module.kernels.size() == 1)
+        kernel = module.kernels.begin();
+    if(kernel == module.kernels.end())
+        throw CompilationError(CompilationStep::GENERAL, "Failed to find kernel header for kernel", data.kernelName);
     // Count number of direct parameter words (e.g. also for literal vectors)
-    auto numKernelWords = std::accumulate(kernelInfo->parameters.begin(), kernelInfo->parameters.end(), 0u,
-        [](unsigned u, const qpu_asm::ParamInfo& param) -> unsigned { return u + param.getVectorElements(); });
+    auto numKernelWords = std::accumulate(kernel->parameters.begin(), kernel->parameters.end(), 0u,
+        [](unsigned u, const auto& param) -> unsigned { return u + param.getVectorElements(); });
     if(data.parameter.size() != numKernelWords)
         throw CompilationError(CompilationStep::GENERAL,
             "The number of parameters specified (" + std::to_string(data.parameter.size()) +
                 ") does not match the number of kernel arguments (" +
-                std::to_string(static_cast<unsigned>(kernelInfo->getParamCount())) + ')');
+                std::to_string(static_cast<unsigned>(kernel->getParamCount())) + ')');
 
     MemoryAddress uniformAddress{};
     MemoryAddress globalDataAddress{};
     std::vector<MemoryAddress> paramAddresses;
     Memory mem(fillMemory(globals, data, uniformAddress, globalDataAddress, paramAddresses));
 
-    auto mergeFactor = std::max(kernelInfo->workItemMergeFactor, uint8_t{1});
+    auto mergeFactor = std::max(kernel->workItemMergeFactor, uint8_t{1});
     auto uniformAddresses = buildUniforms(
-        mem, uniformAddress, paramAddresses, data.workGroup, globalDataAddress, kernelInfo->uniformsUsed, mergeFactor);
+        mem, uniformAddress, paramAddresses, data.workGroup, globalDataAddress, kernel->uniformsUsed, mergeFactor);
 
     if(!data.memoryDump.empty())
         dumpMemory(mem, data.memoryDump, uniformAddress, true);
 
-    InstrumentationResults instrumentation(kernelInfo->getLength().getValue());
+    InstrumentationResults instrumentation(kernel->getLength());
     bool status = emulate(instructions.begin() +
             static_cast<std::vector<qpu_asm::Instruction>::difference_type>(
-                (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue()),
+                (kernel->getOffset() - module.kernels.front().getOffset())),
         mem, uniformAddresses, instrumentation, data.maxEmulationCycles);
 
     if(!data.memoryDump.empty())
@@ -2805,9 +2805,9 @@ EmulationResult tools::emulate(const EmulationData& data)
     std::unique_ptr<std::ofstream> dumpInstrumentation;
     if(!data.instrumentationDump.empty())
         dumpInstrumentation = std::make_unique<std::ofstream>(data.instrumentationDump);
-    std::size_t baseIndex = (kernelInfo->getOffset() - module.kernelInfos.front().getOffset()).getValue();
-    result.instrumentation.reserve(static_cast<std::size_t>(kernelInfo->getLength().getValue()));
-    for(std::size_t i = 0; i < kernelInfo->getLength().getValue(); ++i)
+    std::size_t baseIndex = (kernel->getOffset() - module.kernels.front().getOffset());
+    result.instrumentation.reserve(kernel->getLength());
+    for(std::size_t i = 0; i < kernel->getLength(); ++i)
     {
         auto& it = instructions.at(baseIndex + i);
         result.instrumentation.emplace_back(instrumentation.at(i));

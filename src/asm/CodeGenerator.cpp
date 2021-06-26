@@ -214,7 +214,7 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
 
 std::size_t CodeGenerator::writeOutput(std::ostream& stream)
 {
-    ModuleInfo moduleInfo;
+    ModuleHeader moduleHeader;
 
     std::size_t maxStackSize = 0;
     for(const auto& m : module)
@@ -222,31 +222,32 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
     if(maxStackSize / sizeof(uint64_t) > std::numeric_limits<uint16_t>::max() || maxStackSize % sizeof(uint64_t) != 0)
         throw CompilationError(
             CompilationStep::CODE_GENERATION, "Stack-frame has unsupported size of", std::to_string(maxStackSize));
-    moduleInfo.setStackFrameSize(Word(Byte(maxStackSize)));
+    moduleHeader.setStackFrameSize(maxStackSize / sizeof(uint64_t));
 
     std::size_t numBytes = 0;
     // initial offset is zero
     std::size_t offset = 0;
     if(config.writeKernelInfo)
     {
-        moduleInfo.kernelInfos.reserve(allInstructions.size());
-        // generate kernel-infos
+        moduleHeader.kernels.reserve(allInstructions.size());
+        // generate kernel headers
         for(const auto& pair : allInstructions)
         {
-            moduleInfo.addKernelInfo(getKernelInfos(*pair.first, offset, pair.second.size()));
+            moduleHeader.addKernel(createKernelHeader(*pair.first, offset, pair.second.size()));
             offset += pair.second.size();
         }
         // add global offset (size of  header)
         std::ostringstream dummyStream;
-        offset = moduleInfo.write(dummyStream, config.outputMode, module.globalData, Byte(maxStackSize));
+        offset = writeModule(dummyStream, moduleHeader, config.outputMode, module.globalData, Byte(maxStackSize));
 
-        for(KernelInfo& info : moduleInfo.kernelInfos)
-            info.setOffset(info.getOffset() + Word(offset));
+        for(auto& kernel : moduleHeader.kernels)
+            kernel.setOffset(kernel.getOffset() + offset);
     }
     // prepend module header to output
-    // also write, if writeKernelInfo is not set, since global-data is written in here too
+    // also write, if writeKernelHeader is not set, since global-data is written in here too
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Writing module header..." << logging::endl);
-    numBytes += moduleInfo.write(stream, config.outputMode, module.globalData, Byte(maxStackSize)) * sizeof(uint64_t);
+    numBytes +=
+        writeModule(stream, moduleHeader, config.outputMode, module.globalData, Byte(maxStackSize)) * sizeof(uint64_t);
 
     for(const auto& pair : allInstructions)
     {

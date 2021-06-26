@@ -23,7 +23,7 @@ using namespace vc4c;
 extern TypeHolder GLOBAL_TYPE_HOLDER;
 
 LCOV_EXCL_START
-static std::vector<std::string> createUniformValues(const qpu_asm::KernelInfo& kernel)
+static std::vector<std::string> createUniformValues(const KernelHeader& kernel)
 {
     /* the order of implicit/explicit parameters needs to match the order of parameters in
      * optimizations::addStartStopSegment:
@@ -98,11 +98,10 @@ static std::string getUniform(unsigned index, const std::vector<std::string>& va
     return values[index];
 }
 
-static std::string annotateRegisters(
-    const qpu_asm::Instruction& instr, uint64_t index, const qpu_asm::ModuleInfo& module)
+static std::string annotateRegisters(const qpu_asm::Instruction& instr, uint64_t index, const ModuleHeader& module)
 {
     static FastMap<Register, std::string> currentRegisterMapping;
-    static const qpu_asm::KernelInfo* currentKernel = nullptr;
+    static const KernelHeader* currentKernel = nullptr;
     static unsigned currentUniformsRead = 0;
     static std::vector<std::string> currentUniformValues;
     if(instr.getSig() == SIGNAL_END_PROGRAM)
@@ -117,11 +116,11 @@ static std::string annotateRegisters(
     if(currentKernel == nullptr)
     {
         // determine the next kernel with the largest offset smaller than the current index as current kernel
-        for(const auto& kernel : module.kernelInfos)
+        for(const auto& kernel : module.kernels)
         {
-            if(kernel.getOffset().getValue() <= index)
+            if(kernel.getOffset() <= index)
             {
-                if(currentKernel && currentKernel->getOffset().getValue() > kernel.getOffset().getValue())
+                if(currentKernel && currentKernel->getOffset() > kernel.getOffset())
                     continue;
                 currentKernel = &kernel;
             }
@@ -215,106 +214,81 @@ static std::string annotateRegisters(
 }
 LCOV_EXCL_STOP
 
-static std::string readString(std::istream& binary, uint64_t stringLength)
-{
-    std::array<char, 1024> buffer = {0};
-
-    binary.read(buffer.data(), static_cast<std::streamsize>(stringLength));
-    std::string name(buffer.data(), static_cast<std::size_t>(stringLength));
-    uint64_t numPaddingBytes = Byte(stringLength).getPaddingTo(sizeof(uint64_t));
-    // skip padding after kernel name
-    binary.read(buffer.data(), static_cast<std::streamsize>(numPaddingBytes));
-
-    return name;
-}
-
-void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, StableList<Global>& globals,
+void extractBinary(std::istream& binary, ModuleHeader& module, StableList<Global>& globals,
     std::vector<qpu_asm::Instruction>& instructions)
 {
-    // skip magic number
-    binary.seekg(8);
+    // read whole stream into 64-bit words
+    binary.seekg(0, binary.end);
+    auto numBytes = static_cast<std::size_t>(std::max(binary.tellg(), std::streampos{8192}));
+    binary.seekg(0);
+    binary.clear();
+
+    std::vector<uint64_t> binaryData;
+    binaryData.reserve(numBytes / sizeof(uint64_t));
+    uint64_t tmp = 0;
+    while(binary.read(reinterpret_cast<char*>(&tmp), sizeof(tmp)))
+        binaryData.push_back(tmp);
+
+    module = ModuleHeader::fromBinaryData(binaryData);
 
     uint64_t initialInstructionOffset = std::numeric_limits<uint64_t>::max();
-    uint64_t totalInstructions = 0;
-    binary.read(reinterpret_cast<char*>(&moduleInfo.value), sizeof(moduleInfo.value));
+    std::size_t totalInstructions = 0;
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Extracted module with " << moduleInfo.getInfoCount() << " kernels, " << moduleInfo.getGlobalDataSize()
-            << " words of global data and " << moduleInfo.getStackFrameSize() << " words of stack-frames"
-            << logging::endl);
+        log << "Extracted module with " << module.getKernelCount() << " kernels, " << module.getGlobalDataSize()
+            << " words of global data and " << module.getStackFrameSize() << " words of stack-frames" << logging::endl);
 
-    for(uint16_t k = 0; k < moduleInfo.getInfoCount(); ++k)
+    for(const auto& kernel : module.kernels)
     {
-        qpu_asm::KernelInfo kernelInfo(4);
-        binary.read(reinterpret_cast<char*>(&kernelInfo.value), sizeof(kernelInfo.value));
-        binary.read(reinterpret_cast<char*>(kernelInfo.workGroupSize.data()), sizeof(kernelInfo.workGroupSize));
-        binary.read(reinterpret_cast<char*>(&kernelInfo.workItemMergeFactor), sizeof(kernelInfo.workItemMergeFactor));
-        char unusedByte = 0;
-        binary.read(&unusedByte, sizeof(unusedByte));
-        binary.read(reinterpret_cast<char*>(&kernelInfo.uniformsUsed.value), sizeof(kernelInfo.uniformsUsed.value));
-        kernelInfo.name = readString(binary, kernelInfo.getNameLength().getValue());
-        totalInstructions += kernelInfo.getLength().getValue();
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Extracted kernel '" << kernelInfo.name << "' with " << kernelInfo.getParamCount() << " parameters"
-                << logging::endl);
+        totalInstructions += kernel.getLength();
+        initialInstructionOffset = std::min(initialInstructionOffset, kernel.getOffset());
 
-        for(uint16_t p = 0; p < kernelInfo.getParamCount(); ++p)
-        {
-            qpu_asm::ParamInfo paramInfo;
-            binary.read(reinterpret_cast<char*>(&paramInfo.value), sizeof(paramInfo.value));
-            paramInfo.name = readString(binary, paramInfo.getNameLength().getValue());
-            paramInfo.typeName = readString(binary, paramInfo.getTypeNameLength().getValue());
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Extracted parameter '" << paramInfo.typeName << " " << paramInfo.name << logging::endl);
-            kernelInfo.parameters.push_back(paramInfo);
-        }
-        moduleInfo.kernelInfos.push_back(kernelInfo);
-        initialInstructionOffset = std::min(initialInstructionOffset, kernelInfo.getOffset().getValue());
+        CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
+            logging::debug() << "Extracted kernel '" << kernel.name << "' with " << kernel.getParamCount()
+                             << " parameters and " << kernel.getLength() << " instructions starting at offset "
+                             << kernel.getOffset() << logging::endl;
+            for(const auto& param : kernel.parameters)
+                logging::debug() << "Extracted parameter '" << param.typeName << " " << param.name << logging::endl;
+        });
     }
 
-    // skip zero-word between kernels and globals
-    binary.seekg(sizeof(uint64_t), std::ios_base::cur);
-
-    if(moduleInfo.getGlobalDataSize().getValue() > 0)
+    if(module.getGlobalDataSize() > 0)
     {
         // since we don't know the number, sizes and types of the original globals, we build a single global containing
         // all the data
-        std::vector<uint32_t> tmp;
-        tmp.resize(static_cast<std::size_t>(moduleInfo.getGlobalDataSize().getValue() * 2));
-        binary.read(reinterpret_cast<char*>(tmp.data()),
-            static_cast<std::streamsize>(moduleInfo.getGlobalDataSize().toBytes().getValue()));
+        auto num32BitWords = module.getGlobalDataSize() * 2;
 
-        const DataType type = DataType(GLOBAL_TYPE_HOLDER.createArrayType(
-            TYPE_INT32, static_cast<unsigned>(moduleInfo.getGlobalDataSize().getValue()) * 2));
+        const DataType type =
+            DataType(GLOBAL_TYPE_HOLDER.createArrayType(TYPE_INT32, static_cast<unsigned>(num32BitWords)));
         std::vector<CompoundConstant> elements;
-        elements.reserve(tmp.size());
-        for(uint32_t t : tmp)
+        elements.reserve(num32BitWords);
+        for(std::size_t i = 0; i < module.getGlobalDataSize(); ++i)
+        {
             // words are already in little endian
-            elements.emplace_back(TYPE_INT32, Literal(t));
+            auto word = binaryData[module.getGlobalDataOffset() + i];
+            elements.emplace_back(TYPE_INT32, Literal(static_cast<unsigned>(word & 0xFFFFFFFF)));
+            elements.emplace_back(TYPE_INT32, Literal(static_cast<unsigned>((word >> 32) & 0xFFFFFFFF)));
+        }
 
         globals.emplace_back("globalData", DataType(GLOBAL_TYPE_HOLDER.createPointerType(type, AddressSpace::GLOBAL)),
             CompoundConstant(type, std::move(elements)), false);
 
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Extracted " << moduleInfo.getGlobalDataSize() << " words of global data" << logging::endl);
+            log << "Extracted " << module.getGlobalDataSize() << " words of global data" << logging::endl);
     }
-
-    // skip zero-word between globals and kernel-code
-    binary.seekg(sizeof(uint64_t), std::ios_base::cur);
 
     // the remainder is kernel-code
     // we don't need to associate it to any particular kernel
-    instructions.reserve(static_cast<std::size_t>(totalInstructions));
+    instructions.reserve(totalInstructions);
 
     for(uint64_t i = initialInstructionOffset; i < totalInstructions + initialInstructionOffset; ++i)
     {
-        uint64_t tmp64 = 0;
-        binary.read(reinterpret_cast<char*>(&tmp64), sizeof(tmp64));
+        uint64_t tmp64 = binaryData[i];
         qpu_asm::Instruction instr(tmp64);
         if(!instr.isValidInstruction())
             throw CompilationError(CompilationStep::GENERAL, "Unrecognized instruction", std::to_string(tmp64));
         instructions.emplace_back(instr);
         logging::logLazy(logging::Level::DEBUG, [&](std::wostream& os) {
-            os << instr.toASMString() << annotateRegisters(instr, i, moduleInfo) << logging::endl;
+            os << instr.toASMString() << annotateRegisters(instr, i, module) << logging::endl;
         });
     }
 
@@ -322,11 +296,10 @@ void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, Stable
         log << "Extracted " << totalInstructions << " machine-code instructions" << logging::endl);
 }
 
-static std::size_t generateOutput(std::ostream& stream, qpu_asm::ModuleInfo& moduleInfo,
-    const StableList<Global>& globals, const std::vector<qpu_asm::Instruction>& instructions,
-    const OutputMode outputMode)
+static std::size_t generateOutput(std::ostream& stream, ModuleHeader& module, const StableList<Global>& globals,
+    const std::vector<qpu_asm::Instruction>& instructions, const OutputMode outputMode)
 {
-    std::size_t numBytes = moduleInfo.write(stream, outputMode, globals, Byte(0)) * sizeof(uint64_t);
+    std::size_t numBytes = qpu_asm::writeModule(stream, module, outputMode, globals, Byte(0)) * sizeof(uint64_t);
 
     for(const auto& instr : instructions)
     {
@@ -359,12 +332,12 @@ std::size_t vc4c::disassembleModule(std::istream& binary, std::ostream& output, 
         return 0;
     }
 
-    qpu_asm::ModuleInfo moduleInfo;
+    ModuleHeader module;
     StableList<Global> globals;
     std::vector<qpu_asm::Instruction> instructions;
-    extractBinary(binary, moduleInfo, globals, instructions);
+    extractBinary(binary, module, globals, instructions);
 
-    return generateOutput(output, moduleInfo, globals, instructions, outputMode);
+    return generateOutput(output, module, globals, instructions, outputMode);
 }
 
 std::size_t vc4c::disassembleCodeOnly(

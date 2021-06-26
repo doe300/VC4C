@@ -20,160 +20,20 @@ using namespace vc4c::qpu_asm;
 
 // TODO can also remove address/uniform for lowered parameter on both sides!
 
-static void writeStream(std::ostream& stream, const std::array<uint8_t, 8>& buf, const OutputMode mode)
+static void writeStream(std::ostream& stream, uint64_t value, const OutputMode mode)
 {
     if(mode == OutputMode::BINARY)
     {
-        stream.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
+        stream.write(reinterpret_cast<const char*>(&value), static_cast<std::streamsize>(sizeof(value)));
     }
     else if(mode == OutputMode::HEX)
     {
-        const uint64_t binary = *reinterpret_cast<const uint64_t*>(buf.data());
         std::array<char, 64> buffer{};
-        snprintf(buffer.data(), buffer.size(), "0x%08x, 0x%08x, ", static_cast<uint32_t>(binary & 0xFFFFFFFFLL),
-            static_cast<uint32_t>((binary & 0xFFFFFFFF00000000LL) >> 32));
+        snprintf(buffer.data(), buffer.size(), "0x%08x, 0x%08x, ", static_cast<uint32_t>(value & 0xFFFFFFFFLL),
+            static_cast<uint32_t>((value & 0xFFFFFFFF00000000LL) >> 32));
         stream << std::string(buffer.data()) << std::endl;
     }
 }
-
-static NODISCARD std::size_t copyName(
-    std::ostream& stream, const std::string& name, const OutputMode mode, std::size_t bytesInFirstBlock = 8)
-{
-    std::array<uint8_t, 8> buf{};
-    std::size_t numWords = 0;
-    for(std::size_t i = 0; i < name.size(); i += buf.size())
-    {
-        const std::size_t bytesInBlock = i == 0 ? bytesInFirstBlock : buf.size();
-        std::size_t l = std::min(name.size() - i, bytesInBlock);
-        // copy name in multiples of 8 byte
-        memcpy(buf.data(), name.data() + i, l);
-        // pad with zeroes
-        memset(buf.data() + l, '\0', bytesInBlock - l);
-        writeStream(stream, buf, mode);
-        ++numWords;
-    }
-    return numWords;
-}
-
-LCOV_EXCL_START
-std::string ParamInfo::to_string() const
-{
-    // address space
-    return std::string((getPointer() && getAddressSpace() == AddressSpace::CONSTANT) ? "__constant " : "") +
-        std::string((getPointer() && getAddressSpace() == AddressSpace::GLOBAL) ? "__global " : "") +
-        std::string((getPointer() && getAddressSpace() == AddressSpace::LOCAL) ? "__local " : "") +
-        std::string((getPointer() && getAddressSpace() == AddressSpace::PRIVATE) ? "__private " : "") +
-        // access qualifier
-        (getDecorations() != ParameterDecorations::NONE ? toString(getDecorations()) + " " : "") +
-        // type + name
-        ((typeName) + " ") + (name + " (") + (std::to_string(getSize()) + " B, ") +
-        std::to_string(getVectorElements()) + " items)" + (getLowered() ? " (lowered)" : "");
-}
-LCOV_EXCL_STOP
-
-std::size_t ParamInfo::write(std::ostream& stream, const OutputMode mode) const
-{
-    std::size_t numWords = 0;
-    std::array<uint8_t, 8> buf{};
-    if(mode == OutputMode::BINARY || mode == OutputMode::HEX)
-    {
-        *reinterpret_cast<uint64_t*>(buf.data()) = value;
-        writeStream(stream, buf, mode);
-        ++numWords;
-        numWords += copyName(stream, name, mode);
-        numWords += copyName(stream, typeName, mode);
-    }
-    return numWords;
-}
-
-KernelInfo::KernelInfo(const std::size_t& numParameters) : Bitfield(0), workGroupSize(), workItemMergeFactor(0)
-{
-    parameters.reserve(numParameters);
-    workGroupSize.fill(0);
-}
-
-std::size_t KernelInfo::write(std::ostream& stream, const OutputMode mode) const
-{
-    std::size_t numWords = 0;
-    if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)
-    {
-        const std::string s = to_string();
-        stream << "// " << s << std::endl;
-    }
-    if(mode == OutputMode::BINARY || mode == OutputMode::HEX)
-    {
-        std::array<uint8_t, 8> buf{};
-        *reinterpret_cast<uint64_t*>(buf.data()) = value;
-        writeStream(stream, buf, mode);
-        ++numWords;
-        memcpy(buf.data(), workGroupSize.data(), 6);
-        buf[6] = workItemMergeFactor;
-        buf[7] = 0;
-        writeStream(stream, buf, mode);
-        ++numWords;
-        *reinterpret_cast<uint64_t*>(buf.data()) = uniformsUsed.value;
-        writeStream(stream, buf, mode);
-        ++numWords;
-        numWords += copyName(stream, name, mode);
-        for(const ParamInfo& info : parameters)
-        {
-            // for each parameter, copy infos and name
-            numWords += info.write(stream, mode);
-        }
-    }
-    return numWords;
-}
-
-LCOV_EXCL_START
-std::string KernelInfo::to_string() const
-{
-    std::vector<std::string> uniformsSet;
-    if(uniformsUsed.getWorkDimensionsUsed())
-        uniformsSet.emplace_back("dims");
-    if(uniformsUsed.getLocalSizesUsed())
-        uniformsSet.emplace_back("lSize");
-    if(uniformsUsed.getLocalIDsUsed())
-        uniformsSet.emplace_back("lids");
-    if(uniformsUsed.getNumGroupsXUsed())
-        uniformsSet.emplace_back("numX");
-    if(uniformsUsed.getNumGroupsYUsed())
-        uniformsSet.emplace_back("numY");
-    if(uniformsUsed.getNumGroupsZUsed())
-        uniformsSet.emplace_back("numZ");
-    if(uniformsUsed.getGroupIDXUsed())
-        uniformsSet.emplace_back("gidX");
-    if(uniformsUsed.getGroupIDYUsed())
-        uniformsSet.emplace_back("gidY");
-    if(uniformsUsed.getGroupIDZUsed())
-        uniformsSet.emplace_back("gidZ");
-    if(uniformsUsed.getGlobalOffsetXUsed())
-        uniformsSet.emplace_back("offX");
-    if(uniformsUsed.getGlobalOffsetYUsed())
-        uniformsSet.emplace_back("offY");
-    if(uniformsUsed.getGlobalOffsetZUsed())
-        uniformsSet.emplace_back("offZ");
-    if(uniformsUsed.getGlobalDataAddressUsed())
-        uniformsSet.emplace_back("global");
-    if(uniformsUsed.getUniformAddressUsed())
-        uniformsSet.emplace_back("unifAddr");
-    if(uniformsUsed.getMaxGroupIDXUsed())
-        uniformsSet.emplace_back("maxGidX");
-    if(uniformsUsed.getMaxGroupIDYUsed())
-        uniformsSet.emplace_back("maxGidY");
-    if(uniformsUsed.getMaxGroupIDZUsed())
-        uniformsSet.emplace_back("maxGidZ");
-    const std::string uniformsString =
-        uniformsSet.empty() ? "" : (std::string(" (") + vc4c::to_string<std::string>(uniformsSet) + ")");
-
-    auto mergeFactor =
-        workItemMergeFactor ? (" (work-item merge factor: " + std::to_string(workItemMergeFactor) + ")") : "";
-
-    return std::string("Kernel '") + (name + "' with ") +
-        (std::to_string(getLength().getValue()) + " instructions, offset ") +
-        (std::to_string(getOffset().getValue()) + ", with following parameters: ") +
-        ::to_string<ParamInfo>(parameters) + uniformsString + mergeFactor;
-}
-LCOV_EXCL_STOP
 
 static void toBinary(const CompoundConstant& val, std::vector<uint8_t>& queue)
 {
@@ -252,43 +112,47 @@ static std::vector<uint8_t> generateDataSegment(const StableList<Global>& global
     return bytes;
 }
 
-std::size_t ModuleInfo::write(
-    std::ostream& stream, const OutputMode mode, const StableList<Global>& globalData, Byte totalStackFrameSize)
+std::size_t qpu_asm::writeModule(std::ostream& stream, ModuleHeader& module, const OutputMode mode,
+    const StableList<Global>& globalData, Byte totalStackFrameSize)
 {
     std::size_t numWords = 0;
     if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)
     {
-        stream << "// Module with " << getInfoCount() << " kernels, global data with " << getGlobalDataSize()
-               << " words (64-bit each), starting at offset " << getGlobalDataOffset() << " words and "
-               << getStackFrameSize() << " words of stack-frame" << std::endl;
+        stream << "// Module with " << module.getKernelCount() << " kernels, global data with "
+               << module.getGlobalDataSize() << " words (64-bit each), starting at offset "
+               << module.getGlobalDataOffset() << " words and " << module.getStackFrameSize() << " words of stack-frame"
+               << std::endl;
     }
-    std::array<uint8_t, 8> buf{};
     if(mode == OutputMode::BINARY || mode == OutputMode::HEX)
     {
         // write magic number
-        reinterpret_cast<uint32_t*>(buf.data())[0] = QPUASM_MAGIC_NUMBER;
-        reinterpret_cast<uint32_t*>(buf.data())[1] = QPUASM_MAGIC_NUMBER;
-        writeStream(stream, buf, mode);
+        auto magic =
+            uint64_t{ModuleHeader::QPUASM_MAGIC_NUMBER} | (uint64_t{ModuleHeader::QPUASM_MAGIC_NUMBER} << uint64_t{32});
+        writeStream(stream, magic, mode);
         ++numWords;
 
         // write module info
-        *reinterpret_cast<uint64_t*>(buf.data()) = value;
-        writeStream(stream, buf, mode);
+        writeStream(stream, module.value, mode);
         ++numWords;
     }
     // write kernel-infos
-    for(const KernelInfo& info : kernelInfos)
+    for(const auto& kernel : module.kernels)
     {
-        CPPLOG_LAZY(logging::Level::DEBUG, log << info.to_string() << logging::endl);
-        numWords += info.write(stream, mode);
+        CPPLOG_LAZY(logging::Level::DEBUG, log << kernel.to_string() << logging::endl);
+        if(mode == OutputMode::HEX || mode == OutputMode::ASSEMBLER)
+            stream << "// " << kernel.to_string() << std::endl;
+        std::vector<uint64_t> buffer;
+        kernel.toBinaryData(buffer);
+        for(auto word : buffer)
+            writeStream(stream, word, mode);
+        numWords += buffer.size();
     }
     // write kernel-info-to-global-data delimiter
-    buf.fill(0);
-    writeStream(stream, buf, mode);
+    writeStream(stream, 0, mode);
     ++numWords;
 
     // update global data offset
-    setGlobalDataOffset(Word(numWords));
+    module.setGlobalDataOffset(numWords);
 
     // write global data, padded to multiples of 8 Byte
     switch(mode)
@@ -326,29 +190,28 @@ std::size_t ModuleInfo::write(
     }
 
     // update global data size
-    setGlobalDataSize(Word(numWords) - getGlobalDataOffset());
+    module.setGlobalDataSize(numWords - module.getGlobalDataOffset());
 
     // write global-data-to-kernel-instructions delimiter
-    buf.fill(0);
-    writeStream(stream, buf, mode);
+    writeStream(stream, 0, mode);
     ++numWords;
 
     return numWords;
 }
 
-KernelInfo qpu_asm::getKernelInfos(
+KernelHeader qpu_asm::createKernelHeader(
     const Method& method, const std::size_t initialOffset, const std::size_t numInstructions)
 {
-    KernelInfo info(method.parameters.size());
-    info.setOffset(Word(initialOffset));
-    info.setLength(Word(numInstructions));
-    info.setName(method.name[0] == '@' ? method.name.substr(1) : method.name);
-    info.workGroupSize.fill(0);
-    info.workItemMergeFactor = method.metaData.mergedWorkItemsFactor;
-    info.uniformsUsed = method.metaData.uniformsUsed;
+    KernelHeader kernel(method.parameters.size());
+    kernel.setOffset(initialOffset);
+    kernel.setLength(numInstructions);
+    kernel.setName(method.name[0] == '@' ? method.name.substr(1) : method.name);
+    kernel.workGroupSize.fill(0);
+    kernel.workItemMergeFactor = method.metaData.mergedWorkItemsFactor;
+    kernel.uniformsUsed = method.metaData.uniformsUsed;
     {
         for(std::size_t i = 0; i < method.metaData.workGroupSizes.size(); ++i)
-            info.workGroupSize[i] = static_cast<uint16_t>(method.metaData.workGroupSizes[i]);
+            kernel.workGroupSize[i] = static_cast<uint16_t>(method.metaData.workGroupSizes[i]);
         auto maxNumInstances = method.metaData.getMaximumInstancesCount();
         if(maxNumInstances > NUM_QPUS)
         {
@@ -373,38 +236,38 @@ KernelInfo qpu_asm::getKernelInfos(
         paramName = paramName.empty() ? param.name : paramName;
         auto paramType = param.type;
         std::string typeName = param.origTypeName;
-        ParamInfo paramInfo;
-        paramInfo.setSize(static_cast<uint16_t>(paramType.getInMemoryWidth()));
-        paramInfo.setPointer(paramType.getPointerType() || paramType.getImageType());
-        paramInfo.setImage(!!paramType.getImageType());
-        paramInfo.setDecorations(param.decorations);
-        paramInfo.setName(paramName[0] == '%' ? paramName.substr(1) : paramName);
-        paramInfo.setVectorElements(
+        ParamHeader paramHeader;
+        paramHeader.setSize(static_cast<uint16_t>(paramType.getInMemoryWidth()));
+        paramHeader.setPointer(paramType.getPointerType() || paramType.getImageType());
+        paramHeader.setImage(!!paramType.getImageType());
+        paramHeader.setDecorations(static_cast<uint16_t>(param.decorations));
+        paramHeader.setName(paramName[0] == '%' ? paramName.substr(1) : paramName);
+        paramHeader.setVectorElements(
             (paramType.getPointerType() ? static_cast<uint8_t>(1) : paramType.getVectorWidth()));
-        paramInfo.setAddressSpace(paramType.getPointerType() ?
+        paramHeader.setAddressSpace(paramType.getPointerType() ?
                 paramType.getPointerType()->addressSpace :
                 paramType.getImageType() ? AddressSpace::GLOBAL : AddressSpace::PRIVATE);
-        paramInfo.setFloatingType(paramType.isFloatingType());
+        paramHeader.setFloatingType(paramType.isFloatingType());
         // FIXME signedness is only recognized correctly for non-32 bit scalar types (e.g. (u)char, (u)short), not for
         // pointers or even vector-types
-        paramInfo.setSigned(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND));
-        paramInfo.setUnsigned(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND));
-        paramInfo.setTypeName(
-            typeName.empty() ? paramType.getTypeName(paramInfo.getSigned(), paramInfo.getUnsigned()) : typeName);
-        paramInfo.setLowered(param.isLowered);
+        paramHeader.setSigned(has_flag(param.decorations, ParameterDecorations::SIGN_EXTEND));
+        paramHeader.setUnsigned(has_flag(param.decorations, ParameterDecorations::ZERO_EXTEND));
+        paramHeader.setTypeName(
+            typeName.empty() ? paramType.getTypeName(paramHeader.getSigned(), paramHeader.getUnsigned()) : typeName);
+        paramHeader.setLowered(param.isLowered);
 
         if(paramType.getPointerType() && has_flag(param.decorations, ParameterDecorations::BY_VALUE))
         {
             // since the client passes the actual (struct) type to as argument, the VC4CL run-time needs to know that
             // size
-            paramInfo.setSize(static_cast<uint16_t>(paramType.getPointerType()->elementType.getInMemoryWidth()));
+            paramHeader.setSize(static_cast<uint16_t>(paramType.getPointerType()->elementType.getInMemoryWidth()));
             // we also need to fix-up the other decorations and qualifiers we modified:
             // direct struct parameters are always in the __private address space (since they are function-local
             // values), we just "moved" them to the __constant address space for a) better optimization and b) kernels
             // do not allow __private parameters
-            paramInfo.setAddressSpace(AddressSpace::PRIVATE);
+            paramHeader.setAddressSpace(AddressSpace::PRIVATE);
         }
-        info.addParameter(paramInfo);
+        kernel.addParameter(paramHeader);
     }
 
     if(!method.stackAllocations.empty())
@@ -420,5 +283,5 @@ KernelInfo qpu_asm::getKernelInfos(
         LCOV_EXCL_STOP
     }
 
-    return info;
+    return kernel;
 }

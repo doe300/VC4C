@@ -225,12 +225,6 @@ namespace vc4c
      * Number of QPUs on the VideoCore IV GPU
      */
     constexpr uint32_t NUM_QPUS{12};
-
-    /*
-     * Magic number to identify QPU assembler code (machine code)
-     */
-    constexpr uint32_t QPUASM_MAGIC_NUMBER = 0xDEADBEAF;
-    constexpr uint32_t QPUASM_NUMBER_MAGIC = 0xAFBEADDE;
 } // namespace vc4c
 
 #endif /* VC4C_CONFIG_H */

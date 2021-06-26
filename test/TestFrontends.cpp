@@ -24,7 +24,7 @@ using namespace vc4c;
 // TODO add some tests for the different types of (pre) compilation (module, PCH, etc., compile LLVM bin/text)
 
 extern void disassemble(const std::string& input, const std::string& output, const vc4c::OutputMode outputMode);
-extern void extractBinary(std::istream& binary, qpu_asm::ModuleInfo& moduleInfo, StableList<Global>& globals,
+extern void extractBinary(std::istream& binary, ModuleHeader& module, StableList<Global>& globals,
     std::vector<qpu_asm::Instruction>& instructions);
 
 TestFrontends::TestFrontends()
@@ -240,14 +240,14 @@ void TestFrontends::testKernelAttributes()
     std::stringstream ss(ATTRIBUTE_KERNEL);
     auto res = compile(ss, SourceType::OPENCL_C);
     // don't do anything here, just make sure it compiles
-    qpu_asm::ModuleInfo module;
+    ModuleHeader module;
     StableList<Global> globals;
     std::vector<qpu_asm::Instruction> instructions;
     extractBinary(res.first, module, globals, instructions);
 
-    TEST_ASSERT(!module.kernelInfos.empty())
-    TEST_ASSERT_EQUALS(2, module.kernelInfos[0].workGroupSize[0])
-    TEST_ASSERT_EQUALS(2, module.kernelInfos[0].workGroupSize[1])
-    TEST_ASSERT_EQUALS(3, module.kernelInfos[0].workGroupSize[2])
-    TEST_ASSERT_EQUALS(0, module.kernelInfos[0].workItemMergeFactor)
+    TEST_ASSERT(!module.kernels.empty())
+    TEST_ASSERT_EQUALS(2, module.kernels[0].workGroupSize[0])
+    TEST_ASSERT_EQUALS(2, module.kernels[0].workGroupSize[1])
+    TEST_ASSERT_EQUALS(3, module.kernels[0].workGroupSize[2])
+    TEST_ASSERT_EQUALS(0, module.kernels[0].workItemMergeFactor)
 }

@@ -18,4 +18,5 @@ target_sources(${VC4C_LIBRARY_NAME}
     ThreadPool.cpp
     Types.cpp
     Values.cpp
+    shared/BinaryHeader.cpp
 )
