@@ -176,7 +176,7 @@ static bool walkThroughDominatorSet(const CFGNode* currentNode, const FastSet<co
 FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(
     bool recursively, bool skipWorkGroupLoops, const analysis::DominatorTree* dominatorTree)
 {
-    PROFILE_START(findLoops);
+    PROFILE_SCOPE(findLoops);
     FastAccessList<ControlFlowLoop> loops;
 
     auto dominators = dominatorTree;
@@ -300,7 +300,6 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(
     });
     LCOV_EXCL_STOP
 
-    PROFILE_END(findLoops);
     return loops;
 }
 
@@ -355,7 +354,7 @@ static void markDepthFirst(const CFGNode& node, FastSet<const CFGNode*>& visited
 
 static void updateBackEdges(ControlFlowGraph& graph, CFGNode* startOfControlFlow)
 {
-    PROFILE_START(updateBackEdges);
+    PROFILE_SCOPE(updateBackEdges);
     // 1. mark with counter value after traversal of sub-tree
     FastMap<const CFGNode*, std::size_t> counters;
     counters.reserve(graph.getNodes().size());
@@ -393,8 +392,6 @@ static void updateBackEdges(ControlFlowGraph& graph, CFGNode* startOfControlFlow
             return true;
         });
     }
-
-    PROFILE_END(updateBackEdges);
 }
 
 void ControlFlowGraph::updateOnBlockInsertion(Method& method, BasicBlock& newBlock)
@@ -605,7 +602,7 @@ void ControlFlowGraph::updateOnBranchRemoval(
 
 std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
 {
-    PROFILE_START(createCFG);
+    PROFILE_SCOPE(createCFG);
     std::unique_ptr<ControlFlowGraph> graph(new ControlFlowGraph(method.size()));
 
     for(BasicBlock& bb : method)
@@ -640,8 +637,6 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
 #ifdef DEBUG_MODE
     logging::logLazy(logging::Level::DEBUG, [&]() { graph->dumpGraph("/tmp/vc4c-cfg.dot", false); });
 #endif
-
-    PROFILE_END(createCFG);
     return graph;
 }
 

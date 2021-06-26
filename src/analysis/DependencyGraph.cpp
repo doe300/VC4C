@@ -728,7 +728,7 @@ static void createThreadEndDependencies(DependencyGraph& graph, DependencyNode& 
 
 std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& block)
 {
-    PROFILE_START(createDependencyGraph);
+    PROFILE_SCOPE(createDependencyGraph);
     std::unique_ptr<DependencyGraph> graph(new DependencyGraph(block.size()));
 
     const intermediate::IntermediateInstruction* lastSettingOfFlags = nullptr;
@@ -901,7 +901,5 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
     });
     LCOV_EXCL_STOP
 #endif
-
-    PROFILE_END(createDependencyGraph);
     return graph;
 }

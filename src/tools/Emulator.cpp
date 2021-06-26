@@ -2098,7 +2098,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
     {
         if(aluInst->getUnpack().hasEffect())
         {
-            PROFILE_START(EmulateUnpack);
+            PROFILE_SCOPE(EmulateUnpack);
             if(aluInst->getUnpack().isUnpackFromR4())
             {
                 if(aluInst->getAddMultiplexA() == InputMultiplex::ACC4)
@@ -2113,7 +2113,6 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
                 if(aluInst->getAddMultiplexB() == InputMultiplex::REGA)
                     addIn1 = aluInst->getUnpack()(addIn1, addCode.acceptsFloat);
             }
-            PROFILE_END(EmulateUnpack);
         }
 
         PROFILE_START(EmulateOpcode);
@@ -2146,7 +2145,7 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
     {
         if(aluInst->getUnpack().hasEffect())
         {
-            PROFILE_START(EmulateUnpack);
+            PROFILE_SCOPE(EmulateUnpack);
             if(aluInst->getUnpack().isUnpackFromR4())
             {
                 if(aluInst->getMulMultiplexA() == InputMultiplex::ACC4)
@@ -2161,7 +2160,6 @@ bool QPU::executeALU(const qpu_asm::ALUInstruction* aluInst)
                 if(aluInst->getMulMultiplexB() == InputMultiplex::REGA)
                     mulIn1 = aluInst->getUnpack()(mulIn1, mulCode.acceptsFloat);
             }
-            PROFILE_END(EmulateUnpack);
         }
 
         PROFILE_START(EmulateOpcode);

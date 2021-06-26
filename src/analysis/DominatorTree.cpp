@@ -56,7 +56,7 @@ FastSet<const DominatorTreeNodeBase*> DominatorTreeNodeBase::getDominatedNodes()
 static std::unique_ptr<DominatorTree> createTreeInner(
     ControlFlowGraph& cfg, FastSet<const CFGNode*> (*getCandidates)(const CFGNode& node), const std::string& treeName)
 {
-    PROFILE_START(createDominatorTree);
+    PROFILE_SCOPE(createDominatorTree);
     std::unique_ptr<DominatorTree> tree(new DominatorTree(cfg.getNodes().size()));
 
     FastMap<const CFGNode*, FastSet<const CFGNode*>> predecessors;
@@ -175,8 +175,6 @@ static std::unique_ptr<DominatorTree> createTreeInner(
     });
     LCOV_EXCL_STOP
 #endif
-
-    PROFILE_END(createDominatorTree);
     return tree;
 }
 

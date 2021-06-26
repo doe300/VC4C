@@ -382,15 +382,13 @@ static void fixLocals(const InstructionWalker it, FastMap<const Local*, LocalUsa
         });
         if(auto op1 = comp->getFirstOp())
         {
-            PROFILE_START(updateFixedLocals);
+            PROFILE_SCOPE(updateFixedLocals);
             updateFixedLocals(*op1, lastWrittenLocal0, lastWrittenLocal1, blockedFiles, localUses);
-            PROFILE_END(updateFixedLocals);
         }
         if(auto op2 = comp->getSecondOp())
         {
-            PROFILE_START(updateFixedLocals);
+            PROFILE_SCOPE(updateFixedLocals);
             updateFixedLocals(*op2, lastWrittenLocal0, lastWrittenLocal1, blockedFiles, localUses);
-            PROFILE_END(updateFixedLocals);
         }
         // if both instructions for a combined instruction write to the same output, the output MUST be on an
         // accumulator
@@ -675,7 +673,7 @@ void GraphColoring::createGraph()
 static void processClosedSet(ColoredGraph& graph, FastSet<const Local*>& closedSet, FastSet<const Local*>& openSet,
     FastSet<const Local*>& errorSet)
 {
-    PROFILE_START(processClosedSet);
+    PROFILE_SCOPE(processClosedSet);
     while(!closedSet.empty())
     {
         // for every entry in closed-set, remove fixed register from all used-together neighbors
@@ -728,7 +726,6 @@ static void processClosedSet(ColoredGraph& graph, FastSet<const Local*>& closedS
         }
         closedSet.erase(node->key);
     }
-    PROFILE_END(processClosedSet);
 }
 
 bool GraphColoring::colorGraph()
@@ -1152,7 +1149,7 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
 
 bool GraphColoring::fixErrors()
 {
-    PROFILE_START(fixRegisterErrors);
+    PROFILE_SCOPE(fixRegisterErrors);
     logging::logLazy(logging::Level::DEBUG, [&]() {
         for(const auto& node : graph.getNodes())
             logging::debug() << node.second.to_string() << logging::endl;
@@ -1179,7 +1176,6 @@ bool GraphColoring::fixErrors()
         else
             ++locIt;
     }
-    PROFILE_END(fixRegisterErrors);
     return errorSet.empty();
 }
 

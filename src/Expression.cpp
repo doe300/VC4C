@@ -177,10 +177,9 @@ static std::shared_ptr<Expression> createRecursiveExpressionInner(const intermed
 std::shared_ptr<Expression> Expression::createRecursiveExpression(
     const intermediate::IntermediateInstruction& instr, unsigned maxDepth, ExpressionOptions options)
 {
-    PROFILE_START(createRecursiveExpression);
+    PROFILE_SCOPE(createRecursiveExpression);
     FastMap<const Local*, std::shared_ptr<Expression>> parentsCache;
     auto exp = createRecursiveExpressionInner(instr, maxDepth, parentsCache, options);
-    PROFILE_END(createRecursiveExpression);
     return exp;
 }
 

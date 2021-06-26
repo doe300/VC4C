@@ -187,7 +187,7 @@ LCOV_EXCL_STOP
 
 std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(Method& method)
 {
-    PROFILE_START(createDataDependencyGraph);
+    PROFILE_SCOPE(createDataDependencyGraph);
     InstructionMapping mapping = mapInstructionsToPosition(method);
     std::unique_ptr<DataDependencyGraph> graph(new DataDependencyGraph(method.size()));
     for(auto& block : method)
@@ -205,14 +205,12 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(
     });
     LCOV_EXCL_STOP
 #endif
-
-    PROFILE_END(createDataDependencyGraph);
     return graph;
 }
 
 std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createTransitiveDependencyGraph(Method& method)
 {
-    PROFILE_START(createTransitiveDependencyGraph);
+    PROFILE_SCOPE(createTransitiveDependencyGraph);
     std::unique_ptr<DataDependencyGraph> graph(new DataDependencyGraph(method.size()));
     analysis::GlobalLivenessAnalysis gla(false);
     gla(method);
@@ -228,7 +226,5 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createTransitiveDepend
     });
     LCOV_EXCL_STOP
 #endif
-
-    PROFILE_END(createTransitiveDependencyGraph);
     return graph;
 }

@@ -427,22 +427,18 @@ static void updateOnly(const intermediate::IntermediateInstruction* inst, Instru
 
 bool pattern::matches(const intermediate::IntermediateInstruction* inst, InstructionPattern& pattern)
 {
-    PROFILE_START(PatternMatching);
+    PROFILE_SCOPE(PatternMatching);
     MatchCache cache{};
     if(!matchesOnly(inst, pattern, cache, cache))
-    {
-        PROFILE_END(PatternMatching);
         return false;
-    }
 
     updateOnly(inst, pattern);
-    PROFILE_END(PatternMatching);
     return true;
 }
 
 bool pattern::matches(const Expression& expr, InstructionPattern& pattern)
 {
-    PROFILE_START(PatternMatching);
+    PROFILE_SCOPE(PatternMatching);
 
     // reset any reused commutation flag
     pattern.commutative =
@@ -452,15 +448,9 @@ bool pattern::matches(const Expression& expr, InstructionPattern& pattern)
 
     // pack/unpack modes are not supported
     if(expr.packMode.hasEffect() || expr.unpackMode.hasEffect())
-    {
-        PROFILE_END(PatternMatching);
         return false;
-    }
     if(!matchesOperation(expr.code, pattern.operation, cache, cache))
-    {
-        PROFILE_END(PatternMatching);
         return false;
-    }
     // we cannot reuse the same cache for both versions, since they will conflict with each other
     auto tmpCache = cache;
     if(!matchesValue(expr.arg0, pattern.firstArgument, cache, tmpCache) ||
@@ -471,10 +461,7 @@ bool pattern::matches(const Expression& expr, InstructionPattern& pattern)
             matchesValue(expr.arg0, pattern.secondArgument, cache, cache))
             pattern.commutative = CommutationFlag::SWITCH_ARGUMENTS;
         else
-        {
-            PROFILE_END(PatternMatching);
             return false;
-        }
     }
     else
         cache = tmpCache;
@@ -491,24 +478,19 @@ bool pattern::matches(const Expression& expr, InstructionPattern& pattern)
         updateMatch(expr.arg1, pattern.secondArgument);
     }
 
-    PROFILE_END(PatternMatching);
     return true;
 }
 
 InstructionWalker pattern::search(InstructionWalker start, InstructionPattern& pattern)
 {
-    PROFILE_START(PatternMatching);
+    PROFILE_SCOPE(PatternMatching);
     while(!start.isEndOfBlock())
     {
         if(matches(start.get(), pattern))
-        {
-            PROFILE_END(PatternMatching);
             return start;
-        }
         start.nextInBlock();
     }
 
-    PROFILE_END(PatternMatching);
     return InstructionWalker{};
 }
 
@@ -602,10 +584,10 @@ static InstructionWalker searchInnerGapped(InstructionWalker start, Pattern& pat
 
 InstructionWalker pattern::search(InstructionWalker start, Pattern& pattern, bool returnEndOfPattern)
 {
+    PROFILE_SCOPE(PatternMatching);
+
     if(pattern.parts.empty())
         return InstructionWalker{};
-
-    PROFILE_START(PatternMatching);
 
     while(!start.isEndOfBlock())
     {
@@ -619,14 +601,10 @@ InstructionWalker pattern::search(InstructionWalker start, Pattern& pattern, boo
                 it = searchInnerCompact(start, pattern, returnEndOfPattern);
             // we found a match, return it
             if(!it.isEndOfBlock())
-            {
-                PROFILE_END(PatternMatching);
                 return it;
-            }
         }
         start.nextInBlock();
     }
 
-    PROFILE_END(PatternMatching);
     return InstructionWalker{};
 }

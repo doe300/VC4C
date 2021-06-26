@@ -218,10 +218,9 @@ static void compileSPIRVToSPIRV(std::istream* input, std::ostream* output, const
 
 void precompilation::compileOpenCLWithPCH(OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result)
 {
-    PROFILE_START(CompileOpenCLWithPCH);
+    PROFILE_SCOPE(CompileOpenCLWithPCH);
     OpenCLSource src(std::forward<OpenCLSource>(source));
     compileOpenCLToLLVMIR0(src.stream, nullptr, userOptions, "llvm-bc", src.file, result.file, true);
-    PROFILE_END(CompileOpenCLWithPCH);
 }
 
 /**
@@ -380,48 +379,43 @@ void precompilation::linkInStdlibModule(LLVMIRSource&& source, const std::string
 void precompilation::compileOpenCLToLLVMText(
     OpenCLSource&& source, const std::string& userOptions, LLVMIRTextResult& result)
 {
-    PROFILE_START(CompileOpenCLToLLVMText);
+    PROFILE_SCOPE(CompileOpenCLToLLVMText);
     OpenCLSource src(std::forward<OpenCLSource>(source));
     compileOpenCLToLLVMIR0(src.stream, nullptr, userOptions, "llvm", src.file, result.file, true);
-    PROFILE_END(CompileOpenCLToLLVMText);
 }
 
 void precompilation::compileLLVMToSPIRV(LLVMIRSource&& source, const std::string& userOptions, SPIRVResult& result)
 {
-    PROFILE_START(CompileLLVMToSPIRV);
+    PROFILE_SCOPE(CompileLLVMToSPIRV);
     LLVMIRSource src(std::forward<LLVMIRSource>(source));
     compileLLVMIRToSPIRV0(src.stream, nullptr, userOptions, false, src.file, result.file);
-    PROFILE_END(CompileLLVMToSPIRV);
 }
 
 void precompilation::assembleSPIRV(SPIRVTextSource&& source, const std::string& userOptions, SPIRVResult& result)
 {
-    PROFILE_START(AssembleSPIRV);
+    PROFILE_SCOPE(AssembleSPIRV);
     SPIRVTextSource src(std::forward<SPIRVTextSource>(source));
     compileSPIRVToSPIRV(src.stream, nullptr, userOptions, false, src.file, result.file);
-    PROFILE_END(AssembleSPIRV);
 }
 
 void precompilation::compileLLVMToSPIRVText(
     LLVMIRSource&& source, const std::string& userOptions, SPIRVTextResult& result)
 {
-    PROFILE_START(CompileLLVMToSPIRVText);
+    PROFILE_SCOPE(CompileLLVMToSPIRVText);
     LLVMIRSource src(std::forward<LLVMIRSource>(source));
     compileLLVMIRToSPIRV0(src.stream, nullptr, userOptions, true, src.file, result.file);
-    PROFILE_END(CompileLLVMToSPIRVText);
 }
 
 void precompilation::disassembleSPIRV(SPIRVSource&& source, const std::string& userOptions, SPIRVTextResult& result)
 {
-    PROFILE_START(DisassembleSPIRV);
+    PROFILE_SCOPE(DisassembleSPIRV);
     SPIRVSource src(std::forward<SPIRVSource>(source));
     compileSPIRVToSPIRV(src.stream, nullptr, userOptions, true, src.file, result.file);
-    PROFILE_END(DisassembleSPIRV);
 }
 
 void precompilation::disassembleLLVM(LLVMIRSource&& source, const std::string& userOptions, LLVMIRTextResult& result)
 {
-    PROFILE_START(DisassembleLLVM);
+    PROFILE_SCOPE(DisassembleLLVM);
     auto llvm_dis = findToolLocation("llvm-dis", LLVM_DIS_PATH);
     if(!llvm_dis)
         throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-dis not found, can't disassemble LLVM IR!");
@@ -432,12 +426,11 @@ void precompilation::disassembleLLVM(LLVMIRSource&& source, const std::string& u
     CPPLOG_LAZY(
         logging::Level::INFO, log << "Disassembling LLVM IR to LLVM IR text with: " << command << logging::endl);
     runPrecompiler(command, source.file ? nullptr : source.stream, nullptr);
-    PROFILE_END(DisassembleLLVM);
 }
 
 void precompilation::assembleLLVM(LLVMIRTextSource&& source, const std::string& userOptions, LLVMIRResult& result)
 {
-    PROFILE_START(AssembleLLVM);
+    PROFILE_SCOPE(AssembleLLVM);
     auto llvm_as = findToolLocation("llvm-as", LLVM_AS_PATH);
     if(!llvm_as)
         throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-as not found, can't assemble LLVM IR!");
@@ -447,7 +440,6 @@ void precompilation::assembleLLVM(LLVMIRTextSource&& source, const std::string& 
     command.append(source.file.value_or("/dev/stdin"));
     CPPLOG_LAZY(logging::Level::INFO, log << "Assembling LLVM IR text to LLVM IR with: " << command << logging::endl);
     runPrecompiler(command, source.file ? nullptr : source.stream, nullptr);
-    PROFILE_END(AssembleLLVM);
 }
 
 static std::string getEmptyModule()
@@ -512,7 +504,7 @@ void precompilation::linkLLVMModules(
     std::vector<LLVMIRSource>&& sources, const std::string& userOptions, LLVMIRResult& result)
 {
     // TODO add call to llvm-lto??!
-    PROFILE_START(LinkLLVMModules);
+    PROFILE_SCOPE(LinkLLVMModules);
 
     auto llvm_link = findToolLocation("llvm-link", LLVM_LINK_PATH);
     if(!llvm_link)
@@ -557,13 +549,12 @@ void precompilation::linkLLVMModules(
     CPPLOG_LAZY(logging::Level::INFO, log << "Linking LLVM-IR modules with: " << command << logging::endl);
 
     runPrecompiler(command, inputStream, nullptr);
-    PROFILE_END(LinkLLVMModules);
 }
 
 void precompilation::linkSPIRVModules(
     std::vector<SPIRVSource>&& sources, const std::string& userOptions, SPIRVResult& result)
 {
-    PROFILE_START(LinkSPIRVModules);
+    PROFILE_SCOPE(LinkSPIRVModules);
     if(auto spirv_link = findToolLocation("spirv-link", SPIRV_LINK_PATH))
     {
         // only one input can be from a stream
@@ -609,12 +600,11 @@ void precompilation::linkSPIRVModules(
         spirv::linkSPIRVModules(convertedInputs, *result.stream);
 #endif
     }
-    PROFILE_END(LinkSPIRVModules);
 }
 
 void precompilation::optimizeLLVMIR(LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult& result)
 {
-    PROFILE_START(OptimizeLLVMIR);
+    PROFILE_SCOPE(OptimizeLLVMIR);
 
     auto opt = findToolLocation("opt", OPT_PATH);
     if(!opt)
@@ -642,13 +632,12 @@ void precompilation::optimizeLLVMIR(LLVMIRSource&& source, const std::string& us
 
     CPPLOG_LAZY(logging::Level::INFO, log << "Optimizing LLVM IR module with opt: " << commandOpt << logging::endl);
     runPrecompiler(commandOpt, source.stream, nullptr);
-    PROFILE_END(OptimizeLLVMIR);
 }
 
 void precompilation::optimizeLLVMText(
     LLVMIRTextSource&& source, const std::string& userOptions, LLVMIRTextResult& result)
 {
-    PROFILE_START(OptimizeLLVMText);
+    PROFILE_SCOPE(OptimizeLLVMText);
 
     auto opt = findToolLocation("opt", OPT_PATH);
     if(!opt)
@@ -676,7 +665,6 @@ void precompilation::optimizeLLVMText(
 
     CPPLOG_LAZY(logging::Level::INFO, log << "Optimizing LLVM text with opt: " << commandOpt << logging::endl);
     runPrecompiler(commandOpt, source.stream, nullptr);
-    PROFILE_END(OptimizeLLVMText);
 }
 
 void precompilation::compileOpenCLToLLVMIR(OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result)
@@ -793,7 +781,7 @@ const StdlibFiles& precompilation::findStandardLibraryFiles(const std::vector<st
 
 void precompilation::precompileStandardLibraryFiles(const std::string& sourceFile, const std::string& destinationFolder)
 {
-    PROFILE_START(PrecompileStandardLibraryFiles);
+    PROFILE_SCOPE(PrecompileStandardLibraryFiles);
     // TODO merge with creating of parameters in FrontendCompiler#buildClangCommand
     auto pchArgs =
         " -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info "
@@ -829,6 +817,4 @@ void precompilation::precompileStandardLibraryFiles(const std::string& sourceFil
             logging::Level::INFO, log << "Pre-compiling standard library with: " << spirvCommand << logging::endl);
         runPrecompiler(spirvCommand, nullptr, nullptr);
     }
-
-    PROFILE_END(PrecompileStandardLibraryFiles);
 }

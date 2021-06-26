@@ -48,7 +48,7 @@ static bool writesR5(const intermediate::IntermediateInstruction& instr)
 static LivenessChanges analyzeLivenessChangesInner(
     const intermediate::IntermediateInstruction& instr, LivenessAnalysisCache& cache, bool trackR5Usage)
 {
-    PROFILE_START(LivenessChangesAnalysis);
+    PROFILE_SCOPE(LivenessChangesAnalysis);
     LivenessChanges changes;
     auto& conditionalWrites = cache.conditionalWrites;
     auto& conditionalReads = cache.conditionalReads;
@@ -191,7 +191,6 @@ static LivenessChanges analyzeLivenessChangesInner(
             usageConsumer(instr);
     }
 
-    PROFILE_END(LivenessChangesAnalysis);
     return changes;
 }
 
@@ -303,7 +302,7 @@ FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::Inte
 static FastSet<const Local*> updateLiveness(
     FastSet<const Local*>&& nextResult, const LivenessChanges& changes, bool skipAdditions)
 {
-    PROFILE_START(LivenessAnalysis);
+    PROFILE_SCOPE(LivenessAnalysis);
 
     FastSet<const Local*> result(std::move(nextResult));
     for(auto removed : changes.removedLocals)
@@ -314,7 +313,6 @@ static FastSet<const Local*> updateLiveness(
             result.emplace(added);
     }
 
-    PROFILE_END(LivenessAnalysis);
     return result;
 }
 
@@ -439,7 +437,7 @@ static FastSet<const Local*> initializeEndOfBlockLiveLocals(const BasicBlock& bl
 
 void GlobalLivenessAnalysis::operator()(Method& method)
 {
-    PROFILE_START(GlobalLivenessAnalysis);
+    PROFILE_SCOPE(GlobalLivenessAnalysis);
     auto& cfg = method.getCFG();
     auto& finalNode = cfg.getEndOfControlFlow();
     auto startOfKernel = cfg.getStartOfControlFlow().key;
@@ -476,7 +474,6 @@ void GlobalLivenessAnalysis::operator()(Method& method)
         runAnalysis(*node, results, changes, cachedEndLiveLocals, FastSet<const Local*>{predCacheIt->second},
             startOfKernel, pendingNodes);
     }
-    PROFILE_END(GlobalLivenessAnalysis);
 }
 
 LCOV_EXCL_START
@@ -716,7 +713,7 @@ static SortedSet<LocalUsageRange> determineUsageRanges(const BasicBlock& block, 
 
 void LocalUsageRangeAnalysis::operator()(Method& method)
 {
-    PROFILE_START(LocalUsageRangeAnalysis);
+    PROFILE_SCOPE(LocalUsageRangeAnalysis);
 
     std::unique_ptr<GlobalLivenessAnalysis> globalLiveness;
     auto actualLiveness = livenessAnalysis;
@@ -756,8 +753,6 @@ void LocalUsageRangeAnalysis::operator()(Method& method)
         overallUsages.emplace(LocalUtilization{entry.first, std::get<0>(entry.second), std::get<1>(entry.second),
             std::get<2>(entry.second),
             calculateRating(std::get<0>(entry.second), std::get<1>(entry.second), std::get<2>(entry.second))});
-
-    PROFILE_END(LocalUsageRangeAnalysis);
 }
 
 LCOV_EXCL_START

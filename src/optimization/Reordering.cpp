@@ -394,10 +394,9 @@ bool optimizations::reorderWithinBasicBlocks(const Module& module, Method& metho
     for(BasicBlock& block : method)
     {
         // remove NOPs by inserting instructions which do not violate the reason for the NOP
-        PROFILE_START(replaceNOPs);
+        PROFILE_SCOPE(replaceNOPs);
         if(replaceNOPs(block, method, config))
             hasChanged = true;
-        PROFILE_END(replaceNOPs);
     }
 
     // after all re-orders are done, remove empty instructions

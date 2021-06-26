@@ -77,9 +77,8 @@ static FixupResult runRegisterFixupStep(const std::pair<std::string, RegisterFix
     const Configuration& config, std::unique_ptr<GraphColoring>& coloredGraph)
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Running register fix-up step: " << step.first << "..." << logging::endl);
-    PROFILE_START(runRegisterFixupStep);
+    PROFILE_SCOPE(runRegisterFixupStep);
     auto result = step.second(method, config, *coloredGraph);
-    PROFILE_END(runRegisterFixupStep);
     return result;
 }
 
@@ -102,16 +101,14 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
     {
         if(!coloredGraph || lastResult == FixupResult::FIXES_APPLIED_RECREATE_GRAPH)
         {
-            PROFILE_START(initializeLocalsUses);
+            PROFILE_SCOPE(initializeLocalsUses);
             coloredGraph = std::make_unique<GraphColoring>(method, method.walkAllInstructions());
-            PROFILE_END(initializeLocalsUses);
         }
         if(lastResult != FixupResult::NOTHING_FIXED)
         {
             // only recolor the graph if we did anything at all
-            PROFILE_START(colorGraph);
+            PROFILE_SCOPE(colorGraph);
             bool hasErrors = !coloredGraph->colorGraph();
-            PROFILE_END(colorGraph);
             if(!hasErrors)
                 // no more errors
                 break;
@@ -129,9 +126,8 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
                         << logging::endl;
         if(!coloredGraph || lastResult == FixupResult::FIXES_APPLIED_RECREATE_GRAPH)
         {
-            PROFILE_START(initializeLocalsUses);
+            PROFILE_SCOPE(initializeLocalsUses);
             coloredGraph = std::make_unique<GraphColoring>(method, method.walkAllInstructions());
-            PROFILE_END(initializeLocalsUses);
         }
         PROFILE_START(colorGraph);
         auto hasError = coloredGraph->colorGraph();

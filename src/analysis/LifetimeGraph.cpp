@@ -48,7 +48,7 @@ static void overlapLocals(LifetimeGraph& graph, const FastSet<const Local*>& liv
 
 std::unique_ptr<LifetimeGraph> LifetimeGraph::createLifetimeGraph(Method& method)
 {
-    PROFILE_START(createLifetimeGraph);
+    PROFILE_SCOPE(createLifetimeGraph);
     // memory objects which are live (used) at this moment
     FastSet<const Local*> liveLocals;
 
@@ -96,8 +96,6 @@ std::unique_ptr<LifetimeGraph> LifetimeGraph::createLifetimeGraph(Method& method
     });
     LCOV_EXCL_STOP
 #endif
-
-    PROFILE_END(createLifetimeGraph);
     return graph;
 }
 

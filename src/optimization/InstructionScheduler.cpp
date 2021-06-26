@@ -126,7 +126,7 @@ static constexpr int MIN_PRIORITY = 2000;
 
 static int calculateSchedulingPriority(analysis::DependencyEdge& dependency, BasicBlock& block)
 {
-    PROFILE_START(calculateSchedulingPriority);
+    PROFILE_SCOPE(calculateSchedulingPriority);
     int latencyLeft = static_cast<int>(dependency.data.numDelayCycles);
     auto it = --block.end();
     while(it != block.begin() && latencyLeft > 0)
@@ -166,7 +166,6 @@ static int calculateSchedulingPriority(analysis::DependencyEdge& dependency, Bas
     }
     // if variable latency, return remaining latency (to achieving best case)
     // otherwise, return MIN_PRIORITY
-    PROFILE_END(calculateSchedulingPriority);
     return (latencyLeft > 0 && dependency.data.isMandatoryDelay) ? MIN_PRIORITY : latencyLeft;
     // TODO also look into the future and keep some instructions (e.g. vector rotations/arithmetics) close to their
     // use?? (would need to calculate priority of uses and deduct distance)

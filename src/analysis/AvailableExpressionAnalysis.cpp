@@ -24,7 +24,7 @@ std::pair<AvailableExpressions, std::shared_ptr<Expression>> AvailableExpression
     const intermediate::IntermediateInstruction* instr, const AvailableExpressions& previousExpressions,
     FastMap<const Local*, FastSet<std::shared_ptr<Expression>>>& cache, unsigned maxExpressionDistance)
 {
-    PROFILE_START(AvailableExpressionAnalysis);
+    PROFILE_SCOPE(AvailableExpressionAnalysis);
     AvailableExpressions newExpressions(previousExpressions);
     auto it = newExpressions.begin();
     while(it != newExpressions.end())
@@ -66,7 +66,6 @@ std::pair<AvailableExpressions, std::shared_ptr<Expression>> AvailableExpression
             }
         }
     }
-    PROFILE_END(AvailableExpressionAnalysis);
     return std::make_pair(std::move(newExpressions), std::move(expr));
 }
 

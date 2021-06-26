@@ -94,10 +94,9 @@ std::size_t Compiler::convert()
     Module module(config);
 
     {
+        PROFILE_SCOPE(Parser);
         std::unique_ptr<Parser> parser = getParser(input);
-        PROFILE_START(Parser);
         parser->parse(module);
-        PROFILE_END(Parser);
         // early clean up the parser, since we do not need it anymore and it may use a lot of memory
     }
 

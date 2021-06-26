@@ -50,7 +50,7 @@ bool vc4c::isSupportedByFrontend(SourceType inputType, Frontend frontend)
 void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>& output, Configuration config,
     const std::string& options, const Optional<std::string>& inputFile, const Optional<std::string>& outputFile)
 {
-    PROFILE_START(Precompile);
+    PROFILE_SCOPE(Precompile);
     Precompiler precompiler(config, input, Precompiler::getSourceType(input), inputFile);
     if(config.frontend != Frontend::DEFAULT)
         precompiler.run(output, config.frontend == Frontend::LLVM_IR ? SourceType::LLVM_IR_BIN : SourceType::SPIRV_BIN,
@@ -70,12 +70,11 @@ void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>&
         throw CompilationError(CompilationStep::PRECOMPILATION, "No matching precompiler available!");
 #endif
     }
-    PROFILE_END(Precompile);
 }
 
 SourceType Precompiler::getSourceType(std::istream& stream)
 {
-    PROFILE_START(GetSourceType);
+    PROFILE_SCOPE(GetSourceType);
     // http://llvm.org/docs/BitCodeFormat.html#magic-numbers
     static constexpr std::array<char, 2> LLVM_BITCODE_MAGIC_NUMBER = {0x42, 0x43};
     static constexpr uint32_t SPIRV_MAGIC_NUMBER = 0x07230203;
@@ -124,7 +123,6 @@ SourceType Precompiler::getSourceType(std::istream& stream)
     // reset stream position
     stream.seekg(0);
 
-    PROFILE_END(GetSourceType);
     return type;
 }
 
@@ -223,7 +221,7 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
     std::ostream& output, bool includeStandardLibrary)
 {
     // XXX the inputs is actually a variant of file and stream
-    PROFILE_START(linkSourceCode);
+    PROFILE_SCOPE(linkSourceCode);
 
     bool llvmLinkerPossible = false;
     bool spirvLinkerPossible = false;
@@ -265,7 +263,6 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
             linkLLVMModules(std::move(sources), "", result);
             copyToOutputStream(output, result.tmpFile);
         }
-        PROFILE_END(linkSourceCode);
         return SourceType::LLVM_IR_BIN;
     }
     else if(spirvLinkerPossible)
@@ -302,7 +299,6 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
         TemporaryPrecompilationResult<SourceType::SPIRV_BIN> result{};
         linkSPIRVModules(std::move(sources), "", result);
         copyToOutputStream(output, result.tmpFile);
-        PROFILE_END(linkSourceCode);
         return SourceType::SPIRV_BIN;
     }
     throw CompilationError(CompilationStep::LINKER, "Cannot find a linker which can be used for all inputs!");

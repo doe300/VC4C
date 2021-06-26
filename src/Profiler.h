@@ -33,6 +33,16 @@ namespace vc4c
     }
 #define PROFILE_END_DYNAMIC(name) profiler::endFunctionCall(std::move(profile))
 
+#define PROFILE_SCOPE(name)                                                                                            \
+    profiler::ProfilingScope profile##name                                                                             \
+    {                                                                                                                  \
+        profiler::ProfilingResult                                                                                      \
+        {                                                                                                              \
+            reinterpret_cast<std::uintptr_t>(std::addressof(#name[0])), #name, __FILE__, __LINE__,                     \
+                profiler::Clock::now()                                                                                 \
+        }                                                                                                              \
+    }
+
 #define PROFILE_COUNTER(index, name, value) profiler::increaseCounter(index, name, value, __FILE__, __LINE__)
 #define PROFILE_COUNTER_WITH_PREV(index, name, value, prevIndex)                                                       \
     profiler::increaseCounter(index, name, value, __FILE__, __LINE__, prevIndex)
@@ -49,6 +59,8 @@ namespace vc4c
 
 #define PROFILE_START_DYNAMIC(name)
 #define PROFILE_END_DYNAMIC(name)
+
+#define PROFILE_SCOPE(name)
 
 #define PROFILE_COUNTER(index, name, value)
 #define PROFILE_COUNTER_WITH_PREV(index, name, value, prevIndex)
@@ -80,6 +92,18 @@ namespace vc4c
 
         void increaseCounter(std::size_t index, std::string name, std::size_t value, std::string file, std::size_t line,
             std::size_t prevIndex = SIZE_MAX);
+
+        struct ProfilingScope
+        {
+            ProfilingScope(ProfilingResult&& result) : result(result) {}
+
+            ~ProfilingScope()
+            {
+                endFunctionCall(std::move(result));
+            }
+
+            ProfilingResult result;
+        };
 
         /*
          * The following values are added to the sub counter index to get the absolute counter index.
