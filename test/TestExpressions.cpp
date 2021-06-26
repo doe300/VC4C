@@ -1091,7 +1091,7 @@ void TestExpressions::testSplit()
         TEST_ASSERT_EQUALS(SubExpression{expectedConstant}, resultParts.second);
     }
 
-    // shl: (dynA + constA) << factor = (dynA << factor) + (constA << factor) (baring overflow!)
+    // shl: (dynA + constA) << constFactor = (dynA << constFactor) + (constA << constFactor) (baring overflow!)
     {
         auto innerAdd = std::make_shared<Expression>(OP_ADD, dynamicExpression, constantExpression);
         auto outerShift = std::make_shared<Expression>(OP_SHL, innerAdd, 9_val);
@@ -1102,7 +1102,7 @@ void TestExpressions::testSplit()
         TEST_ASSERT_EQUALS(SubExpression{Value(Literal(((17 + 16) << 9)), TYPE_INT32)}, resultParts.second);
     }
 
-    // shr: (dynA + constA) >> factor = (dynA >> factor) + (constA >> factor) (baring overflow!)
+    // shr: (dynA + constA) >> constFactor = (dynA >> constFactor) + (constA >> constFactor) (baring overflow!)
     {
         auto innerAdd = std::make_shared<Expression>(OP_ADD, dynamicExpression, constantExpression);
         auto outerShift = std::make_shared<Expression>(OP_SHR, innerAdd, 9_val);
@@ -1113,7 +1113,7 @@ void TestExpressions::testSplit()
         TEST_ASSERT_EQUALS(SubExpression{Value(Literal(((17 + 16) >> 9)), TYPE_INT32)}, resultParts.second);
     }
 
-    // umul: ((dynA + constA) * factor = (dynA * factor) + (constA * factor)
+    // umul: ((dynA + constA) * constFactor = (dynA * constFactor) + (constA * constFactor)
     {
         auto innerAdd = std::make_shared<Expression>(OP_ADD, dynamicExpression, constantExpression);
         auto outerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, innerAdd, 9_val);
@@ -1124,7 +1124,7 @@ void TestExpressions::testSplit()
         TEST_ASSERT_EQUALS(SubExpression{Value(Literal(((17 + 16) * 9)), TYPE_INT32)}, resultParts.second);
     }
 
-    // umul: factor * ((dynA + constA) = (dynA * factor) + (constA * factor)
+    // umul: constFactor * ((dynA + constA) = (dynA * constFactor) + (constA * constFactor)
     {
         auto innerAdd = std::make_shared<Expression>(OP_ADD, dynamicExpression, constantExpression);
         auto outerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, 9_val, innerAdd);
@@ -1133,6 +1133,46 @@ void TestExpressions::testSplit()
         auto expectedDynamic = std::make_shared<Expression>(Expression::FAKEOP_UMUL, dynamicExpression, 9_val);
         TEST_ASSERT_EQUALS(SubExpression{expectedDynamic}, resultParts.first);
         TEST_ASSERT_EQUALS(SubExpression{Value(Literal(((17 + 16) * 9)), TYPE_INT32)}, resultParts.second);
+    }
+
+    // shl: (dynA + constA) << nonconstFactor (not rewritten)
+    {
+        auto innerAdd = std::make_shared<Expression>(OP_ADD, dynamicExpression, constantExpression);
+        auto outerShift = std::make_shared<Expression>(OP_SHL, innerAdd, loc0);
+        auto resultParts = outerShift->splitIntoDynamicAndConstantPart(false);
+
+        TEST_ASSERT_EQUALS(SubExpression{outerShift}, resultParts.first);
+        TEST_ASSERT_EQUALS(SubExpression{INT_ZERO}, resultParts.second);
+    }
+
+    // shr: (dynA + constA) >> nonconstFactor (not rewritten)
+    {
+        auto innerAdd = std::make_shared<Expression>(OP_ADD, dynamicExpression, constantExpression);
+        auto outerShift = std::make_shared<Expression>(OP_SHR, innerAdd, loc0);
+        auto resultParts = outerShift->splitIntoDynamicAndConstantPart(false);
+
+        TEST_ASSERT_EQUALS(SubExpression{outerShift}, resultParts.first);
+        TEST_ASSERT_EQUALS(SubExpression{INT_ZERO}, resultParts.second);
+    }
+
+    // umul: ((dynA + constA) * nonconstFactor (not rewritten)
+    {
+        auto innerAdd = std::make_shared<Expression>(OP_ADD, dynamicExpression, constantExpression);
+        auto outerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, innerAdd, loc0);
+        auto resultParts = outerMul->splitIntoDynamicAndConstantPart(false);
+
+        TEST_ASSERT_EQUALS(SubExpression{outerMul}, resultParts.first);
+        TEST_ASSERT_EQUALS(SubExpression{INT_ZERO}, resultParts.second);
+    }
+
+    // umul: nonconstFactor * ((dynA + constA) (not rewritten)
+    {
+        auto innerAdd = std::make_shared<Expression>(OP_ADD, dynamicExpression, constantExpression);
+        auto outerMul = std::make_shared<Expression>(Expression::FAKEOP_UMUL, loc0, innerAdd);
+        auto resultParts = outerMul->splitIntoDynamicAndConstantPart(false);
+
+        TEST_ASSERT_EQUALS(SubExpression{outerMul}, resultParts.first);
+        TEST_ASSERT_EQUALS(SubExpression{INT_ZERO}, resultParts.second);
     }
 
     // other opcode

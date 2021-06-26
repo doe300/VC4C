@@ -424,18 +424,30 @@ static std::shared_ptr<Expression> combineWithInner(
         if(firstVal &&
             (hasValue(firstVal, code.getLeftIdentity() & &Value::getLiteralValue) ||
                 (code == FAKEOP_UMUL && hasValue(firstVal, Literal(1)))))
+        {
             // f(id, a) = a
+            if(!secondExpr)
+                // we disable the expression above to not combine group uniform values, but here we can still replace
+                // the current value with a work-group uniform expression
+                secondExpr = arg1.checkExpression();
             return addOutput(secondExpr ?
                     secondExpr->addDecorations(deco).shared_from_this() :
                     std::make_shared<Expression>(OP_V8MIN, arg1, arg1, UNPACK_NOP, PACK_NOP, deco),
                 outputValue);
+        }
         if(secondVal &&
             (hasValue(secondVal, code.getRightIdentity() & &Value::getLiteralValue) ||
                 (code == FAKEOP_UMUL && hasValue(secondVal, Literal(1)))))
+        {
             // f(a, id) = a
+            if(!firstExpr)
+                // we disable the expression above to not combine group uniform values, but here we can still replace
+                // the current value with a work-group uniform expression
+                firstExpr = arg0.checkExpression();
             return addOutput(firstExpr ? firstExpr->addDecorations(deco).shared_from_this() :
                                          std::make_shared<Expression>(OP_V8MIN, arg0, arg0, UNPACK_NOP, PACK_NOP, deco),
                 outputValue);
+        }
         if(firstVal &&
             (hasValue(firstVal, code.getLeftAbsorbingElement() & &Value::getLiteralValue) ||
                 (code == FAKEOP_UMUL && hasValue(firstVal, Literal(0)))))
@@ -1212,9 +1224,6 @@ std::pair<SubExpression, SubExpression> Expression::splitIntoDynamicAndConstantP
 
     if(code.numOperands == 2)
     {
-        auto leftExpr = arg0.checkExpression();
-        auto rightExpr = arg1.checkExpression();
-
         // add associativity: (dynA + constA) + (dynB + constB) -> (dynA + dynB) + (constA + constB)
         if(code == OP_ADD)
         {
@@ -1227,27 +1236,35 @@ std::pair<SubExpression, SubExpression> Expression::splitIntoDynamicAndConstantP
         }
 
         // mul distributivity over add:
-        // (dyn + const) * factor = factor * (dyn + const) -> (dyn * factor) + (const * factor)
-        if(code == FAKEOP_UMUL && leftParts.first.checkValue() != INT_ZERO && leftParts.second.checkValue() != INT_ZERO)
+        // (dyn + const) * factor = factor * (dyn + const)
+        // if factor only constant: (dyn * constFactor) + (const * constFactor)
+        if(code == FAKEOP_UMUL && rightParts.first.checkValue() == INT_ZERO &&
+            rightParts.second.checkValue() != INT_ZERO)
         {
-            auto dynParts = std::make_shared<Expression>(code, leftParts.first, arg1)->combineWith({}, options);
-            auto constParts = std::make_shared<Expression>(code, leftParts.second, arg1)->combineWith({}, options);
+            auto dynParts =
+                std::make_shared<Expression>(code, leftParts.first, rightParts.second)->combineWith({}, options);
+            auto constParts =
+                std::make_shared<Expression>(code, leftParts.second, rightParts.second)->combineWith({}, options);
             return std::make_pair(
                 SubExpression{precalculateExpression(dynParts)}, SubExpression{precalculateExpression(constParts)});
         }
-        if(code == FAKEOP_UMUL)
+        if(code == FAKEOP_UMUL && leftParts.first.checkValue() == INT_ZERO && leftParts.second.checkValue() != INT_ZERO)
         {
-            auto dynParts = std::make_shared<Expression>(code, rightParts.first, arg0)->combineWith({}, options);
-            auto constParts = std::make_shared<Expression>(code, rightParts.second, arg0)->combineWith({}, options);
+            auto dynParts =
+                std::make_shared<Expression>(code, leftParts.second, rightParts.first)->combineWith({}, options);
+            auto constParts =
+                std::make_shared<Expression>(code, leftParts.second, rightParts.second)->combineWith({}, options);
             return std::make_pair(
                 SubExpression{precalculateExpression(dynParts)}, SubExpression{precalculateExpression(constParts)});
         }
 
         // shift distributivity over add: (dyn + const) << offset -> (dyn << offset) + (const << offset)
-        if(code == OP_SHL || code == OP_SHR)
+        if((code == OP_SHL || code == OP_SHR) && rightParts.first.checkValue() == INT_ZERO)
         {
-            auto dynParts = std::make_shared<Expression>(code, leftParts.first, arg1)->combineWith({}, options);
-            auto constParts = std::make_shared<Expression>(code, leftParts.second, arg1)->combineWith({}, options);
+            auto dynParts =
+                std::make_shared<Expression>(code, leftParts.first, rightParts.second)->combineWith({}, options);
+            auto constParts =
+                std::make_shared<Expression>(code, leftParts.second, rightParts.second)->combineWith({}, options);
             return std::make_pair(
                 SubExpression{precalculateExpression(dynParts)}, SubExpression{precalculateExpression(constParts)});
         }

@@ -1416,13 +1416,14 @@ static Optional<VectorFolding> findElementwiseVectorFolding(InstructionWalker& i
 
     Value container = UNDEFINED_VALUE;
     Value rotationOffset = UNDEFINED_VALUE;
+    Value currentResult = UNDEFINED_VALUE;
     Value previousResult = UNDEFINED_VALUE;
     OpCode foldingOp = OP_NOP;
     Value foldingOutput = UNDEFINED_VALUE;
     Pattern firstElementFoldingPattern{{
-        capture(pattern::V1) = (match(FAKEOP_ROTATE), capture(container), capture(rotationOffset)),
+        capture(currentResult) = (match(FAKEOP_ROTATE), capture(container), capture(rotationOffset)),
         capture(foldingOutput) =
-            (capture(foldingOp), capture(previousResult), capture(pattern::V1), allowCommutation()),
+            (capture(foldingOp), capture(previousResult), capture(currentResult), allowCommutation()),
     }};
 
     if(!(it = search(it, firstElementFoldingPattern, true)).isEndOfBlock())
@@ -1435,28 +1436,57 @@ static Optional<VectorFolding> findElementwiseVectorFolding(InstructionWalker& i
 
         auto offset = check(rotationOffset.checkImmediate()) & &SmallImmediate::getRotationOffset;
 
-        if(offset)
-            coveredIndices.set(NATIVE_VECTOR_SIZE - *offset);
-        else
+        if(!offset)
             return {};
 
         // implicitly include base value (which for element offset of 0 is the container itself and therefore not
         // rotated and therefore not detected)
         auto baseOffset = static_cast<uint8_t>(NATIVE_VECTOR_SIZE - *offset - 1u);
-        coveredIndices.set(baseOffset);
+        auto sourceContainer = intermediate::getSourceValue(container);
 
-        if(baseOffset == 0 && intermediate::getSourceValue(previousResult) != intermediate::getSourceValue(container))
+        if(baseOffset == 0 && intermediate::getSourceValue(previousResult) != sourceContainer)
             return {};
         else if(baseOffset != 0)
         {
             // make sure the other input of the first folding operation is actually the previous element
-            auto writer = dynamic_cast<const intermediate::VectorRotation*>(previousResult.getSingleWriter());
-            if(!writer ||
-                intermediate::getSourceValue(writer->getSource()) != intermediate::getSourceValue(container) ||
-                writer->getVectorRotation()->offset.getRotationOffset() !=
-                    static_cast<uint8_t>(NATIVE_VECTOR_SIZE - baseOffset))
+            auto currentRotation = dynamic_cast<const intermediate::VectorRotation*>(currentResult.getSingleWriter());
+            auto previousRotation = dynamic_cast<const intermediate::VectorRotation*>(previousResult.getSingleWriter());
+
+            if(!currentRotation || !previousRotation ||
+                intermediate::getSourceValue(currentRotation->getSource()) != sourceContainer ||
+                intermediate::getSourceValue(previousRotation->getSource()) != sourceContainer)
+                return {};
+
+            auto currentOffset = currentRotation->getVectorRotation()->offset.getRotationOffset();
+            auto previousOffset = previousRotation->getVectorRotation()->offset.getRotationOffset();
+
+            if(!currentOffset || !previousOffset)
+                return {};
+
+            /*
+             * We have following valid options:
+             *   %a = %container << (16 - BASE)
+             *   %b = %container << (15 - BASE)
+             *   %c = %a op %b
+             * or (if the folding operation is commutative):
+             *   %a = %container << (16 - BASE)
+             *   %b = %container << (15 - BASE)
+             *   %c = %b op %a
+             */
+            if(foldingOp.isCommutative() &&
+                (NATIVE_VECTOR_SIZE - currentOffset.value()) == (NATIVE_VECTOR_SIZE - previousOffset.value() - 1u))
+            {
+                // we have our elements switched, so we need to unswitch them
+                offset = previousOffset;
+                baseOffset = static_cast<uint8_t>(NATIVE_VECTOR_SIZE - *offset - 1u);
+            }
+            else if((NATIVE_VECTOR_SIZE - currentOffset.value() - 1u) != (NATIVE_VECTOR_SIZE - previousOffset.value()))
                 return {};
         }
+
+        // set the first two elements accessed by the initial operation
+        coveredIndices.set(baseOffset);
+        coveredIndices.set(NATIVE_VECTOR_SIZE - *offset);
 
         while(!it.isEndOfBlock())
         {

@@ -214,13 +214,13 @@ namespace vc4c
         void dumpTree(const std::string& path) const;
 
         /**
-         * Tries to split this expression into a constant and a dynamic part.
+         * Tries to split this expression into a dynamic and a constant part.
          *
          * Adding the resulting subexpressions gives the same result as this expression gives.
          *
-         * The constant part is any subexpression returning compile-time constant (or if the boolean parameter is set,
-         * also work-group uniform) values.
-         * The dynamic part contains the subexpression with all other parts of this expression.
+         * The (first) dynamic part contains the subexpression with all other parts of this expression.
+         * The (second) constant part is any subexpression returning compile-time constant (or if the boolean parameter
+         * is set, also work-group uniform) values.
          *
          * NOTE: This can only return the parts for expressions where the two parts can be cleanly separated!
          */

@@ -316,6 +316,13 @@ InstructionWalker intermediate::insertByteSwap(
     return it;
 }
 
+static bool isIdentityOperand(const Optional<Value>& identity, const Value& operand)
+{
+    if(auto lit = identity & &Value::getLiteralValue)
+        return operand.getLiteralValue() == lit;
+    return false;
+}
+
 Value intermediate::getSourceValue(Value value)
 {
     while(auto writer = value.getSingleWriter())
@@ -330,7 +337,23 @@ Value intermediate::getSourceValue(Value value)
             value = src;
         }
         else
-            break;
+        {
+            auto writeOp = dynamic_cast<const Operation*>(writer);
+            if(writeOp && writeOp->isSimpleOperation() && !writeOp->hasConditionalExecution() &&
+                writeOp->getArguments().size() == 2 &&
+                (isIdentityOperand(writeOp->op.getLeftIdentity(), writeOp->assertArgument(0)) ||
+                    isIdentityOperand(writeOp->op.getRightIdentity(), writeOp->assertArgument(1))))
+            {
+                auto src = writeOp->assertArgument(writeOp->op.getLeftIdentity() == writeOp->assertArgument(0) ? 1 : 0);
+                if(src.checkRegister())
+                    // e.g. to avoid returning the replication register (or UNIFORM) where the contents are
+                    // position-dependent
+                    break;
+                value = src;
+            }
+            else
+                break;
+        }
     }
     return value;
 }

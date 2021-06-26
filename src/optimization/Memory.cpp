@@ -735,28 +735,6 @@ struct TMUAccessGroup
     uint8_t usedVectorSize;
 };
 
-static tools::SmallSortedPointerSet<const Local*> getUsedLocals(const SubExpression& expr)
-{
-    if(auto loc = expr.checkLocal())
-        return {loc};
-    if(auto inner = expr.checkExpression())
-    {
-        tools::SmallSortedPointerSet<const Local*> result;
-        for(auto loc : getUsedLocals(inner->arg0))
-            result.emplace(loc);
-        for(auto loc : getUsedLocals(inner->arg1))
-            result.emplace(loc);
-        return result;
-    }
-    return tools::SmallSortedPointerSet<const Local*>{};
-}
-
-static bool checkAllLocalsAreKnown(const tools::SmallSortedPointerSet<const Local*>& haystack,
-    const tools::SmallSortedPointerSet<const Local*> needles)
-{
-    return std::includes(haystack.begin(), haystack.end(), needles.begin(), needles.end());
-}
-
 NODISCARD static InstructionWalker findGroupOfTMUAccess(InstructionWalker it, TMUAccessGroup& group)
 {
     BaseAndOffset groupBaseAndOffset;
@@ -794,8 +772,9 @@ NODISCARD static InstructionWalker findGroupOfTMUAccess(InstructionWalker it, TM
 
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Found base address " << baseAndOffset->baseAddress->to_string() << " with dynamic offset "
-                        << baseAndOffset->dynamicOffset.to_string() << " and work-group uniform offset "
-                        << baseAndOffset->workGroupConstantOffset.to_string() << " for "
+                        << baseAndOffset->dynamicOffset.to_string() << ", work-group uniform offset "
+                        << baseAndOffset->workGroupConstantOffset.to_string() << " and element stride "
+                        << tmuCacheEntry->elementStrideInBytes << " for "
                         << "reading from memory via TMU" << logging::endl);
 
                 if(baseAndOffset->baseAddress->is<Parameter>() &&
@@ -825,15 +804,6 @@ NODISCARD static InstructionWalker findGroupOfTMUAccess(InstructionWalker it, TM
                 // per-replaced-cache-read basis instead of the current initial value extraction.
                 if(group.cacheEntry->elementStrideInBytes != tmuCacheEntry->elementStrideInBytes)
                     // a group exists, but the type-width do not match
-                    break;
-
-                // make sure we already know all locals accessed by the successive loads at the point of the first load
-                auto knownLocals = getUsedLocals(groupBaseAndOffset.workGroupConstantOffset);
-                auto usedLocals = getUsedLocals(baseAndOffset->workGroupConstantOffset);
-
-                if(!checkAllLocalsAreKnown(knownLocals, usedLocals))
-                    // accesses locals not accessed in the first RAM load instruction, which might be written afterwards
-                    // and therefore we cannot move their usage to the initial RAM access
                     break;
 
                 if(group.usedVectorSize + static_cast<uint8_t>(numVectorElements->unsignedInt()) > NATIVE_VECTOR_SIZE)

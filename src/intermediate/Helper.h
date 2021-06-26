@@ -37,8 +37,8 @@ namespace vc4c
         /**
          * For a given value, finds the value (possible the input) that is the original source of a move-chain.
          *
-         * Walks a chain of move-instructions backwards as long as the moves are unconditional simple moves without
-         * side-effects.
+         * Walks a chain of move-instructions (or identity operations) backwards as long as the moves are unconditional
+         * simple moves without side-effects.
          *
          * @return the local at the beginning of the move-chain
          */
