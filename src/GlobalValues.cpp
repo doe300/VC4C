@@ -158,8 +158,7 @@ bool Global::residesInMemory() const
     return true;
 }
 
-Local::RAIILock Global::getUsersLock() const
+std::unique_lock<std::mutex> Global::getUsersLock() const
 {
-    usersLock.lock();
-    return RAIILock([&]() { usersLock.unlock(); });
+    return std::unique_lock<std::mutex>{usersLock};
 }

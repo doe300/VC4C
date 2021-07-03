@@ -68,8 +68,7 @@ namespace vc4c
          * NOTE: Return-instructions in inlined functions are already replaced with branches (and moves for returned
          * values) at this point. Also, this optimization-step is required for the compilation to work correctly
          */
-        InstructionWalker eliminateReturn(
-            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+        void eliminateReturn(Module& module, Method& method, InstructionWalker it, const Configuration& config);
 
         /*
          * Eliminates various types of redundant moves

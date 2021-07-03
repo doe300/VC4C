@@ -51,7 +51,7 @@ Literal periphery::precalculateSFURecipSqrt(Literal in)
 
 Optional<Value> periphery::precalculateSFU(Register sfuReg, const Value& input)
 {
-    std::function<Literal(const Literal&)> elemFunc;
+    Literal (*elemFunc)(Literal);
     switch(sfuReg.num)
     {
     case REG_SFU_EXP2.num:

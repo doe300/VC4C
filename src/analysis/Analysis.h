@@ -8,10 +8,10 @@
 #define VC4C_LOCAL_ANALYSIS
 
 #include "../BasicBlock.h"
+#include "../helper.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "log.h"
 
-#include <functional>
 #include <unordered_map>
 
 namespace vc4c
@@ -25,7 +25,7 @@ namespace vc4c
         };
 
         template <typename V>
-        using DumpFunction = std::function<std::string(const V&)>;
+        using DumpFunction = FunctionPointer<std::string(const V&)>;
 
         /*
          * Template for local analyses (within a single basic block) traversing the block to create the analysis
@@ -42,7 +42,7 @@ namespace vc4c
             using Cache = C;
             using AdditionalArgs = std::tuple<Args...>;
             using TransferFunction =
-                std::function<V(const intermediate::IntermediateInstruction*, const V&, C&, Args&...)>;
+                FunctionPointer<V(const intermediate::IntermediateInstruction*, const V&, C&, Args&...)>;
 
             /*
              * Analyses the given basic block and fills the internal result store
@@ -149,7 +149,7 @@ namespace vc4c
          * the block executes)
          */
         template <typename V, typename... Args>
-        using DefaultGlobalTransferFunction = std::function<std::pair<V, V>(const BasicBlock&, Args&...)>;
+        using DefaultGlobalTransferFunction = FunctionPointer<std::pair<V, V>(const BasicBlock&, Args&...)>;
 
         /*
          * Template for global analyses

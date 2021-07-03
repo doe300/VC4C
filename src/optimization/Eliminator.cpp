@@ -440,8 +440,7 @@ InstructionWalker optimizations::foldConstants(
     return it;
 }
 
-InstructionWalker optimizations::eliminateReturn(
-    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+void optimizations::eliminateReturn(Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     if(it.get<intermediate::Return>())
     {
@@ -453,7 +452,6 @@ InstructionWalker optimizations::eliminateReturn(
             log << "Replacing return in kernel-function with branch to end-label" << logging::endl);
         it.reset(new intermediate::Branch(target->getLabel()->getLabel()));
     }
-    return it;
 }
 
 static bool isNoReadBetween(InstructionWalker first, InstructionWalker second, Register reg)
@@ -473,8 +471,8 @@ static bool isNoReadBetween(InstructionWalker first, InstructionWalker second, R
     return true;
 }
 
-static std::function<bool(const intermediate::IntermediateInstruction&)> createRegisterCheck(
-    InstructionWalker it, const Value& src)
+using RegisterCheck = FunctionPointer<bool(const intermediate::IntermediateInstruction&)>;
+static RegisterCheck createRegisterCheck(InstructionWalker it, const Value& src)
 {
     auto reg = src.checkRegister();
     if(!reg)

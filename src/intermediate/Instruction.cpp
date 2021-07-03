@@ -459,6 +459,23 @@ void IntermediateInstruction::forUsedLocals(
     }
 }
 
+void IntermediateInstruction::forReadLocals(
+    const std::function<void(const Local*, const IntermediateInstruction&)>& consumer) const
+{
+    for(const Value& arg : arguments)
+    {
+        if(auto loc = arg.checkLocal())
+            consumer(loc, *this);
+    }
+}
+
+void IntermediateInstruction::forWrittenLocals(
+    const std::function<void(const Local*, const IntermediateInstruction&)>& consumer) const
+{
+    if(auto loc = checkOutputLocal())
+        consumer(loc, *this);
+}
+
 bool IntermediateInstruction::readsLocal(const Local* local) const
 {
     for(const auto& arg : arguments)

@@ -7,6 +7,7 @@
 #ifndef OPTIMIZER_H
 #define OPTIMIZER_H
 
+#include "../helper.h"
 #include "config.h"
 
 #include <functional>
@@ -59,7 +60,7 @@ namespace vc4c
              * The optimizations are only run in parallel for different methods, so any access to the method is
              * thread-safe
              */
-            using Pass = std::function<bool(const Module&, Method&, const Configuration&)>;
+            using Pass = FunctionPointer<bool(const Module&, Method&, const Configuration&)>;
 
             OptimizationPass(const std::string& name, const std::string& parameterName, const Pass& pass,
                 const std::string& description, OptimizationType type);
@@ -92,7 +93,7 @@ namespace vc4c
              * thread-safe
              */
             using Step =
-                std::function<InstructionWalker(const Module&, Method&, InstructionWalker, const Configuration&)>;
+                FunctionPointer<InstructionWalker(const Module&, Method&, InstructionWalker, const Configuration&)>;
 
             OptimizationStep(const std::string& name, const Step& step);
 

@@ -22,7 +22,7 @@ using namespace vc4c::normalization;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
 
-using MappingCheck = MemoryInfo (*)(Method& method, const Local*, MemoryAccess&);
+using MappingCheck = FunctionPointer<MemoryInfo(Method& method, const Local*, MemoryAccess&)>;
 
 static MemoryInfo canLowerToRegisterReadOnly(Method& method, const Local* baseAddr, MemoryAccess& access);
 static MemoryInfo canLowerToRegisterReadWrite(Method& method, const Local* baseAddr, MemoryAccess& access);

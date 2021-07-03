@@ -16,10 +16,9 @@ using namespace vc4c::spirv;
 
 SPIRVBuiltin::~SPIRVBuiltin() noexcept = default;
 
-Local::RAIILock SPIRVBuiltin::getUsersLock() const
+std::unique_lock<std::mutex> SPIRVBuiltin::getUsersLock() const
 {
-    usersLock.lock();
-    return RAIILock([&]() { usersLock.unlock(); });
+    return std::unique_lock<std::mutex>{usersLock};
 }
 
 // get_work_dim - scalar integer

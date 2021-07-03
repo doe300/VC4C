@@ -62,21 +62,23 @@ std::size_t BasicBlock::size() const
     return instructions.size();
 }
 
+static std::size_t removeUser(const LocalUser* user,
+    tools::SmallSortedPointerMap<const intermediate::IntermediateInstruction*, LocalUse>& remainingUsers)
+{
+    auto numUsers = remainingUsers.erase(user);
+    if(auto comb = dynamic_cast<const intermediate::CombinedOperation*>(user))
+    {
+        if(auto op1 = comb->getFirstOp())
+            numUsers += remainingUsers.erase(op1);
+        if(auto op2 = comb->getSecondOp())
+            numUsers += remainingUsers.erase(op2);
+    }
+    return numUsers;
+}
+
 bool BasicBlock::isLocallyLimited(InstructionWalker curIt, const Local* locale, const std::size_t threshold) const
 {
     auto remainingUsers = locale->getUsers();
-
-    auto removeUser = [&](const LocalUser* user) -> std::size_t {
-        auto numUsers = remainingUsers.erase(user);
-        if(auto comb = dynamic_cast<const intermediate::CombinedOperation*>(user))
-        {
-            if(auto op1 = comb->getFirstOp())
-                numUsers += remainingUsers.erase(op1);
-            if(auto op2 = comb->getSecondOp())
-                numUsers += remainingUsers.erase(op2);
-        }
-        return numUsers;
-    };
 
     int32_t usageRangeLeft = static_cast<int32_t>(threshold);
     // we only need to check the N instructions before/after at all!
@@ -84,16 +86,16 @@ bool BasicBlock::isLocallyLimited(InstructionWalker curIt, const Local* locale, 
     // check whether the local is written in the instruction(s) before (and this)
     // this happens e.g. for comparisons and for assembling vectors
     auto prevIt = curIt;
-    while(usageRangeLeft >= 0 && numInstructionsLeft >= 0 && !prevIt.isStartOfBlock())
+    while(usageRangeLeft >= 0 && numInstructionsLeft >= 0 && !prevIt.isStartOfBlock() && !remainingUsers.empty())
     {
         prevIt.previousInBlock();
-        if(removeUser(prevIt.get()) > 0)
+        if(removeUser(prevIt.get(), remainingUsers) > 0)
             --usageRangeLeft;
         --numInstructionsLeft;
     }
-    while(usageRangeLeft >= 0 && !curIt.isEndOfBlock())
+    while(usageRangeLeft >= 0 && !curIt.isEndOfBlock() && !remainingUsers.empty())
     {
-        removeUser(curIt.get());
+        removeUser(curIt.get(), remainingUsers);
         --usageRangeLeft;
         curIt.nextInBlock();
     }
@@ -255,9 +257,12 @@ bool BasicBlock::fallsThroughToNextBlock(bool useCFGIfAvailable) const
 Optional<InstructionWalker> BasicBlock::findWalkerForInstruction(
     const intermediate::IntermediateInstruction* instr, InstructionWalker start) const
 {
+    if(start.isEndOfBlock() && !instructions.empty())
+        start.previousInBlock();
+
     while(!start.isStartOfBlock())
     {
-        if(!start.isEndOfBlock() && start.get() == instr)
+        if(start.get() == instr)
         {
             return start;
         }

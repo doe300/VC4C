@@ -126,12 +126,22 @@ static void addToPasses(const OptimizationPass& pass, std::vector<const Optimiza
     }
 }
 
+static bool isEnabled(
+    const std::set<std::string>& enabledPasses, const std::string& optimizationPass, const Configuration& config)
+{
+    if(config.additionalDisabledOptimizations.find(optimizationPass) != config.additionalDisabledOptimizations.end())
+        return false;
+    if(config.additionalEnabledOptimizations.find(optimizationPass) != config.additionalEnabledOptimizations.end())
+        return true;
+    return enabledPasses.find(optimizationPass) != enabledPasses.end();
+}
+
 Optimizer::Optimizer(const Configuration& config) : config(config)
 {
     auto enabledPasses = getPasses(config.optimizationLevel);
     for(const OptimizationPass& pass : ALL_PASSES)
     {
-        if(isEnabled(pass.parameterName, config))
+        if(::isEnabled(enabledPasses, pass.parameterName, config))
             addToPasses(pass, initialPasses, repeatingPasses, finalPasses);
     }
 }
@@ -390,10 +400,6 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
 
 bool Optimizer::isEnabled(const std::string& optimizationPass, const Configuration& config)
 {
-    if(config.additionalDisabledOptimizations.find(optimizationPass) != config.additionalDisabledOptimizations.end())
-        return false;
-    if(config.additionalEnabledOptimizations.find(optimizationPass) != config.additionalEnabledOptimizations.end())
-        return true;
     auto enabledPasses = getPasses(config.optimizationLevel);
-    return enabledPasses.find(optimizationPass) != enabledPasses.end();
+    return ::isEnabled(enabledPasses, optimizationPass, config);
 }

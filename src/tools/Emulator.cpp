@@ -39,14 +39,65 @@ static constexpr MemoryAddress INSTRUCTION_BASE_ADDRESS{0x10000000};
 extern void extractBinary(std::istream& binary, ModuleHeader& module, StableList<Global>& globals,
     std::vector<qpu_asm::Instruction>& instructions);
 
+// Base type for type erasure of called object type
+struct ExecutionBase : NonCopyable
+{
+    virtual ~ExecutionBase() noexcept = default;
+
+    virtual bool operator()(uint32_t currentCycle) = 0;
+};
+
+template <typename Func>
+struct ExecutionWrapper final : ExecutionBase
+{
+    ExecutionWrapper(Func&& func) : func(std::move(func)) {}
+    ~ExecutionWrapper() override = default;
+
+    bool operator()(uint32_t currentCycle) override
+    {
+        return func(currentCycle);
+    }
+
+    Func func;
+};
+
+/**
+ * Move-only alternative to std::function.
+ *
+ * std::function cannot be moved, so the captures have to be copyable (and copied). This type can only be moved,
+ * allowing for non-copyable capture types (and saving possibly expensive copies).
+ */
+struct vc4c::tools::AsynchronousExecution : NonCopyable
+{
+    std::string name;
+    std::unique_ptr<ExecutionBase> func;
+
+    template <typename Func>
+    AsynchronousExecution(std::string&& name, Func&& func) :
+        name(std::move(name)), func(new ExecutionWrapper<Func>(std::move(func)))
+    {
+    }
+
+    bool operator()(uint32_t currentCycle)
+    {
+        return (*func)(currentCycle);
+    }
+};
+
 class vc4c::tools::EmulationClock
 {
 public:
     uint32_t currentCycle = 0;
 
+    template <typename Func>
+    void schedule(std::string&& name, Func&& func)
+    {
+        executions.emplace_back(std::move(name), std::move(func));
+    }
+
     void schedule(AsynchronousExecution&& execution)
     {
-        executions.emplace_back(std::move(execution));
+        executions.push_back(std::move(execution));
     }
 
     void executeClockCycle()
@@ -98,9 +149,6 @@ static std::pair<T, bool> extractValue(std::future<T>& future)
         throw CompilationError(CompilationStep::GENERAL, "Invalid future status for asynchronous result");
     }
 }
-
-template <typename T>
-static auto createHandle = std::make_shared<typename T::element_type>;
 
 std::size_t EmulationData::calcParameterSize() const
 {
@@ -629,8 +677,8 @@ void UniformFifo::triggerFifoFill()
     while(fifo.size() < 2)
     {
         // initial load of UNIFORM values
-        auto handle = createHandle<AsynchronousHandle<Word>>();
-        fifo.emplace_back(handle->get_future());
+        AsynchronousHandle<Word> handle{};
+        fifo.emplace_back(handle.get_future());
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Triggering read of UNIFORM into FIFO for QPU " << static_cast<unsigned>(qpu.ID)
                 << " from address: " << toAddressString(uniformAddress) << logging::endl);
@@ -715,10 +763,12 @@ void TMUs::checkTMUWriteCycle() const
 
 std::future<SIMDVector> TMUs::readMemoryAddress(uint8_t tmu, const SIMDVector& address) const
 {
-    auto handle = createHandle<AsynchronousHandle<SIMDVector>>();
-    auto future = handle->get_future();
-    std::vector<std::shared_ptr<std::future<Word>>> wordResults;
+    AsynchronousHandle<SIMDVector> handle{};
+    auto future = handle.get_future();
+    std::vector<std::future<Word>> wordResults;
+    wordResults.reserve(NATIVE_VECTOR_SIZE);
     std::vector<AsynchronousExecution> pendingLoads;
+    pendingLoads.reserve(NATIVE_VECTOR_SIZE);
     for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
     {
         if(address[i].isUndefined())
@@ -726,13 +776,13 @@ std::future<SIMDVector> TMUs::readMemoryAddress(uint8_t tmu, const SIMDVector& a
                 CompilationStep::GENERAL, "Cannot read from undefined TMU address", address.to_string());
         else
         {
-            auto wordHandle = createHandle<AsynchronousHandle<Word>>();
-            wordResults.emplace_back(std::make_shared<std::future<Word>>(wordHandle->get_future()));
+            AsynchronousHandle<Word> wordHandle{};
+            wordResults.emplace_back(wordHandle.get_future());
             pendingLoads.emplace_back(slice.startTMURead(tmu, std::move(wordHandle), address[i].toImmediate()));
         }
     }
-    clock.schedule({"TMU read",
-        [handle, address, results{std::move(wordResults)}, pending{std::move(pendingLoads)}](
+    clock.schedule("TMU read",
+        [handle{std::move(handle)}, address, results{std::move(wordResults)}, pending{std::move(pendingLoads)}](
             uint32_t currentCycle) mutable -> bool {
             // wait until all elements are loaded from cache/memory
             for(auto it = pending.begin(); it != pending.end();)
@@ -745,22 +795,21 @@ std::future<SIMDVector> TMUs::readMemoryAddress(uint8_t tmu, const SIMDVector& a
             if(!pending.empty())
                 return false;
 
-            if(std::any_of(
-                   results.begin(), results.end(), [](const std::shared_ptr<std::future<Word>>& result) -> bool {
-                       return result->wait_for(std::chrono::seconds{0}) != std::future_status::ready;
-                   }))
+            if(std::any_of(results.begin(), results.end(), [](const std::future<Word>& result) -> bool {
+                   return result.wait_for(std::chrono::seconds{0}) != std::future_status::ready;
+               }))
                 return false;
 
             SIMDVector res;
             for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
-                res[i] = Literal(results[i]->get());
+                res[i] = Literal(results[i].get());
             // XXX for cosmetic/correctness, this should print the rounded-down (to word boundaries) addresses
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Reading via TMU from memory address " << address.to_string(true) << ": " << res.to_string(true)
                     << logging::endl);
-            handle->set_value(res);
+            handle.set_value(res);
             return true;
-        }});
+        });
     return future;
 }
 
@@ -804,7 +853,7 @@ void SFU::startLog2(const SIMDVector& val, SIMDVector& r4Register)
 
 void SFU::startOperation(SIMDVector&& result, SIMDVector& r4Register)
 {
-    clock.schedule({"SFU calculation",
+    clock.schedule("SFU calculation",
         [remainingCycles{2}, &r4Register, output{std::move(result)}](uint32_t currentCycle) mutable -> bool {
             if(remainingCycles > 0)
             {
@@ -815,7 +864,7 @@ void SFU::startOperation(SIMDVector&& result, SIMDVector& r4Register)
                 logging::Level::DEBUG, log << "Reading from SFU into r4: " << output.to_string(true) << logging::endl);
             r4Register = output;
             return true;
-        }});
+        });
 }
 
 template <typename T>
@@ -1194,14 +1243,14 @@ bool VPM::waitDMAWrite() const
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 120, "wait DMA write", numCyclesLeft > 0);
     if(numCyclesLeft > 0)
         // TODO remove this dummy asynchronous execution once we move DMA access to the new schema
-        clock.schedule({"DMA write wait", [remainingCycles{numCyclesLeft}](uint32_t currentClock) mutable -> bool {
-                            if(remainingCycles > 0)
-                            {
-                                --remainingCycles;
-                                return false;
-                            }
-                            return true;
-                        }});
+        clock.schedule("DMA write wait", [remainingCycles{numCyclesLeft}](uint32_t currentClock) mutable -> bool {
+            if(remainingCycles > 0)
+            {
+                --remainingCycles;
+                return false;
+            }
+            return true;
+        });
     return numCyclesLeft <= 0;
 }
 
@@ -1212,7 +1261,7 @@ bool VPM::waitDMARead() const
     PROFILE_COUNTER(vc4c::profiler::COUNTER_EMULATOR + 130, "wait DMA read", numCyclesLeft > 0);
     if(numCyclesLeft > 0)
         // TODO remove this dummy asynchronous execution once we move DMA access to the new schema
-        clock.schedule({"DMA read wait",
+        clock.schedule("DMA read wait",
             [remainingCycles{lastDMAReadTrigger + 12 - clock.currentCycle}](uint32_t currentClock) mutable -> bool {
                 if(remainingCycles > 0)
                 {
@@ -1220,7 +1269,7 @@ bool VPM::waitDMARead() const
                     return false;
                 }
                 return true;
-            }});
+            });
     return numCyclesLeft <= 0;
 }
 
@@ -1335,24 +1384,26 @@ static std::pair<std::reference_wrapper<CacheLine<NumElements, Element>>, uint16
     // 1. select cache line already containing the requested address
     for(auto line : candidateLines)
     {
-        if(cache.at(line).baseAddress == baseAddress)
-            return std::make_pair(std::ref(cache.at(line)), setIndex);
+        auto& entry = cache.at(line);
+        if(entry.baseAddress == baseAddress)
+            return std::make_pair(std::ref(entry), setIndex);
     }
     // 2. select empty cache line
     for(auto line : candidateLines)
     {
-        if(!cache.at(line).isSet)
-            return std::make_pair(std::ref(cache.at(line)), setIndex);
+        auto& entry = cache.at(line);
+        if(!entry.isSet)
+            return std::make_pair(std::ref(entry), setIndex);
     }
     // 3. fall back to evicting the oldest cache line
-    auto oldestLineIndex = baseLine;
+    auto oldestLine = &cache.at(baseLine);
     for(auto line : candidateLines)
     {
-        if(cache.at(oldestLineIndex).isBeingFilled ||
-            (!cache.at(line).isBeingFilled && cache.at(line).cycleWritten < cache.at(oldestLineIndex).cycleWritten))
-            oldestLineIndex = line;
+        auto& entry = cache.at(line);
+        if(oldestLine->isBeingFilled || (!entry.isBeingFilled && entry.cycleWritten < oldestLine->cycleWritten))
+            oldestLine = &entry;
     }
-    return std::make_pair(std::ref(cache.at(oldestLineIndex)), setIndex);
+    return std::make_pair(std::ref(*oldestLine), setIndex);
 }
 
 AsynchronousExecution L2Cache::startCacheLineRead(
@@ -1390,7 +1441,7 @@ AsynchronousExecution L2Cache::startCacheLineRead(
 
         // XXX Since TMU and UNIFORM have similar cache access timings, we for now assume the load speed memory into L2
         // cache and L2 cache into the L1 caches to be identical
-        clock.schedule({"Memory read",
+        clock.schedule("Memory read",
             [remainingCycles{8}, &cacheLine, data{std::move(tmpData)}, setIndex{cacheEntry.second}](
                 uint32_t currentCycle) mutable -> bool {
                 if(remainingCycles > 0)
@@ -1407,22 +1458,23 @@ AsynchronousExecution L2Cache::startCacheLineRead(
                     log << "Written into L2 cache line " << static_cast<unsigned>(cacheLine.lineNum) << " (set "
                         << setIndex << "): " << toDataString(cacheLine.data) << logging::endl);
                 return true;
-            }});
+            });
     }
     // XXX Since TMU and UNIFORM have similar cache access timings, we for now assume the load speed memory into L2
     // cache and L2 cache into the L1 caches to be identical
-    return {"L2 read", [remainingCycles{3}, &cacheLine, handle](uint32_t currentCycle) mutable -> bool {
-                if(cacheLine.isBeingFilled)
-                    return false;
+    return {
+        "L2 read", [remainingCycles{3}, &cacheLine, handle{std::move(handle)}](uint32_t currentCycle) mutable -> bool {
+            if(cacheLine.isBeingFilled)
+                return false;
 
-                if(remainingCycles > 0)
-                {
-                    --remainingCycles;
-                    return false;
-                }
-                handle->set_value(cacheLine.data);
-                return true;
-            }};
+            if(remainingCycles > 0)
+            {
+                --remainingCycles;
+                return false;
+            }
+            handle.set_value(cacheLine.data);
+            return true;
+        }};
 }
 
 AsynchronousExecution L2Cache::startCacheLineRead(
@@ -1464,7 +1516,7 @@ AsynchronousExecution L2Cache::startCacheLineRead(
 
         // XXX Since TMU and UNIFORM have similar cache access timings, we for now assume the load speed memory into L2
         // cache and L2 cache into the L1 caches to be identical
-        clock.schedule({"Memory read",
+        clock.schedule("Memory read",
             [remainingCycles{8}, &cacheLine, data{std::move(tmpData)}, setIndex{cacheEntry.second}](
                 uint32_t currentCycle) mutable -> bool {
                 if(remainingCycles > 0)
@@ -1480,24 +1532,25 @@ AsynchronousExecution L2Cache::startCacheLineRead(
                     log << "Written into L2 cache line " << static_cast<unsigned>(cacheLine.lineNum) << " (set "
                         << setIndex << "): " << toDataString(cacheLine.data) << logging::endl);
                 return true;
-            }});
+            });
     }
     // XXX Since TMU and UNIFORM have similar cache access timings, we for now assume the load speed memory into L2
     // cache and L2 cache into the L1 caches to be identical
-    return {"L2 read", [remainingCycles{3}, &cacheLine, handle](uint32_t currentCycle) mutable -> bool {
-                if(cacheLine.isBeingFilled)
-                    return false;
+    return {
+        "L2 read", [remainingCycles{3}, &cacheLine, handle{std::move(handle)}](uint32_t currentCycle) mutable -> bool {
+            if(cacheLine.isBeingFilled)
+                return false;
 
-                if(remainingCycles > 0)
-                {
-                    --remainingCycles;
-                    return false;
-                }
-                std::array<uint64_t, 8> tmpData;
-                std::memcpy(tmpData.data(), cacheLine.data.data(), sizeof(tmpData));
-                handle->set_value(tmpData);
-                return true;
-            }};
+            if(remainingCycles > 0)
+            {
+                --remainingCycles;
+                return false;
+            }
+            std::array<uint64_t, 8> tmpData;
+            std::memcpy(tmpData.data(), cacheLine.data.data(), sizeof(tmpData));
+            handle.set_value(tmpData);
+            return true;
+        }};
 }
 
 void L2Cache::validateMemoryWord(MemoryAddress address, Word word) const
@@ -1544,8 +1597,8 @@ AsynchronousExecution Slice::startUniformRead(AsynchronousHandle<Word>&& handle,
         if(cacheLine.isBeingFilled)
             throw CompilationError(CompilationStep::GENERAL, "Can't evict cache line being filled for another read!");
 
-        auto handle = createHandle<AsynchronousHandle<std::array<Word, 16>>>();
-        auto fut = std::make_shared<std::future<std::array<Word, 16>>>(handle->get_future());
+        AsynchronousHandle<std::array<Word, 16>> handle{};
+        auto fut = handle.get_future();
         auto l2Read = l2Cache.startCacheLineRead(std::move(handle), address);
         auto baseAddress = getBaseCacheLineAddress(uniformCache, address);
 
@@ -1559,13 +1612,13 @@ AsynchronousExecution Slice::startUniformRead(AsynchronousHandle<Word>&& handle,
         cacheLine.isSet = true;
         cacheLine.isBeingFilled = true;
 
-        clock.schedule({"UNIFORM cache fill",
-            [id{id}, &cacheLine, memoryRead{std::move(l2Read)}, loadedData{fut}](
+        clock.schedule("UNIFORM cache fill",
+            [id{id}, &cacheLine, memoryRead{std::move(l2Read)}, loadedData{std::move(fut)}](
                 uint32_t currentCycle) mutable -> bool {
                 if(!memoryRead(currentCycle))
                     return false;
 
-                cacheLine.data = loadedData->get();
+                cacheLine.data = loadedData.get();
                 cacheLine.isBeingFilled = false;
                 cacheLine.cycleWritten = currentCycle;
                 CPPLOG_LAZY(logging::Level::DEBUG,
@@ -1573,11 +1626,12 @@ AsynchronousExecution Slice::startUniformRead(AsynchronousHandle<Word>&& handle,
                         << " of slice " << static_cast<unsigned>(id) << ": " << toDataString(cacheLine.data)
                         << logging::endl);
                 return true;
-            }});
+            });
     }
     // XXX tests suggest the lookup times are similar than for TMU
     return {"UNIFORM cache read",
-        [remainingCycles{9}, &cacheLine, this, address, handle](uint32_t currentCycle) mutable -> bool {
+        [remainingCycles{9}, &cacheLine, this, address, handle{std::move(handle)}](
+            uint32_t currentCycle) mutable -> bool {
             if(cacheLine.isBeingFilled)
                 return false;
 
@@ -1588,7 +1642,7 @@ AsynchronousExecution Slice::startUniformRead(AsynchronousHandle<Word>&& handle,
             }
             auto result = cacheLine.readElement(address);
             l2Cache.validateMemoryWord(address, result);
-            handle->set_value(result);
+            handle.set_value(result);
             return true;
         }};
 }
@@ -1627,8 +1681,8 @@ AsynchronousExecution Slice::startTMURead(uint8_t tmuIndex, AsynchronousHandle<W
                 }};
         }
 
-        auto handle = createHandle<AsynchronousHandle<std::array<Word, 16>>>();
-        auto fut = std::make_shared<std::future<std::array<Word, 16>>>(handle->get_future());
+        AsynchronousHandle<std::array<Word, 16>> handle{};
+        auto fut = handle.get_future();
         auto l2Read = l2Cache.startCacheLineRead(std::move(handle), address);
         auto baseAddress = getBaseCacheLineAddress(tmuIndex == 0 ? tmu0Cache : tmu1Cache, address);
 
@@ -1642,13 +1696,13 @@ AsynchronousExecution Slice::startTMURead(uint8_t tmuIndex, AsynchronousHandle<W
         cacheLine.isSet = true;
         cacheLine.isBeingFilled = true;
 
-        clock.schedule({"TMU cache fill",
-            [id{id}, &cacheLine, memoryRead{std::move(l2Read)}, loadedData{fut}, tmuIndex](
+        clock.schedule("TMU cache fill",
+            [id{id}, &cacheLine, memoryRead{std::move(l2Read)}, loadedData{std::move(fut)}, tmuIndex](
                 uint32_t currentCycle) mutable -> bool {
                 if(!memoryRead(currentCycle))
                     return false;
 
-                cacheLine.data = loadedData->get();
+                cacheLine.data = loadedData.get();
                 cacheLine.isBeingFilled = false;
                 cacheLine.cycleWritten = currentCycle;
                 CPPLOG_LAZY(logging::Level::DEBUG,
@@ -1656,11 +1710,12 @@ AsynchronousExecution Slice::startTMURead(uint8_t tmuIndex, AsynchronousHandle<W
                         << static_cast<unsigned>(cacheLine.lineNum) << " of slice " << static_cast<unsigned>(id) << ": "
                         << toDataString(cacheLine.data) << logging::endl);
                 return true;
-            }});
+            });
     }
     // read from cache, takes 9 cycles
     return {"TMU cache read",
-        [remainingCycles{9}, &cacheLine, this, address, handle, result{0u}](uint32_t currentCycle) mutable -> bool {
+        [remainingCycles{9}, &cacheLine, this, address, handle{std::move(handle)}, result{0u}](
+            uint32_t currentCycle) mutable -> bool {
             if(cacheLine.isBeingFilled)
                 return false;
 
@@ -1677,7 +1732,7 @@ AsynchronousExecution Slice::startTMURead(uint8_t tmuIndex, AsynchronousHandle<W
                 --remainingCycles;
                 return false;
             }
-            handle->set_value(result);
+            handle.set_value(result);
             return true;
         }};
 }
@@ -1696,8 +1751,8 @@ std::pair<qpu_asm::Instruction, bool> Slice::readInstruction(ProgramCounter pc)
         if(cacheLine.isBeingFilled)
             throw CompilationError(CompilationStep::GENERAL, "Can't evict cache line being filled for another read!");
 
-        auto handle = createHandle<AsynchronousHandle<std::array<uint64_t, 8>>>();
-        auto fut = std::make_shared<std::future<std::array<uint64_t, 8>>>(handle->get_future());
+        AsynchronousHandle<std::array<uint64_t, 8>> handle{};
+        auto fut = handle.get_future();
         auto l2Read = l2Cache.startCacheLineRead(std::move(handle), pc);
         auto baseAddress = getBaseCacheLineAddress(instructionCache, instructionAddress);
 
@@ -1711,13 +1766,13 @@ std::pair<qpu_asm::Instruction, bool> Slice::readInstruction(ProgramCounter pc)
         cacheLine.isSet = true;
         cacheLine.isBeingFilled = true;
 
-        clock.schedule({"Instruction cache fill",
-            [id{id}, &cacheLine, memoryRead{std::move(l2Read)}, loadedData{fut}, setIndex{cacheEntry.second}](
-                uint32_t currentCycle) mutable -> bool {
+        clock.schedule("Instruction cache fill",
+            [id{id}, &cacheLine, memoryRead{std::move(l2Read)}, loadedData{std::move(fut)},
+                setIndex{cacheEntry.second}](uint32_t currentCycle) mutable -> bool {
                 if(!memoryRead(currentCycle))
                     return false;
 
-                cacheLine.data = loadedData->get();
+                cacheLine.data = loadedData.get();
                 cacheLine.isBeingFilled = false;
                 cacheLine.cycleWritten = currentCycle;
                 CPPLOG_LAZY(logging::Level::DEBUG,
@@ -1725,7 +1780,7 @@ std::pair<qpu_asm::Instruction, bool> Slice::readInstruction(ProgramCounter pc)
                         << " (set " << setIndex << ") of slice " << static_cast<unsigned>(id) << ": "
                         << toDataString(cacheLine.data) << logging::endl);
                 return true;
-            }});
+            });
     }
 
     if(cacheLine.isBeingFilled)
@@ -1850,18 +1905,18 @@ bool QPU::execute()
 
                 // schedule the jump after the next 3 instructions
                 clock.schedule(
-                    {"Branch delay", [this, remainingCycles{3}, targetPC](uint32_t currentCycle) mutable -> bool {
-                         if(remainingCycles > 0)
-                         {
-                             --remainingCycles;
-                             return false;
-                         }
-                         pc = targetPC;
-                         CPPLOG_LAZY(logging::Level::DEBUG,
-                             log << "Jumping program counter for QPU " << static_cast<unsigned>(ID) << " to: 0x"
-                                 << std::hex << pc << std::dec << logging::endl);
-                         return true;
-                     }});
+                    "Branch delay", [this, remainingCycles{3}, targetPC](uint32_t currentCycle) mutable -> bool {
+                        if(remainingCycles > 0)
+                        {
+                            --remainingCycles;
+                            return false;
+                        }
+                        pc = targetPC;
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Jumping program counter for QPU " << static_cast<unsigned>(ID) << " to: 0x"
+                                << std::hex << pc << std::dec << logging::endl);
+                        return true;
+                    });
             }
             // simply skip to next PC
             ++nextPC;
@@ -2338,15 +2393,15 @@ bool QPU::executeSignal(Signaling signal)
     else if(signal == SIGNAL_END_PROGRAM)
     {
         // end program after the next 2 instructions
-        clock.schedule({"Thread end", [this, remainingCycles{2}](uint32_t currentCycle) mutable -> bool {
-                            if(remainingCycles > 0)
-                            {
-                                --remainingCycles;
-                                return false;
-                            }
-                            stopExecution = true;
-                            return true;
-                        }});
+        clock.schedule("Thread end", [this, remainingCycles{2}](uint32_t currentCycle) mutable -> bool {
+            if(remainingCycles > 0)
+            {
+                --remainingCycles;
+                return false;
+            }
+            stopExecution = true;
+            return true;
+        });
         return true;
     }
     else
@@ -2536,6 +2591,7 @@ bool tools::emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstr
         if(!clock.hasAsynchronousExecutions())
         {
             std::vector<std::pair<ProgramCounter, uint64_t>> currentProgramCounters;
+            currentProgramCounters.reserve(qpus.size());
             for(auto& qpu : qpus)
             {
                 if(activeQPUs.test(qpu.ID))

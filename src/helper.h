@@ -237,6 +237,9 @@ namespace vc4c
         (void) val;
     }
 
+    template <typename Signature>
+    using FunctionPointer = std::add_pointer_t<Signature>;
+
     /**
      * Helper type to allow short-cutting checks on pointers, similar to the operators supported for Optional
      */

@@ -577,8 +577,8 @@ bool intermediate::needsDelay(const IntermediateInstruction* firstInst, const In
         // below we only check for local, so explicitly check for registers here
         return true;
     bool isDelayNeeded = false;
-    firstInst->forUsedLocals([&](const Local* loc, LocalUse::Type type, const IntermediateInstruction&) {
-        if(has_flag(type, LocalUse::Type::WRITER) && secondInst->readsLocal(loc))
+    firstInst->forWrittenLocals([&](const Local* loc, const IntermediateInstruction&) {
+        if(secondInst->readsLocal(loc))
             isDelayNeeded = isDelayNeeded || needsDelay(firstInst, secondInst, loc);
     });
     return isDelayNeeded;

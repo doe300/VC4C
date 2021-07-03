@@ -137,13 +137,13 @@ namespace vc4c
             ConditionCode code;
             Value arg0;
             Value arg1;
-            using FuncType = std::function<void(
+            using FuncType = FunctionPointer<void(
                 InstructionWalker&, const Value&, const Value&, const Value&, intermediate::InstructionDecorations)>;
             FuncType func;
             intermediate::InstructionDecorations decoration = intermediate::InstructionDecorations::NONE;
 
-            ComparisonWrapper(ConditionCode code, const Value& arg0, const Value& arg1, FuncType&& func) :
-                code(code), arg0(arg0), arg1(arg1), func(std::forward<FuncType>(func))
+            ComparisonWrapper(ConditionCode code, const Value& arg0, const Value& arg1, const FuncType& func) :
+                code(code), arg0(arg0), arg1(arg1), func(func)
             {
             }
 

@@ -159,16 +159,9 @@ const Local* Local::getBase(bool includeOffsets) const
     return this;
 }
 
-Local::RAIILock Local::getUsersLock() const
+std::unique_lock<std::mutex> Local::getUsersLock() const
 {
-    // no-op
-    return RAIILock{};
-}
-
-Local::RAIILock::~RAIILock() noexcept
-{
-    if(func)
-        func();
+    return std::unique_lock<std::mutex>{/* no mutex owned*/};
 }
 
 Parameter::Parameter(const std::string& name, DataType type, const ParameterDecorations decorations) :

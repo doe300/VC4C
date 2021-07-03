@@ -58,11 +58,9 @@ std::pair<AvailableExpressions, std::shared_ptr<Expression>> AvailableExpression
             if(it.second)
             {
                 // add map from input locals to expression (if we really inserted an expression)
-                for(const auto& loc : instr->getUsedLocals())
-                {
-                    if(has_flag(loc.second, LocalUse::Type::READER))
-                        cache[loc.first].emplace(it.first->first);
-                }
+                instr->forReadLocals([&cache, &it](const Local* local, const intermediate::IntermediateInstruction&) {
+                    cache[local].emplace(it.first->first);
+                });
             }
         }
     }

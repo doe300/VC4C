@@ -12,6 +12,7 @@
 
 #include "SPIRVParserBase.h"
 
+#include "../helper.h"
 #include "CompilationError.h"
 #include "Optional.h"
 
@@ -25,7 +26,7 @@ namespace vc4c
 {
     namespace spirv
     {
-        using EndinanessConverter = uint32_t (*)(uint32_t);
+        using EndinanessConverter = FunctionPointer<uint32_t(uint32_t)>;
 
         struct ModuleOperation final : ParsedInstruction
         {
@@ -45,8 +46,6 @@ namespace vc4c
             uint32_t resultId;
             std::vector<uint32_t> words;
         };
-
-        using OpConsumer = std::function<bool(const ModuleOperation& op)>;
 
         class SPIRVLexer final : public SPIRVParserBase
         {

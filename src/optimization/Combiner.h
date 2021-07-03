@@ -7,6 +7,7 @@
 #ifndef COMBINER_H
 #define COMBINER_H
 
+#include "../helper.h"
 #include "../performance.h"
 
 #include <functional>
@@ -86,7 +87,7 @@ namespace vc4c
             bool isPeepholeRun() const noexcept;
         };
 
-        using MergeCondition = std::function<bool(intermediate::Operation*, intermediate::Operation*,
+        using MergeCondition = FunctionPointer<bool(intermediate::Operation*, intermediate::Operation*,
             intermediate::MoveOperation*, intermediate::MoveOperation*, MergeConditionData&)>;
 
         // The global merge conditions

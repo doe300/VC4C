@@ -24,7 +24,7 @@ namespace vc4c
          * behavior (software-implementation of operators) and replaced comparison-operators with instructions executing
          * the comparison
          */
-        void intrinsify(const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+        void intrinsify(Module& module, Method& method, InstructionWalker it, const Configuration& config);
     } // namespace intrinsics
 } // namespace vc4c
 #endif /* INTRINSICS_H */

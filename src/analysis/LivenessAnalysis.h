@@ -48,7 +48,7 @@ namespace vc4c
          * This is a helper analysis and probably won't be useful on its own.
          */
         class LivenessChangesAnalysis
-            : public LocalAnalysis<AnalysisDirection::BACKWARD, LivenessChanges, LivenessAnalysisCache, bool>
+            : public LocalAnalysis<AnalysisDirection::BACKWARD, LivenessChanges, LivenessAnalysisCache, const bool>
         {
         public:
             explicit LivenessChangesAnalysis();
@@ -62,7 +62,7 @@ namespace vc4c
              * - any other live local remains live
              */
             static LivenessChanges analyzeLivenessChanges(const intermediate::IntermediateInstruction* instr,
-                const LivenessChanges& previousChanges, LivenessAnalysisCache& cache, bool trackR5Usage);
+                const LivenessChanges& previousChanges, LivenessAnalysisCache& cache, const bool& trackR5Usage);
 
             static std::string to_string(const LivenessChanges& changes);
         };
@@ -80,7 +80,7 @@ namespace vc4c
          * Also called Live Variable Analysis (https://en.wikipedia.org/wiki/Live_variable_analysis)
          */
         class LivenessAnalysis
-            : public LocalAnalysis<AnalysisDirection::BACKWARD, FastSet<const Local*>, LivenessAnalysisCache, bool>
+            : public LocalAnalysis<AnalysisDirection::BACKWARD, FastSet<const Local*>, LivenessAnalysisCache, const bool>
         {
         public:
             // The optional parameter are the locals assumed to be live at the end of the block
@@ -135,7 +135,7 @@ namespace vc4c
              * - any other live local remains live
              */
             static FastSet<const Local*> analyzeLiveness(const intermediate::IntermediateInstruction* instr,
-                const FastSet<const Local*>& nextResult, LivenessAnalysisCache& cache, bool trackR5Usage);
+                const FastSet<const Local*>& nextResult, LivenessAnalysisCache& cache, const bool& trackR5Usage);
 
             static std::string to_string(const FastSet<const Local*>& liveLocals);
         };

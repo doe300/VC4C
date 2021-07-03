@@ -83,7 +83,8 @@ static void propagateDecorations(Module& module, Method& method, InstructionWalk
 {
     // XXX does not propagate decoration via phi-nodes of back jumps
     // This is thread_local, since otherwise we get strange race conditions on initializing this structure
-    static thread_local const std::vector<std::pair<intermediate::InstructionDecorations, bool (*)(const Value&)>>
+    static thread_local const std::vector<
+        std::pair<intermediate::InstructionDecorations, FunctionPointer<bool(const Value&)>>>
         checks = {
             {intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, checkWorkGroupUniform},
             {intermediate::InstructionDecorations::IDENTICAL_ELEMENTS, checkSplatValue},
@@ -191,6 +192,13 @@ static void checkNormalized(Module& module, Method& method, InstructionWalker it
     LCOV_EXCL_STOP
 }
 
+template <FunctionPointer<InstructionWalker(const Module&, Method&, InstructionWalker, const Configuration&)> func>
+void wrapNormalizationStep(Module& module, Method& method, InstructionWalker it, const Configuration& config)
+{
+    // wrap signature for intrinsics which might be called otherwise and therefore return the iterator
+    func(module, method, it, config);
+}
+
 // NOTE: The order is on purpose and must not be changed!
 const static std::vector<std::pair<std::string, NormalizationStep>> initialNormalizationSteps = {
     // fixes "loading" of OpenCL C work-item functions as SPIR-V built-ins. Needs to run before handling intrinsics
@@ -204,7 +212,7 @@ const static std::vector<std::pair<std::string, NormalizationStep>> initialNorma
     // rewrites the use of literal values to either small-immediate values or loading of literals
     // this first run here is only required, so some loading of literals can be optimized, which is no longer possible
     // after the second run
-    {"HandleImmediates", handleImmediate},
+    {"HandleImmediates", wrapNormalizationStep<handleImmediate>},
     // propagates instruction decorations across the kernel code (this is required to aid memory lowering)
     {"PropagateDecorations", propagateDecorations},
     // propagates the unsigned result instruction decoration
@@ -217,7 +225,7 @@ const static std::vector<std::pair<std::string, NormalizationStep>> initialNorma
     // maps access to global data to the offset in the code
     {"MapGlobalDataToAddress", accessGlobalData},
     // moves vector-containers to locals and re-directs all uses to the local
-    {"HandleLiteralVector", handleContainer},
+    {"HandleLiteralVector", wrapNormalizationStep<handleContainer>},
     // lowers operations taking or returning 64-bit values. Since other normalization steps might produce 64-bit
     // operations, we rerun this after any other normalization step.
     {"Lower64BitOperations", lowerLongOperation},
@@ -231,10 +239,10 @@ const static std::vector<std::pair<std::string, NormalizationStep>> initialNorma
 
 const static std::vector<std::pair<std::string, NormalizationStep>> adjustmentSteps = {
     // needs to re-run this, since optimization steps may insert literals
-    {"HandleImmediates", handleImmediate},
+    {"HandleImmediates", wrapNormalizationStep<handleImmediate>},
     // prevents register-conflicts by moving long-living locals into temporaries before being used together with literal
     // values
-    {"HandleUseWithImmediate", handleUseWithImmediate},
+    {"HandleUseWithImmediate", wrapNormalizationStep<handleUseWithImmediate>},
     // moves all sources of vector-rotations to accumulators (if too large usage-range)
     {"MoveRotationSourcesToAccs", moveRotationSourcesToAccumulators},
     // inserts moves to splits up uses of locals fixes to a register-file (e.g. Unpack/Pack) together

@@ -195,7 +195,7 @@ static LivenessChanges analyzeLivenessChangesInner(
 }
 
 LivenessChanges LivenessChangesAnalysis::analyzeLivenessChanges(const intermediate::IntermediateInstruction* instr,
-    const LivenessChanges& previousChanges, LivenessAnalysisCache& cache, bool trackR5Usage)
+    const LivenessChanges& previousChanges, LivenessAnalysisCache& cache, const bool& trackR5Usage)
 {
     if(instr)
         return analyzeLivenessChangesInner(*instr, cache, trackR5Usage);
@@ -293,7 +293,7 @@ void LivenessAnalysis::updateWithChanges(
 }
 
 FastSet<const Local*> LivenessAnalysis::analyzeLiveness(const intermediate::IntermediateInstruction* instr,
-    const FastSet<const Local*>& nextResult, LivenessAnalysisCache& cache, bool trackR5Usage)
+    const FastSet<const Local*>& nextResult, LivenessAnalysisCache& cache, const bool& trackR5Usage)
 {
     auto changes = instr ? analyzeLivenessChangesInner(*instr, cache, trackR5Usage) : LivenessChanges{};
     return updateLiveness(FastSet<const Local*>{nextResult}, changes);
@@ -418,19 +418,20 @@ static FastSet<const Local*> initializeEndOfBlockLiveLocals(const BasicBlock& bl
      * gets mapped to the same register afterwards and overwrites our value, since it is never actually read again!
      */
     FastSet<const Local*> endLiveLocals;
+    auto trackLiveLocals = [&endLiveLocals](
+                               const Local* local, LocalUse::Type type, const intermediate::IntermediateInstruction&) {
+        if(has_flag(type, LocalUse::Type::READER))
+            // we don't care here about the real live-time, only some minimal version, so remove on any (even
+            // conditional) read
+            endLiveLocals.erase(local);
+        if(has_flag(type, LocalUse::Type::WRITER) && !local->type.isLabelType())
+            endLiveLocals.emplace(local);
+    };
     for(const auto& it : block)
     {
         if(!it)
             continue;
-        for(const auto& loc : it->getUsedLocals())
-        {
-            if(has_flag(LocalUse::Type::READER, loc.second))
-                // we don't care here about the real live-time, only some minimal version, so remove on any (even
-                // conditional) read
-                endLiveLocals.erase(loc.first);
-            if(has_flag(LocalUse::Type::WRITER, loc.second) && !loc.first->type.isLabelType())
-                endLiveLocals.emplace(loc.first);
-        }
+        it->forUsedLocals(trackLiveLocals);
     }
     return endLiveLocals;
 }

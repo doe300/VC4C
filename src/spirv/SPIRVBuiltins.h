@@ -44,7 +44,7 @@ namespace vc4c
 
         protected:
             mutable std::mutex usersLock;
-            RAIILock getUsersLock() const override;
+            std::unique_lock<std::mutex> getUsersLock() const override;
         };
 
         // get_work_dim - scalar integer

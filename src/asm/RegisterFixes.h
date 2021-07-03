@@ -7,6 +7,8 @@
 #ifndef VC4C_REGISTER_FIXES_H
 #define VC4C_REGISTER_FIXES_H
 
+#include "../helper.h"
+
 #include <functional>
 #include <string>
 #include <vector>
@@ -31,7 +33,7 @@ namespace vc4c
             NOTHING_FIXED
         };
 
-        using RegisterFixupStep = std::function<FixupResult(Method&, const Configuration&, GraphColoring&)>;
+        using RegisterFixupStep = FunctionPointer<FixupResult(Method&, const Configuration&, GraphColoring&)>;
 
         /**
          * The different steps to run for trying to fix register association errors.
@@ -73,7 +75,7 @@ namespace vc4c
          * Returns whether at least one group of parameters was created and therefore instructions and parameter
          * livenesses changed.
          */
-        FixupResult groupParameters(Method& method, const Configuration& config, const GraphColoring& coloredGraph);
+        FixupResult groupParameters(Method& method, const Configuration& config, GraphColoring& coloredGraph);
 
         /**
          * Reduces register pressure by grouping scalar and pointer locals into the elements of vector locals.

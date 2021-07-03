@@ -102,7 +102,7 @@ namespace vc4c
     protected:
         // required, since the access to the same global value from multiple kernels could be modified at the same time
         mutable std::mutex usersLock;
-        RAIILock getUsersLock() const override;
+        std::unique_lock<std::mutex> getUsersLock() const override;
     };
 } /* namespace vc4c */
 

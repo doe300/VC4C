@@ -655,12 +655,8 @@ void GraphColoring::createGraph()
     logging::logLazy(logging::Level::DEBUG, [&]() {
         DebugGraph<const Local*, LocalRelation, ColoredEdge::Directed> debugGraph(
             "/tmp/vc4c-register-graph.dot", graph.getNodes().size());
-        const std::function<std::string(const Local* const&)> nameFunc = [](const Local* const& l) -> std::string {
-            return l->name;
-        };
-        const std::function<bool(const LocalRelation&)> weakEdgeFunc = [](const LocalRelation& r) -> bool {
-            return r != LocalRelation::USED_TOGETHER;
-        };
+        auto nameFunc = [](const Local* const& l) -> std::string { return l->name; };
+        auto weakEdgeFunc = [](const LocalRelation& r) -> bool { return r != LocalRelation::USED_TOGETHER; };
         for(const auto& node : graph.getNodes())
         {
             debugGraph.addNodeWithNeighbors<ColoredNode>(node.second, nameFunc, weakEdgeFunc);

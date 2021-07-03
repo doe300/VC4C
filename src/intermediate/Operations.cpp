@@ -878,6 +878,24 @@ void CombinedOperation::forUsedLocals(
         op2->forUsedLocals(consumer);
 }
 
+void CombinedOperation::forReadLocals(
+    const std::function<void(const Local*, const IntermediateInstruction&)>& consumer) const
+{
+    if(op1)
+        op1->forReadLocals(consumer);
+    if(op2)
+        op2->forReadLocals(consumer);
+}
+
+void CombinedOperation::forWrittenLocals(
+    const std::function<void(const Local*, const IntermediateInstruction&)>& consumer) const
+{
+    if(op1)
+        op1->forWrittenLocals(consumer);
+    if(op2)
+        op2->forWrittenLocals(consumer);
+}
+
 bool CombinedOperation::readsLocal(const Local* local) const
 {
     return (op1 && op1->readsLocal(local)) || (op2 && op2->readsLocal(local));

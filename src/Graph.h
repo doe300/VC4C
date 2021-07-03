@@ -11,7 +11,6 @@
 #include "performance.h"
 
 #include <algorithm>
-#include <functional>
 #include <type_traits>
 
 namespace vc4c
@@ -113,7 +112,8 @@ namespace vc4c
             return nullptr;
         }
 
-        EdgeType* findEdge(const std::function<bool(const Relation&)>& predicate)
+        template <typename Func>
+        EdgeType* findEdge(const Func& predicate)
         {
             for(auto& pair : edges)
             {
@@ -123,7 +123,8 @@ namespace vc4c
             return nullptr;
         }
 
-        const EdgeType* findEdge(const std::function<bool(const Relation&)>& predicate) const
+        template <typename Func>
+        const EdgeType* findEdge(const Func& predicate) const
         {
             for(const auto& pair : edges)
             {
@@ -164,7 +165,8 @@ namespace vc4c
          * Returns the single neighbor where the relation matches the given predicate.
          * Returns nullptr otherwise, if there is no or more than one neighbor with this relation.
          */
-        const Node* getSingleNeighbor(const std::function<bool(const Relation&)>& relation) const
+        template <typename Func>
+        const Node* getSingleNeighbor(const Func& relation) const
         {
             static_assert(Direction == Directionality::UNDIRECTED,
                 "For directed graphs, incoming and outgoing edges need to be handled differently!");
@@ -182,7 +184,8 @@ namespace vc4c
             return singleNeighbor;
         }
 
-        Node* getSingleNeighbor(const std::function<bool(const Relation&)>& relation)
+        template <typename Func>
+        Node* getSingleNeighbor(const Func& relation)
         {
             static_assert(Direction == Directionality::UNDIRECTED,
                 "For directed graphs, incoming and outgoing edges need to be handled differently!");
@@ -200,7 +203,8 @@ namespace vc4c
             return singleNeighbor;
         }
 
-        Node* getSinglePredecessor(const std::function<bool(const Relation&)>& relation)
+        template <typename Func>
+        Node* getSinglePredecessor(const Func& relation)
         {
             static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have predecessors!");
             Node* singlePredecessor = nullptr;
@@ -222,7 +226,8 @@ namespace vc4c
             return getSinglePredecessor([](const Relation& rel) -> bool { return true; });
         }
 
-        const Node* getSinglePredecessor(const std::function<bool(const Relation&)>& relation) const
+        template <typename Func>
+        const Node* getSinglePredecessor(const Func& relation) const
         {
             static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have predecessors!");
             const Node* singlePredecessor = nullptr;
@@ -244,7 +249,8 @@ namespace vc4c
             return getSinglePredecessor([](const Relation& rel) -> bool { return true; });
         }
 
-        Node* getSingleSuccessor(const std::function<bool(const Relation&)>& relation)
+        template <typename Func>
+        Node* getSingleSuccessor(const Func& relation)
         {
             static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have successors!");
             Node* singleSuccessor = nullptr;
@@ -266,7 +272,8 @@ namespace vc4c
             return getSingleSuccessor([](const Relation& rel) -> bool { return true; });
         }
 
-        const Node* getSingleSuccessor(const std::function<bool(const Relation&)>& relation) const
+        template <typename Func>
+        const Node* getSingleSuccessor(const Func& relation) const
         {
             static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have successors!");
             const Node* singleSuccessor = nullptr;
@@ -313,7 +320,8 @@ namespace vc4c
         /*
          * Executes the given predicate for all neighbors until it becomes false
          */
-        void forAllEdges(const std::function<bool(NodeType&, EdgeType&)>& predicate)
+        template <typename Func>
+        void forAllEdges(const Func& predicate)
         {
             static_assert(Direction == Directionality::UNDIRECTED,
                 "For directed graphs, incoming and outgoing edges need to be handled differently!");
@@ -324,7 +332,8 @@ namespace vc4c
             }
         }
 
-        void forAllEdges(const std::function<bool(const NodeType&, const EdgeType&)>& predicate) const
+        template <typename Func>
+        void forAllEdges(const Func& predicate) const
         {
             static_assert(Direction == Directionality::UNDIRECTED,
                 "For directed graphs, incoming and outgoing edges need to be handled differently!");
@@ -338,7 +347,8 @@ namespace vc4c
         /*
          * Executes the predicate for all incoming edges, until it becomes false
          */
-        void forAllIncomingEdges(const std::function<bool(NodeType&, EdgeType&)>& predicate)
+        template <typename Func>
+        void forAllIncomingEdges(const Func& predicate)
         {
             static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have incoming edges!");
             for(auto& edge : edges)
@@ -351,7 +361,8 @@ namespace vc4c
             }
         }
 
-        void forAllIncomingEdges(const std::function<bool(const NodeType&, const EdgeType&)>& predicate) const
+        template <typename Func>
+        void forAllIncomingEdges(const Func& predicate) const
         {
             static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have incoming edges!");
             for(const auto& edge : edges)
@@ -367,7 +378,8 @@ namespace vc4c
         /*
          * Executes the predicate for all outgoing edges, until it becomes false
          */
-        void forAllOutgoingEdges(const std::function<bool(NodeType&, EdgeType&)>& predicate)
+        template <typename Func>
+        void forAllOutgoingEdges(const Func& predicate)
         {
             static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have outgoing edges!");
             for(auto& edge : edges)
@@ -380,7 +392,8 @@ namespace vc4c
             }
         }
 
-        void forAllOutgoingEdges(const std::function<bool(const NodeType&, const EdgeType&)>& predicate) const
+        template <typename Func>
+        void forAllOutgoingEdges(const Func& predicate) const
         {
             static_assert(Direction != Directionality::UNDIRECTED, "Only directed graphs have outgoing edges!");
             for(const auto& edge : edges)
@@ -757,7 +770,8 @@ namespace vc4c
          * a) there are no more sources or
          * b) the consumer returns false
          */
-        void forAllSources(const std::function<bool(const NodeType& source)>& consumer)
+        template <typename Func>
+        void forAllSources(const Func& consumer)
         {
             static_assert(
                 EdgeType::Directed != Directionality::UNDIRECTED, "Can only find sources in directed graphs!");
@@ -790,7 +804,8 @@ namespace vc4c
          * a) there are no more sinks or
          * b) the consumer returns false
          */
-        void forAllSinks(const std::function<bool(const NodeType& source)>& consumer)
+        template <typename Func>
+        void forAllSinks(const Func& consumer)
         {
             static_assert(EdgeType::Directed != Directionality::UNDIRECTED, "Can only find sinks in directed graphs!");
             for(auto& pair : nodes)
@@ -813,12 +828,14 @@ namespace vc4c
             return nodes;
         }
 
-        void forAllNodes(const std::function<void(NodeType&)>& consumer)
+        template <typename Func>
+        void forAllNodes(const Func& consumer)
         {
             std::for_each(nodes.begin(), nodes.end(), [&](auto& pair) { consumer(pair.second); });
         }
 
-        void forAllNodes(const std::function<void(const NodeType&)>& consumer) const
+        template <typename Func>
+        void forAllNodes(const Func& consumer) const
         {
             std::for_each(nodes.begin(), nodes.end(), [&](const auto& pair) { consumer(pair.second); });
         }

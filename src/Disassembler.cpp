@@ -98,7 +98,7 @@ static std::string getUniform(unsigned index, const std::vector<std::string>& va
     return values[index];
 }
 
-static std::string annotateRegisters(const qpu_asm::Instruction& instr, uint64_t index, const ModuleHeader& module)
+static std::string annotateRegisters(const qpu_asm::Instruction& instr, std::size_t index, const ModuleHeader& module)
 {
     static FastMap<Register, std::string> currentRegisterMapping;
     static const KernelHeader* currentKernel = nullptr;
@@ -231,7 +231,7 @@ void extractBinary(std::istream& binary, ModuleHeader& module, StableList<Global
 
     module = ModuleHeader::fromBinaryData(binaryData);
 
-    uint64_t initialInstructionOffset = std::numeric_limits<uint64_t>::max();
+    auto initialInstructionOffset = std::numeric_limits<std::size_t>::max();
     std::size_t totalInstructions = 0;
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Extracted module with " << module.getKernelCount() << " kernels, " << module.getGlobalDataSize()
@@ -280,7 +280,7 @@ void extractBinary(std::istream& binary, ModuleHeader& module, StableList<Global
     // we don't need to associate it to any particular kernel
     instructions.reserve(totalInstructions);
 
-    for(uint64_t i = initialInstructionOffset; i < totalInstructions + initialInstructionOffset; ++i)
+    for(auto i = initialInstructionOffset; i < totalInstructions + initialInstructionOffset; ++i)
     {
         uint64_t tmp64 = binaryData[i];
         qpu_asm::Instruction instr(tmp64);

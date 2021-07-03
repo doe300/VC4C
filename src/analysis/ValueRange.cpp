@@ -144,7 +144,7 @@ Optional<Value> ValueRange::getLowerLimit(DataType type) const
     if(!hasExplicitBoundaries())
         return NO_VALUE;
     ValueRange typeLimits;
-    std::function<Literal(double)> conv;
+    FunctionPointer<Literal(double)> conv;
     if(type.isFloatingType())
     {
         auto it = floatTypeLimits.find(type);
@@ -177,7 +177,7 @@ Optional<Value> ValueRange::getUpperLimit(DataType type) const
     if(!hasExplicitBoundaries())
         return NO_VALUE;
     ValueRange typeLimits;
-    std::function<Optional<Literal>(double)> conv;
+    FunctionPointer<Optional<Literal>(double)> conv;
     if(type.isFloatingType())
     {
         auto it = floatTypeLimits.find(type);
@@ -458,15 +458,11 @@ void ValueRange::updateRecursively(const Local* currentLocal, const Method* meth
         {
             // we can skip recursively processing the arguments, if we know that the below #update will already result
             // in an explicit range, e.g. for accessing work-item info
-            writer->forUsedLocals(
-                [&](const Local* loc, LocalUse::Type type, const intermediate::IntermediateInstruction& inst) {
-                    if(has_flag(type, LocalUse::Type::READER))
-                    {
-                        updateRecursively(loc, method, ranges, closedSet, openSet);
-                        if(ranges.find(loc) == ranges.end())
-                            allInputsProcessed = false;
-                    }
-                });
+            writer->forReadLocals([&](const Local* loc, const intermediate::IntermediateInstruction& inst) {
+                updateRecursively(loc, method, ranges, closedSet, openSet);
+                if(ranges.find(loc) == ranges.end())
+                    allInputsProcessed = false;
+            });
         }
         ValueRange tmpRange;
         tmpRange.update(writer->precalculate().first, ranges, writer, method);
@@ -872,7 +868,7 @@ ValueRangeAnalysis::ValueRangeAnalysis(ValueRanges&& initialRanges) :
 }
 
 ValueRanges ValueRangeAnalysis::analyzeRanges(
-    const intermediate::IntermediateInstruction* inst, const ValueRanges& previousRanges, const void* dummy)
+    const intermediate::IntermediateInstruction* inst, const ValueRanges& previousRanges, void*&)
 {
     ValueRanges newRanges = previousRanges;
 

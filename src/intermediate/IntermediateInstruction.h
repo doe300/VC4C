@@ -166,6 +166,10 @@ namespace vc4c
             virtual void forUsedLocals(
                 const std::function<void(const Local*, LocalUse::Type, const IntermediateInstruction&)>& consumer)
                 const;
+            virtual void forReadLocals(
+                const std::function<void(const Local*, const IntermediateInstruction&)>& consumer) const;
+            virtual void forWrittenLocals(
+                const std::function<void(const Local*, const IntermediateInstruction&)>& consumer) const;
             virtual bool readsLocal(const Local* local) const;
             virtual bool writesLocal(const Local* local) const;
             void replaceLocal(const Local* oldLocal, const Local* newLocal, LocalUse::Type type = LocalUse::Type::BOTH);
@@ -809,6 +813,10 @@ namespace vc4c
             void forUsedLocals(
                 const std::function<void(const Local*, LocalUse::Type, const IntermediateInstruction&)>& consumer)
                 const override;
+            void forReadLocals(
+                const std::function<void(const Local*, const IntermediateInstruction&)>& consumer) const override;
+            void forWrittenLocals(
+                const std::function<void(const Local*, const IntermediateInstruction&)>& consumer) const override;
             bool readsLocal(const Local* local) const override;
             bool writesLocal(const Local* local) const override;
             bool replaceValue(const Value& oldValue, const Value& newValue, LocalUse::Type type) override;

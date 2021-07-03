@@ -20,8 +20,8 @@ using namespace vc4c::normalization;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
 
-using MemoryMapper = InstructionWalker (*)(Method&, InstructionWalker, MemoryInstruction*,
-    const tools::SmallSortedPointerSet<const MemoryInfo*>&, const tools::SmallSortedPointerSet<const MemoryInfo*>&);
+using MemoryMapper = FunctionPointer<InstructionWalker(Method&, InstructionWalker, MemoryInstruction*,
+    const tools::SmallSortedPointerSet<const MemoryInfo*>&, const tools::SmallSortedPointerSet<const MemoryInfo*>&)>;
 
 static InstructionWalker invalidMapping(Method& method, InstructionWalker it, MemoryInstruction* mem,
     const tools::SmallSortedPointerSet<const MemoryInfo*>& srcInfos,

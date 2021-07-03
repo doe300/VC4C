@@ -28,8 +28,7 @@ using namespace vc4c::operators;
 
 // TODO make use of parameter's maxByteOffset? E.g. for caching?
 
-InstructionWalker normalization::accessGlobalData(
-    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+void normalization::accessGlobalData(Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     /*
      * Map pointer to global data to the start-of-global-data parameter
@@ -60,7 +59,6 @@ InstructionWalker normalization::accessGlobalData(
             }
         }
     }
-    return it;
 }
 
 void normalization::spillLocals(const Module& module, Method& method, const Configuration& config)
@@ -138,7 +136,7 @@ void normalization::spillLocals(const Module& module, Method& method, const Conf
 }
 
 void normalization::resolveStackAllocation(
-    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+    Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     // 1. calculate the offsets from the start of one QPU's "stack", heed alignment!
     // This is done in Normalizer

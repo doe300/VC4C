@@ -34,13 +34,13 @@ namespace vc4c
         template <typename NodeType, Directionality Direction>
         struct ForAllEdgesFuncWrapper
         {
-            void operator()(const NodeType& node, ForAllEdgesFunc<NodeType> func) const;
+            void operator()(const NodeType& node, const ForAllEdgesFunc<NodeType>& func) const;
         };
 
         template <typename NodeType>
         struct ForAllEdgesFuncWrapper<NodeType, Directionality::DIRECTED>
         {
-            void operator()(const NodeType& node, ForAllEdgesFunc<NodeType> func) const
+            void operator()(const NodeType& node, const ForAllEdgesFunc<NodeType>& func) const
             {
                 node.forAllOutgoingEdges(func);
             }
@@ -49,7 +49,7 @@ namespace vc4c
         template <typename NodeType>
         struct ForAllEdgesFuncWrapper<NodeType, Directionality::BIDIRECTIONAL>
         {
-            void operator()(const NodeType& node, ForAllEdgesFunc<NodeType> func) const
+            void operator()(const NodeType& node, const ForAllEdgesFunc<NodeType>& func) const
             {
                 node.forAllOutgoingEdges(func);
             }
@@ -58,7 +58,7 @@ namespace vc4c
         template <typename NodeType>
         struct ForAllEdgesFuncWrapper<NodeType, Directionality::UNDIRECTED>
         {
-            void operator()(const NodeType& node, ForAllEdgesFunc<NodeType> func) const
+            void operator()(const NodeType& node, const ForAllEdgesFunc<NodeType>& func) const
             {
                 node.forAllEdges(func);
             }

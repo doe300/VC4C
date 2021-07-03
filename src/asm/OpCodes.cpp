@@ -955,7 +955,7 @@ static std::pair<Optional<Literal>, ElementFlags> setFlags(Literal lit)
     // we don't know the flags for carry and 32-bit overflow here, since we don't actually have a plain literal, but an
     // operation return value which might set those.
     flags.carry = flags.overflow = FlagStatus::UNDEFINED;
-    return std::make_pair(std::forward<Literal>(lit), flags);
+    return std::make_pair(lit, flags);
 }
 
 static std::pair<Optional<Literal>, ElementFlags> setFlags(Literal lit, bool is32BitOverflow)
@@ -1230,8 +1230,8 @@ static PrecalculatedLiteral calcLiteral(const OpCode& code, Literal firstLit, Li
         bytesB[1] = secondLit.unsignedInt() >> 8 & 0xFF;
         bytesB[2] = secondLit.unsignedInt() >> 16 & 0xFF;
         bytesB[3] = secondLit.unsignedInt() >> 24 & 0xFF;
-        std::function<uint32_t(uint32_t, uint32_t)> func = [&](uint32_t, uint32_t) -> uint32_t {
-            throw CompilationError(CompilationStep::GENERAL, "Unhandled op-code", code.name);
+        FunctionPointer<uint32_t(uint32_t, uint32_t)> func = [](uint32_t, uint32_t) -> uint32_t {
+            throw CompilationError(CompilationStep::GENERAL, "Unhandled op-code for calculating SWAR operation!");
         };
         if(code == OP_V8ADDS)
             func = [](uint32_t a, uint32_t b) -> uint32_t {

@@ -7,6 +7,7 @@
 #ifndef VC4C_NORMALIZER_H
 #define VC4C_NORMALIZER_H
 
+#include "../helper.h"
 #include "config.h"
 
 #include <functional>
@@ -29,7 +30,7 @@ namespace vc4c
          * - modify any non-local memory
          */
         using NormalizationStep =
-            std::function<void(Module& module, Method& method, InstructionWalker it, const Configuration& config)>;
+            FunctionPointer<void(Module& module, Method& method, InstructionWalker it, const Configuration& config)>;
 
         class Normalizer
         {

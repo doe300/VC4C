@@ -21,7 +21,6 @@
 #include <deque>
 #include <future>
 #include <limits>
-#include <memory>
 #include <mutex>
 #include <queue>
 
@@ -42,18 +41,9 @@ namespace vc4c
         class EmulationClock;
 
         template <typename T>
-        using AsynchronousHandle = std::shared_ptr<std::promise<T>>;
+        using AsynchronousHandle = std::promise<T>;
 
-        struct AsynchronousExecution
-        {
-            std::string name;
-            std::function<bool(uint32_t)> func;
-
-            bool operator()(uint32_t currentCycle) const
-            {
-                return func(currentCycle);
-            }
-        };
+        struct AsynchronousExecution;
 
         using MemoryAddress = uint32_t;
         using Word = uint32_t;

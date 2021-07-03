@@ -40,8 +40,7 @@ static RegisterFile getFixedRegisterFile(const Value& val)
     return RegisterFile::ANY;
 }
 
-static NODISCARD InstructionWalker resolveRegisterConflicts(
-    Method& method, InstructionWalker it, FastSet<Value>& fixedArgs)
+static void resolveRegisterConflicts(Method& method, InstructionWalker it, FastSet<Value>& fixedArgs)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Found instruction with conflicting fixed registers: " << it->to_string() << logging::endl);
@@ -60,11 +59,10 @@ static NODISCARD InstructionWalker resolveRegisterConflicts(
     it.emplace(new intermediate::MoveOperation(tmp, fixedArg, cond));
     it.nextInBlock();
     it->replaceValue(fixedArg, tmp, LocalUse::Type::READER);
-    return it;
 }
 
-InstructionWalker normalization::splitRegisterConflicts(
-    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+void normalization::splitRegisterConflicts(
+    Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     auto fixedFiles = RegisterFile::NONE;
     FastSet<Value> fixedArgs;
@@ -84,9 +82,7 @@ InstructionWalker normalization::splitRegisterConflicts(
             anyLocalArgument = true;
     }
     if(hasRegisterConflict && fixedArgs.size() > 1 && anyLocalArgument)
-        return resolveRegisterConflicts(method, it, fixedArgs);
-
-    return it;
+        resolveRegisterConflicts(method, it, fixedArgs);
 }
 
 void normalization::extendBranches(const Module& module, Method& method, const Configuration& config)
@@ -285,8 +281,8 @@ void normalization::eliminatePhiNodes(const Module& module, Method& method, cons
     }
 }
 
-InstructionWalker normalization::moveRotationSourcesToAccumulators(
-    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+void normalization::moveRotationSourcesToAccumulators(
+    Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     // makes sure, all sources for vector-rotations have a usage-range small enough to be on an accumulator
     /*
@@ -356,5 +352,4 @@ InstructionWalker normalization::moveRotationSourcesToAccumulators(
             }
         }
     }
-    return it;
 }

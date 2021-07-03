@@ -8,6 +8,7 @@
 
 #include "log.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <fstream>
@@ -31,33 +32,82 @@ using namespace vc4c;
 using Clock = std::chrono::system_clock;
 using Duration = std::chrono::microseconds;
 
-struct Entry
+struct profiler::Entry
 {
     std::string name;
-    Duration duration;
-    std::size_t invocations;
+    std::atomic<Duration ::rep> duration;
+    std::atomic_uint64_t invocations;
     std::string fileName;
     std::size_t lineNumber;
 
-    bool operator<(const Entry& right) const
+    Entry() = default;
+    Entry(const Entry&) = delete;
+    Entry(Entry&& other) noexcept :
+        name(std::move(other.name)), duration(other.duration.load()), invocations(other.invocations.load()),
+        fileName(std::move(other.fileName)), lineNumber(other.lineNumber)
     {
-        if(duration == right.duration)
+    }
+    ~Entry() noexcept = default;
+
+    Entry& operator=(const Entry&) = delete;
+    Entry& operator=(Entry&& other) noexcept
+    {
+        if(&other != this)
+        {
+            name = std::move(other.name);
+            duration = other.duration.load();
+            invocations = other.invocations.load();
+            fileName = std::move(other.fileName);
+            lineNumber = other.lineNumber;
+        }
+        return *this;
+    }
+
+    bool operator<(const Entry& right) const noexcept
+    {
+        if(duration.load() == right.duration.load())
             return name > right.name;
-        return duration > right.duration;
+        return duration.load() > right.duration.load();
     }
 };
 
-struct Counter
+struct profiler::Counter
 {
     std::string name;
-    int64_t count;
+    std::atomic_uint64_t count;
     std::size_t index;
-    std::size_t invocations;
+    std::atomic_uint64_t invocations;
     std::size_t prevCounter;
     std::string fileName;
     std::size_t lineNumber;
 
-    bool operator<(const Counter& right) const
+    Counter() = default;
+    Counter(const Counter&) = delete;
+    Counter(Counter&& other) noexcept :
+        name(std::move(other.name)), count(other.count.load()), index(other.index),
+        invocations(other.invocations.load()), prevCounter(other.prevCounter), fileName(std::move(other.fileName)),
+        lineNumber(other.lineNumber)
+    {
+    }
+    ~Counter() noexcept = default;
+
+    Counter& operator=(const Counter&) = delete;
+    Counter& operator=(Counter&& other) noexcept
+    {
+        if(&other != this)
+        {
+            name = std::move(other.name);
+            count = other.count.load();
+            index = other.index;
+            invocations = other.invocations.load();
+            prevCounter = other.prevCounter;
+            fileName = std::move(other.fileName);
+            lineNumber = other.lineNumber;
+        }
+        return *this;
+    }
+
+    bool operator<(const Counter& right) const noexcept
     {
         if(index == right.index)
             return name > right.name;
@@ -65,8 +115,8 @@ struct Counter
     }
 };
 
-static std::unordered_map<profiler::HashKey, Entry> times;
-static std::map<std::size_t, Counter> counters;
+static std::unordered_map<profiler::HashKey, profiler::Entry> times;
+static std::map<std::size_t, profiler::Counter> counters;
 #ifdef MULTI_THREADED
 static std::mutex lockTimes;
 static std::mutex lockCounters;
@@ -114,34 +164,37 @@ struct ThreadResultCache
         }
     }
 
-    std::unordered_map<profiler::HashKey, Entry> localTimes;
-    std::map<std::size_t, Counter> localCounters;
+    std::unordered_map<profiler::HashKey, profiler::Entry> localTimes;
+    std::map<std::size_t, profiler::Counter> localCounters;
 };
 
 static thread_local std::unique_ptr<ThreadResultCache> threadCache;
 #endif
 
-void profiler::endFunctionCall(ProfilingResult&& result)
+profiler::Entry* profiler::createEntry(HashKey key, std::string name, std::string fileName, std::size_t lineNumber)
 {
 #ifdef MULTI_THREADED
     if(threadCache)
     {
-        auto& entry = threadCache->localTimes[result.hashKey];
-        entry.name = std::move(result.name);
-        entry.duration += std::chrono::duration_cast<Duration>(Clock::now() - result.startTime);
-        entry.invocations += 1;
-        entry.fileName = std::move(result.fileName);
-        entry.lineNumber = result.lineNumber;
-        return;
+        auto& entry = threadCache->localTimes[key];
+        entry.name = std::move(name);
+        entry.fileName = std::move(fileName);
+        entry.lineNumber = lineNumber;
+        return &entry;
     }
     std::lock_guard<std::mutex> guard(lockTimes);
 #endif
-    auto& entry = times[result.hashKey];
-    entry.name = std::move(result.name);
-    entry.duration += std::chrono::duration_cast<Duration>(Clock::now() - result.startTime);
-    entry.invocations += 1;
-    entry.fileName = std::move(result.fileName);
-    entry.lineNumber = result.lineNumber;
+    auto& entry = times[key];
+    entry.name = std::move(name);
+    entry.fileName = std::move(fileName);
+    entry.lineNumber = lineNumber;
+    return &entry;
+}
+
+void profiler::endFunctionCall(Entry* entry, Clock::time_point startTime)
+{
+    entry->duration += std::chrono::duration_cast<Duration>(Clock::now() - startTime).count();
+    ++entry->invocations;
 }
 
 static void printResourceUsage(bool writeAsWarning)
@@ -200,55 +253,67 @@ static void printResourceUsage(bool writeAsWarning)
     });
 }
 
+template <typename T>
+struct SortPointerTarget
+{
+    bool operator()(const T* one, const T* other) const noexcept
+    {
+        return *one < *other;
+    }
+};
+
 void profiler::dumpProfileResults(bool writeAsWarning)
 {
     logging::logLazy(writeAsWarning ? logging::Level::WARNING : logging::Level::DEBUG, [&]() {
 #ifdef MULTI_THREADED
-        std::lock_guard<std::mutex> guard(lockTimes);
+        std::unique_lock<std::mutex> timesGuard(lockTimes, std::defer_lock);
+        std::unique_lock<std::mutex> countersGuard(lockCounters, std::defer_lock);
+        std::lock(timesGuard, countersGuard);
 #endif
-        std::set<Entry> entries;
-        std::set<Counter> counts;
+        std::set<const Entry*, SortPointerTarget<const Entry>> entries;
+        std::set<const Counter*, SortPointerTarget<const Counter>> counts;
         for(auto& entry : times)
         {
             entry.second.name = entry.second.name;
-            entries.emplace(entry.second);
+            entries.emplace(&entry.second);
         }
         for(const auto& count : counters)
         {
-            counts.emplace(count.second);
+            counts.emplace(&count.second);
         }
 
         auto logFunc = writeAsWarning ? logging::warn : logging::info;
 
         logFunc() << std::setfill(L' ') << logging::endl;
         logFunc() << "Profiling results for " << entries.size() << " functions:" << logging::endl;
-        for(const Entry& entry : entries)
+        for(const Entry* entry : entries)
         {
-            logFunc() << std::setw(40) << entry.name << std::setw(7)
-                      << std::chrono::duration_cast<std::chrono::milliseconds>(entry.duration).count() << " ms"
-                      << std::setw(12) << entry.duration.count() << " us" << std::setw(10) << entry.invocations
+            logFunc() << std::setw(40) << entry->name << std::setw(7)
+                      << std::chrono::duration_cast<std::chrono::milliseconds>(Duration{entry->duration}).count()
+                      << " ms" << std::setw(12) << entry->duration << " us" << std::setw(10) << entry->invocations
                       << " calls" << std::setw(12)
-                      << static_cast<std::size_t>(entry.duration.count()) / entry.invocations << " us/call"
-                      << std::setw(64) << entry.fileName << "#" << entry.lineNumber << logging::endl;
+                      << static_cast<uint64_t>(entry->duration) / std::max(entry->invocations.load(), uint64_t{1})
+                      << " us/call" << std::setw(64) << entry->fileName << "#" << entry->lineNumber << logging::endl;
         }
 
         logFunc() << logging::endl;
         logFunc() << "Profiling results for " << counts.size() << " counters:" << logging::endl;
-        for(const Counter& counter : counts)
+        for(const Counter* counter : counts)
         {
-            logFunc() << std::setw(40) << counter.name << std::setw(7) << counter.count << " counts" << std::setw(5)
-                      << counter.invocations << " calls" << std::setw(6)
-                      << static_cast<std::size_t>(counter.count) / counter.invocations << " avg./call" << std::setw(8)
-                      << (counter.prevCounter == SIZE_MAX ? "" : "diff") << std::setw(7) << std::showpos
-                      << (counter.prevCounter == SIZE_MAX ? 0 : counter.count - counters[counter.prevCounter].count)
+            auto prevCount =
+                counter->prevCounter == SIZE_MAX ? 0 : static_cast<int64_t>(counters[counter->prevCounter].count);
+            logFunc() << std::setw(40) << counter->name << std::setw(7) << counter->count << " counts" << std::setw(5)
+                      << counter->invocations << " calls" << std::setw(6)
+                      << counter->count / std::max(counter->invocations.load(), uint64_t{1}) << " avg./call"
+                      << std::setw(8) << (counter->prevCounter == SIZE_MAX ? "" : "diff") << std::setw(7)
+                      << std::showpos
+                      << (counter->prevCounter == SIZE_MAX ? 0 : static_cast<int64_t>(counter->count) - prevCount)
                       << " (" << std::setw(5) << std::showpos
-                      << (counter.prevCounter == SIZE_MAX ?
+                      << (counter->prevCounter == SIZE_MAX ?
                                  0 :
                                  static_cast<int>(100 *
-                                     (-1.0 +
-                                         static_cast<double>(counter.count) /
-                                             static_cast<double>(counters[counter.prevCounter].count))))
-                      << std::noshowpos << "%)" << std::setw(64) << counter.fileName << "#" << counter.lineNumber
+                                     (-1.0 + static_cast<double>(counter->count) / static_cast<double>(prevCount))))
+                      << std::noshowpos << "%)" << std::setw(64) << counter->fileName << "#" << counter->lineNumber
                       << logging::endl;
         }
     });
@@ -257,8 +322,8 @@ void profiler::dumpProfileResults(bool writeAsWarning)
     printResourceUsage(writeAsWarning);
 }
 
-void profiler::increaseCounter(const std::size_t index, std::string name, std::size_t value, std::string file,
-    std::size_t line, std::size_t prevIndex)
+profiler::Counter* profiler::createCounter(
+    std::size_t index, std::string name, std::string file, std::size_t line, std::size_t prevIndex)
 {
 #ifdef MULTI_THREADED
     if(threadCache)
@@ -266,23 +331,26 @@ void profiler::increaseCounter(const std::size_t index, std::string name, std::s
         auto& entry = threadCache->localCounters[index];
         entry.index = index;
         entry.name = std::move(name);
-        entry.count += value;
-        entry.invocations += 1;
         entry.prevCounter = prevIndex;
         entry.fileName = std::move(file);
         entry.lineNumber = line;
-        return;
+        return &entry;
     }
     std::lock_guard<std::mutex> guard(lockCounters);
 #endif
     auto& entry = counters[index];
     entry.index = index;
     entry.name = std::move(name);
-    entry.count += value;
-    entry.invocations += 1;
     entry.prevCounter = prevIndex;
     entry.fileName = std::move(file);
     entry.lineNumber = line;
+    return &entry;
+}
+
+void profiler::increaseCounter(Counter* counter, std::size_t value)
+{
+    counter->count += value;
+    ++counter->invocations;
 }
 
 void profiler::startThreadCache()

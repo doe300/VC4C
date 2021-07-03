@@ -93,7 +93,7 @@ static bool isUsedAsSplatValue(const Local* loc)
     return false;
 }
 
-FixupResult qpu_asm::groupParameters(Method& method, const Configuration& config, const GraphColoring& coloredGraph)
+FixupResult qpu_asm::groupParameters(Method& method, const Configuration& config, GraphColoring& coloredGraph)
 {
     analysis::LocalUsageRangeAnalysis localUsageRangeAnalysis(&coloredGraph.getLivenessAnalysis());
     localUsageRangeAnalysis(method);

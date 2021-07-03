@@ -14,8 +14,7 @@ namespace vc4c
     namespace normalization
     {
         std::pair<Value, Value> getLowerAndUpperWords(const Value& longValue);
-        void lowerLongOperation(
-            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+        void lowerLongOperation(Module& module, Method& method, InstructionWalker it, const Configuration& config);
     } // namespace normalization
 } // namespace vc4c
 

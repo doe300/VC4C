@@ -13,6 +13,7 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <utility>
 
 namespace vc4c
@@ -248,27 +249,9 @@ namespace vc4c
     protected:
         Local(DataType type, const std::string& name);
 
-        struct RAIILock
-        {
-            using UnlockFunc = std::function<void()>;
-            explicit RAIILock(UnlockFunc&& f = nullptr) : func(std::move(f)) {}
-            RAIILock(const RAIILock&) = delete;
-            RAIILock(RAIILock&& other) noexcept : func(std::move(other.func))
-            {
-                other.func = nullptr;
-            }
-            ~RAIILock() noexcept;
-
-            RAIILock& operator=(const RAIILock&) = delete;
-            RAIILock& operator=(RAIILock&&) noexcept = delete;
-
-        private:
-            UnlockFunc func;
-        };
-
         // To be implemented by locals shared across kernels (and therefore across threads) to prevent concurrent
         // modifications
-        virtual RAIILock getUsersLock() const;
+        virtual std::unique_lock<std::mutex> getUsersLock() const;
 
     private:
         // FIXME unordered_map randomly throws SEGFAULT somewhere in stdlib in #removeUser called by

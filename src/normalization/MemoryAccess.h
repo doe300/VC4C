@@ -19,8 +19,7 @@ namespace vc4c
         /*
          * Replaces the address of global data with the corresponding offset from the GLOBAL_DATA_ADDRESS value
          */
-        InstructionWalker accessGlobalData(
-            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+        void accessGlobalData(Module& module, Method& method, InstructionWalker it, const Configuration& config);
 
         /*
          * Spills long-living locals which are rarely read into the VPM to be cached there.
@@ -38,8 +37,7 @@ namespace vc4c
          *
          * NOTE: This optimization-pass is required for the compiler to handle stack-allocations correctly
          */
-        void resolveStackAllocation(
-            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+        void resolveStackAllocation(Module& module, Method& method, InstructionWalker it, const Configuration& config);
 
         /*
          * Maps the memory-instructions to instructions actually performing the memory-access (e.g. TMU, VPM access).

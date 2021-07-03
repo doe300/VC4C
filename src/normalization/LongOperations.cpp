@@ -464,7 +464,7 @@ static void lowerLongOperation(
 }
 
 void normalization::lowerLongOperation(
-    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+    Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     if(!it.has())
         return;

@@ -216,8 +216,8 @@ namespace vc4c
          *
          * If the current instruction is a combined instruction, the function is executed for both single instructions
          */
-        inline void forAllInstructions(
-            const std::function<void(const intermediate::IntermediateInstruction&)>& func) const
+        template <typename Func>
+        inline void forAllInstructions(const Func& func) const
         {
             auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
@@ -236,8 +236,8 @@ namespace vc4c
          *
          * If the current instruction is a combined instruction, the predicate is tested for both single instructions
          */
-        inline bool allInstructionMatches(
-            const std::function<bool(const intermediate::IntermediateInstruction*)>& func) const
+        template <typename Func>
+        inline bool allInstructionMatches(const Func& func) const
         {
             auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
@@ -252,8 +252,8 @@ namespace vc4c
          *
          * If the current instruction is a combined instruction, the predicate is checked for both single instructions
          */
-        inline bool anyInstructionMatches(
-            const std::function<bool(const intermediate::IntermediateInstruction*)>& func) const
+        template <typename Func>
+        inline bool anyInstructionMatches(const Func& func) const
         {
             auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
@@ -407,8 +407,8 @@ namespace vc4c
          *
          * If the current instruction is a combined instruction, the function is executed for both single instructions
          */
-        inline void forAllInstructions(
-            const std::function<void(const intermediate::IntermediateInstruction&)>& func) const
+        template <typename Func>
+        inline void forAllInstructions(const Func& func) const
         {
             auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
@@ -427,8 +427,8 @@ namespace vc4c
          *
          * If the current instruction is a combined instruction, the predicate is tested for both single instructions
          */
-        inline bool allInstructionMatches(
-            const std::function<bool(const intermediate::IntermediateInstruction*)>& func) const
+        template <typename Func>
+        inline bool allInstructionMatches(const Func& func) const
         {
             auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)
@@ -443,8 +443,8 @@ namespace vc4c
          *
          * If the current instruction is a combined instruction, the predicate is checked for both single instructions
          */
-        inline bool anyInstructionMatches(
-            const std::function<bool(const intermediate::IntermediateInstruction*)>& func) const
+        template <typename Func>
+        inline bool anyInstructionMatches(const Func& func) const
         {
             auto combined = get<const intermediate::CombinedOperation>();
             if(combined != nullptr)

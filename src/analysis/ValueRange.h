@@ -253,8 +253,8 @@ namespace vc4c
              * the basic block), this function should be directly called instead of the analysis run over the whole
              * block and the previous result should be passed in as new input to reduce the memory overhead!
              */
-            static ValueRanges analyzeRanges(const intermediate::IntermediateInstruction* inst,
-                const ValueRanges& previousRanges, const void* dummy);
+            static ValueRanges analyzeRanges(
+                const intermediate::IntermediateInstruction* inst, const ValueRanges& previousRanges, void*&);
         };
 
     } /* namespace analysis */

@@ -31,8 +31,7 @@ namespace vc4c
          *   %3 = add %tmp, %1
          *
          */
-        InstructionWalker splitRegisterConflicts(
-            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+        void splitRegisterConflicts(Module& module, Method& method, InstructionWalker it, const Configuration& config);
 
         /*
          * Extends the branches (up to now represented by a single instruction) by
@@ -57,8 +56,8 @@ namespace vc4c
          * accumulator. To do this, long-living used in a vector-rotation are moved to a temporary local which then can
          * be mapped to an accumulator.
          */
-        InstructionWalker moveRotationSourcesToAccumulators(
-            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+        void moveRotationSourcesToAccumulators(
+            Module& module, Method& method, InstructionWalker it, const Configuration& config);
     } // namespace normalization
 } // namespace vc4c
 

@@ -367,8 +367,9 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
 
     if(inputType == outputType)
     {
-        const std::string buffer(std::istreambuf_iterator<char>(input), {});
-        output = std::make_unique<std::istringstream>(buffer);
+        auto tmp = std::make_unique<std::stringstream>();
+        *tmp << input.rdbuf();
+        output = std::move(tmp);
         return;
     }
 

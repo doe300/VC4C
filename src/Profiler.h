@@ -14,38 +14,51 @@ namespace vc4c
 {
 #if DEBUG_MODE
 #define PROFILE(func, ...)                                                                                             \
-    profiler::ProfilingResult profile##func{reinterpret_cast<std::uintptr_t>(std::addressof(#func[0])), #func,         \
-        __FILE__, __LINE__, profiler::Clock::now()};                                                                   \
+    static thread_local auto profileEntry##func =                                                                      \
+        profiler::createEntry(reinterpret_cast<std::uintptr_t>(std::addressof(#func[0])), #func, __FILE__, __LINE__);  \
+    auto profileStart##func = profiler::Clock::now();                                                                  \
     func(__VA_ARGS__);                                                                                                 \
-    profiler::endFunctionCall(std::move(profile##func))
+    profiler::endFunctionCall(profileEntry##func, profileStart##func)
 
 #define PROFILE_START(name)                                                                                            \
-    profiler::ProfilingResult profile##name                                                                            \
-    {                                                                                                                  \
-        reinterpret_cast<std::uintptr_t>(std::addressof(#name[0])), #name, __FILE__, __LINE__, profiler::Clock::now()  \
-    }
-#define PROFILE_END(name) profiler::endFunctionCall(std::move(profile##name))
+    static thread_local auto profileEntry##name =                                                                      \
+        profiler::createEntry(reinterpret_cast<std::uintptr_t>(std::addressof(#name[0])), #name, __FILE__, __LINE__);  \
+    auto profileStart##name = profiler::Clock::now()
+
+#define PROFILE_END(name) profiler::endFunctionCall(profileEntry##name, profileStart##name)
 
 #define PROFILE_START_DYNAMIC(name)                                                                                    \
-    profiler::ProfilingResult profile                                                                                  \
-    {                                                                                                                  \
-        std::hash<std::string>{}(name), name, __FILE__, __LINE__, profiler::Clock::now()                               \
-    }
-#define PROFILE_END_DYNAMIC(name) profiler::endFunctionCall(std::move(profile))
+    auto profileEntryDynamic = profiler::createEntry(std::hash<std::string>{}(name), name, __FILE__, __LINE__);        \
+    auto profileStartDynamic = profiler::Clock::now()
+
+#define PROFILE_END_DYNAMIC(name) profiler::endFunctionCall(profileEntryDynamic, profileStartDynamic)
 
 #define PROFILE_SCOPE(name)                                                                                            \
-    profiler::ProfilingScope profile##name                                                                             \
-    {                                                                                                                  \
-        profiler::ProfilingResult                                                                                      \
-        {                                                                                                              \
-            reinterpret_cast<std::uintptr_t>(std::addressof(#name[0])), #name, __FILE__, __LINE__,                     \
-                profiler::Clock::now()                                                                                 \
-        }                                                                                                              \
-    }
+    static thread_local auto profileEntry##name =                                                                      \
+        profiler::createEntry(reinterpret_cast<std::uintptr_t>(std::addressof(#name[0])), #name, __FILE__, __LINE__);  \
+    profiler::ProfilingScope profile##name(profileEntry##name)
 
-#define PROFILE_COUNTER(index, name, value) profiler::increaseCounter(index, name, value, __FILE__, __LINE__)
+#define PROFILE_COUNTER(index, name, value)                                                                            \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        static thread_local auto constantCounter = profiler::createCounter(index, name, __FILE__, __LINE__);           \
+        /* if the index is constant, reuse the statically queried counter, otherwise we need to requery the counter*/  \
+        auto profilingCounter =                                                                                        \
+            __builtin_constant_p(index) ? constantCounter : profiler::createCounter(index, name, __FILE__, __LINE__);  \
+        profiler::increaseCounter(profilingCounter, value);                                                            \
+    } while(false)
+
 #define PROFILE_COUNTER_WITH_PREV(index, name, value, prevIndex)                                                       \
-    profiler::increaseCounter(index, name, value, __FILE__, __LINE__, prevIndex)
+    do                                                                                                                 \
+    {                                                                                                                  \
+        static thread_local auto constantCounter =                                                                     \
+            profiler::createCounter(index, name, __FILE__, __LINE__, prevIndex);                                       \
+        /* if the index is constant, reuse the statically queried counter, otherwise we need to requery the counter*/  \
+        auto profilingCounter = __builtin_constant_p(index) ?                                                          \
+            constantCounter :                                                                                          \
+            profiler::createCounter(index, name, __FILE__, __LINE__, prevIndex);                                       \
+        profiler::increaseCounter(profilingCounter, value);                                                            \
+    } while(false)
 
 #define PROFILE_RESULTS() profiler::dumpProfileResults()
 
@@ -77,32 +90,28 @@ namespace vc4c
         using Duration = std::chrono::microseconds;
         using HashKey = std::common_type<std::size_t, std::uintptr_t>::type;
 
-        struct ProfilingResult
-        {
-            HashKey hashKey;
-            std::string name;
-            std::string fileName;
-            std::size_t lineNumber;
-            Clock::time_point startTime;
-        };
-
-        void endFunctionCall(ProfilingResult&& result);
+        struct Entry;
+        Entry* createEntry(HashKey key, std::string name, std::string fileName, std::size_t lineNumber);
+        void endFunctionCall(Entry* entry, Clock::time_point startTime);
 
         void dumpProfileResults(bool writeAsWarning = false);
 
-        void increaseCounter(std::size_t index, std::string name, std::size_t value, std::string file, std::size_t line,
-            std::size_t prevIndex = SIZE_MAX);
+        struct Counter;
+        Counter* createCounter(
+            std::size_t index, std::string name, std::string file, std::size_t line, std::size_t prevIndex = SIZE_MAX);
+        void increaseCounter(Counter* counter, std::size_t value);
 
         struct ProfilingScope
         {
-            ProfilingScope(ProfilingResult&& result) : result(result) {}
+            explicit ProfilingScope(Entry* entry) : entry(entry), start(Clock::now()) {}
 
             ~ProfilingScope()
             {
-                endFunctionCall(std::move(result));
+                endFunctionCall(entry, start);
             }
 
-            ProfilingResult result;
+            Entry* entry;
+            Clock::time_point start;
         };
 
         /*

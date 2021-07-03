@@ -1330,7 +1330,7 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
     return false;
 }
 
-void intrinsics::intrinsify(const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+void intrinsics::intrinsify(Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     if(!it.get<IntrinsicOperation>() && !it.get<MethodCall>())
         // fail fast
