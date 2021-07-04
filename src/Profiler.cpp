@@ -36,7 +36,7 @@ struct profiler::Entry
 {
     std::string name;
     std::atomic<Duration ::rep> duration;
-    std::atomic_uint64_t invocations;
+    std::atomic<uint64_t> invocations;
     std::string fileName;
     std::size_t lineNumber;
 
@@ -74,9 +74,9 @@ struct profiler::Entry
 struct profiler::Counter
 {
     std::string name;
-    std::atomic_uint64_t count;
+    std::atomic<uint64_t> count;
     std::size_t index;
-    std::atomic_uint64_t invocations;
+    std::atomic<uint64_t> invocations;
     std::size_t prevCounter;
     std::string fileName;
     std::size_t lineNumber;
@@ -363,9 +363,7 @@ void profiler::startThreadCache()
 void profiler::flushThreadCache()
 {
 #ifdef MULTI_THREADED
-    PROFILE_START(FlushProfileThreadCache);
     threadCache.reset();
-    PROFILE_END(FlushProfileThreadCache);
 #endif
 }
 

@@ -47,6 +47,7 @@ include(spirv/sources.list)
 include(tools/sources.list)
 
 # Add all dependencies
+target_link_libraries(${VC4C_LIBRARY_NAME} atomic)
 target_link_libraries(${VC4C_PROGRAM_NAME} ${VC4C_LIBRARY_NAME} ${SYSROOT_LIBRARY_FLAGS})
 
 # cpplog

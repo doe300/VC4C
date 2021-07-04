@@ -79,8 +79,8 @@ namespace vc4c
          *
          * Also called Live Variable Analysis (https://en.wikipedia.org/wiki/Live_variable_analysis)
          */
-        class LivenessAnalysis
-            : public LocalAnalysis<AnalysisDirection::BACKWARD, FastSet<const Local*>, LivenessAnalysisCache, const bool>
+        class LivenessAnalysis : public LocalAnalysis<AnalysisDirection::BACKWARD, FastSet<const Local*>,
+                                     LivenessAnalysisCache, const bool>
         {
         public:
             // The optional parameter are the locals assumed to be live at the end of the block
