@@ -41,7 +41,7 @@ static NODISCARD InstructionWalker replaceWithSetBoolean(
     else
     {
         assign(it, dest) = (value, trueCode);
-        it.reset(new Operation(OP_XOR, dest, value, value, trueCode.invert()));
+        it.reset(std::make_unique<Operation>(OP_XOR, dest, value, value, trueCode.invert()));
     }
     return it;
 }
@@ -56,7 +56,7 @@ static void intrinsifyLongRelation(Method& method, InstructionWalker it, const C
     {
         auto cond = assignNop(it) = as_unsigned{firstParts.first} == as_unsigned{secondParts.first};
         // dummy instruction to be replaced
-        it.emplace(new intermediate::MoveOperation(NOP_REGISTER, NOP_REGISTER));
+        it.emplace(std::make_unique<MoveOperation>(NOP_REGISTER, NOP_REGISTER));
         auto tmp = method.addNewLocal(boolType, "%lcomp");
         it = replaceWithSetBoolean(it, tmp, invertResult ? cond.invert() : cond);
         it.nextInBlock();
@@ -65,7 +65,7 @@ static void intrinsifyLongRelation(Method& method, InstructionWalker it, const C
         {
             // A != B <=> (A.low != B.low) || (A.up != B.up)
             assign(it, tmp) = (BOOL_TRUE, cond.invert());
-            it.reset(new intermediate::MoveOperation(comp->getOutput().value(), tmp));
+            it.reset(std::make_unique<MoveOperation>(comp->getOutput().value(), tmp));
         }
         else
             // A == B <=> (A.low == B.low) && (A.up == B.up)
@@ -95,20 +95,20 @@ static void intrinsifyLongRelation(Method& method, InstructionWalker it, const C
             upperComparison = invertResult ? COMP_SIGNED_GT : COMP_SIGNED_LT;
 
         auto tmpUpper = method.addNewLocal(boolType, "%lcomp");
-        it.emplace(new intermediate::Comparison(
+        it.emplace(std::make_unique<Comparison>(
             upperComparison, Value(tmpUpper), Value(firstParts.second), Value(secondParts.second)));
         intrinsics::intrinsifyComparison(method, it);
         it.nextInBlock();
 
         auto tmpLower = method.addNewLocal(boolType, "%lcomp");
-        it.emplace(new intermediate::Comparison(invertResult ? COMP_UNSIGNED_GE : COMP_UNSIGNED_LT, Value(tmpLower),
+        it.emplace(std::make_unique<Comparison>(invertResult ? COMP_UNSIGNED_GE : COMP_UNSIGNED_LT, Value(tmpLower),
             Value(firstParts.first), Value(secondParts.first)));
         intrinsics::intrinsifyComparison(method, it);
         it.nextInBlock();
 
         assign(it, comp->getOutput().value()) = tmpUpper;
         auto cond = assignNop(it) = as_unsigned{firstParts.second} == as_unsigned{secondParts.second};
-        it.reset(new intermediate::MoveOperation(comp->getOutput().value(), tmpLower, cond));
+        it.reset(std::make_unique<MoveOperation>(comp->getOutput().value(), tmpLower, cond));
     }
     else
         throw CompilationError(CompilationStep::NORMALIZER, "Unrecognized integer comparison", comp->opCode);
@@ -173,7 +173,7 @@ static void intrinsifyIntegerRelation(Method& method, InstructionWalker it, cons
 
                 assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), SetFlag::SET_FLAGS);
                 // insert dummy comparison to be replaced
-                it.emplace(new Nop(DelayType::WAIT_VPM));
+                it.emplace(std::make_unique<Nop>(DelayType::WAIT_VPM));
                 it = replaceWithSetBoolean(it, tmp2, COND_ZERO_SET);
                 it.nextInBlock();
                 assign(it, NOP_REGISTER) = (tmp1 | tmp2, SetFlag::SET_FLAGS);
@@ -304,12 +304,13 @@ static void intrinsifyFloatingRelation(Method& method, InstructionWalker it, con
     if(COMP_TRUE == comp->opCode)
     {
         // true
-        it.reset(new MoveOperation(comp->getOutput().value(), BOOL_TRUE, COND_ALWAYS, SetFlag::SET_FLAGS));
+        it.reset(std::make_unique<MoveOperation>(comp->getOutput().value(), BOOL_TRUE)).setSetFlags(SetFlag::SET_FLAGS);
     }
     else if(COMP_FALSE == comp->opCode)
     {
         // false
-        it.reset(new MoveOperation(comp->getOutput().value(), BOOL_FALSE, COND_ALWAYS, SetFlag::SET_FLAGS));
+        it.reset(std::make_unique<MoveOperation>(comp->getOutput().value(), BOOL_FALSE))
+            .setSetFlags(SetFlag::SET_FLAGS);
     }
     else if(COMP_ORDERED_EQ == comp->opCode)
     {

@@ -866,7 +866,7 @@ static NODISCARD bool moveLocalToRegisterFile(Method& method, ColoredGraph& grap
         const Value tmp = method.addNewLocal(node.key->type, "%register_fix");
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Fixing register-conflict by using temporary as input for: " << it->to_string() << logging::endl);
-        it.emplace(new intermediate::MoveOperation(tmp, node.key->createReference()));
+        it.emplace(std::make_unique<intermediate::MoveOperation>(tmp, node.key->createReference()));
         auto& tmpUse = localUses.emplace(tmp.local(), LocalUsage(it, it)).first->second;
         it.nextInBlock();
         it->replaceLocal(node.key, tmp.local(), LocalUse::Type::READER);
@@ -979,9 +979,9 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
                     // the combined instructions into two separate ones.
                     auto parts = comb->splitUp();
                     auto firstIt = it.copy();
-                    firstIt.emplace(parts.first.release());
+                    firstIt.emplace(std::move(parts.first));
                     localUse.associatedInstructions.emplace(firstIt);
-                    it.reset(parts.second.release());
+                    it.reset(std::move(parts.second));
                     // the "original" InstructionWalker is already in the associatedInstructions set, since we only
                     // change its content
                     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -1014,7 +1014,7 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Fixing register-conflict by inserting NOP before: " << it->to_string()
                             << logging::endl);
-                    it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER));
+                    it.emplace(std::make_unique<intermediate::Nop>(intermediate::DelayType::WAIT_REGISTER));
                     PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 12, "NOP insertions", 1);
                 }
             }

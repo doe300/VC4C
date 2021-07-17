@@ -289,7 +289,7 @@ static bool replaceNOPs(BasicBlock& basicBlock, Method& method, const Configurat
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Inserting NOP to prevent further read-after-write errors" << logging::endl);
-                    replacementIt.reset(new Nop(DelayType::WAIT_REGISTER));
+                    replacementIt.reset(std::make_unique<Nop>(DelayType::WAIT_REGISTER));
                 }
             }
             else if((nop->type == DelayType::WAIT_VPM || nop->type == DelayType::WAIT_TMU) && !isMandatoryDelay)
@@ -337,7 +337,7 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                         // emplacing after the last instruction instead of before this one fixes errors with
                         // wrote-label-read, which then becomes  write-nop-label-read instead of write-label-nop-read
                         // and the combiner can find a reason for the NOP
-                        lastInstruction.copy().nextInBlock().emplace(new Nop(DelayType::WAIT_REGISTER));
+                        lastInstruction.copy().nextInBlock().emplace(std::make_unique<Nop>(DelayType::WAIT_REGISTER));
                         hasChanged = true;
                     }
                 }
@@ -361,7 +361,7 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                 // TODO else insert delay only before first read!
                 for(unsigned i = 0; i < numDelays; ++i)
                 {
-                    it.emplace(new Nop(DelayType::WAIT_VPM));
+                    it.emplace(std::make_unique<Nop>(DelayType::WAIT_VPM));
                     it.nextInBlock();
                     hasChanged = true;
                 }
@@ -371,7 +371,7 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                 unsigned numDelays = 12; // XXX actually 9 to 20
                 for(unsigned i = 0; i < numDelays; ++i)
                 {
-                    it.emplace(new Nop(DelayType::WAIT_TMU));
+                    it.emplace(std::make_unique<Nop>(DelayType::WAIT_TMU));
                     it.nextInBlock();
                     hasChanged = true;
                 }

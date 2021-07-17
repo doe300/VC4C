@@ -484,7 +484,7 @@ std::string convertSourcesToFiles(std::istream*& inputStream, std::vector<T>& so
                  * troubles correctly handling the stdin (at least the way we set it), so just always use input files in
                  * this case.
                  */
-                tempFiles.emplace_back(new TemporaryFile());
+                tempFiles.emplace_back(std::make_unique<TemporaryFile>());
                 std::unique_ptr<std::ostream> s;
                 auto& file = tempFiles.back();
                 file->openOutputStream(s);

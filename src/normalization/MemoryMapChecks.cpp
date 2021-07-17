@@ -222,27 +222,27 @@ static NODISCARD std::pair<InstructionWalker, InstructionWalker> insert64BitWrit
 {
     if(origInstruction->guardAccess)
     {
-        it.emplace(new MutexLock(MutexAccess::LOCK));
+        it.emplace(std::make_unique<MutexLock>(MutexAccess::LOCK));
         it.nextInBlock();
     }
     auto lowerIndex = Value(address, method.createPointerType(TYPE_INT32));
-    it.emplace(
-        new MemoryInstruction(MemoryOperation::WRITE, Value(lowerIndex), std::move(lower), Value(INT_ONE), false));
+    it.emplace(std::make_unique<MemoryInstruction>(
+        MemoryOperation::WRITE, Value(lowerIndex), std::move(lower), Value(INT_ONE), false));
     if(origInstruction)
-        it->copyExtrasFrom(origInstruction);
+        it->copyExtrasFrom(*origInstruction);
     auto startIt = it;
     it.nextInBlock();
     auto upperIndex = assign(it, lowerIndex.type) = lowerIndex + 4_val;
     if(auto data = lowerIndex.local()->get<ReferenceData>())
         upperIndex.local()->set(ReferenceData(*data));
-    it.emplace(
-        new MemoryInstruction(MemoryOperation::WRITE, std::move(upperIndex), std::move(upper), Value(INT_ONE), false));
+    it.emplace(std::make_unique<MemoryInstruction>(
+        MemoryOperation::WRITE, std::move(upperIndex), std::move(upper), Value(INT_ONE), false));
     if(origInstruction)
-        it->copyExtrasFrom(origInstruction);
+        it->copyExtrasFrom(*origInstruction);
     it.nextInBlock();
     if(origInstruction->guardAccess)
     {
-        it.emplace(new MutexLock(MutexAccess::RELEASE));
+        it.emplace(std::make_unique<MutexLock>(MutexAccess::RELEASE));
         it.nextInBlock();
     }
     return std::make_pair(it, startIt);
@@ -810,8 +810,8 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                         }
                     }
                     it.erase();
-                    nextIt.reset(new MemoryInstruction(MemoryOperation::COPY, Value(std::move(dest)), std::move(src),
-                        Value(nextMemInstr->getNumEntries()), nextMemInstr->guardAccess));
+                    nextIt.reset(std::make_unique<MemoryInstruction>(MemoryOperation::COPY, Value(std::move(dest)),
+                        std::move(src), Value(nextMemInstr->getNumEntries()), nextMemInstr->guardAccess));
                     // continue with the next instruction after the read in the next iteration
                     continue;
                 }
@@ -927,25 +927,23 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
 
                     if(memInstr->guardAccess)
                     {
-                        it.emplace(new MutexLock(MutexAccess::LOCK));
+                        it.emplace(std::make_unique<MutexLock>(MutexAccess::LOCK));
                         it.nextInBlock();
                     }
                     auto lowerIndex = Value(memInstr->getSource().local(), method.createPointerType(TYPE_INT32));
-                    it.emplace(new MemoryInstruction(
-                        MemoryOperation::READ, Value(lowerLocal), Value(lowerIndex), Value(INT_ONE), false));
-                    it->copyExtrasFrom(memInstr);
+                    it.emplace(createWithExtras<MemoryInstruction>(
+                        *memInstr, MemoryOperation::READ, Value(lowerLocal), Value(lowerIndex), Value(INT_ONE), false));
                     auto startIt = it;
                     it.nextInBlock();
                     auto upperIndex = assign(it, lowerIndex.type) = lowerIndex + 4_val;
                     if(auto data = lowerIndex.local()->get<ReferenceData>())
                         upperIndex.local()->set(ReferenceData(*data));
-                    it.emplace(new MemoryInstruction(
-                        MemoryOperation::READ, Value(upperLocal), std::move(upperIndex), Value(INT_ONE), false));
-                    it->copyExtrasFrom(memInstr);
+                    it.emplace(createWithExtras<MemoryInstruction>(*memInstr, MemoryOperation::READ, Value(upperLocal),
+                        std::move(upperIndex), Value(INT_ONE), false));
                     it.nextInBlock();
                     if(memInstr->guardAccess)
                     {
-                        it.emplace(new MutexLock(MutexAccess::RELEASE));
+                        it.emplace(std::make_unique<MutexLock>(MutexAccess::RELEASE));
                         it.nextInBlock();
                     }
 

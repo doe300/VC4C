@@ -140,7 +140,7 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
                 }
             }
         }
-        it.emplace(new VectorRotation(dest, src, appliedOffset.immediate(), type));
+        it.emplace(std::make_unique<VectorRotation>(dest, src, appliedOffset.immediate(), type));
         it.nextInBlock();
     }
     return it;
@@ -206,18 +206,14 @@ InstructionWalker intermediate::insertVectorInsertion(
         unsigned maskLit = (1u << value.type.getVectorWidth()) - 1u;
         auto shiftedMask = method.addNewLocal(TYPE_INT32, "%vector_mask");
         if(auto lit = index.getLiteralValue())
-        {
             // rotate mask by constant offset at compile time
-            it.emplace(new LoadImmediate(
-                shiftedMask, maskLit << (lit->unsignedInt() % NATIVE_VECTOR_SIZE), LoadType::PER_ELEMENT_UNSIGNED));
-            it.nextInBlock();
-        }
+            assign(it, shiftedMask) =
+                load(maskLit << (lit->unsignedInt() % NATIVE_VECTOR_SIZE), LoadType::PER_ELEMENT_UNSIGNED);
         else
         {
             // rotate mask by dynamic offset at runtime
             auto mask = method.addNewLocal(TYPE_INT32, "%vector_mask");
-            it.emplace(new LoadImmediate(mask, maskLit, LoadType::PER_ELEMENT_UNSIGNED));
-            it.nextInBlock();
+            assign(it, mask) = load(maskLit, LoadType::PER_ELEMENT_UNSIGNED);
             it = insertVectorRotation(it, mask, index, shiftedMask);
         }
         assign(it, NOP_REGISTER) = (shiftedMask, SetFlag::SET_FLAGS);
@@ -431,7 +427,7 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
 
     // mask is container of literals, indices have arbitrary order
     // For optimization, find combinations of elements to rotate together (same offset) from the same source vector
-    std::map<std::pair<uint8_t, uint8_t>, std::bitset<32>> relativeSources;
+    std::map<std::pair<uint8_t, uint8_t>, std::bitset<16>> relativeSources;
     for(uint8_t i = 0; i < maskContainer.size(); ++i)
     {
         auto firstVectorSize = source0.type.getVectorWidth();
@@ -466,23 +462,12 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
             // set flags only for the selected elements
             ConditionCode cond = COND_NEVER;
             if(sources.second.count() == 1)
-            {
                 // for cosmetic purposes (and possible combination with other instructions), mask single elements via
                 // xoring small immediates
-                assign(it, NOP_REGISTER) = (ELEMENT_NUMBER_REGISTER ^
-                        Value(
-                            SmallImmediate(toLowestIndex(static_cast<uint32_t>(sources.second.to_ulong()))), TYPE_INT8),
-                    SetFlag::SET_FLAGS);
-                cond = COND_ZERO_SET;
-            }
+                cond = assignNop(it) =
+                    selectSIMDElement(toLowestIndex(static_cast<uint32_t>(sources.second.to_ulong())));
             else
-            {
-                it.emplace((new LoadImmediate(NOP_REGISTER, static_cast<uint32_t>(sources.second.to_ulong()),
-                                LoadType::PER_ELEMENT_UNSIGNED))
-                               ->setSetFlags(SetFlag::SET_FLAGS));
-                it.nextInBlock();
-                cond = COND_ZERO_CLEAR;
-            }
+                cond = assignNop(it) = selectSIMDElements(sources.second);
 
             // copy into destination only for the selected flags
             assign(it, destination) = (tmp, cond);
@@ -964,15 +949,13 @@ InstructionWalker insertAssembleVector(
         break;
     case SourceType::LOAD_UNSIGNED_MASK:
         tmp = method.addNewLocal(dest.type);
-        it.emplace(new LoadImmediate(tmp, LoadImmediate::fromLoadedValues(loadElements, LoadType::PER_ELEMENT_UNSIGNED),
-            LoadType::PER_ELEMENT_UNSIGNED));
-        it.nextInBlock();
+        assign(it, tmp) = load(LoadImmediate::fromLoadedValues(loadElements, LoadType::PER_ELEMENT_UNSIGNED),
+            LoadType::PER_ELEMENT_UNSIGNED);
         break;
     case SourceType::LOAD_SIGNED_MASK:
         tmp = method.addNewLocal(dest.type);
-        it.emplace(new LoadImmediate(tmp, LoadImmediate::fromLoadedValues(loadElements, LoadType::PER_ELEMENT_SIGNED),
-            LoadType::PER_ELEMENT_SIGNED));
-        it.nextInBlock();
+        assign(it, tmp) = load(
+            LoadImmediate::fromLoadedValues(loadElements, LoadType::PER_ELEMENT_SIGNED), LoadType::PER_ELEMENT_SIGNED);
         break;
     case SourceType::REPLICATE_QUAD_NUMBER:
         assign(it, Value(REG_REPLICATE_QUAD, dest.type)) = ELEMENT_NUMBER_REGISTER / 4_lit;
@@ -1020,7 +1003,7 @@ NODISCARD static InstructionWalker insertAssembleVectorFallback(
 {
     // copy first element without test for flags, so the register allocator finds an unconditional write of the
     // container
-    it.emplace(new intermediate::MoveOperation(dest, elements[0]));
+    it.emplace(std::make_unique<intermediate::MoveOperation>(dest, elements[0]));
     it.nextInBlock();
     // optimize this by looking for the most common value and initializing all (but the first) elements with this one
     // all other elements (not in the original data, but part of the SIMD vector, e.g. if source has less than 16
@@ -1194,13 +1177,13 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
         if(decoIt.has() && decoIt->getVectorRotation())
             decoIt->addDecorations(decorations);
 
-        it.emplace(new Operation(foldingOp, newTmpResult, tmpResult, tmpUp));
-        it->addDecorations(decorations);
+        it.emplace(std::make_unique<Operation>(foldingOp, newTmpResult, tmpResult, tmpUp)).addDecorations(decorations);
         it.nextInBlock();
 
         tmpResult = newTmpResult;
     }
 
     // 3. move result to dest
-    return it.emplace(new MoveOperation(dest, tmpResult));
+    it.emplace(std::make_unique<MoveOperation>(dest, tmpResult));
+    return it;
 }

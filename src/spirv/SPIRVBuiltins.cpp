@@ -101,8 +101,8 @@ void spirv::lowerBuiltins(Module& module, Method& method, InstructionWalker it, 
         if(!builtInt->hasDimensionalArgument)
         {
             // built-in has no dimensional argument -> simply convert to intrinsic function
-            it.reset((new intermediate::MethodCall(Value{*it->getOutput()}, std::string{builtInt->intrinsicFunction}))
-                         ->copyExtrasFrom(intrinsicOp));
+            it.reset(intermediate::createWithExtras<intermediate::MethodCall>(
+                *intrinsicOp, Value{*it->getOutput()}, std::string{builtInt->intrinsicFunction}));
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Replaced reading of SPIR-V built-in with intrinsic function call: " << it->to_string()
                     << logging::endl);
@@ -117,7 +117,8 @@ void spirv::lowerBuiltins(Module& module, Method& method, InstructionWalker it, 
 
         // insert intrinsic function call to temporary
         auto tmp = method.addNewLocal(builtInt->type.getElementType(), builtInt->name);
-        it.emplace(new intermediate::MethodCall(Value{tmp}, std::string{builtInt->intrinsicFunction}, {*arg}));
+        it.emplace(std::make_unique<intermediate::MethodCall>(
+            Value{tmp}, std::string{builtInt->intrinsicFunction}, std::vector<Value>{*arg}));
 
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Replaced reading of SPIR-V built-in with intrinsic function call and vector rotation: "

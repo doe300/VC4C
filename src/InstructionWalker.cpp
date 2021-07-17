@@ -260,7 +260,7 @@ const intermediate::IntermediateInstruction* InstructionWalker::get() const
     return (*pos).get();
 }
 
-intermediate::IntermediateInstruction* InstructionWalker::release()
+std::unique_ptr<intermediate::IntermediateInstruction> InstructionWalker::release()
 {
     throwOnEnd(isEndOfBlock());
     if(get<intermediate::BranchLabel>())
@@ -268,18 +268,19 @@ intermediate::IntermediateInstruction* InstructionWalker::release()
     if(get<intermediate::Branch>())
     {
         // need to remove the branch from the block before triggering the CFG update
-        std::unique_ptr<intermediate::IntermediateInstruction> tmp(pos->release());
+        auto tmp = std::move(*pos);
         basicBlock->method.updateCFGOnBranchRemoval(
             *basicBlock, dynamic_cast<intermediate::Branch*>(tmp.get())->getTargetLabels());
-        return tmp.release();
+        return tmp;
     }
-    return (*pos).release();
+    return std::move(*pos);
 }
 
-InstructionWalker& InstructionWalker::reset(intermediate::IntermediateInstruction* instr)
+intermediate::IntermediateInstruction& InstructionWalker::reset(
+    std::unique_ptr<intermediate::IntermediateInstruction>&& instr)
 {
     throwOnEnd(isEndOfBlock());
-    if(dynamic_cast<intermediate::BranchLabel*>(instr) != dynamic_cast<intermediate::BranchLabel*>((*pos).get()))
+    if(dynamic_cast<intermediate::BranchLabel*>(instr.get()) != dynamic_cast<intermediate::BranchLabel*>((*pos).get()))
         throw CompilationError(CompilationStep::GENERAL, "Can't add labels into a basic block", instr->to_string());
     // if we reset the label with another label, the CFG dos not change
     if(get<intermediate::Branch>())
@@ -289,10 +290,11 @@ InstructionWalker& InstructionWalker::reset(intermediate::IntermediateInstructio
         basicBlock->method.updateCFGOnBranchRemoval(
             *basicBlock, dynamic_cast<intermediate::Branch*>(tmp.get())->getTargetLabels());
     }
-    (*pos).reset(instr);
-    if(dynamic_cast<intermediate::Branch*>(instr))
+    bool isBranch = dynamic_cast<intermediate::Branch*>(instr.get());
+    (*pos) = std::move(instr);
+    if(isBranch)
         basicBlock->method.updateCFGOnBranchInsertion(*this);
-    return *this;
+    return **pos;
 }
 
 InstructionWalker& InstructionWalker::erase()
@@ -315,14 +317,15 @@ InstructionWalker& InstructionWalker::safeErase()
 {
     if(!isEndOfBlock() && get() && get()->hasDecoration(intermediate::InstructionDecorations::MANDATORY_DELAY))
     {
-        reset((new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER))
-                  ->addDecorations(intermediate::InstructionDecorations::MANDATORY_DELAY));
+        reset(std::make_unique<intermediate::Nop>(intermediate::DelayType::WAIT_REGISTER))
+            .addDecorations(intermediate::InstructionDecorations::MANDATORY_DELAY);
         return nextInBlock();
     }
     return erase();
 }
 
-InstructionWalker& InstructionWalker::emplace(intermediate::IntermediateInstruction* instr)
+intermediate::IntermediateInstruction& InstructionWalker::emplace(
+    std::unique_ptr<intermediate::IntermediateInstruction>&& instr)
 {
     if(isStartOfBlock())
         throw CompilationError(
@@ -330,12 +333,12 @@ InstructionWalker& InstructionWalker::emplace(intermediate::IntermediateInstruct
     if(basicBlock == nullptr)
         throw CompilationError(
             CompilationStep::GENERAL, "Can't emplace into an iterator which is not associated with a basic block");
-    if(dynamic_cast<intermediate::BranchLabel*>(instr) != nullptr)
+    if(dynamic_cast<intermediate::BranchLabel*>(instr.get()))
         throw CompilationError(CompilationStep::GENERAL, "Can't add labels into a basic block", instr->to_string());
-    pos = basicBlock->instructions.emplace(pos, instr);
-    if(dynamic_cast<intermediate::Branch*>(instr))
+    pos = basicBlock->instructions.emplace(pos, std::move(instr));
+    if(dynamic_cast<intermediate::Branch*>(pos->get()))
         basicBlock->method.updateCFGOnBranchInsertion(*this);
-    return *this;
+    return **pos;
 }
 
 ConstInstructionWalker::ConstInstructionWalker() : basicBlock(nullptr), pos(nullptr) {}

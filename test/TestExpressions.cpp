@@ -36,57 +36,58 @@ void TestExpressions::testCreation()
     Module mod{config};
     Method method(mod);
 
-    method.appendToEnd(new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL).local()));
+    method.appendToEnd(std::make_unique<intermediate::BranchLabel>(*method.addNewLocal(TYPE_LABEL).local()));
     auto it = method.begin()->walkEnd();
 
     {
         // skip instruction with side-effects
-        it.emplace((new intermediate::MoveOperation(NOP_REGISTER, INT_ONE))->setSetFlags(SetFlag::SET_FLAGS));
+        it.emplace(std::make_unique<intermediate::MoveOperation>(NOP_REGISTER, INT_ONE))
+            .setSetFlags(SetFlag::SET_FLAGS);
         TEST_ASSERT(!Expression::createExpression(*it.get()))
     }
 
     {
         // skip instruction with conditional execution
-        it.emplace(new intermediate::MoveOperation(NOP_REGISTER, INT_ONE, COND_CARRY_SET));
+        it.emplace(std::make_unique<intermediate::MoveOperation>(NOP_REGISTER, INT_ONE, COND_CARRY_SET));
         TEST_ASSERT(!Expression::createExpression(*it.get()))
     }
 
     {
         // skip instruction reading replication output
-        it.emplace(new intermediate::MoveOperation(NOP_REGISTER, Value(REG_REPLICATE_ALL, TYPE_INT32)));
+        it.emplace(std::make_unique<intermediate::MoveOperation>(NOP_REGISTER, Value(REG_REPLICATE_ALL, TYPE_INT32)));
         TEST_ASSERT(!Expression::createExpression(*it.get()))
     }
 
     {
         // skip branch instruction, semaphore
-        it.emplace(new intermediate::Branch(method.begin()->getLabel()->getLabel()));
+        it.emplace(std::make_unique<intermediate::Branch>(method.begin()->getLabel()->getLabel()));
         TEST_ASSERT(!Expression::createExpression(*it.get()))
 
-        it.emplace(new intermediate::SemaphoreAdjustment(Semaphore::BARRIER_WORK_ITEM_0, false));
+        it.emplace(std::make_unique<intermediate::SemaphoreAdjustment>(Semaphore::BARRIER_WORK_ITEM_0, false));
         TEST_ASSERT(!Expression::createExpression(*it.get()))
     }
 
     {
         // skip vector rotation
-        it.emplace(new intermediate::VectorRotation(NOP_REGISTER, Value(REG_REPLICATE_ALL, TYPE_INT32),
+        it.emplace(std::make_unique<intermediate::VectorRotation>(NOP_REGISTER, Value(REG_REPLICATE_ALL, TYPE_INT32),
             SmallImmediate::fromRotationOffset(1), intermediate::RotationType::FULL));
         TEST_ASSERT(!Expression::createExpression(*it.get()))
     }
 
     {
         // skip masked load
-        it.emplace(
-            new intermediate::LoadImmediate(NOP_REGISTER, 0x12345678u, intermediate::LoadType::PER_ELEMENT_SIGNED));
+        it.emplace(std::make_unique<intermediate::LoadImmediate>(
+            NOP_REGISTER, 0x12345678u, intermediate::LoadType::PER_ELEMENT_SIGNED));
         TEST_ASSERT(!Expression::createExpression(*it.get()))
 
-        it.emplace(
-            new intermediate::LoadImmediate(NOP_REGISTER, 0x12345678u, intermediate::LoadType::PER_ELEMENT_UNSIGNED));
+        it.emplace(std::make_unique<intermediate::LoadImmediate>(
+            NOP_REGISTER, 0x12345678u, intermediate::LoadType::PER_ELEMENT_UNSIGNED));
         TEST_ASSERT(!Expression::createExpression(*it.get()))
     }
 
     {
         // create expression for "normal" load
-        it.emplace(new intermediate::LoadImmediate(NOP_REGISTER, 1234_lit));
+        it.emplace(std::make_unique<intermediate::LoadImmediate>(NOP_REGISTER, 1234_lit));
         auto expr = Expression::createExpression(*it.get());
         TEST_ASSERT(!!expr)
         TEST_ASSERT(expr->isMoveExpression())
@@ -96,7 +97,7 @@ void TestExpressions::testCreation()
 
     {
         // create expression for moves
-        it.emplace(new intermediate::MoveOperation(NOP_REGISTER, FLOAT_ONE));
+        it.emplace(std::make_unique<intermediate::MoveOperation>(NOP_REGISTER, FLOAT_ONE));
         auto expr = Expression::createExpression(*it.get());
         TEST_ASSERT(!!expr)
         TEST_ASSERT(expr->isMoveExpression())
@@ -106,14 +107,15 @@ void TestExpressions::testCreation()
 
     {
         // create expression for ALU operations
-        it.emplace(new intermediate::Operation(OP_ITOF, NOP_REGISTER, FLOAT_ONE));
+        it.emplace(std::make_unique<intermediate::Operation>(OP_ITOF, NOP_REGISTER, FLOAT_ONE));
         auto expr = Expression::createExpression(*it.get());
         TEST_ASSERT(!!expr)
         TEST_ASSERT(!expr->isMoveExpression())
         TEST_ASSERT(expr->code == OP_ITOF)
         TEST_ASSERT(!expr->arg1)
 
-        it.emplace(new intermediate::Operation(OP_FSUB, NOP_REGISTER, FLOAT_ONE, Value(2345.0_lit, TYPE_FLOAT)));
+        it.emplace(
+            std::make_unique<intermediate::Operation>(OP_FSUB, NOP_REGISTER, FLOAT_ONE, Value(2345.0_lit, TYPE_FLOAT)));
         auto expr2 = Expression::createExpression(*it.get());
         TEST_ASSERT(!!expr2)
         TEST_ASSERT(!expr2->isMoveExpression())

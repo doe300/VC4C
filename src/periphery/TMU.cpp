@@ -268,20 +268,22 @@ static NODISCARD InstructionWalker insertReadLongVectorFromTMU(
     // load the lower N 32-bit elements (where N is the result vector size)
     // using the 64-bit destination type, the address offsets guarantee the upper part to be skipped, e.g.
     // element 0 loads from address + 0, element 1 from address + 8, ..., element N from address + 8 * N
-    it.emplace(new RAMAccessInstruction(MemoryOperation::READ, addr, lowerEntry));
+    it.emplace(std::make_unique<RAMAccessInstruction>(MemoryOperation::READ, addr, lowerEntry));
     it.nextInBlock();
     // load the upper N 32-bit elements (where N is the result vector size)
     // using the 64-bit destination type, the address offsets guarantee the lower part to be skipped, e.g.
     // element 0 loads from address + 4, element 1 from address + 12, ..., element N from address + 4 + 8 * N
     auto tmpAddress = assign(it, addr.type, "%tmu_upper_addr") = addr + 4_val;
-    it.emplace(new RAMAccessInstruction(MemoryOperation::READ, tmpAddress, upperEntry));
+    it.emplace(std::make_unique<RAMAccessInstruction>(MemoryOperation::READ, tmpAddress, upperEntry));
     it.nextInBlock();
 
     // read the lower and upper elements into the result variables
-    it.emplace(new CacheAccessInstruction(MemoryOperation::READ, outputData->lower->createReference(), lowerEntry));
+    it.emplace(std::make_unique<CacheAccessInstruction>(
+        MemoryOperation::READ, outputData->lower->createReference(), lowerEntry));
     it.nextInBlock();
 
-    it.emplace(new CacheAccessInstruction(MemoryOperation::READ, outputData->upper->createReference(), upperEntry));
+    it.emplace(std::make_unique<CacheAccessInstruction>(
+        MemoryOperation::READ, outputData->upper->createReference(), upperEntry));
     it.nextInBlock();
 
     return it;
@@ -301,9 +303,9 @@ InstructionWalker periphery::insertReadVectorFromTMU(
     // NOTE: actually this is baseAddr.type * type.num, but we can't have vectors of pointers
     auto entry =
         tmu.createEntry(method.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%tmu_address"), dest.type);
-    it.emplace(new RAMAccessInstruction(MemoryOperation::READ, addr, entry));
+    it.emplace(std::make_unique<RAMAccessInstruction>(MemoryOperation::READ, addr, entry));
     it.nextInBlock();
-    it.emplace(new CacheAccessInstruction(MemoryOperation::READ, dest, entry));
+    it.emplace(std::make_unique<CacheAccessInstruction>(MemoryOperation::READ, dest, entry));
     it.nextInBlock();
     return it;
 }

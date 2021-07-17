@@ -364,9 +364,17 @@ void optimizations::removeObsoleteInstructions(
                         << simpleMoveOp->to_string() << "' (register " << reg->to_string()
                         << ") as part of a combined instruction: " << combined->to_string() << logging::endl);
                 if(combined->getFirstOp() == simpleMoveOp)
-                    it.reset(combined->splitUp().second.release()->copyExtrasFrom(combined));
+                {
+                    auto tmp = std::move(combined->splitUp().second);
+                    tmp->copyExtrasFrom(*combined);
+                    it.reset(std::move(tmp));
+                }
                 else if(combined->getSecondOp() == simpleMoveOp)
-                    it.reset(combined->splitUp().first.release()->copyExtrasFrom(combined));
+                {
+                    auto tmp = std::move(combined->splitUp().first);
+                    tmp->copyExtrasFrom(*combined);
+                    it.reset(std::move(tmp));
+                }
             }
         }
         lastInstruction = it;

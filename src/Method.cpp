@@ -311,21 +311,28 @@ std::size_t Method::cleanEmptyInstructions()
     return num;
 }
 
-void Method::appendToEnd(intermediate::IntermediateInstruction* instr)
+intermediate::IntermediateInstruction& Method::appendToEnd(
+    std::unique_ptr<intermediate::IntermediateInstruction>&& instr)
 {
-    if(auto label = dynamic_cast<intermediate::BranchLabel*>(instr))
+    if(auto label = dynamicPointerCast<intermediate::BranchLabel>(instr))
     {
-        basicBlocks.emplace_back(*this, label);
-        updateCFGOnBlockInsertion(&basicBlocks.back());
+        basicBlocks.emplace_back(*this, std::move(label));
+        auto& block = basicBlocks.back();
+        updateCFGOnBlockInsertion(&block);
+        return *block.instructions.back();
     }
     else
     {
         checkAndCreateDefaultBasicBlock();
-        basicBlocks.back().instructions.emplace_back(instr);
-        if(cfg && dynamic_cast<intermediate::Branch*>(instr))
-            updateCFGOnBranchInsertion(basicBlocks.back().walkEnd().previousInBlock());
+        bool isBranch = dynamic_cast<const intermediate::Branch*>(instr.get());
+        auto& block = basicBlocks.back();
+        block.instructions.emplace_back(std::move(instr));
+        if(cfg && isBranch)
+            updateCFGOnBranchInsertion(block.walkEnd().previousInBlock());
+        return *block.instructions.back();
     }
 }
+
 InstructionWalker Method::appendToEnd()
 {
     checkAndCreateDefaultBasicBlock();
@@ -479,16 +486,16 @@ bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
 BasicBlock& Method::createAndInsertNewBlock(BasicBlockList::iterator position, const std::string& labelName)
 {
     auto newLabel = locals.emplace(Local(TYPE_LABEL, labelName));
-    auto& block = *basicBlocks.emplace(position, *this, new intermediate::BranchLabel(*newLabel.first));
+    auto& block = *basicBlocks.emplace(position, *this, std::make_unique<intermediate::BranchLabel>(*newLabel.first));
     updateCFGOnBlockInsertion(&block);
     return block;
 }
 
-InstructionWalker Method::emplaceLabel(InstructionWalker it, intermediate::BranchLabel* label)
+InstructionWalker Method::emplaceLabel(InstructionWalker it, std::unique_ptr<intermediate::BranchLabel>&& label)
 {
     if(basicBlocks.empty())
     {
-        auto& newBlock = *basicBlocks.emplace(basicBlocks.begin(), *this, label);
+        auto& newBlock = *basicBlocks.emplace(basicBlocks.begin(), *this, std::move(label));
         updateCFGOnBlockInsertion(&newBlock);
         return newBlock.walk();
     }
@@ -506,7 +513,7 @@ InstructionWalker Method::emplaceLabel(InstructionWalker it, intermediate::Branc
     bool isStartOfBlock = blockIt->walk() == it;
     if(!isStartOfBlock)
         ++blockIt;
-    BasicBlock& newBlock = *basicBlocks.emplace(blockIt, *this, label);
+    BasicBlock& newBlock = *basicBlocks.emplace(blockIt, *this, std::move(label));
     updateCFGOnBlockInsertion(&newBlock);
     // 2. move all instructions beginning with it (inclusive) to the new basic block
     while(!isStartOfBlock && !it.isEndOfBlock())
@@ -684,7 +691,7 @@ void Method::checkAndCreateDefaultBasicBlock()
     {
         // in case the input code does not always add a label to the start of a function
         basicBlocks.emplace_back(
-            *this, new intermediate::BranchLabel(*createLocal(TYPE_LABEL, BasicBlock::DEFAULT_BLOCK)));
+            *this, std::make_unique<intermediate::BranchLabel>(*createLocal(TYPE_LABEL, BasicBlock::DEFAULT_BLOCK)));
         updateCFGOnBlockInsertion(&basicBlocks.back());
     }
 }

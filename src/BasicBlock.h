@@ -14,6 +14,8 @@
 #include "helper.h"
 #include "performance.h"
 
+#include <memory>
+
 namespace vc4c
 {
     namespace analysis
@@ -53,7 +55,7 @@ namespace vc4c
         static const std::string DEFAULT_BLOCK;
         static const std::string LAST_BLOCK;
 
-        BasicBlock(Method& method, intermediate::BranchLabel* label);
+        BasicBlock(Method& method, std::unique_ptr<intermediate::BranchLabel>&& label);
         BasicBlock(const BasicBlock&) = delete;
         BasicBlock(BasicBlock&&) = delete;
         ~BasicBlock() noexcept = default;
@@ -109,7 +111,7 @@ namespace vc4c
          * Checks if all usages of this local are within a certain range from the current instruction within a single
          * basic block
          */
-        bool isLocallyLimited(InstructionWalker curIt, const Local* locale, std::size_t threshold) const;
+        bool isLocallyLimited(InstructionWalker curIt, const Local* local, std::size_t threshold) const;
 
         /*
          * Returns the label for this block

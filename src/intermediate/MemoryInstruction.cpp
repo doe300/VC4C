@@ -93,13 +93,13 @@ SideEffectType MemoryInstruction::getSideEffects() const
     return add_flag(IntermediateInstruction::getSideEffects(), SideEffectType::MEMORY_ACCESS);
 }
 
-IntermediateInstruction* MemoryInstruction::copyFor(
+std::unique_ptr<IntermediateInstruction> MemoryInstruction::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new MemoryInstruction(op, renameValue(method, getDestination(), localPrefix, localMapping),
-                renameValue(method, getSource(), localPrefix, localMapping),
-                renameValue(method, getNumEntries(), localPrefix, localMapping), guardAccess))
-        ->copyExtrasFrom(this);
+    return createWithExtras<MemoryInstruction>(*this, op,
+        renameValue(method, getDestination(), localPrefix, localMapping),
+        renameValue(method, getSource(), localPrefix, localMapping),
+        renameValue(method, getNumEntries(), localPrefix, localMapping), guardAccess);
 }
 
 const Value& MemoryInstruction::getSource() const
@@ -241,7 +241,7 @@ qpu_asm::DecoratedInstruction MemoryAccessInstruction::convertToAsm(
     throw CompilationError(CompilationStep::OPTIMIZER, "There should be no more mmeory access operations", to_string());
 }
 
-IntermediateInstruction* MemoryAccessInstruction::copyFor(
+std::unique_ptr<IntermediateInstruction> MemoryAccessInstruction::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     throw CompilationError(

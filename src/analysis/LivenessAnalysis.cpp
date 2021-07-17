@@ -15,7 +15,7 @@
 using namespace vc4c;
 using namespace vc4c::analysis;
 
-static std::unique_ptr<Local> replicateRegisterLocal(new Parameter("%replicate_register", TYPE_INT32.toVectorType(16)));
+static auto replicateRegisterLocal = std::make_unique<Parameter>("%replicate_register", TYPE_INT32.toVectorType(16));
 const Local* analysis::FAKE_REPLICATE_REGISTER = replicateRegisterLocal.get();
 
 LivenessChangesAnalysis::LivenessChangesAnalysis() :

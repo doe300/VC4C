@@ -191,7 +191,7 @@ namespace vc4c
          * NOTE: Only simple expressions (without sub-expressions) or expressions where the optional output values for
          * all sub-expressions are known can be converted to instructions!
          */
-        intermediate::IntermediateInstruction* toInstruction(const Value& output) const;
+        std::unique_ptr<intermediate::IntermediateInstruction> toInstruction(const Value& output) const;
 
         /**
          * If possible, generates instructions for this and all child expressions, if there a not yet any matching

@@ -85,7 +85,7 @@ InstructionWalker intrinsics::intrinsifyUnsignedIntegerMultiplication(
     Value resTmp = assign(it, outputType) = resHiLo + resLoHi;
     Value resHi = assign(it, outputType, "%mul.resHi") = resTmp << 24_val;
 
-    it.reset(new Operation(OP_ADD, op.getOutput().value(), resLo, resHi));
+    it.reset(std::make_unique<Operation>(OP_ADD, op.getOutput().value(), resLo, resHi));
     it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
 
     return it;
@@ -123,22 +123,21 @@ InstructionWalker intrinsics::intrinsifyLongMultiplication(
             CompilationStep::NORMALIZER, "Cannot lower a 64-bit multiplication to a non 64-bit output", op.to_string());
 
     auto resLowLow = method.addNewLocal(partType, "%mul.resLowLow");
-    it.emplace(new intermediate::MethodCall(
-        Value(resLowLow), "mul_full", {firstLower, secondLower, Value(Literal(VC4CL_UNSIGNED), TYPE_INT8)}));
-    it = intrinsifyIntegerToLongMultiplication(
-        method, it, it.get<intermediate::MethodCall>(), resultData->lower->createReference());
+    auto newCall = &it.emplace(std::make_unique<MethodCall>(Value(resLowLow), "mul_full",
+        std::vector<Value>{firstLower, secondLower, Value(Literal(VC4CL_UNSIGNED), TYPE_INT8)}));
+    it = intrinsifyIntegerToLongMultiplication(method, it, newCall, resultData->lower->createReference());
     it.nextInBlock();
 
     auto resLowHigh = method.addNewLocal(partType, "%mul.resLowHigh");
-    it.emplace(
-        new intermediate::IntrinsicOperation("mul_full", Value(resLowHigh), Value(firstLower), Value(secondUpper)));
-    it = intrinsifyUnsignedIntegerMultiplication(method, it, *it.get<intermediate::IntrinsicOperation>());
+    auto newOp = &it.emplace(
+        std::make_unique<IntrinsicOperation>("mul_full", Value(resLowHigh), Value(firstLower), Value(secondUpper)));
+    it = intrinsifyUnsignedIntegerMultiplication(method, it, *newOp);
     it.nextInBlock();
 
     auto resHighLow = method.addNewLocal(partType, "%mul.resHighLow");
-    it.emplace(
-        new intermediate::IntrinsicOperation("mul_full", Value(resHighLow), Value(firstUpper), Value(secondLower)));
-    it = intrinsifyUnsignedIntegerMultiplication(method, it, *it.get<intermediate::IntrinsicOperation>());
+    newOp = &it.emplace(
+        std::make_unique<IntrinsicOperation>("mul_full", Value(resHighLow), Value(firstUpper), Value(secondLower)));
+    it = intrinsifyUnsignedIntegerMultiplication(method, it, *newOp);
     it.nextInBlock();
 
     // Add the parts back together
@@ -147,7 +146,7 @@ InstructionWalker intrinsics::intrinsifyLongMultiplication(
 
     // Let the #lowerLongOperation normalization step handle the actual move to the result, e.g. to be able to also
     // handle flags
-    it.reset((new MoveOperation(*op.getOutput(), result))->copyExtrasFrom(&op));
+    it.reset(createWithExtras<MoveOperation>(op, *op.getOutput(), result));
     return it;
 }
 
@@ -239,13 +238,13 @@ InstructionWalker intrinsics::intrinsifyIntegerToLongMultiplication(
             assign(it, *lowResult) = (lowerComplement, cond);
         }
 
-        it.reset((new MoveOperation(call->getOutput().value(), std::move(finalResult)))->copyExtrasFrom(call));
+        it.reset(createWithExtras<MoveOperation>(*call, call->getOutput().value(), std::move(finalResult)));
     }
     else
     {
         if(lowResult)
             assign(it, *lowResult) = resLower;
-        it.reset(new Operation(OP_ADD, call->getOutput().value(), resMid, resHi));
+        it.reset(std::make_unique<Operation>(OP_ADD, call->getOutput().value(), resMid, resHi));
         it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
     }
 
@@ -330,13 +329,12 @@ InstructionWalker intrinsics::intrinsifyIntegerMultiplicationViaBinaryMethod(
     if(lastHigh != 0)
     {
         // insert last shift
-        it.reset(
-            (new Operation(OP_SHL, op.getOutput().value(), intermediateResult, Value(Literal(lastHigh), TYPE_INT8)))
-                ->copyExtrasFrom(&op));
+        it.reset(createWithExtras<Operation>(
+            op, OP_SHL, op.getOutput().value(), intermediateResult, Value(Literal(lastHigh), TYPE_INT8)));
     }
     else
     {
-        it.reset((new MoveOperation(op.getOutput().value(), intermediateResult))->copyExtrasFrom(&op));
+        it.reset(createWithExtras<MoveOperation>(op, op.getOutput().value(), intermediateResult));
     }
 
     return it;
@@ -375,11 +373,8 @@ InstructionWalker intrinsics::intrinsifySignedIntegerDivision(
     it.nextInBlock();
 
     if(op1Sign.hasLiteral(0_lit) && op2Sign.hasLiteral(0_lit))
-    {
         // if both operands are marked with (unsigned), we don't need to invert the result
-        it.emplace(new MoveOperation(opDest, tmpDest));
-        it.nextInBlock();
-    }
+        assign(it, opDest) = tmpDest;
     else if(useRemainder)
     {
         // For signed remainder (srem), the results sign only depends on the sign of the dividend!
@@ -477,9 +472,9 @@ InstructionWalker intrinsics::intrinsifyUnsignedIntegerDivision(
     // make move from original instruction
 
     if(useRemainder)
-        it.reset(new MoveOperation(op.getOutput().value(), remainder));
+        it.reset(std::make_unique<MoveOperation>(op.getOutput().value(), remainder));
     else
-        it.reset(new MoveOperation(op.getOutput().value(), quotient));
+        it.reset(std::make_unique<MoveOperation>(op.getOutput().value(), quotient));
     it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
 
     return it;
@@ -607,8 +602,7 @@ InstructionWalker intrinsics::intrinsifyUnsignedIntegerDivisionByConstant(
 
     Value tmp = assign(it, op.getFirstArg().type, "%udiv") = mul24(op.getFirstArg(), constants.first);
     const Value divOut = method.addNewLocal(op.getFirstArg().type, "%udiv");
-    it.emplace(new Operation(OP_SHR, divOut, tmp, constants.second));
-    it->copyExtrasFrom(&op);
+    it.emplace(createWithExtras<Operation>(op, OP_SHR, divOut, tmp, constants.second));
     it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
     it.nextInBlock();
     // the original version has an error, which returns a too small value for exact multiples of the denominator, the
@@ -627,7 +621,7 @@ InstructionWalker intrinsics::intrinsifyUnsignedIntegerDivisionByConstant(
         // x mod y = x - (x/y) * y;
         Value tmpMul = assign(it, op.getFirstArg().type, "%udiv.remainder") = mul24(finalResult, op.assertArgument(1));
         // replace original division
-        it.reset(new Operation(OP_SUB, op.getOutput().value(), op.getFirstArg(), tmpMul));
+        it.reset(std::make_unique<Operation>(OP_SUB, op.getOutput().value(), op.getFirstArg(), tmpMul));
         it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
     }
     else
@@ -644,12 +638,8 @@ NODISCARD InstructionWalker intrinsics::intrinsifyIntegerDivisionByFloatingDivis
     Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder)
 {
     auto floatType = TYPE_FLOAT.toVectorType(op.getOutput()->type.getVectorWidth());
-    auto floatNominator = method.addNewLocal(floatType, "%fdiv");
-    it.emplace(new intermediate::Operation(OP_ITOF, floatNominator, op.assertArgument(0)));
-    it.nextInBlock();
-    auto floatDivisor = method.addNewLocal(floatType, "%fdiv");
-    it.emplace(new intermediate::Operation(OP_ITOF, floatDivisor, op.assertArgument(1)));
-    it.nextInBlock();
+    auto floatNominator = assign(it, floatType, "%fdiv") = itof(op.assertArgument(0));
+    auto floatDivisor = assign(it, floatType, "%fdiv") = itof(op.assertArgument(1));
     op.setArgument(0, floatNominator);
     op.setArgument(1, floatDivisor);
     auto realResult = op.getOutput();
@@ -659,9 +649,7 @@ NODISCARD InstructionWalker intrinsics::intrinsifyIntegerDivisionByFloatingDivis
     // undefined value anyway
     it = intrinsifyFloatingDivision(method, it, op, false /* no need to handle edge cases */);
     it.nextInBlock();
-    auto result = method.addNewLocal(realResult->type, "%div");
-    it.emplace(new intermediate::Operation(OP_FTOI, result, floatResult));
-    it.nextInBlock();
+    auto result = assign(it, realResult->type, "%div") = ftoi(floatResult);
 
     /*
      * Due to the float division not being infinite precise, we get some sparse errors on exact division.
@@ -674,36 +662,32 @@ NODISCARD InstructionWalker intrinsics::intrinsifyIntegerDivisionByFloatingDivis
      *
      * Even with this fix required, this calculation is still far faster than doing the bit-wise integer division.
      */
-    floatResult = method.addNewLocal(floatType, "%div_fix");
-    it.emplace(new intermediate::Operation(OP_ITOF, floatResult, result));
-    it.nextInBlock();
+    floatResult = assign(it, floatType, "%div_fix") = itof(result);
     // diff = abs(nominator - result * divisor)
     auto tmpResult = assign(it, floatType, "%div_fix") = as_float{floatResult} * as_float{floatDivisor};
     auto resultDiff = assign(it, floatType, "%div_fix") = as_float{floatNominator} - as_float{tmpResult};
     tmpResult = method.addNewLocal(floatType, "%div_fix");
-    it.emplace(new intermediate::Operation(OP_FMAXABS, tmpResult, resultDiff, resultDiff));
+    it.emplace(std::make_unique<Operation>(OP_FMAXABS, tmpResult, resultDiff, resultDiff));
     it.nextInBlock();
     // offset = (nominator < 0) ^ (divisor < 0) ? -1 : 1
     auto sign = assign(it, realResult->type, "%div_sign") = floatNominator ^ floatDivisor;
     sign = assign(it, realResult->type, "%div_sign") = as_signed{sign} >> 31_val;
     auto increment = assign(it, realResult->type, "%div_fix") = sign | 1_val;
     // result = result + offset, iff abs(diff) >= abs(divisor) (<=> abs(divisor) ! > abs(diff))
-    it.emplace(new intermediate::Operation(
+    it.emplace(std::make_unique<Operation>(
         OP_FMAXABS, NOP_REGISTER, floatDivisor, tmpResult, COND_ALWAYS, SetFlag::SET_FLAGS));
     it.nextInBlock();
     assign(it, result) = (result + increment, COND_CARRY_CLEAR);
 
     if(useRemainder)
     {
-        floatResult = method.addNewLocal(floatType, "%mod");
-        it.emplace(new intermediate::Operation(OP_ITOF, floatResult, result));
-        it.nextInBlock();
+        floatResult = assign(it, floatType, "%mod") = itof(result);
         tmpResult = assign(it, floatType, "%mod") = as_float{floatResult} * as_float{floatDivisor};
         tmpResult = assign(it, floatType, "%mod") = as_float{floatNominator} - as_float{tmpResult};
-        it.emplace(new intermediate::Operation(OP_FTOI, realResult.value(), tmpResult));
+        it.emplace(std::make_unique<Operation>(OP_FTOI, realResult.value(), tmpResult));
     }
     else
-        it.emplace(new intermediate::MoveOperation(realResult.value(), result));
+        it.emplace(std::make_unique<MoveOperation>(realResult.value(), result));
 
     return it;
 }
@@ -851,7 +835,7 @@ InstructionWalker intrinsics::intrinsifyFloatingDivision(
         assign(it, result) = (FLOAT_NAN, cond);
     }
 
-    it.reset((new intermediate::MoveOperation(op.getOutput().value(), result))->copyExtrasFrom(&op));
+    it.reset(createWithExtras<MoveOperation>(op, op.getOutput().value(), result));
     return it;
 }
 

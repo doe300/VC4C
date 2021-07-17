@@ -618,16 +618,17 @@ bool optimizations::combineOperationsInner(InstructionWalker it, InstructionWalk
         log << "Merging instructions " << it->to_string() << " and " << nextIt->to_string() << logging::endl);
     if(op && nextOp)
     {
-        it.reset(
-            new CombinedOperation(dynamic_cast<Operation*>(it.release()), dynamic_cast<Operation*>(nextIt.release())));
+        it.reset(std::make_unique<CombinedOperation>(
+            staticPointerCast<Operation>(it.release()), staticPointerCast<Operation>(nextIt.release())));
         nextIt.erase();
     }
     else if(op && nextMove)
     {
         if(auto newMove = nextMove->combineWith(op->op))
         {
-            newMove->copyExtrasFrom(nextMove);
-            it.reset(new CombinedOperation(dynamic_cast<Operation*>(it.release()), newMove));
+            newMove->copyExtrasFrom(*nextMove);
+            it.reset(
+                std::make_unique<CombinedOperation>(staticPointerCast<Operation>(it.release()), std::move(newMove)));
             nextIt.erase();
         }
         else
@@ -639,10 +640,11 @@ bool optimizations::combineOperationsInner(InstructionWalker it, InstructionWalk
     }
     else if(move && nextOp)
     {
-        if(Operation* newMove = move->combineWith(nextOp->op))
+        if(auto newMove = move->combineWith(nextOp->op))
         {
-            newMove->copyExtrasFrom(move);
-            it.reset(new CombinedOperation(newMove, dynamic_cast<Operation*>(nextIt.release())));
+            newMove->copyExtrasFrom(*move);
+            it.reset(std::make_unique<CombinedOperation>(
+                std::move(newMove), staticPointerCast<Operation>(nextIt.release())));
             nextIt.erase();
         }
         else
@@ -656,13 +658,13 @@ bool optimizations::combineOperationsInner(InstructionWalker it, InstructionWalk
     {
         bool firstOnMul = (move->hasPackMode() && move->getPackMode().supportsMulALU()) ||
             (nextMove->hasPackMode() && !nextMove->getPackMode().supportsMulALU()) || nextMove->doesSetFlag();
-        Operation* newMove0 = move->combineWith(firstOnMul ? OP_ADD : OP_MUL24);
-        Operation* newMove1 = nextMove->combineWith(firstOnMul ? OP_MUL24 : OP_ADD);
+        auto newMove0 = move->combineWith(firstOnMul ? OP_ADD : OP_MUL24);
+        auto newMove1 = nextMove->combineWith(firstOnMul ? OP_MUL24 : OP_ADD);
         if(newMove0 && newMove1)
         {
-            newMove0->copyExtrasFrom(move);
-            newMove1->copyExtrasFrom(nextMove);
-            it.reset(new CombinedOperation(newMove0, newMove1));
+            newMove0->copyExtrasFrom(*move);
+            newMove1->copyExtrasFrom(*nextMove);
+            it.reset(std::make_unique<CombinedOperation>(std::move(newMove0), std::move(newMove1)));
             nextIt.erase();
         }
         else
@@ -831,10 +833,9 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                             if(auto litArg = nextInstr->findLiteralArgument())
                                 // prefer the literal argument for XOR'ing for easier readability
                                 arg = *litArg;
-                            it.reset(
-                                (new Operation(OP_XOR, move->getOutput().value(), arg, arg))->copyExtrasFrom(move));
+                            op = &it.reset(
+                                createWithExtras<Operation>(*move, OP_XOR, move->getOutput().value(), arg, arg));
                             move = nullptr;
-                            op = it.get<Operation>();
                             instr = op;
                         }
                         else if(data.rewriteSimpleMoveOfZero == nextMove)
@@ -843,10 +844,9 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                             if(auto litArg = instr->findLiteralArgument())
                                 // prefer the literal argument for XOR'ing for easier readability
                                 arg = *litArg;
-                            nextIt.reset((new Operation(OP_XOR, nextMove->getOutput().value(), arg, arg))
-                                             ->copyExtrasFrom(nextMove));
+                            nextOp = &nextIt.reset(createWithExtras<Operation>(
+                                *nextMove, OP_XOR, nextMove->getOutput().value(), arg, arg));
                             nextMove = nullptr;
-                            nextOp = nextIt.get<Operation>();
                             nextInstr = nextOp;
                         }
                         else
@@ -1029,8 +1029,8 @@ InstructionWalker optimizations::combineSelectionWithZero(
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Rewriting selection of either zero or " << nextMove->getSource().to_string()
                 << " using only one input" << logging::endl);
-        it.reset((new Operation(OP_XOR, move->getOutput().value(), nextMove->getSource(), nextMove->getSource()))
-                     ->copyExtrasFrom(move));
+        it.reset(createWithExtras<Operation>(
+            *move, OP_XOR, move->getOutput().value(), nextMove->getSource(), nextMove->getSource()));
         // to process this instruction again (e.g. loading literals)
         it.previousInBlock();
     }
@@ -1039,8 +1039,8 @@ InstructionWalker optimizations::combineSelectionWithZero(
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Rewriting selection of either " << move->getSource().to_string() << " or zero using only one input"
                 << logging::endl);
-        nextIt.reset((new Operation(OP_XOR, nextMove->getOutput().value(), move->getSource(), move->getSource()))
-                         ->copyExtrasFrom(nextMove));
+        nextIt.reset(createWithExtras<Operation>(
+            *nextMove, OP_XOR, nextMove->getOutput().value(), move->getSource(), move->getSource()));
     }
     return it;
 }
@@ -1079,13 +1079,14 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                         CPPLOG_LAZY(logging::Level::DEBUG,
                             log << "Replacing vector rotation by offset of zero with move: " << it->to_string()
                                 << logging::endl);
-                        it.reset((new MoveOperation(rot->getOutput().value(), rot->getSource()))->copyExtrasFrom(rot));
+                        auto newMove = &it.reset(
+                            createWithExtras<MoveOperation>(*rot, rot->getOutput().value(), rot->getSource()));
                         if(it->getSignal() == SIGNAL_ALU_IMMEDIATE && !it->assertArgument(0).checkVector() &&
                             !it->assertArgument(0).getLiteralValue())
                             // need to remove the "ALU immediate" signal which might be added from the vector rotation
                             // offset, unless we move a literal value, otherwise the register-file B gets mapped to a
                             // literal instead
-                            it.get<MoveOperation>()->setSignaling(SIGNAL_NONE);
+                            newMove->setSignaling(SIGNAL_NONE);
                         hasChanged = true;
                         continue;
                     }
@@ -1117,8 +1118,9 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                         CPPLOG_LAZY(logging::Level::DEBUG,
                             log << "Replacing rotation of constant load with constant load: " << rot->to_string()
                                 << logging::endl);
-                        it.reset((new LoadImmediate(it->getOutput().value(), writer->getImmediate()))
-                                     ->copyExtrasFrom(rot, true));
+                        auto newLoad = std::make_unique<LoadImmediate>(it->getOutput().value(), writer->getImmediate());
+                        newLoad->copyExtrasFrom(*rot, true);
+                        it.reset(std::move(newLoad));
                         hasChanged = true;
                         continue;
                     }
@@ -1132,8 +1134,10 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                         CPPLOG_LAZY(logging::Level::DEBUG,
                             log << "Replacing rotation of masked load with rotated masked load: " << rot->to_string()
                                 << logging::endl);
-                        it.reset((new LoadImmediate(it->getOutput().value(), upper | lower, writer->type))
-                                     ->copyExtrasFrom(rot, true));
+                        auto newLoad =
+                            std::make_unique<LoadImmediate>(it->getOutput().value(), upper | lower, writer->type);
+                        newLoad->copyExtrasFrom(*rot, true);
+                        it.reset(std::move(newLoad));
                         hasChanged = true;
                         continue;
                     }
@@ -1150,13 +1154,13 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Replacing rotation of constant operation with move: " << rot->to_string()
                             << logging::endl);
-                    it.reset(
-                        (new MoveOperation(it->getOutput().value(), writer->getOutput().value()))->copyExtrasFrom(rot));
+                    auto newMove = &it.reset(
+                        createWithExtras<MoveOperation>(*rot, it->getOutput().value(), writer->getOutput().value()));
                     if(it->getSignal() == SIGNAL_ALU_IMMEDIATE)
                         // need to remove the "ALU immediate" signal which might be added from the vector rotation
                         // offset, unless we move a literal value, otherwise the register-file B gets mapped to a
                         // literal instead
-                        it.get<MoveOperation>()->setSignaling(SIGNAL_NONE);
+                        newMove->setSignaling(SIGNAL_NONE);
                     hasChanged = true;
                     continue;
                 }
@@ -1192,16 +1196,16 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                     CPPLOG_LAZY(logging::Level::DEBUG,
                                         log << "Replacing unnecessary vector rotations " << firstRot->to_string()
                                             << " and " << rot->to_string() << " with single move" << logging::endl);
-                                    it.reset((new MoveOperation(rot->getOutput().value(), firstRot->getSource()))
-                                                 ->copyExtrasFrom(rot));
-                                    it->copyExtrasFrom(firstRot);
+                                    auto newMove = &it.reset(createWithExtras<MoveOperation>(
+                                        *rot, rot->getOutput().value(), firstRot->getSource()));
+                                    it->copyExtrasFrom(*firstRot);
                                     if(it->getSignal() == SIGNAL_ALU_IMMEDIATE &&
                                         !it->assertArgument(0).checkVector() &&
                                         !it->assertArgument(0).getLiteralValue())
                                         // need to remove the "ALU immediate" signal which might be added from the
                                         // vector rotation offset, unless we move a literal value, otherwise the
                                         // register-file B gets mapped to a literal instead
-                                        it.get<MoveOperation>()->setSignaling(SIGNAL_NONE);
+                                        newMove->setSignaling(SIGNAL_NONE);
 
                                     if(!(*firstIt)->hasSideEffects() &&
                                         !firstRot->getOutput()->local()->hasUsers(LocalUse::Type::READER))
@@ -1214,11 +1218,10 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                         log << "Combining vector rotations " << firstRot->to_string() << " and "
                                             << rot->to_string() << " to a single rotation with offset "
                                             << static_cast<unsigned>(offset) << logging::endl);
-                                    it.reset((new VectorRotation(rot->getOutput().value(), firstRot->getSource(),
-                                                  SmallImmediate::fromRotationOffset(offset),
-                                                  rot->type == RotationType::ANY ? firstRot->type : rot->type))
-                                                 ->copyExtrasFrom(rot));
-                                    it->copyExtrasFrom(firstRot);
+                                    it.reset(createWithExtras<VectorRotation>(*rot, rot->getOutput().value(),
+                                        firstRot->getSource(), SmallImmediate::fromRotationOffset(offset),
+                                        rot->type == RotationType::ANY ? firstRot->type : rot->type));
+                                    it->copyExtrasFrom(*firstRot);
                                     if(!(*firstIt)->hasSideEffects() &&
                                         !firstRot->getOutput()->local()->hasUsers(LocalUse::Type::READER))
                                         // only remove first rotation if it does not have a second user
@@ -1336,7 +1339,7 @@ InstructionWalker optimizations::combineArithmeticOperations(
     if(lastIt)
     {
         lastIt->reset(
-            (new Operation(op->op, it->getOutput().value(), origArg, precalc.value()))->copyExtrasFrom(it.get()));
+            createWithExtras<Operation>(*it.get(), op->op, it->getOutput().value(), origArg, precalc.value()));
         it.erase();
         // don't skip next instruction
         it.previousInBlock();
@@ -1355,9 +1358,7 @@ static Optional<std::pair<Value, InstructionDecorations>> combineAdditions(
         {
             auto newResult = method.addNewLocal(prevResult->first.type);
             auto newFlags = intersect_flags(prevResult->second, valIt->second);
-            referenceIt.emplace(new Operation(OP_ADD, newResult, prevResult->first, valIt->first));
-            referenceIt->addDecorations(newFlags);
-            referenceIt.nextInBlock();
+            assign(referenceIt, newResult) = (as_signed{prevResult->first} + as_signed{valIt->first}, newFlags);
             prevResult = std::make_pair(newResult, newFlags);
         }
         else

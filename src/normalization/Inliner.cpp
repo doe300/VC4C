@@ -88,7 +88,7 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                         it = intermediate::insertZeroExtension(it, currentMethod, callArg, ref, true);
                     else
                     {
-                        it.emplace(new intermediate::MoveOperation(ref, callArg));
+                        it.emplace(std::make_unique<intermediate::MoveOperation>(ref, callArg));
                         it.nextInMethod();
                     }
                     if(ref.checkLocal() && callArg.checkLocal() && callArg.type.getPointerType())
@@ -117,12 +117,13 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                                     retVal->local() = const_cast<Local*>(
                                         currentMethod.createLocal(retVal->type, newLocalPrefix + retLoc->name));
                             }
-                            it.emplace(new intermediate::MoveOperation(call->getOutput().value(), *retVal));
+                            it.emplace(
+                                std::make_unique<intermediate::MoveOperation>(call->getOutput().value(), *retVal));
                             it.nextInMethod();
                         }
                         // after each return, jump to label after call-site (since there may be several return
                         // statements in a method)
-                        it.emplace(new intermediate::Branch(methodEndLabel));
+                        it.emplace(std::make_unique<intermediate::Branch>(methodEndLabel));
                     }
                     else
                     {
@@ -130,7 +131,7 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                         // copy instructions
                         if(dynamic_cast<const intermediate::BranchLabel*>(&instr) != nullptr)
                             it = currentMethod.emplaceLabel(it,
-                                dynamic_cast<intermediate::BranchLabel*>(
+                                staticPointerCast<intermediate::BranchLabel>(
                                     instr.copyFor(currentMethod, newLocalPrefix, mapping)));
                         else
                             it.emplace(instr.copyFor(currentMethod, newLocalPrefix, mapping));
@@ -148,7 +149,7 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                 // replace method-call from parent with label to jump to (for returns)
                 it = it.erase();
                 auto copyIt = it.copy().previousInMethod();
-                it = currentMethod.emplaceLabel(it, new intermediate::BranchLabel(*methodEndLabel));
+                it = currentMethod.emplaceLabel(it, std::make_unique<intermediate::BranchLabel>(*methodEndLabel));
 
                 // fix-up to immediately remove branches from return to %end_of_function when consecutive instructions
                 if(copyIt.get<intermediate::Branch>() &&

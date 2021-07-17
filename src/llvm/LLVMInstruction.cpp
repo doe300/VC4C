@@ -23,10 +23,9 @@ LLVMInstruction::LLVMInstruction() : decorations(intermediate::InstructionDecora
 
 LLVMInstruction::~LLVMInstruction() noexcept = default;
 
-LLVMInstruction* LLVMInstruction::setDecorations(const intermediate::InstructionDecorations decorations)
+void LLVMInstruction::setDecorations(const intermediate::InstructionDecorations decorations)
 {
     this->decorations = decorations;
-    return this;
 }
 
 CallSite::CallSite(Value&& dest, std::string&& methodName, std::vector<Value>&& args) :
@@ -71,7 +70,8 @@ bool CallSite::mapInstruction(Method& method)
                     "Cannot start life-time of object not located on stack", pointer.to_string());
         }
         //"The second argument is a pointer to the object."
-        method.appendToEnd(new intermediate::LifetimeBoundary(pointer, methodName.find("llvm.lifetime.end") == 0));
+        method.appendToEnd(
+            std::make_unique<intermediate::LifetimeBoundary>(pointer, methodName.find("llvm.lifetime.end") == 0));
         return true;
     }
     Value output = dest.checkLocal() ? dest : NOP_REGISTER;
@@ -81,8 +81,8 @@ bool CallSite::mapInstruction(Method& method)
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Converting intrinsic method call '" << methodName << "' to operations" << logging::endl);
         const Value tmp = method.addNewLocal(dest.type, "%fmuladd");
-        method.appendToEnd(new intermediate::Operation(OP_FMUL, tmp, arguments.at(0), arguments.at(1)));
-        method.appendToEnd(new intermediate::Operation(OP_FADD, output, tmp, arguments.at(2)));
+        method.appendToEnd(std::make_unique<intermediate::Operation>(OP_FMUL, tmp, arguments.at(0), arguments.at(1)));
+        method.appendToEnd(std::make_unique<intermediate::Operation>(OP_FADD, output, tmp, arguments.at(2)));
         return true;
     }
     if(methodName.find("llvm.memcpy") == 0)
@@ -96,7 +96,7 @@ bool CallSite::mapInstruction(Method& method)
         // the type of llvm.memcpy is always i8*, so the number of bytes (<len>) always matches the number of entries
         // (as expected for MemoryInstruction())
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying llvm.memcpy function-call" << logging::endl);
-        method.appendToEnd(new intermediate::MemoryInstruction(intermediate::MemoryOperation::COPY,
+        method.appendToEnd(std::make_unique<intermediate::MemoryInstruction>(intermediate::MemoryOperation::COPY,
             std::move(arguments.at(0)), std::move(arguments.at(1)), std::move(arguments.at(2))));
         return true;
     }
@@ -122,7 +122,7 @@ bool CallSite::mapInstruction(Method& method)
             memAddr.local()->getBase(true)->as<Parameter>()->decorations =
                 add_flag(memAddr.local()->getBase(true)->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
         }
-        method.appendToEnd(new intermediate::MemoryInstruction(
+        method.appendToEnd(std::make_unique<intermediate::MemoryInstruction>(
             intermediate::MemoryOperation::FILL, std::move(memAddr), std::move(fillByte), std::move(numBytes)));
         return true;
     }
@@ -158,11 +158,11 @@ bool CallSite::mapInstruction(Method& method)
                 log << "Intrinsifying llvm.fshl with identical operands with rotate right" << logging::endl);
             auto truncatedOffset = method.addNewLocal(arguments.at(2).type, "%fshl.offset");
             auto offset = method.addNewLocal(arguments.at(2).type, "%fshl.offset");
-            method.appendToEnd(new intermediate::Operation(OP_AND, truncatedOffset, arguments[2],
+            method.appendToEnd(std::make_unique<intermediate::Operation>(OP_AND, truncatedOffset, arguments[2],
                 Value(Literal(arguments.at(2).type.getScalarBitCount() - 1u), TYPE_INT8)));
-            method.appendToEnd(
-                new intermediate::Operation(OP_SUB, offset, Value(Literal(32u), TYPE_INT8), truncatedOffset));
-            method.appendToEnd(new intermediate::Operation(OP_ROR, output, arguments[0], offset));
+            method.appendToEnd(std::make_unique<intermediate::Operation>(
+                OP_SUB, offset, Value(Literal(32u), TYPE_INT8), truncatedOffset));
+            method.appendToEnd(std::make_unique<intermediate::Operation>(OP_ROR, output, arguments[0], offset));
             return true;
         }
         CPPLOG_LAZY(
@@ -170,21 +170,21 @@ bool CallSite::mapInstruction(Method& method)
         auto upper = method.addNewLocal(arguments.at(0).type.getUnionType(TYPE_INT32), "%fshl.upper");
         auto lower = method.addNewLocal(arguments.at(1).type, "%fshl.lower");
         auto offset = method.addNewLocal(arguments.at(2).type, "%fshl.offset");
-        method.appendToEnd(new intermediate::Operation(
+        method.appendToEnd(std::make_unique<intermediate::Operation>(
             OP_SHL, upper, arguments.at(0), Value(Literal(arguments.at(0).type.getScalarBitCount()), TYPE_INT8)));
-        method.appendToEnd(new intermediate::Operation(
+        method.appendToEnd(std::make_unique<intermediate::Operation>(
             OP_AND, lower, arguments.at(1), Value(Literal(arguments.at(1).type.getScalarWidthMask()), TYPE_INT32)));
-        method.appendToEnd(new intermediate::Operation(
+        method.appendToEnd(std::make_unique<intermediate::Operation>(
             OP_AND, offset, arguments.at(2), Value(Literal(arguments.at(2).type.getScalarBitCount() - 1u), TYPE_INT8)));
 
         auto combined = method.addNewLocal(upper.type, "%fshl.combined");
-        method.appendToEnd(new intermediate::Operation(OP_OR, combined, upper, lower));
+        method.appendToEnd(std::make_unique<intermediate::Operation>(OP_OR, combined, upper, lower));
         auto shifted = method.addNewLocal(upper.type, "%fshl.shifted");
-        method.appendToEnd(new intermediate::Operation(OP_SHL, shifted, combined, offset));
+        method.appendToEnd(std::make_unique<intermediate::Operation>(OP_SHL, shifted, combined, offset));
         upper = method.addNewLocal(shifted.type, "%fshl.upper");
-        method.appendToEnd(new intermediate::Operation(
+        method.appendToEnd(std::make_unique<intermediate::Operation>(
             OP_SHR, upper, shifted, Value(Literal(arguments.at(0).type.getScalarBitCount()), TYPE_INT8)));
-        method.appendToEnd(new intermediate::Operation(
+        method.appendToEnd(std::make_unique<intermediate::Operation>(
             OP_AND, output, upper, Value(Literal(arguments.at(0).type.getScalarWidthMask()), TYPE_INT32)));
         return true;
     }
@@ -206,7 +206,8 @@ bool CallSite::mapInstruction(Method& method)
             // NOTE: Since we only support full 32-bit rotation, we only apply this for 32-bit types!
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying llvm.fshr with identical operands with rotate right" << logging::endl);
-            method.appendToEnd(new intermediate::Operation(OP_ROR, output, arguments[0], arguments.at(2)));
+            method.appendToEnd(
+                std::make_unique<intermediate::Operation>(OP_ROR, output, arguments[0], arguments.at(2)));
             return true;
         }
         CPPLOG_LAZY(
@@ -214,18 +215,18 @@ bool CallSite::mapInstruction(Method& method)
         auto upper = method.addNewLocal(arguments.at(0).type.getUnionType(TYPE_INT32), "%fshr.upper");
         auto lower = method.addNewLocal(arguments.at(1).type, "%fshr.lower");
         auto offset = method.addNewLocal(arguments.at(2).type, "%fshr.offset");
-        method.appendToEnd(new intermediate::Operation(
+        method.appendToEnd(std::make_unique<intermediate::Operation>(
             OP_SHL, upper, arguments.at(0), Value(Literal(arguments.at(0).type.getScalarBitCount()), TYPE_INT8)));
-        method.appendToEnd(new intermediate::Operation(
+        method.appendToEnd(std::make_unique<intermediate::Operation>(
             OP_AND, lower, arguments.at(1), Value(Literal(arguments.at(1).type.getScalarWidthMask()), TYPE_INT32)));
-        method.appendToEnd(new intermediate::Operation(
+        method.appendToEnd(std::make_unique<intermediate::Operation>(
             OP_AND, offset, arguments.at(2), Value(Literal(arguments.at(2).type.getScalarBitCount() - 1u), TYPE_INT8)));
 
         auto combined = method.addNewLocal(upper.type, "%fshr.combined");
-        method.appendToEnd(new intermediate::Operation(OP_OR, combined, upper, lower));
+        method.appendToEnd(std::make_unique<intermediate::Operation>(OP_OR, combined, upper, lower));
         auto shifted = method.addNewLocal(upper.type, "%fshr.shifted");
-        method.appendToEnd(new intermediate::Operation(OP_SHR, shifted, combined, offset));
-        method.appendToEnd(new intermediate::Operation(
+        method.appendToEnd(std::make_unique<intermediate::Operation>(OP_SHR, shifted, combined, offset));
+        method.appendToEnd(std::make_unique<intermediate::Operation>(
             OP_AND, output, shifted, Value(Literal(arguments.at(0).type.getScalarWidthMask()), TYPE_INT32)));
         return true;
     }
@@ -234,9 +235,10 @@ bool CallSite::mapInstruction(Method& method)
         if(arguments.at(0).type.getScalarBitCount() == 32)
         {
             // 32-bit signed add_sat intrinsic function, map to same implementation as in _integer.h std-lib header
-            method.appendToEnd((new intermediate::MethodCall(
-                                    std::move(output), "vc4cl_saturated_add", {arguments.at(0), arguments.at(1)}))
-                                   ->addDecorations(decorations));
+            method
+                .appendToEnd(std::make_unique<intermediate::MethodCall>(
+                    std::move(output), "vc4cl_saturated_add", std::vector<Value>{arguments.at(0), arguments.at(1)}))
+                .addDecorations(decorations);
             return true;
         }
     }
@@ -245,16 +247,19 @@ bool CallSite::mapInstruction(Method& method)
         // 16-/32-bit unsigned add_sat intrinsic function, map to same implementation as in _integer.h std-lib header:
         // x > ((result_t)UINT_MAX) - y ? UINT_MAX : x + y
         auto tmp = method.addNewLocal(arguments.at(1).type);
-        method.appendToEnd(new intermediate::Operation(OP_SUB, Value(tmp), INT_MINUS_ONE, Value(arguments.at(1))));
+        method.appendToEnd(
+            std::make_unique<intermediate::Operation>(OP_SUB, Value(tmp), INT_MINUS_ONE, Value(arguments.at(1))));
         auto cond = method.addNewLocal(TYPE_BOOL.toVectorType(output.type.getVectorWidth()));
-        method.appendToEnd(new intermediate::Comparison(
+        method.appendToEnd(std::make_unique<intermediate::Comparison>(
             intermediate::COMP_UNSIGNED_GT, Value(cond), Value(arguments.at(0)), std::move(tmp)));
-        method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, cond, COND_ALWAYS, SetFlag::SET_FLAGS));
-        method.appendToEnd((new intermediate::MoveOperation(Value(dest), INT_MINUS_ONE, COND_ZERO_CLEAR))
-                               ->addDecorations(decorations));
-        method.appendToEnd((new intermediate::Operation(
-                                OP_ADD, std::move(dest), Value(arguments.at(0)), Value(arguments.at(1)), COND_ZERO_SET))
-                               ->addDecorations(decorations));
+        method.appendToEnd(
+            std::make_unique<intermediate::MoveOperation>(NOP_REGISTER, cond, COND_ALWAYS, SetFlag::SET_FLAGS));
+        method.appendToEnd(std::make_unique<intermediate::MoveOperation>(Value(dest), INT_MINUS_ONE, COND_ZERO_CLEAR))
+            .addDecorations(decorations);
+        method
+            .appendToEnd(std::make_unique<intermediate::Operation>(
+                OP_ADD, std::move(dest), Value(arguments.at(0)), Value(arguments.at(1)), COND_ZERO_SET))
+            .addDecorations(decorations);
         return true;
     }
     if(methodName.find("llvm.ssub.sat") == 0)
@@ -262,9 +267,10 @@ bool CallSite::mapInstruction(Method& method)
         if(arguments.at(0).type.getScalarBitCount() == 32)
         {
             // 32-bit signed sub_sat intrinsic function, map to same implementation as in _integer.h std-lib header
-            method.appendToEnd((new intermediate::MethodCall(
-                                    std::move(output), "vc4cl_saturated_sub", {arguments.at(0), arguments.at(1)}))
-                                   ->addDecorations(decorations));
+            method
+                .appendToEnd(std::make_unique<intermediate::MethodCall>(
+                    std::move(output), "vc4cl_saturated_sub", std::vector<Value>{arguments.at(0), arguments.at(1)}))
+                .addDecorations(decorations);
             return true;
         }
     }
@@ -273,14 +279,16 @@ bool CallSite::mapInstruction(Method& method)
         // 16-/32-bit unsigned sub_sat intrinsic function, map to same implementation as in _integer.h std-lib header:
         // x < y ? (result_t)0 : x - y
         auto cond = method.addNewLocal(TYPE_BOOL.toVectorType(output.type.getVectorWidth()));
-        method.appendToEnd(new intermediate::Comparison(
+        method.appendToEnd(std::make_unique<intermediate::Comparison>(
             intermediate::COMP_UNSIGNED_LT, Value(cond), Value(arguments.at(0)), Value(arguments.at(1))));
-        method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, cond, COND_ALWAYS, SetFlag::SET_FLAGS));
         method.appendToEnd(
-            (new intermediate::MoveOperation(Value(dest), INT_ZERO, COND_ZERO_CLEAR))->addDecorations(decorations));
-        method.appendToEnd((new intermediate::Operation(
-                                OP_SUB, std::move(dest), Value(arguments.at(0)), Value(arguments.at(1)), COND_ZERO_SET))
-                               ->addDecorations(decorations));
+            std::make_unique<intermediate::MoveOperation>(NOP_REGISTER, cond, COND_ALWAYS, SetFlag::SET_FLAGS));
+        method.appendToEnd(std::make_unique<intermediate::MoveOperation>(Value(dest), INT_ZERO, COND_ZERO_CLEAR))
+            .addDecorations(decorations);
+        method
+            .appendToEnd(std::make_unique<intermediate::Operation>(
+                OP_SUB, std::move(dest), Value(arguments.at(0)), Value(arguments.at(1)), COND_ZERO_SET))
+            .addDecorations(decorations);
         return true;
     }
     if(methodName.find("llvm.ctpop") == 0)
@@ -315,7 +323,7 @@ bool CallSite::mapInstruction(Method& method)
     {
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Intrinsifying '" << methodName << "' with memory barrier" << logging::endl);
-        method.appendToEnd(new intermediate::MemoryBarrier(
+        method.appendToEnd(std::make_unique<intermediate::MemoryBarrier>(
             static_cast<intermediate::MemoryScope>(arguments.at(0).getLiteralValue()->unsignedInt()),
             intermediate::MemorySemantics::ACQUIRE_RELEASE));
         return true;
@@ -324,12 +332,13 @@ bool CallSite::mapInstruction(Method& method)
         log << "Generating immediate call to: " << dest.to_string() << " = " << methodName << " ("
             << to_string<Value>(arguments) << ")" << logging::endl);
     if(dest.checkLocal())
-        method.appendToEnd(
-            (new intermediate::MethodCall(std::move(output), std::move(methodName), std::move(arguments)))
-                ->addDecorations(decorations));
+        method
+            .appendToEnd(std::make_unique<intermediate::MethodCall>(
+                std::move(output), std::move(methodName), std::move(arguments)))
+            .addDecorations(decorations);
     else
-        method.appendToEnd(
-            (new intermediate::MethodCall(std::move(methodName), std::move(arguments)))->addDecorations(decorations));
+        method.appendToEnd(std::make_unique<intermediate::MethodCall>(std::move(methodName), std::move(arguments)))
+            .addDecorations(decorations);
     return true;
 }
 
@@ -352,25 +361,27 @@ bool Copy::mapInstruction(Method& method)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Generating reading from " << orig.to_string() << " into " << dest.to_string() << logging::endl);
-            method.appendToEnd((new intermediate::MemoryInstruction(
-                                    intermediate::MemoryOperation::READ, std::move(dest), std::move(orig)))
-                                   ->addDecorations(decorations));
+            method
+                .appendToEnd(std::make_unique<intermediate::MemoryInstruction>(
+                    intermediate::MemoryOperation::READ, std::move(dest), std::move(orig)))
+                .addDecorations(decorations);
         }
         else
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Generating writing of " << orig.to_string() << " into " << dest.to_string() << logging::endl);
-            method.appendToEnd((new intermediate::MemoryInstruction(
-                                    intermediate::MemoryOperation::WRITE, std::move(dest), std::move(orig)))
-                                   ->addDecorations(decorations));
+            method
+                .appendToEnd(std::make_unique<intermediate::MemoryInstruction>(
+                    intermediate::MemoryOperation::WRITE, std::move(dest), std::move(orig)))
+                .addDecorations(decorations);
         }
     }
     else
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating copy of " << orig.to_string() << " into " << dest.to_string() << logging::endl);
-        method.appendToEnd(
-            (new intermediate::MoveOperation(std::move(dest), std::move(orig)))->addDecorations(decorations));
+        method.appendToEnd(std::make_unique<intermediate::MoveOperation>(std::move(dest), std::move(orig)))
+            .addDecorations(decorations);
     }
     return true;
 }
@@ -384,11 +395,13 @@ bool UnaryOperator::mapInstruction(Method& method)
             << logging::endl);
     auto& op = OpCode::findOpCode(opCode);
     if(op != OP_NOP)
-        method.appendToEnd(
-            (new intermediate::Operation(op, std::move(dest), std::move(arg)))->addDecorations(decorations));
+        method.appendToEnd(std::make_unique<intermediate::Operation>(op, std::move(dest), std::move(arg)))
+            .addDecorations(decorations);
     else
-        method.appendToEnd((new intermediate::IntrinsicOperation(std::move(opCode), std::move(dest), std::move(arg)))
-                               ->addDecorations(decorations));
+        method
+            .appendToEnd(
+                std::make_unique<intermediate::IntrinsicOperation>(std::move(opCode), std::move(dest), std::move(arg)))
+            .addDecorations(decorations);
     return true;
 }
 
@@ -404,16 +417,21 @@ bool BinaryOperator::mapInstruction(Method& method)
             << " into " << dest.to_string() << logging::endl);
     auto& op = OpCode::findOpCode(opCode);
     if(op != OP_NOP)
-        method.appendToEnd((new intermediate::Operation(op, std::move(dest), std::move(arg), std::move(arg2)))
-                               ->addDecorations(decorations));
+        method
+            .appendToEnd(
+                std::make_unique<intermediate::Operation>(op, std::move(dest), std::move(arg), std::move(arg2)))
+            .addDecorations(decorations);
     else if(opCode == "lshr")
         // logical shift right
-        method.appendToEnd((new intermediate::Operation(OP_SHR, std::move(dest), std::move(arg), std::move(arg2)))
-                               ->addDecorations(decorations));
+        method
+            .appendToEnd(
+                std::make_unique<intermediate::Operation>(OP_SHR, std::move(dest), std::move(arg), std::move(arg2)))
+            .addDecorations(decorations);
     else
-        method.appendToEnd(
-            (new intermediate::IntrinsicOperation(std::move(opCode), std::move(dest), std::move(arg), std::move(arg2)))
-                ->addDecorations(decorations));
+        method
+            .appendToEnd(std::make_unique<intermediate::IntrinsicOperation>(
+                std::move(opCode), std::move(dest), std::move(arg), std::move(arg2)))
+            .addDecorations(decorations);
     return true;
 }
 
@@ -451,8 +469,10 @@ bool Comparison::mapInstruction(Method& method)
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating comparison " << comp << " with " << op1.to_string() << " and " << op2.to_string() << " into "
             << dest.to_string() << logging::endl);
-    method.appendToEnd((new intermediate::Comparison(std::move(comp), std::move(dest), std::move(op1), std::move(op2)))
-                           ->addDecorations(decorations));
+    method
+        .appendToEnd(std::make_unique<intermediate::Comparison>(
+            std::move(comp), std::move(dest), std::move(op1), std::move(op2)))
+        .addDecorations(decorations);
     return true;
 }
 
@@ -470,12 +490,12 @@ bool ContainerInsertion::mapInstruction(Method& method)
     if(container.isUndefined())
     {
         // source container is undefined -> overwrite all elements with element to be inserted
-        method.appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(newValue)));
+        method.appendToEnd(std::make_unique<intermediate::MoveOperation>(std::move(dest), std::move(newValue)));
         return true;
     }
 
     // 1. copy whole container
-    method.appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(container)));
+    method.appendToEnd(std::make_unique<intermediate::MoveOperation>(std::move(dest), std::move(container)));
     // 2. insert new element
     // either into vector or into scalar at "element 0"
     if(container.type.isVectorType() || index.hasLiteral(Literal(0u)))
@@ -525,12 +545,12 @@ bool ValueReturn::mapInstruction(Method& method)
     if(hasValue)
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating return of " << val.to_string() << logging::endl);
-        method.appendToEnd((new intermediate::Return(std::move(val)))->addDecorations(decorations));
+        method.appendToEnd(std::make_unique<intermediate::Return>(std::move(val))).addDecorations(decorations);
     }
     else
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating return nothing" << logging::endl);
-        method.appendToEnd((new intermediate::Return())->addDecorations(decorations));
+        method.appendToEnd(std::make_unique<intermediate::Return>()).addDecorations(decorations);
     }
     return true;
 }
@@ -555,7 +575,7 @@ LLVMLabel::LLVMLabel(Value&& label) : label(label) {}
 bool LLVMLabel::mapInstruction(Method& method)
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating label " << label.to_string() << logging::endl);
-    method.appendToEnd((new intermediate::BranchLabel(*label.local()))->addDecorations(decorations));
+    method.appendToEnd(std::make_unique<intermediate::BranchLabel>(*label.local())).addDecorations(decorations);
     return true;
 }
 
@@ -565,7 +585,8 @@ bool PhiNode::mapInstruction(Method& method)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating Phi-Node with " << labels.size() << " options into " << dest.to_string() << logging::endl);
-    method.appendToEnd((new intermediate::PhiNode(std::move(dest), std::move(labels)))->addDecorations(decorations));
+    method.appendToEnd(std::make_unique<intermediate::PhiNode>(std::move(dest), std::move(labels)))
+        .addDecorations(decorations);
     return true;
 }
 
@@ -593,10 +614,11 @@ bool Selection::mapInstruction(Method& method)
         it.previousInBlock().get<intermediate::ExtendedInstruction>()->setSetFlags(SetFlag::SET_FLAGS);
     }
     else
-        method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, cond, COND_ALWAYS, SetFlag::SET_FLAGS));
+        method.appendToEnd(
+            std::make_unique<intermediate::MoveOperation>(NOP_REGISTER, cond, COND_ALWAYS, SetFlag::SET_FLAGS));
 
-    method.appendToEnd(new intermediate::MoveOperation(Value(dest), std::move(opt1), COND_ZERO_CLEAR));
-    method.appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(opt2), COND_ZERO_SET));
+    method.appendToEnd(std::make_unique<intermediate::MoveOperation>(Value(dest), std::move(opt1), COND_ZERO_CLEAR));
+    method.appendToEnd(std::make_unique<intermediate::MoveOperation>(std::move(dest), std::move(opt2), COND_ZERO_SET));
     return true;
 }
 
@@ -613,7 +635,7 @@ bool Branch::mapInstruction(Method& method)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating unconditional branch to " << thenLabel.to_string() << logging::endl);
-        method.appendToEnd((new intermediate::Branch(thenLabel.local()))->addDecorations(decorations));
+        method.appendToEnd(std::make_unique<intermediate::Branch>(thenLabel.local())).addDecorations(decorations);
     }
     else
     {
@@ -621,10 +643,13 @@ bool Branch::mapInstruction(Method& method)
             log << "Generating branch on condition " << cond.to_string() << " to either " << thenLabel.to_string()
                 << " or " << elseLabel.to_string() << logging::endl);
         auto pair = intermediate::insertBranchCondition(method, method.appendToEnd(), cond);
-        method.appendToEnd((new intermediate::Branch(thenLabel.local(), pair.second /* condition is true */))
-                               ->addDecorations(decorations));
-        method.appendToEnd((new intermediate::Branch(elseLabel.local(), pair.second.invert() /* condition is false */))
-                               ->addDecorations(decorations));
+        method
+            .appendToEnd(std::make_unique<intermediate::Branch>(thenLabel.local(), pair.second /* condition is true */))
+            .addDecorations(decorations);
+        method
+            .appendToEnd(std::make_unique<intermediate::Branch>(
+                elseLabel.local(), pair.second.invert() /* condition is false */))
+            .addDecorations(decorations);
     }
 
     return true;
@@ -648,8 +673,8 @@ static void insertLongLoad(Method& method, const Local& dest, uint64_t value)
 
     Literal lower(static_cast<uint32_t>(static_cast<uint64_t>(value) & 0x00000000FFFFFFFF));
     Literal upper(static_cast<uint32_t>((static_cast<uint64_t>(value) & 0xFFFFFFFF00000000) >> 32));
-    method.appendToEnd(new intermediate::LoadImmediate(multiRegisters->lower->createReference(), lower));
-    method.appendToEnd(new intermediate::LoadImmediate(multiRegisters->upper->createReference(), upper));
+    method.appendToEnd(std::make_unique<intermediate::LoadImmediate>(multiRegisters->lower->createReference(), lower));
+    method.appendToEnd(std::make_unique<intermediate::LoadImmediate>(multiRegisters->upper->createReference(), upper));
 }
 
 bool Switch::mapInstruction(Method& method)
@@ -666,7 +691,7 @@ bool Switch::mapInstruction(Method& method)
 
     auto targetLabel = method.addNewLocal(TYPE_CODE_ADDRESS, "%switch");
     // use default label as default value if no other condition is applied
-    method.appendToEnd(new intermediate::CodeAddress(targetLabel, defaultLabel.local()));
+    method.appendToEnd(std::make_unique<intermediate::CodeAddress>(targetLabel, defaultLabel.local()));
     for(const auto& option : jumpLabels)
     {
         // for every case, if equal, set target label accordingly
@@ -679,12 +704,14 @@ bool Switch::mapInstruction(Method& method)
         }
         else
             comparisonValue = Value(Literal(static_cast<uint32_t>(option.first)), TYPE_INT32);
-        method.appendToEnd(new intermediate::Comparison(
+        method.appendToEnd(std::make_unique<intermediate::Comparison>(
             intermediate::COMP_EQ, Value(tmp), Value(tmpCond), std::move(comparisonValue)));
-        method.appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, tmp, COND_ALWAYS, SetFlag::SET_FLAGS));
-        method.appendToEnd(new intermediate::CodeAddress(targetLabel, option.second.local(), COND_ZERO_CLEAR));
+        method.appendToEnd(
+            std::make_unique<intermediate::MoveOperation>(NOP_REGISTER, tmp, COND_ALWAYS, SetFlag::SET_FLAGS));
+        method.appendToEnd(
+            std::make_unique<intermediate::CodeAddress>(targetLabel, option.second.local(), COND_ZERO_CLEAR));
     }
-    method.appendToEnd(new intermediate::Branch(targetLabel.local()));
+    method.appendToEnd(std::make_unique<intermediate::Branch>(targetLabel.local()));
 
     return true;
 }

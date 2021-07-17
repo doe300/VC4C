@@ -1113,7 +1113,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
         // need to manually insert and lower the multiplication instruction
         auto customAddressOffsets =
             method.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%tmu_group_offsets");
-        it.emplace(new intermediate::IntrinsicOperation("mul", Value(customAddressOffsets),
+        it.emplace(std::make_unique<intermediate::IntrinsicOperation>("mul", Value(customAddressOffsets),
             Value(ELEMENT_NUMBER_REGISTER), Value(*commonConstantStride, TYPE_INT32)));
         it->addDecorations(intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
         auto copyIt = it.copy().nextInBlock();
@@ -1185,7 +1185,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
         auto strideExpression = commonStride.checkExpression();
         if(auto strideInst = (strideExpression ? strideExpression->toInstruction(elementStride) : nullptr))
         {
-            it.emplace(strideInst);
+            it.emplace(std::move(strideInst));
             it.nextInBlock();
         }
         else
@@ -1208,7 +1208,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
         // need to manually insert and lower the multiplication instruction
         auto customAddressOffsets =
             method.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%tmu_group_offsets");
-        it.emplace(new intermediate::IntrinsicOperation(
+        it.emplace(std::make_unique<intermediate::IntrinsicOperation>(
             "mul", Value(customAddressOffsets), Value(ELEMENT_NUMBER_REGISTER), std::move(elementStride)));
         auto copyIt = it.copy().nextInBlock();
         intrinsics::intrinsify(method.module, method, it, {});
@@ -1244,7 +1244,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
 
         if(auto strideInst = strides->primaryStride->toInstruction(primaryStride))
         {
-            it.emplace(strideInst);
+            it.emplace(std::move(strideInst));
             it.nextInBlock();
         }
         else
@@ -1488,13 +1488,13 @@ static Value calculateAddress(InstructionWalker& it, const analysis::InductionVa
         tmpOffset = method.addNewLocal(inductionVariable.local->type, "%prefetch_tmu_offset");
         if(auto offsetCalculation = expr->toInstruction(tmpOffset))
         {
-            it.emplace(offsetCalculation);
+            it.emplace(std::move(offsetCalculation));
             it.nextInBlock();
         }
         else if(expr->code == Expression::FAKEOP_UMUL && expr->arg0.checkValue() && expr->arg1.checkValue())
         {
             // need to manually insert and lower the multiplication instruction
-            it.emplace(new intermediate::IntrinsicOperation(
+            it.emplace(std::make_unique<intermediate::IntrinsicOperation>(
                 "mul", Value(tmpOffset), *expr->arg0.checkValue(), *expr->arg1.checkValue()));
             it->addDecorations(expr->deco);
             auto copyIt = it.copy().nextInBlock();
@@ -1578,7 +1578,7 @@ NODISCARD static bool prefetchTMULoadsInLoop(analysis::ControlFlowLoop& loop, Me
                 branchCond = branchCond.invert();
             assign(it, nextIterationAddress) = (firstIterationAddress, branchCond.toConditionCode());
         }
-        it.emplace(new intermediate::RAMAccessInstruction(
+        it.emplace(std::make_unique<intermediate::RAMAccessInstruction>(
             intermediate::MemoryOperation::READ, nextIterationAddress, originalAccess->cache));
 
         // add instruction to drain the TMU FIFO after loop
@@ -1607,7 +1607,8 @@ NODISCARD static bool prefetchTMULoadsInLoop(analysis::ControlFlowLoop& loop, Me
              * then also always insert a separate loop successor block which is only reached from the loop body?
              */
             auto newLabel = method.addNewLocal(TYPE_LABEL, "%loop_successor");
-            discardIt = method.emplaceLabel(successor->key->walk(), new intermediate::BranchLabel(*newLabel.local()));
+            discardIt = method.emplaceLabel(
+                successor->key->walk(), std::make_unique<intermediate::BranchLabel>(*newLabel.local()));
 
             auto exitEdge = loop.findExitEdge();
             if(!exitEdge)
@@ -1630,7 +1631,7 @@ NODISCARD static bool prefetchTMULoadsInLoop(analysis::ControlFlowLoop& loop, Me
         }
 
         it = discardIt.nextInBlock();
-        it.emplace(new intermediate::CacheAccessInstruction(
+        it.emplace(std::make_unique<intermediate::CacheAccessInstruction>(
             intermediate::MemoryOperation::READ, NOP_REGISTER, originalAccess->cache));
     }
 

@@ -37,7 +37,7 @@ namespace vc4c
 
             virtual bool mapInstruction(Method& method) = 0;
 
-            LLVMInstruction* setDecorations(intermediate::InstructionDecorations decorations);
+            void setDecorations(intermediate::InstructionDecorations decorations);
 
         protected:
             intermediate::InstructionDecorations decorations;

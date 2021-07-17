@@ -972,7 +972,7 @@ Optional<InductionVariable> ControlFlowLoop::extractInductionVariable(const Loca
 
     if(includeIterationInformation)
         // try to find the additional information indicating repetition count, etc.
-        addIterationInformation(inductionVar, *this, tailBranch, exitBranch);
+        addIterationInformation(inductionVar, *this, tailBranch, std::move(exitBranch));
 
     return inductionVar;
 }
@@ -1076,7 +1076,7 @@ LCOV_EXCL_STOP
 
 std::unique_ptr<LoopInclusionTree> analysis::createLoopInclusionTree(const FastAccessList<ControlFlowLoop>& loops)
 {
-    std::unique_ptr<LoopInclusionTree> inclusionTree(new LoopInclusionTree());
+    auto inclusionTree = std::make_unique<LoopInclusionTree>();
     for(auto& loop1 : loops)
     {
         for(auto& loop2 : loops)

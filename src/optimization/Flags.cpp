@@ -97,8 +97,8 @@ static bool rewriteSettingOfFlags(
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Simplifying conditional phi-node which will never be executed: "
                             << (*condIt)->to_string() << logging::endl);
-                    condIt->reset((new intermediate::MoveOperation((*condIt)->getOutput().value(), UNDEFINED_VALUE))
-                                      ->copyExtrasFrom((*condIt).get()));
+                    condIt->reset(intermediate::createWithExtras<intermediate::MoveOperation>(
+                        *(*condIt).get(), (*condIt)->getOutput().value(), UNDEFINED_VALUE));
                     ++condIt;
                 }
                 else
@@ -434,8 +434,8 @@ InstructionWalker optimizations::simplifyFlag(
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Simplifying flag setter '" << it->to_string()
             << "', all conditional instructions will behave the same afterwards" << logging::endl);
-    it.reset((new intermediate::MoveOperation(it->getOutput().value(), *input, COND_ALWAYS, SetFlag::SET_FLAGS))
-                 ->copyExtrasFrom(it.get()));
+    it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(*it.get(), it->getOutput().value(), *input))
+        .setSetFlags(SetFlag::SET_FLAGS);
     return it;
 }
 

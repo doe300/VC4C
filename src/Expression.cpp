@@ -89,7 +89,8 @@ bool SubExpression::isConstant() const
 static bool isWorkGroupUniform(const SubExpression& exp)
 {
     auto expr = exp.checkExpression();
-    auto builtin = exp.checkLocal()->as<BuiltinLocal>();
+    auto local = exp.checkLocal();
+    auto builtin = local ? local->as<BuiltinLocal>() : nullptr;
     return (expr && has_flag(expr->deco, intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE)) ||
         (builtin && builtin->isWorkGroupUniform()) || exp.isConstant();
 }
@@ -1032,7 +1033,7 @@ static bool isPowerOfTwo(const Optional<Literal>& lit)
     return lit && isPowerTwo(lit->unsignedInt());
 }
 
-intermediate::IntermediateInstruction* Expression::toInstruction(const Value& output) const
+std::unique_ptr<intermediate::IntermediateInstruction> Expression::toInstruction(const Value& output) const
 {
     if(code == FAKEOP_UMUL && (isPowerOfTwo(arg0.getLiteralValue()) || isPowerOfTwo(arg1.getLiteralValue())))
     {
@@ -1047,7 +1048,7 @@ intermediate::IntermediateInstruction* Expression::toInstruction(const Value& ou
         // check for fake opcodes
         return nullptr;
 
-    intermediate::Operation* inst = nullptr;
+    std::unique_ptr<intermediate::Operation> inst = nullptr;
     auto firstVal = arg0.checkValue();
     auto secondVal = arg1.checkValue();
     if(auto firstExp = arg0.checkExpression())
@@ -1056,9 +1057,9 @@ intermediate::IntermediateInstruction* Expression::toInstruction(const Value& ou
         secondVal = secondExp->outputValue ? secondExp->outputValue->createReference() : NO_VALUE;
 
     if(firstVal && code.numOperands == 1)
-        inst = new intermediate::Operation(code, output, *firstVal);
+        inst = std::make_unique<intermediate::Operation>(code, output, *firstVal);
     else if(firstVal && secondVal)
-        inst = new intermediate::Operation(code, output, *firstVal, *secondVal);
+        inst = std::make_unique<intermediate::Operation>(code, output, *firstVal, *secondVal);
     else
         // if either input is an expression (without a known output value), there is no instructions generating the
         // values (and we don't know the local to read), so we cannot generate the instruction.
@@ -1119,7 +1120,7 @@ bool Expression::insertInstructions(
 
     if(auto inst = Expression{code, *leftVal, rightVal, unpackMode, packMode, deco}.toInstruction(out))
     {
-        it.emplace(inst);
+        it.emplace(std::move(inst));
         it.nextInBlock();
         return true;
     }

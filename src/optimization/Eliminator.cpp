@@ -257,23 +257,24 @@ InstructionWalker optimizations::simplifyOperation(
             Optional<Value> leftIdentity = op->op.getLeftIdentity();
             Optional<Value> rightAbsorbing = op->op.getRightAbsorbingElement();
             Optional<Value> leftAbsorbing = op->op.getLeftAbsorbingElement();
+            auto decoration = it->decoration;
 
             // one of the operands is the absorbing element, operation can be replaced with move
             if(leftAbsorbing && firstArg.hasLiteral(leftAbsorbing->getLiteralValue().value()))
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Replacing obsolete " << op->to_string() << " with move 1" << logging::endl);
-                it.reset((new intermediate::MoveOperation(
-                              op->getOutput().value(), leftAbsorbing.value(), op->getCondition(), op->getFlags()))
-                             ->addDecorations(it->decoration));
+                it.reset(std::make_unique<intermediate::MoveOperation>(
+                             op->getOutput().value(), leftAbsorbing.value(), op->getCondition(), op->getFlags()))
+                    .addDecorations(decoration);
             }
             else if(rightAbsorbing && secondArg && secondArg->hasLiteral(rightAbsorbing->getLiteralValue().value()))
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Replacing obsolete " << op->to_string() << " with move 2" << logging::endl);
-                it.reset((new intermediate::MoveOperation(
-                              op->getOutput().value(), rightAbsorbing.value(), op->getCondition(), op->getFlags()))
-                             ->addDecorations(it->decoration));
+                it.reset(std::make_unique<intermediate::MoveOperation>(
+                             op->getOutput().value(), rightAbsorbing.value(), op->getCondition(), op->getFlags()))
+                    .addDecorations(decoration);
             }
             // both operands are the same and the operation is self-inverse <=> f(a, a) = 0
             else if(op->op.isSelfInverse() && firstArg == secondArg && firstArg.type.getElementType() != TYPE_BOOL)
@@ -282,9 +283,9 @@ InstructionWalker optimizations::simplifyOperation(
                 // condition
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Replacing obsolete " << op->to_string() << " with move 7" << logging::endl);
-                it.reset((new intermediate::MoveOperation(op->getOutput().value(),
-                              Value(Literal(0u), op->getOutput()->type), op->getCondition(), op->getFlags()))
-                             ->addDecorations(it->decoration));
+                it.reset(std::make_unique<intermediate::MoveOperation>(op->getOutput().value(),
+                             Value(Literal(0u), op->getOutput()->type), op->getCondition(), op->getFlags()))
+                    .addDecorations(decoration);
             }
             // writes into the input -> can be removed, if it doesn't do anything
             else if(op->getOutput() && op->getOutput().value() == op->getFirstArg())
@@ -331,18 +332,18 @@ InstructionWalker optimizations::simplifyOperation(
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Replacing obsolete " << op->to_string() << " with move 3" << logging::endl);
-                    it.reset((new intermediate::MoveOperation(
-                                  op->getOutput().value(), op->getFirstArg(), op->getCondition(), op->getFlags()))
-                                 ->addDecorations(it->decoration));
+                    it.reset(std::make_unique<intermediate::MoveOperation>(
+                                 op->getOutput().value(), op->getFirstArg(), op->getCondition(), op->getFlags()))
+                        .addDecorations(decoration);
                 }
                 // check whether first argument does nothing
                 else if(leftIdentity && secondArg && firstArg.hasLiteral(leftIdentity->getLiteralValue().value()))
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Replacing obsolete " << op->to_string() << " with move 4" << logging::endl);
-                    it.reset((new intermediate::MoveOperation(
-                                  op->getOutput().value(), op->assertArgument(1), op->getCondition(), op->getFlags()))
-                                 ->addDecorations(it->decoration));
+                    it.reset(std::make_unique<intermediate::MoveOperation>(
+                                 op->getOutput().value(), op->assertArgument(1), op->getCondition(), op->getFlags()))
+                        .addDecorations(decoration);
                 }
                 // check whether operation does not really calculate anything
                 else if(op->op.isIdempotent() && secondArg && secondArg.value() == firstArg &&
@@ -353,26 +354,26 @@ InstructionWalker optimizations::simplifyOperation(
                                          << logging::endl;
                         logging::debug() << "Replacing obsolete " << op->to_string() << " with move 5" << logging::endl;
                     });
-                    it.reset((new intermediate::MoveOperation(
-                                  op->getOutput().value(), op->assertArgument(1), op->getCondition(), op->getFlags()))
-                                 ->addDecorations(it->decoration));
+                    it.reset(std::make_unique<intermediate::MoveOperation>(
+                                 op->getOutput().value(), op->assertArgument(1), op->getCondition(), op->getFlags()))
+                        .addDecorations(decoration);
                 }
                 else if(op->op == OP_XOR && op->getFirstArg().getLiteralValue() == Literal(-1))
                 {
                     // LLVM converts ~%a to %a xor -1, we convert it back to free the local from use-with-literal
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Replacing XOR " << op->to_string() << " with NOT" << logging::endl);
-                    it.reset((new intermediate::Operation(OP_NOT, op->getOutput().value(), op->getSecondArg().value(),
-                                  op->getCondition(), op->getFlags()))
-                                 ->addDecorations(it->decoration));
+                    it.reset(std::make_unique<intermediate::Operation>(OP_NOT, op->getOutput().value(),
+                                 op->getSecondArg().value(), op->getCondition(), op->getFlags()))
+                        .addDecorations(decoration);
                 }
                 else if(op->op == OP_XOR && (op->getSecondArg() & &Value::getLiteralValue) == Literal(-1))
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Replacing XOR " << op->to_string() << " with NOT" << logging::endl);
-                    it.reset((new intermediate::Operation(OP_NOT, op->getOutput().value(), op->getFirstArg(),
-                                  op->getCondition(), op->getFlags()))
-                                 ->addDecorations(it->decoration));
+                    it.reset(std::make_unique<intermediate::Operation>(OP_NOT, op->getOutput().value(),
+                                 op->getFirstArg(), op->getCondition(), op->getFlags()))
+                        .addDecorations(decoration);
                 }
             }
         }
@@ -393,9 +394,10 @@ InstructionWalker optimizations::simplifyOperation(
             // replace rotation of splat value with move
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Replacing obsolete " << move->to_string() << " with move 6" << logging::endl);
-            it.reset((new intermediate::MoveOperation(
-                          move->getOutput().value(), move->getSource(), move->getCondition(), move->getFlags()))
-                         ->addDecorations(it->decoration));
+            auto deco = it->decoration;
+            it.reset(std::make_unique<intermediate::MoveOperation>(
+                         move->getOutput().value(), move->getSource(), move->getCondition(), move->getFlags()))
+                .addDecorations(deco);
         }
     }
 
@@ -433,7 +435,8 @@ InstructionWalker optimizations::foldConstants(
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Replacing '" << op->to_string() << "' with constant value: " << value.to_string()
                         << logging::endl);
-                it.reset((new intermediate::MoveOperation(op->getOutput().value(), value.value()))->copyExtrasFrom(op));
+                it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(
+                    *op, op->getOutput().value(), value.value()));
             }
         }
     }
@@ -450,7 +453,7 @@ void optimizations::eliminateReturn(Module& module, Method& method, InstructionW
 
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Replacing return in kernel-function with branch to end-label" << logging::endl);
-        it.reset(new intermediate::Branch(target->getLabel()->getLabel()));
+        it.reset(std::make_unique<intermediate::Branch>(target->getLabel()->getLabel()));
     }
 }
 
@@ -667,7 +670,8 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Removing obsolete move with nop: " << it->to_string() << logging::endl);
-                    it.reset(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER, move->getSignal()));
+                    it.reset(
+                        std::make_unique<intermediate::Nop>(intermediate::DelayType::WAIT_REGISTER, move->getSignal()));
                     codeChanged = true;
                 }
             }
@@ -821,21 +825,18 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                             CPPLOG_LAZY(logging::Level::DEBUG,
                                 log << "Replacing (%a AND %b) AND %a with %a AND %b: " << op2->to_string()
                                     << logging::endl);
-                            auto mov =
-                                new intermediate::MoveOperation(op2->getOutput().value(), out->createReference());
-                            mov->copyExtrasFrom(it.get());
+                            it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(
+                                *it.get(), op2->getOutput().value(), out->createReference()));
                             replaced = true;
-                            it.reset(mov);
                         }
                         else if(op2 && op2->op == OP_OR && canReplaceBitOp(*op2) && op2->readsLocal(out) &&
                             op2->readsLocal(in))
                         {
                             CPPLOG_LAZY(logging::Level::DEBUG,
                                 log << "Replacing (%a AND %b) OR %a with %a: " << op2->to_string() << logging::endl);
-                            auto mov = new intermediate::MoveOperation(op2->getOutput().value(), in->createReference());
-                            mov->copyExtrasFrom(it.get());
+                            it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(
+                                *it.get(), op2->getOutput().value(), in->createReference()));
                             replaced = true;
-                            it.reset(mov);
                         }
 
                         it.nextInBlock();
@@ -867,7 +868,8 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                                             "byte with move: "
                                          << op->to_string() << logging::endl;
                         replaced = true;
-                        it.reset((new intermediate::MoveOperation(*op->getOutput(), *otherArg))->copyExtrasFrom(op));
+                        it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(
+                            *op, *op->getOutput(), *otherArg));
                     }
                 }
             }
@@ -891,10 +893,9 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                         {
                             CPPLOG_LAZY(logging::Level::DEBUG,
                                 log << "Replacing (%a OR %b) AND %a with %a: " << op2->to_string() << logging::endl);
-                            auto mov = new intermediate::MoveOperation(op2->getOutput().value(), in->createReference());
-                            mov->copyExtrasFrom(it.get());
+                            it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(
+                                *it.get(), op2->getOutput().value(), in->createReference()));
                             replaced = true;
-                            it.reset(mov);
                         }
                         else if(op2 && op2->op == OP_OR && canReplaceBitOp(*op2) && op2->readsLocal(out) &&
                             op2->readsLocal(in))
@@ -902,11 +903,9 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                             CPPLOG_LAZY(logging::Level::DEBUG,
                                 log << "Replacing (%a OR %b) OR %a with %a OR %b: " << op2->to_string()
                                     << logging::endl);
-                            auto mov =
-                                new intermediate::MoveOperation(op2->getOutput().value(), out->createReference());
-                            mov->copyExtrasFrom(it.get());
+                            it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(
+                                *it.get(), op2->getOutput().value(), out->createReference()));
                             replaced = true;
-                            it.reset(mov);
                         }
 
                         it.nextInBlock();
@@ -1048,7 +1047,7 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Found common subexpression: " << it->to_string() << " is the same as "
                             << exprIt->second.first->to_string() << logging::endl);
-                    it.reset(new intermediate::MoveOperation(
+                    it.reset(std::make_unique<intermediate::MoveOperation>(
                         it->getOutput().value(), exprIt->second.first->getOutput().value()));
                     replacedSomething = true;
                 }
@@ -1136,8 +1135,8 @@ InstructionWalker optimizations::rewriteConstantSFUCall(
         {
             if(it->readsRegister(REG_SFU_OUT))
             {
-                it.reset((new intermediate::MoveOperation(it->getOutput().value(), result.value()))
-                             ->copyExtrasFrom(it.get()));
+                it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(
+                    *it.get(), it->getOutput().value(), result.value()));
                 break;
             }
             else

@@ -101,12 +101,13 @@ void SPIRVInstruction::mapInstruction(TypeMapping& types, ConstantMapping& const
                 << " into " << dest.to_string(true) << logging::endl);
         auto& op = OpCode::findOpCode(opCode);
         if(op != OP_NOP)
-            method.method->appendToEnd(
-                (new intermediate::Operation(op, std::move(dest), std::move(arg0)))->addDecorations(decorations));
+            method.method->appendToEnd(std::make_unique<intermediate::Operation>(op, std::move(dest), std::move(arg0)))
+                .addDecorations(decorations);
         else
-            method.method->appendToEnd(
-                (new intermediate::IntrinsicOperation(std::move(opCode), std::move(dest), std::move(arg0)))
-                    ->addDecorations(decorations));
+            method.method
+                ->appendToEnd(std::make_unique<intermediate::IntrinsicOperation>(
+                    std::move(opCode), std::move(dest), std::move(arg0)))
+                .addDecorations(decorations);
     }
     else // binary
     {
@@ -115,13 +116,15 @@ void SPIRVInstruction::mapInstruction(TypeMapping& types, ConstantMapping& const
                 << " and " << arg1.to_string() << " into " << dest.to_string(true) << logging::endl);
         auto& op = OpCode::findOpCode(opCode);
         if(op != OP_NOP)
-            method.method->appendToEnd(
-                (new intermediate::Operation(op, std::move(dest), std::move(arg0), std::move(arg1.value())))
-                    ->addDecorations(decorations));
+            method.method
+                ->appendToEnd(std::make_unique<intermediate::Operation>(
+                    op, std::move(dest), std::move(arg0), std::move(arg1.value())))
+                .addDecorations(decorations);
         else
-            method.method->appendToEnd((new intermediate::IntrinsicOperation(std::move(opCode), std::move(dest),
-                                            std::move(arg0), std::move(arg1.value())))
-                                           ->addDecorations(decorations));
+            method.method
+                ->appendToEnd(std::make_unique<intermediate::IntrinsicOperation>(
+                    std::move(opCode), std::move(dest), std::move(arg0), std::move(arg1.value())))
+                .addDecorations(decorations);
     }
 }
 
@@ -211,9 +214,10 @@ void SPIRVComparison::mapInstruction(TypeMapping& types, ConstantMapping& consta
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating intermediate comparison '" << opcode << "' of " << arg0.to_string(false) << " and "
             << arg1.to_string(false) << " into " << dest.to_string(true) << logging::endl);
-    method.method->appendToEnd(
-        (new intermediate::Comparison(std::move(opcode), std::move(dest), std::move(arg0), std::move(arg1)))
-            ->addDecorations(decorations));
+    method.method
+        ->appendToEnd(std::make_unique<intermediate::Comparison>(
+            std::move(opcode), std::move(dest), std::move(arg0), std::move(arg1)))
+        .addDecorations(decorations);
 }
 
 Optional<Value> SPIRVComparison::precalculate(
@@ -313,7 +317,7 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
             auto tmp = method.method->addNewLocal(args[2].type);
             ignoreReturnValue(intermediate::insertCalculateIndices(
                 method.method->appendToEnd(), *method.method, args[2], tmp, {args[1]}));
-            method.method->appendToEnd(new intermediate::MemoryInstruction(
+            method.method->appendToEnd(std::make_unique<intermediate::MemoryInstruction>(
                 intermediate::MemoryOperation::WRITE, std::move(tmp), std::move(args[0])));
             return;
         }
@@ -330,7 +334,7 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
          * intermediate::MemoryBarrier object.
          */
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating memory barrier for: " << calledFunction << logging::endl);
-        method.method->appendToEnd(new intermediate::MemoryBarrier(
+        method.method->appendToEnd(std::make_unique<intermediate::MemoryBarrier>(
             static_cast<intermediate::MemoryScope>(args.at(0).getLiteralValue()->unsignedInt()),
             intermediate::MemorySemantics::ACQUIRE_RELEASE));
         return;
@@ -340,17 +344,19 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating intermediate call-site to void-function '" << calledFunction << "' with " << args.size()
                 << " parameters" << logging::endl);
-        method.method->appendToEnd(
-            (new intermediate::MethodCall(std::move(calledFunction), std::move(args)))->addDecorations(decorations));
+        method.method
+            ->appendToEnd(std::make_unique<intermediate::MethodCall>(std::move(calledFunction), std::move(args)))
+            .addDecorations(decorations);
     }
     else
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating intermediate call-site to '" << calledFunction << "' with " << args.size()
                 << " parameters into " << dest.to_string(true) << logging::endl);
-        method.method->appendToEnd(
-            (new intermediate::MethodCall(std::move(dest), std::move(calledFunction), std::move(args)))
-                ->addDecorations(decorations));
+        method.method
+            ->appendToEnd(
+                std::make_unique<intermediate::MethodCall>(std::move(dest), std::move(calledFunction), std::move(args)))
+            .addDecorations(decorations);
     }
 }
 
@@ -395,18 +401,21 @@ void SPIRVBoolCallSite::mapInstruction(TypeMapping& types, ConstantMapping& cons
         log << "Generating intermediate call-site with boolean conversion to '" << calledFunction << "' with "
             << args.size() << " parameters into " << dest.to_string(true) << logging::endl);
     auto tmp = method.method->addNewLocal(TYPE_INT32.toVectorType(dest.type.getVectorWidth()));
-    method.method->appendToEnd((new intermediate::MethodCall(Value(tmp), std::move(calledFunction), std::move(args)))
-                                   ->addDecorations(decorations));
+    method.method
+        ->appendToEnd(
+            std::make_unique<intermediate::MethodCall>(Value(tmp), std::move(calledFunction), std::move(args)))
+        .addDecorations(decorations);
     if(dest.type.isVectorType())
     {
         // returns 0 for false and -1 for true
         // 0 & 1 -> 0 and -1 & 1 -> 1
-        method.method->appendToEnd(new intermediate::Operation(OP_AND, std::move(dest), std::move(tmp), INT_ONE));
+        method.method->appendToEnd(
+            std::make_unique<intermediate::Operation>(OP_AND, std::move(dest), std::move(tmp), INT_ONE));
     }
     else
     {
         // returns 0 for false and 1 for true
-        method.method->appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(tmp)));
+        method.method->appendToEnd(std::make_unique<intermediate::MoveOperation>(std::move(dest), std::move(tmp)));
     }
 }
 
@@ -428,12 +437,12 @@ void SPIRVReturn::mapInstruction(TypeMapping& types, ConstantMapping& constants,
         Value value = getValue(returnValue.value(), *method.method, types, constants, localTypes, localMapping);
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating intermediate return of value: " << value.to_string(false) << logging::endl);
-        method.method->appendToEnd(new intermediate::Return(std::move(value)));
+        method.method->appendToEnd(std::make_unique<intermediate::Return>(std::move(value)));
     }
     else
     {
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating intermediate return" << logging::endl);
-        method.method->appendToEnd(new intermediate::Return());
+        method.method->appendToEnd(std::make_unique<intermediate::Return>());
     }
 }
 
@@ -469,15 +478,16 @@ void SPIRVBranch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
         const Value cond = getValue(conditionID.value(), *method.method, types, constants, localTypes, localMapping);
         auto falseLabel = getValue(falseLabelID.value(), *method.method, types, constants, localTypes, localMapping);
         auto pair = intermediate::insertBranchCondition(*method.method, method.method->appendToEnd(), cond);
-        method.method->appendToEnd(new intermediate::Branch(trueLabel.local(), pair.second /* condition is true */));
         method.method->appendToEnd(
-            new intermediate::Branch(falseLabel.local(), pair.second.invert() /* condition is false */));
+            std::make_unique<intermediate::Branch>(trueLabel.local(), pair.second /* condition is true */));
+        method.method->appendToEnd(
+            std::make_unique<intermediate::Branch>(falseLabel.local(), pair.second.invert() /* condition is false */));
     }
     else
     {
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Generating intermediate branch to %" << defaultLabelID << logging::endl);
-        method.method->appendToEnd(new intermediate::Branch(trueLabel.local()));
+        method.method->appendToEnd(std::make_unique<intermediate::Branch>(trueLabel.local()));
     }
 }
 
@@ -497,7 +507,7 @@ void SPIRVLabel::mapInstruction(TypeMapping& types, ConstantMapping& constants, 
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating intermediate label %" << id << logging::endl);
     auto label = getValue(id, *method.method, types, constants, localTypes, localMapping);
-    method.method->appendToEnd(new intermediate::BranchLabel(*label.local()));
+    method.method->appendToEnd(std::make_unique<intermediate::BranchLabel>(*label.local()));
 }
 
 Optional<Value> SPIRVLabel::precalculate(
@@ -546,8 +556,10 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
         if(isSaturated)
             throw CompilationError(
                 CompilationStep::LLVM_2_IR, "Saturated floating-point conversion is not yet supported");
-        method.method->appendToEnd((new intermediate::IntrinsicOperation("fptrunc", std::move(dest), std::move(source)))
-                                       ->addDecorations(decorations));
+        method.method
+            ->appendToEnd(
+                std::make_unique<intermediate::IntrinsicOperation>("fptrunc", std::move(dest), std::move(source)))
+            .addDecorations(decorations);
         return;
     }
 
@@ -561,22 +573,24 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
         (type == ConversionType::SIGNED_TO_SIGNED || type == ConversionType::SIGNED_TO_UNSIGNED))
     {
         tmp = method.method->addNewLocal(resultType);
-        method.method->appendToEnd((new intermediate::IntrinsicOperation("sext", Value(tmp), Value(source))));
+        method.method->appendToEnd(
+            std::make_unique<intermediate::IntrinsicOperation>("sext", Value(tmp), Value(source)));
     }
     if(source.type.getScalarBitCount() < referenceSize &&
         (type == ConversionType::UNSIGNED_TO_SIGNED || type == ConversionType::UNSIGNED_TO_UNSIGNED))
     {
         tmp = method.method->addNewLocal(resultType);
-        method.method->appendToEnd((new intermediate::IntrinsicOperation("zext", Value(tmp), Value(source)))
-                                       ->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT));
+        method.method->appendToEnd(
+                         std::make_unique<intermediate::IntrinsicOperation>("zext", Value(tmp), Value(source)))
+            .addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
     }
 
     // Try to utilize the VC4CLStdLib function by reverse-engineering the function name and checking whether such a
     // function is mapped
     {
         auto functionName = toConversionFunctionName(type, isSaturated, dest.type);
-        std::unique_ptr<intermediate::MethodCall> dummyCall(
-            new intermediate::MethodCall(Value(dest), std::string(functionName), {source}));
+        std::unique_ptr<intermediate::MethodCall> dummyCall(std::make_unique<intermediate::MethodCall>(
+            Value(dest), std::string(functionName), std::vector<Value>{source}));
         dummyCall->addDecorations(decorations);
         if(std::count_if(methods.begin(), methods.end(), [&dummyCall, &functionName](const auto& pair) -> bool {
                return pair.second.method->name == functionName && dummyCall->matchesSignature(*pair.second.method);
@@ -585,7 +599,7 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
             // To be on the safe side, only go this way if we found exactly a single matching function
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Reverting to VC4CL std-lib conversion function: " << dummyCall->to_string() << logging::endl);
-            method.method->appendToEnd(dummyCall.release());
+            method.method->appendToEnd(std::move(dummyCall));
             return;
         }
     }
@@ -619,13 +633,14 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
     {
         // signed 32-bit to signed other size -> move to retain 32-bit sign
         if(Local::getLocalData<MultiRegisterData>(dest.checkLocal()))
-            method.method->appendToEnd((new intermediate::IntrinsicOperation("sext", std::move(dest), std::move(tmp))));
+            method.method->appendToEnd(
+                std::make_unique<intermediate::IntrinsicOperation>("sext", std::move(dest), std::move(tmp)));
         else if(Local::getLocalData<MultiRegisterData>(source.checkLocal()))
-            method.method->appendToEnd(
-                (new intermediate::MethodCall(std::move(dest), "vc4cl_long_to_int", {std::move(tmp)})));
+            method.method->appendToEnd(std::make_unique<intermediate::MethodCall>(
+                std::move(dest), "vc4cl_long_to_int", std::vector<Value>{std::move(tmp)}));
         else
-            method.method->appendToEnd(
-                (new intermediate::MoveOperation(std::move(dest), std::move(tmp)))->addDecorations(decorations));
+            method.method->appendToEnd(std::make_unique<intermediate::MoveOperation>(std::move(dest), std::move(tmp)))
+                .addDecorations(decorations);
         return;
     }
     else if(type == ConversionType::SIGNED_TO_UNSIGNED || type == ConversionType::UNSIGNED_TO_UNSIGNED)
@@ -634,27 +649,30 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
         // TODO correct??
         if(Local::getLocalData<MultiRegisterData>(dest.checkLocal()) &&
             Local::getLocalData<MultiRegisterData>(source.checkLocal()))
-            method.method->appendToEnd(
-                (new intermediate::MethodCall(std::move(dest), "vc4cl_bitcast_ulong", {std::move(tmp)})));
+            method.method->appendToEnd(std::make_unique<intermediate::MethodCall>(
+                std::move(dest), "vc4cl_bitcast_ulong", std::vector<Value>{std::move(tmp)}));
         else if(Local::getLocalData<MultiRegisterData>(dest.checkLocal()))
-            method.method->appendToEnd((new intermediate::IntrinsicOperation("zext", std::move(dest), std::move(tmp))));
+            method.method->appendToEnd(
+                std::make_unique<intermediate::IntrinsicOperation>("zext", std::move(dest), std::move(tmp)));
         else if(Local::getLocalData<MultiRegisterData>(source.checkLocal()))
-            method.method->appendToEnd(
-                (new intermediate::MethodCall(std::move(dest), "vc4cl_long_to_int", {std::move(tmp)})));
+            method.method->appendToEnd(std::make_unique<intermediate::MethodCall>(
+                std::move(dest), "vc4cl_long_to_int", std::vector<Value>{std::move(tmp)}));
         else
-            method.method->appendToEnd(
-                (new intermediate::IntrinsicOperation("trunc", std::move(dest), std::move(tmp)))
-                    ->addDecorations(add_flag(decorations, intermediate::InstructionDecorations::UNSIGNED_RESULT)));
+            method.method
+                ->appendToEnd(
+                    std::make_unique<intermediate::IntrinsicOperation>("trunc", std::move(dest), std::move(tmp)))
+                .addDecorations(add_flag(decorations, intermediate::InstructionDecorations::UNSIGNED_RESULT));
         return;
     }
     else if(type == ConversionType::UNSIGNED_TO_SIGNED)
     {
         // unsigned 32-bit to signed some size -> trunc + sext
         auto tmp2 = method.method->addNewLocal(dest.type);
+        method.method
+            ->appendToEnd(std::make_unique<intermediate::IntrinsicOperation>("trunc", Value(tmp2), std::move(tmp)))
+            .addDecorations(add_flag(decorations, intermediate::InstructionDecorations::UNSIGNED_RESULT));
         method.method->appendToEnd(
-            (new intermediate::IntrinsicOperation("trunc", Value(tmp2), std::move(tmp)))
-                ->addDecorations(add_flag(decorations, intermediate::InstructionDecorations::UNSIGNED_RESULT)));
-        method.method->appendToEnd((new intermediate::IntrinsicOperation("sext", std::move(dest), std::move(tmp2))));
+            std::make_unique<intermediate::IntrinsicOperation>("sext", std::move(dest), std::move(tmp2)));
         return;
     }
     throw CompilationError(CompilationStep::LLVM_2_IR, "This type of conversion is not yet implemented!");
@@ -730,9 +748,10 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         // SPIRVBuiltins#lowerBuiltins
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating reading of " << builtin->to_string() << " into " << dest.to_string() << logging::endl);
-        method.method->appendToEnd(
-            (new intermediate::IntrinsicOperation(std::string{BUILTIN_INTRINSIC}, std::move(dest), std::move(source)))
-                ->addDecorations(decorations));
+        method.method
+            ->appendToEnd(std::make_unique<intermediate::IntrinsicOperation>(
+                std::string{BUILTIN_INTRINSIC}, std::move(dest), std::move(source)))
+            .addDecorations(decorations);
     }
     else if(memoryAccess != MemoryAccess::NONE)
     {
@@ -742,17 +761,19 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Generating reading of " << source.to_string() << " into " << dest.to_string() << logging::endl);
-            method.method->appendToEnd((new intermediate::MemoryInstruction(
-                                            intermediate::MemoryOperation::READ, std::move(dest), std::move(source)))
-                                           ->addDecorations(decorations));
+            method.method
+                ->appendToEnd(std::make_unique<intermediate::MemoryInstruction>(
+                    intermediate::MemoryOperation::READ, std::move(dest), std::move(source)))
+                .addDecorations(decorations);
         }
         else if(memoryAccess == MemoryAccess::WRITE)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Generating writing of " << source.to_string() << " into " << dest.to_string() << logging::endl);
-            method.method->appendToEnd((new intermediate::MemoryInstruction(
-                                            intermediate::MemoryOperation::WRITE, std::move(dest), std::move(source)))
-                                           ->addDecorations(decorations));
+            method.method
+                ->appendToEnd(std::make_unique<intermediate::MemoryInstruction>(
+                    intermediate::MemoryOperation::WRITE, std::move(dest), std::move(source)))
+                .addDecorations(decorations);
         }
         else if(memoryAccess == MemoryAccess::READ_WRITE)
         {
@@ -762,9 +783,10 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Generating copying of " << source.to_string() << " into " << dest.to_string()
                         << logging::endl);
-                method.method->appendToEnd((new intermediate::MemoryInstruction(intermediate::MemoryOperation::COPY,
-                                                std::move(dest), std::move(source)))
-                                               ->addDecorations(decorations));
+                method.method
+                    ->appendToEnd(std::make_unique<intermediate::MemoryInstruction>(
+                        intermediate::MemoryOperation::COPY, std::move(dest), std::move(source)))
+                    .addDecorations(decorations);
             }
             else
             {
@@ -775,18 +797,20 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
                         << " into " << dest.to_string() << logging::endl);
                 if(size.getLiteralValue())
                 {
-                    method.method->appendToEnd((new intermediate::MemoryInstruction(intermediate::MemoryOperation::COPY,
-                                                    std::move(dest), std::move(source),
-                                                    Value(Literal(size.getLiteralValue()->unsignedInt() /
-                                                              (source.type.getElementType().getScalarBitCount() / 8)),
-                                                        TYPE_INT32)))
-                                                   ->addDecorations(decorations));
+                    method.method
+                        ->appendToEnd(std::make_unique<intermediate::MemoryInstruction>(
+                            intermediate::MemoryOperation::COPY, std::move(dest), std::move(source),
+                            Value(Literal(size.getLiteralValue()->unsignedInt() /
+                                      (source.type.getElementType().getScalarBitCount() / 8)),
+                                TYPE_INT32)))
+                        .addDecorations(decorations);
                 }
                 else if(source.type.getElementType() == TYPE_INT8)
                     // if the element-size is 1 byte, the number of elements is the byte-size to copy
-                    method.method->appendToEnd((new intermediate::MemoryInstruction(intermediate::MemoryOperation::COPY,
-                                                    std::move(dest), std::move(source), std::move(size)))
-                                                   ->addDecorations(decorations));
+                    method.method
+                        ->appendToEnd(std::make_unique<intermediate::MemoryInstruction>(
+                            intermediate::MemoryOperation::COPY, std::move(dest), std::move(source), std::move(size)))
+                        .addDecorations(decorations);
                 else
                     // TODO in any case, loop over copies, up to the size specified
                     throw CompilationError(CompilationStep::LLVM_2_IR,
@@ -800,8 +824,8 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating intermediate move from " << source.to_string() << " into " << dest.to_string(true)
                 << logging::endl);
-        method.method->appendToEnd(
-            (new intermediate::MoveOperation(std::move(dest), std::move(source)))->addDecorations(decorations));
+        method.method->appendToEnd(std::make_unique<intermediate::MoveOperation>(std::move(dest), std::move(source)))
+            .addDecorations(decorations);
     }
 }
 
@@ -852,12 +876,13 @@ void SPIRVInsertionExtraction::mapInstruction(TypeMapping& types, ConstantMappin
         if(container.isUndefined())
         {
             // source container is undefined -> overwrite all elements with element to be inserted
-            method.method->appendToEnd(new intermediate::MoveOperation(std::move(dest), std::move(element).value()));
+            method.method->appendToEnd(
+                std::make_unique<intermediate::MoveOperation>(std::move(dest), std::move(element).value()));
             return;
         }
 
         // 1. copy whole composite
-        method.method->appendToEnd(new intermediate::MoveOperation(Value(dest), std::move(container)));
+        method.method->appendToEnd(std::make_unique<intermediate::MoveOperation>(Value(dest), std::move(container)));
         // 2. insert object at given index
         ignoreReturnValue(
             intermediate::insertVectorInsertion(method.method->appendToEnd(), *method.method, dest, index, *element));
@@ -1117,7 +1142,7 @@ void SPIRVPhi::mapInstruction(TypeMapping& types, ConstantMapping& constants, Lo
         const Value val = getValue(option.first, *method.method, types, constants, localTypes, localMapping);
         labelPairs.emplace_back(val, source.local());
     }
-    method.method->appendToEnd(new intermediate::PhiNode(std::move(dest), std::move(labelPairs)));
+    method.method->appendToEnd(std::make_unique<intermediate::PhiNode>(std::move(dest), std::move(labelPairs)));
 }
 
 Optional<Value> SPIRVPhi::precalculate(
@@ -1155,10 +1180,10 @@ void SPIRVSelect::mapInstruction(TypeMapping& types, ConstantMapping& constants,
     }
     else
         method.method->appendToEnd(
-            new intermediate::MoveOperation(NOP_REGISTER, condition, COND_ALWAYS, SetFlag::SET_FLAGS));
+            std::make_unique<intermediate::MoveOperation>(NOP_REGISTER, condition, COND_ALWAYS, SetFlag::SET_FLAGS));
 
-    method.method->appendToEnd(new intermediate::MoveOperation(dest, sourceTrue, COND_ZERO_CLEAR));
-    method.method->appendToEnd(new intermediate::MoveOperation(dest, sourceFalse, COND_ZERO_SET));
+    method.method->appendToEnd(std::make_unique<intermediate::MoveOperation>(dest, sourceTrue, COND_ZERO_CLEAR));
+    method.method->appendToEnd(std::make_unique<intermediate::MoveOperation>(dest, sourceFalse, COND_ZERO_SET));
 }
 
 Optional<Value> SPIRVSelect::precalculate(
@@ -1221,7 +1246,7 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
 
     auto targetLabel = method.method->addNewLocal(TYPE_CODE_ADDRESS, "%switch");
     // set branch target to default label in case no other condition matches
-    method.method->appendToEnd(new intermediate::CodeAddress(targetLabel, defaultLabel.local()));
+    method.method->appendToEnd(std::make_unique<intermediate::CodeAddress>(targetLabel, defaultLabel.local()));
 
     for(const auto& pair : destinations)
     {
@@ -1234,20 +1259,22 @@ void SPIRVSwitch::mapInstruction(TypeMapping& types, ConstantMapping& constants,
             Literal lower(static_cast<uint32_t>(static_cast<uint64_t>(pair.first) & 0x00000000FFFFFFFF));
             Literal upper(static_cast<uint32_t>((static_cast<uint64_t>(pair.first) & 0xFFFFFFFF00000000) >> 32));
             method.method->appendToEnd(
-                new intermediate::LoadImmediate(multiRegisters->lower->createReference(), lower));
+                std::make_unique<intermediate::LoadImmediate>(multiRegisters->lower->createReference(), lower));
             method.method->appendToEnd(
-                new intermediate::LoadImmediate(multiRegisters->upper->createReference(), upper));
+                std::make_unique<intermediate::LoadImmediate>(multiRegisters->upper->createReference(), upper));
         }
         else
             comparison = Value(Literal(static_cast<uint32_t>(pair.first)), selector.type);
         // for every case, if equal,branch to given label
         const Value tmp = method.method->addNewLocal(TYPE_BOOL, "%switch");
+        method.method->appendToEnd(std::make_unique<intermediate::Comparison>(
+            intermediate::COMP_EQ, Value(tmp), Value(tmpSelector), std::move(comparison)));
         method.method->appendToEnd(
-            new intermediate::Comparison(intermediate::COMP_EQ, Value(tmp), Value(tmpSelector), std::move(comparison)));
-        method.method->appendToEnd(new intermediate::MoveOperation(NOP_REGISTER, tmp, COND_ALWAYS, SetFlag::SET_FLAGS));
-        method.method->appendToEnd(new intermediate::CodeAddress(targetLabel, pair.second, COND_ZERO_CLEAR));
+            std::make_unique<intermediate::MoveOperation>(NOP_REGISTER, tmp, COND_ALWAYS, SetFlag::SET_FLAGS));
+        method.method->appendToEnd(
+            std::make_unique<intermediate::CodeAddress>(targetLabel, pair.second, COND_ZERO_CLEAR));
     }
-    method.method->appendToEnd(new intermediate::Branch(targetLabel.local()));
+    method.method->appendToEnd(std::make_unique<intermediate::Branch>(targetLabel.local()));
 }
 
 Optional<Value> SPIRVSwitch::precalculate(
@@ -1340,9 +1367,9 @@ void vc4c::spirv::SPIRVMemoryBarrier::mapInstruction(TypeMapping& types, Constan
             "Memory barriers with non-constant scope or memory semantics are not supported!");
 
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Generating memory barrier" << logging::endl);
-    method.method->appendToEnd(
-        new intermediate::MemoryBarrier(static_cast<intermediate::MemoryScope>(scope.getLiteralValue()->unsignedInt()),
-            static_cast<intermediate::MemorySemantics>(semantics.getLiteralValue()->unsignedInt())));
+    method.method->appendToEnd(std::make_unique<intermediate::MemoryBarrier>(
+        static_cast<intermediate::MemoryScope>(scope.getLiteralValue()->unsignedInt()),
+        static_cast<intermediate::MemorySemantics>(semantics.getLiteralValue()->unsignedInt())));
 }
 
 Optional<Value> vc4c::spirv::SPIRVMemoryBarrier::precalculate(
@@ -1379,7 +1406,7 @@ void SPIRVLifetimeInstruction::mapInstruction(TypeMapping& types, ConstantMappin
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating life-time " << (isLifetimeEnd ? "end" : "start") << " for " << pointer.to_string()
             << (sizeInBytes != 0 ? " with size of " + std::to_string(sizeInBytes) + " bytes" : "") << logging::endl);
-    method.method->appendToEnd(new intermediate::LifetimeBoundary(pointer, isLifetimeEnd));
+    method.method->appendToEnd(std::make_unique<intermediate::LifetimeBoundary>(pointer, isLifetimeEnd));
 }
 
 Optional<Value> SPIRVLifetimeInstruction::precalculate(

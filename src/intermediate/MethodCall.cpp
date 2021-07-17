@@ -44,7 +44,7 @@ std::string MethodCall::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* MethodCall::copyFor(
+std::unique_ptr<IntermediateInstruction> MethodCall::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     std::vector<Value> newArgs;
@@ -54,11 +54,10 @@ IntermediateInstruction* MethodCall::copyFor(
         newArgs.push_back(renameValue(method, arg, localPrefix, localMapping));
     }
     if(getOutput())
-        return (new MethodCall(renameValue(method, getOutput().value(), localPrefix, localMapping),
-                    std::string(methodName), std::move(newArgs)))
-            ->copyExtrasFrom(this);
+        return createWithExtras<MethodCall>(*this, renameValue(method, getOutput().value(), localPrefix, localMapping),
+            std::string(methodName), std::move(newArgs));
     else
-        return (new MethodCall(std::string(methodName), std::move(newArgs)))->copyExtrasFrom(this);
+        return createWithExtras<MethodCall>(*this, std::string(methodName), std::move(newArgs));
 }
 
 LCOV_EXCL_START
@@ -127,7 +126,7 @@ std::string Return::to_string() const
         createAdditionalInfoString();
 }
 
-IntermediateInstruction* Return::copyFor(
+std::unique_ptr<IntermediateInstruction> Return::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     throw CompilationError(CompilationStep::OPTIMIZER, "Return should never be inlined in calling method", to_string());

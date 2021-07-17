@@ -68,7 +68,7 @@ void TestOperators::testOperatorSyntax()
     Configuration config{};
     Module mod(config);
     Method method(mod);
-    method.appendToEnd(new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL).local()));
+    method.appendToEnd(std::make_unique<intermediate::BranchLabel>(*method.addNewLocal(TYPE_LABEL).local()));
     auto it = method.walkAllInstructions();
 
     TEST_ASSERT_EQUALS(42_val, assign(it, TYPE_INT8) = 21_val + 21_val)

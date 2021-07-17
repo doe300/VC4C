@@ -57,7 +57,7 @@ static std::unique_ptr<DominatorTree> createTreeInner(ControlFlowGraph& cfg,
     FunctionPointer<FastSet<const CFGNode*>(const CFGNode& node)> getCandidates, const std::string& treeName)
 {
     PROFILE_SCOPE(createDominatorTree);
-    std::unique_ptr<DominatorTree> tree(new DominatorTree(cfg.getNodes().size()));
+    auto tree = std::make_unique<DominatorTree>(cfg.getNodes().size());
 
     FastMap<const CFGNode*, FastSet<const CFGNode*>> predecessors;
     FastMap<const CFGNode*, FastAccessList<const CFGNode*>> dominatorChains;

@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <iterator>
+#include <memory>
 
 namespace vc4c
 {
@@ -184,12 +185,19 @@ namespace vc4c
          * Releases the instruction-object pointed to (see std::unique_ptr::release) without removing this position from
          * the list of instructions
          */
-        NODISCARD intermediate::IntermediateInstruction* release();
+        NODISCARD std::unique_ptr<intermediate::IntermediateInstruction> release();
 
         /*
          * Replaces the instruction pointed to with the given object
          */
-        InstructionWalker& reset(intermediate::IntermediateInstruction* instr);
+        intermediate::IntermediateInstruction& reset(std::unique_ptr<intermediate::IntermediateInstruction>&& instr);
+        template <typename T>
+        T& reset(std::unique_ptr<T>&& instr)
+        {
+            auto ptr = instr.get();
+            reset(staticPointerCast<intermediate::IntermediateInstruction>(std::move(instr)));
+            return *ptr;
+        }
         /*
          * Erases this position (and the instruction stored), automatically jumping to the next position
          */
@@ -209,7 +217,14 @@ namespace vc4c
          * NOTE: labels cannot be added this way, neither can any instructions be placed at the start of a basic-block
          * (before its label)
          */
-        InstructionWalker& emplace(intermediate::IntermediateInstruction* instr);
+        intermediate::IntermediateInstruction& emplace(std::unique_ptr<intermediate::IntermediateInstruction>&& instr);
+        template <typename T>
+        T& emplace(std::unique_ptr<T>&& instr)
+        {
+            auto ptr = instr.get();
+            emplace(staticPointerCast<intermediate::IntermediateInstruction>(std::move(instr)));
+            return *ptr;
+        }
 
         /*
          * Executes the given function for all instructions stored at this position.

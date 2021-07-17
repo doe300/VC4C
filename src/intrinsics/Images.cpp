@@ -55,7 +55,7 @@ static NODISCARD InstructionWalker insertLoadImageConfig(
         throw CompilationError(CompilationStep::GENERAL, "Image-configuration is not yet reserved", image.to_string());
     const Value addrTemp =
         method.addNewLocal(method.createPointerType(TYPE_INT32, AddressSpace::GLOBAL), "%image_config");
-    it.emplace(new Operation(OP_ADD, addrTemp, imageConfig->createReference(), offset));
+    it.emplace(std::make_unique<Operation>(OP_ADD, addrTemp, imageConfig->createReference(), offset));
     it.nextInBlock();
     it = periphery::insertReadVectorFromTMU(method, it, dest, addrTemp);
     return it;
@@ -75,7 +75,7 @@ bool intermediate::intrinsifyImageFunction(InstructionWalker it, Method& method)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying getting normalized-coordinates flag from sampler" << logging::endl);
-            it.reset(new Operation(OP_AND, callSite->getOutput().value(), callSite->assertArgument(0),
+            it.reset(std::make_unique<Operation>(OP_AND, callSite->getOutput().value(), callSite->assertArgument(0),
                 Value(Literal(Sampler::MASK_NORMALIZED_COORDS), TYPE_INT8)));
             return true;
         }
@@ -83,7 +83,7 @@ bool intermediate::intrinsifyImageFunction(InstructionWalker it, Method& method)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying getting addressing-mode flag from sampler" << logging::endl);
-            it.reset(new Operation(OP_AND, callSite->getOutput().value(), callSite->assertArgument(0),
+            it.reset(std::make_unique<Operation>(OP_AND, callSite->getOutput().value(), callSite->assertArgument(0),
                 Value(Literal(Sampler::MASK_ADDRESSING_MODE), TYPE_INT8)));
             return true;
         }
@@ -91,7 +91,7 @@ bool intermediate::intrinsifyImageFunction(InstructionWalker it, Method& method)
         {
             CPPLOG_LAZY(
                 logging::Level::DEBUG, log << "Intrinsifying getting filter-mode flag from sampler" << logging::endl);
-            it.reset(new Operation(OP_AND, callSite->getOutput().value(), callSite->assertArgument(0),
+            it.reset(std::make_unique<Operation>(OP_AND, callSite->getOutput().value(), callSite->assertArgument(0),
                 Value(Literal(Sampler::MASK_FILTER_MODE), TYPE_INT8)));
             return true;
         }
@@ -176,7 +176,7 @@ bool intermediate::intrinsifyImageFunction(InstructionWalker it, Method& method)
             // NOTE: LLVM uses sampler*. To not confuse reader of our IR, we use sampler values
             auto out = it->getOutput().value();
             out.type = TYPE_SAMPLER;
-            it.reset(new MoveOperation(out, it->assertArgument(0)));
+            it.reset(std::make_unique<MoveOperation>(out, it->assertArgument(0)));
             return true;
         }
         else if(callSite->methodName.find("vc4cl_set_image_access_setup") != std::string::npos)
@@ -201,7 +201,7 @@ InstructionWalker intermediate::insertQueryChannelDataType(
     // upper half of the channel-info field
     const Value valTemp = method.addNewLocal(TYPE_INT32, "%image_config");
     it = insertLoadImageConfig(it, method, image, valTemp, IMAGE_CONFIG_CHANNEL_OFFSET);
-    it.emplace(new Operation(OP_SHR, dest, valTemp, Value(Literal(16u), TYPE_INT8)));
+    it.emplace(std::make_unique<Operation>(OP_SHR, dest, valTemp, Value(Literal(16u), TYPE_INT8)));
     it.nextInBlock();
     return it;
 }
@@ -212,7 +212,7 @@ InstructionWalker intermediate::insertQueryChannelOrder(
     // lower half of the channel-info field
     const Value valTemp = method.addNewLocal(TYPE_INT32, "%image_config");
     it = insertLoadImageConfig(it, method, image, valTemp, IMAGE_CONFIG_CHANNEL_OFFSET);
-    it.emplace(new Operation(OP_AND, dest, valTemp, Value(Literal(0xFFFFu), TYPE_INT16)));
+    it.emplace(std::make_unique<Operation>(OP_AND, dest, valTemp, Value(Literal(0xFFFFu), TYPE_INT16)));
     it.nextInBlock();
     return it;
 }
@@ -223,13 +223,14 @@ static NODISCARD InstructionWalker insertLoadImageWidth(
     const Value valTemp = method.addNewLocal(TYPE_INT32, "%image_config");
     it = insertLoadImageConfig(it, method, image, valTemp, IMAGE_CONFIG_ACCESS_OFFSET);
     const Value widthTemp = method.addNewLocal(TYPE_INT32, "%image_config");
-    it.emplace(new Operation(OP_SHR, widthTemp, valTemp, Value(Literal(8u), TYPE_INT8)));
+    it.emplace(std::make_unique<Operation>(OP_SHR, widthTemp, valTemp, Value(Literal(8u), TYPE_INT8)));
     it.nextInBlock();
-    it.emplace(new Operation(OP_AND, dest, widthTemp, Value(Literal(Bitfield<uint32_t>::MASK_Undecuple), TYPE_INT32),
-        COND_ALWAYS, SetFlag::SET_FLAGS));
+    it.emplace(std::make_unique<Operation>(
+                   OP_AND, dest, widthTemp, Value(Literal(Bitfield<uint32_t>::MASK_Undecuple), TYPE_INT32)))
+        .setSetFlags(SetFlag::SET_FLAGS);
     it.nextInBlock();
     // 0 => 2048
-    it.emplace(new MoveOperation(dest, Value(Literal(2048u), TYPE_INT32), COND_ZERO_SET));
+    it.emplace(std::make_unique<MoveOperation>(dest, Value(Literal(2048u), TYPE_INT32), COND_ZERO_SET));
     it.nextInBlock();
     return it;
 }
@@ -240,13 +241,14 @@ static NODISCARD InstructionWalker insertLoadImageHeight(
     const Value valTemp = method.addNewLocal(TYPE_INT32, "%image_config");
     it = insertLoadImageConfig(it, method, image, valTemp, IMAGE_CONFIG_ACCESS_OFFSET);
     const Value heightTemp = method.addNewLocal(TYPE_INT32, "%image_config");
-    it.emplace(new Operation(OP_SHR, heightTemp, valTemp, Value(Literal(20u), TYPE_INT8)));
+    it.emplace(std::make_unique<Operation>(OP_SHR, heightTemp, valTemp, Value(Literal(20u), TYPE_INT8)));
     it.nextInBlock();
-    it.emplace(new Operation(OP_AND, dest, heightTemp, Value(Literal(Bitfield<uint32_t>::MASK_Undecuple), TYPE_INT32),
-        COND_ALWAYS, SetFlag::SET_FLAGS));
+    it.emplace(std::make_unique<Operation>(
+                   OP_AND, dest, heightTemp, Value(Literal(Bitfield<uint32_t>::MASK_Undecuple), TYPE_INT32)))
+        .setSetFlags(SetFlag::SET_FLAGS);
     it.nextInBlock();
     // 0 => 2048
-    it.emplace(new MoveOperation(dest, Value(Literal(2048u), TYPE_INT32), COND_ZERO_SET));
+    it.emplace(std::make_unique<MoveOperation>(dest, Value(Literal(2048u), TYPE_INT32), COND_ZERO_SET));
     it.nextInBlock();
     return it;
 }

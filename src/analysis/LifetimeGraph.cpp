@@ -52,7 +52,7 @@ std::unique_ptr<LifetimeGraph> LifetimeGraph::createLifetimeGraph(Method& method
     // memory objects which are live (used) at this moment
     FastSet<const Local*> liveLocals;
 
-    std::unique_ptr<LifetimeGraph> graph(new LifetimeGraph());
+    auto graph = std::make_unique<LifetimeGraph>();
 
     // add all globals and parameters (unless they are have __global address space)
     for(const Global& global : method.module.globalData)

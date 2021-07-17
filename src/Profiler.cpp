@@ -264,22 +264,27 @@ struct SortPointerTarget
 
 void profiler::dumpProfileResults(bool writeAsWarning)
 {
-    logging::logLazy(writeAsWarning ? logging::Level::WARNING : logging::Level::DEBUG, [&]() {
 #ifdef MULTI_THREADED
-        std::unique_lock<std::mutex> timesGuard(lockTimes, std::defer_lock);
-        std::unique_lock<std::mutex> countersGuard(lockCounters, std::defer_lock);
-        std::lock(timesGuard, countersGuard);
+    std::unique_lock<std::mutex> timesGuard(lockTimes, std::defer_lock);
+    std::unique_lock<std::mutex> countersGuard(lockCounters, std::defer_lock);
+    std::lock(timesGuard, countersGuard);
 #endif
+    logging::logLazy(writeAsWarning ? logging::Level::WARNING : logging::Level::DEBUG, [&]() {
         std::set<const Entry*, SortPointerTarget<const Entry>> entries;
         std::set<const Counter*, SortPointerTarget<const Counter>> counts;
         for(auto& entry : times)
         {
-            entry.second.name = entry.second.name;
-            entries.emplace(&entry.second);
+            // an invocation count of 0 can happen if we cleared the entries on a previous dump and the entry was called
+            // afterwards
+            if(entry.second.invocations != 0)
+                entries.emplace(&entry.second);
         }
         for(const auto& count : counters)
         {
-            counts.emplace(&count.second);
+            // an invocation count of 0 can happen if we cleared the counters on a previous dump and the counter was
+            // called afterwards
+            if(count.second.invocations != 0)
+                counts.emplace(&count.second);
         }
 
         auto logFunc = writeAsWarning ? logging::warn : logging::info;
@@ -317,8 +322,18 @@ void profiler::dumpProfileResults(bool writeAsWarning)
                       << logging::endl;
         }
     });
-    times.clear();
-    counters.clear();
+    // NOTE: we can't clear() the entries, since they are statically referenced by the profiling calls, so we just clear
+    // the updated values
+    for(auto& entry : times)
+    {
+        entry.second.duration = {};
+        entry.second.invocations = 0;
+    }
+    for(auto& entry : counters)
+    {
+        entry.second.count = 0;
+        entry.second.invocations = 0;
+    }
     printResourceUsage(writeAsWarning);
 }
 

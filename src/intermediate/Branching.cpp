@@ -23,10 +23,10 @@ std::string BranchLabel::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* BranchLabel::copyFor(
+std::unique_ptr<IntermediateInstruction> BranchLabel::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return new BranchLabel(*renameValue(method, assertArgument(0), localPrefix, localMapping).local());
+    return std::make_unique<BranchLabel>(*renameValue(method, assertArgument(0), localPrefix, localMapping).local());
 }
 
 LCOV_EXCL_START
@@ -96,13 +96,14 @@ std::string Branch::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* Branch::copyFor(
+std::unique_ptr<IntermediateInstruction> Branch::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     auto newOut = getOutput() ? renameValue(method, *getOutput(), localPrefix, localMapping) : NO_VALUE;
-    return (new Branch(renameValue(method, getTarget(), localPrefix, localMapping).local(), branchCondition))
-        ->setOutput(newOut)
-        ->copyExtrasFrom(this);
+    auto copy = createWithExtras<Branch>(
+        *this, renameValue(method, getTarget(), localPrefix, localMapping).local(), branchCondition);
+    copy->setOutput(newOut);
+    return copy;
 }
 
 qpu_asm::DecoratedInstruction Branch::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
@@ -267,11 +268,11 @@ bool PhiNode::isNormalized() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* PhiNode::copyFor(
+std::unique_ptr<IntermediateInstruction> PhiNode::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    IntermediateInstruction* tmp =
-        (new PhiNode(renameValue(method, getOutput().value(), localPrefix, localMapping), {}))->copyExtrasFrom(this);
+    auto tmp = createWithExtras<PhiNode>(*this, renameValue(method, getOutput().value(), localPrefix, localMapping),
+        std::vector<std::pair<Value, const Local*>>{});
     for(std::size_t i = 0; i < getArguments().size(); ++i)
     {
         tmp->setArgument(i, renameValue(method, assertArgument(i), localPrefix, localMapping));
@@ -323,14 +324,14 @@ std::string CodeAddress::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* CodeAddress::copyFor(
+std::unique_ptr<IntermediateInstruction> CodeAddress::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     auto newOut = getOutput() ? renameValue(method, *getOutput(), localPrefix, localMapping) : NO_VALUE;
     const Local* address = nullptr;
     if(auto arg = getArgument(0))
         address = renameValue(method, *arg, localPrefix, localMapping).checkLocal();
-    return (new CodeAddress(std::move(newOut).value(), address))->copyExtrasFrom(this);
+    return createWithExtras<CodeAddress>(*this, newOut.value(), address);
 }
 
 qpu_asm::DecoratedInstruction CodeAddress::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
@@ -352,7 +353,7 @@ qpu_asm::DecoratedInstruction CodeAddress::convertToAsm(const FastMap<const Loca
         throw CompilationError(CompilationStep::CODE_GENERATION,
             "Cannot load an address not fitting into 32-bit integer", std::to_string(address));
     LoadImmediate dummy{getOutput().value(), Literal(static_cast<int32_t>(address))};
-    dummy.copyExtrasFrom(this);
+    dummy.copyExtrasFrom(*this);
     return qpu_asm::DecoratedInstruction(
         dummy.convertToAsm(registerMapping, labelMapping, instructionIndex).instruction, std::move(addressName));
 }

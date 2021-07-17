@@ -562,54 +562,54 @@ void TestOptimizationSteps::testFoldConstants()
     // NOTE: Need to do manual creation of instructions to not trigger the precalculation in operators.h
 
     // simple case, "pure" arithmetic operation
-    inIt.emplace(new Operation(OP_ADD, NOP_REGISTER, 17_val, 5_val));
+    inIt.emplace(std::make_unique<Operation>(OP_ADD, NOP_REGISTER, 17_val, 5_val));
     inIt.nextInBlock();
     assignNop(outIt) = 22_val;
 
     // transfer signal
-    inIt.emplace((new Operation(OP_ADD, NOP_REGISTER, 17_val, 7_val))->setSignaling(SIGNAL_LOAD_ALPHA));
+    inIt.emplace(std::make_unique<Operation>(OP_ADD, NOP_REGISTER, 17_val, 7_val)).setSignaling(SIGNAL_LOAD_ALPHA);
     inIt.nextInBlock();
     assignNop(outIt) = (24_val, SIGNAL_LOAD_ALPHA);
 
     // transfer conditional
-    inIt.emplace(new Operation(OP_ADD, NOP_REGISTER, 17_val, 8_val, COND_CARRY_CLEAR));
+    inIt.emplace(std::make_unique<Operation>(OP_ADD, NOP_REGISTER, 17_val, 8_val, COND_CARRY_CLEAR));
     inIt.nextInBlock();
     assignNop(outIt) = (25_val, COND_CARRY_CLEAR);
 
     // flags not folded (move cannot set carry flag)
-    inIt.emplace((new Operation(OP_ADD, NOP_REGISTER, 17_val, 4_val))->setSetFlags(SetFlag::SET_FLAGS));
+    inIt.emplace(std::make_unique<Operation>(OP_ADD, NOP_REGISTER, 17_val, 4_val)).setSetFlags(SetFlag::SET_FLAGS);
     inIt.nextInBlock();
     assignNop(outIt) = (17_val + 4_val, SetFlag::SET_FLAGS);
 
     // transfer decorations
-    inIt.emplace(new Operation(OP_SUB, NOP_REGISTER, 17_val, 4_val));
+    inIt.emplace(std::make_unique<Operation>(OP_SUB, NOP_REGISTER, 17_val, 4_val));
     inIt->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
     inIt.nextInBlock();
     assignNop(outIt) = (13_val, InstructionDecorations::UNSIGNED_RESULT);
 
     // pack mode not folded (move can't 32-bit saturate, some other pack modes also rely on that)
-    inIt.emplace((new Operation(OP_SUB, NOP_REGISTER, 17_val, 17_val))->setPackMode(PACK_32_16A_S));
+    inIt.emplace(std::make_unique<Operation>(OP_SUB, NOP_REGISTER, 17_val, 17_val)).setPackMode(PACK_32_16A_S);
     inIt.nextInBlock();
-    outIt.emplace((new Operation(OP_SUB, NOP_REGISTER, 17_val, 17_val))->setPackMode(PACK_32_16A_S));
+    outIt.emplace(std::make_unique<Operation>(OP_SUB, NOP_REGISTER, 17_val, 17_val)).setPackMode(PACK_32_16A_S);
     outIt.nextInBlock();
 
     // non-constants not folded
-    inIt.emplace(new Operation(OP_ADD, NOP_REGISTER, 17_val, UNIFORM_REGISTER));
+    inIt.emplace(std::make_unique<Operation>(OP_ADD, NOP_REGISTER, 17_val, UNIFORM_REGISTER));
     inIt.nextInBlock();
     assignNop(outIt) = 17_val + UNIFORM_REGISTER;
 
     // unpack modes not folded (don't know which input to unpack)
-    inIt.emplace((new Operation(OP_ADD, NOP_REGISTER, 17_val, 11_val))->setUnpackMode(UNPACK_16A_32));
+    inIt.emplace(std::make_unique<Operation>(OP_ADD, NOP_REGISTER, 17_val, 11_val)).setUnpackMode(UNPACK_16A_32);
     inIt.nextInBlock();
     assignNop(outIt) = (17_val + 11_val, UNPACK_16A_32);
 
     // a xor a (cond) not folded (so it can be reused by different optimization
-    inIt.emplace(new Operation(OP_XOR, NOP_REGISTER, 11_val, 11_val, COND_NEGATIVE_CLEAR));
+    inIt.emplace(std::make_unique<Operation>(OP_XOR, NOP_REGISTER, 11_val, 11_val, COND_NEGATIVE_CLEAR));
     inIt.nextInBlock();
     assignNop(outIt) = (11_val ^ 11_val, COND_NEGATIVE_CLEAR);
 
     // a xor a (always) folded
-    inIt.emplace(new Operation(OP_XOR, NOP_REGISTER, 17_val, 17_val));
+    inIt.emplace(std::make_unique<Operation>(OP_XOR, NOP_REGISTER, 17_val, 17_val));
     inIt.nextInBlock();
     assignNop(outIt) = 0_val;
 
@@ -646,49 +646,49 @@ void TestOptimizationSteps::testSimplifyArithmetics()
 
     // left absorbing (part 1)
     {
-        inIt.emplace(new Operation(OP_AND, out0, INT_ZERO, inA));
+        inIt.emplace(std::make_unique<Operation>(OP_AND, out0, INT_ZERO, inA));
         inIt.nextInBlock();
     }
 
     // right absorbing (part 1)
     {
-        inIt.emplace(new Operation(OP_AND, out1, inA, INT_ZERO));
+        inIt.emplace(std::make_unique<Operation>(OP_AND, out1, inA, INT_ZERO));
         inIt.nextInBlock();
     }
 
     // self inverse (part 1)
     {
-        inIt.emplace(new Operation(OP_SUB, out2, inA, inA));
+        inIt.emplace(std::make_unique<Operation>(OP_SUB, out2, inA, inA));
         inIt.nextInBlock();
     }
 
     // write to self with right identity (is removed, so no part 2)
     {
-        inIt.emplace(new Operation(OP_ADD, out3, out3, INT_ZERO));
+        inIt.emplace(std::make_unique<Operation>(OP_ADD, out3, out3, INT_ZERO));
         inIt.nextInBlock();
     }
 
     // write to self with idempotent value (is removed, so no part 2)
     {
-        inIt.emplace(new Operation(OP_AND, out3, out3, out3));
+        inIt.emplace(std::make_unique<Operation>(OP_AND, out3, out3, out3));
         inIt.nextInBlock();
     }
 
     // write to self with left identity (is removed, so no part 2)
     {
-        inIt.emplace(new Operation(OP_ADD, out3, INT_ZERO, out3));
+        inIt.emplace(std::make_unique<Operation>(OP_ADD, out3, INT_ZERO, out3));
         inIt.nextInBlock();
     }
 
     // write to other with idempotent value (part 1)
     {
-        inIt.emplace(new Operation(OP_AND, out3, inA, inA));
+        inIt.emplace(std::make_unique<Operation>(OP_AND, out3, inA, inA));
         inIt.nextInBlock();
     }
 
     // xor with -1 (part 1)
     {
-        inIt.emplace(new Operation(OP_XOR, out4, INT_MINUS_ONE, inA));
+        inIt.emplace(std::make_unique<Operation>(OP_XOR, out4, INT_MINUS_ONE, inA));
         inIt.nextInBlock();
     }
 
@@ -702,31 +702,31 @@ void TestOptimizationSteps::testSimplifyArithmetics()
 
     // left absorbing (part 2)
     {
-        outIt.emplace(new MoveOperation(out0, INT_ZERO));
+        outIt.emplace(std::make_unique<MoveOperation>(out0, INT_ZERO));
         outIt.nextInBlock();
     }
 
     // right absorbing (part 2)
     {
-        outIt.emplace(new MoveOperation(out1, INT_ZERO));
+        outIt.emplace(std::make_unique<MoveOperation>(out1, INT_ZERO));
         outIt.nextInBlock();
     }
 
     // self inverse (part 2)
     {
-        outIt.emplace(new MoveOperation(out2, INT_ZERO));
+        outIt.emplace(std::make_unique<MoveOperation>(out2, INT_ZERO));
         outIt.nextInBlock();
     }
 
     // write to other with idempotent value (part 2)
     {
-        outIt.emplace(new MoveOperation(out3, inA));
+        outIt.emplace(std::make_unique<MoveOperation>(out3, inA));
         outIt.nextInBlock();
     }
 
     // xor with -1 (part 2)
     {
-        outIt.emplace(new Operation(OP_NOT, out4, inA));
+        outIt.emplace(std::make_unique<Operation>(OP_NOT, out4, inA));
         outIt.nextInBlock();
     }
 
@@ -766,24 +766,24 @@ void TestOptimizationSteps::testCombineArithmetics()
             // (a op constB) op constC -> a op (constB op constC)
             auto intermediate = inputMethod.addNewLocal(returnType, op.name);
             auto out = inputMethod.addNewLocal(returnType, op.name);
-            inIt.emplace(new Operation(op, intermediate, local, oneConst));
+            inIt.emplace(std::make_unique<Operation>(op, intermediate, local, oneConst));
             inIt.nextInBlock();
-            inIt.emplace(new Operation(op, out, intermediate, otherConst));
+            inIt.emplace(std::make_unique<Operation>(op, out, intermediate, otherConst));
             inIt.nextInBlock();
-            outIt.emplace(new Operation(op, out, local, op(oneConst, otherConst).first.value()));
+            outIt.emplace(std::make_unique<Operation>(op, out, local, op(oneConst, otherConst).first.value()));
             outIt.nextInBlock();
 
             // constA op (constB op c) -> (constA op constB) op c
             intermediate = inputMethod.addNewLocal(returnType, op.name);
             out = inputMethod.addNewLocal(returnType, op.name);
-            inIt.emplace(new Operation(op, intermediate, otherConst, local));
+            inIt.emplace(std::make_unique<Operation>(op, intermediate, otherConst, local));
             inIt.nextInBlock();
-            inIt.emplace(new Operation(op, out, oneConst, intermediate));
+            inIt.emplace(std::make_unique<Operation>(op, out, oneConst, intermediate));
             inIt.nextInBlock();
             if(op.isCommutative())
-                outIt.emplace(new Operation(op, out, local, op(oneConst, otherConst).first.value()));
+                outIt.emplace(std::make_unique<Operation>(op, out, local, op(oneConst, otherConst).first.value()));
             else
-                outIt.emplace(new Operation(op, out, op(oneConst, otherConst).first.value(), local));
+                outIt.emplace(std::make_unique<Operation>(op, out, op(oneConst, otherConst).first.value(), local));
             outIt.nextInBlock();
 
             if(op.isCommutative())
@@ -792,21 +792,21 @@ void TestOptimizationSteps::testCombineArithmetics()
                 // (constA op b) op constC -> (constA op constC) op b
                 intermediate = inputMethod.addNewLocal(returnType, op.name);
                 out = inputMethod.addNewLocal(returnType, op.name);
-                inIt.emplace(new Operation(op, intermediate, oneConst, local));
+                inIt.emplace(std::make_unique<Operation>(op, intermediate, oneConst, local));
                 inIt.nextInBlock();
-                inIt.emplace(new Operation(op, out, intermediate, otherConst));
+                inIt.emplace(std::make_unique<Operation>(op, out, intermediate, otherConst));
                 inIt.nextInBlock();
-                outIt.emplace(new Operation(op, out, local, op(oneConst, otherConst).first.value()));
+                outIt.emplace(std::make_unique<Operation>(op, out, local, op(oneConst, otherConst).first.value()));
                 outIt.nextInBlock();
 
                 // constA op (b op constC) -> b op (constA op constC)
                 intermediate = inputMethod.addNewLocal(returnType, op.name);
                 out = inputMethod.addNewLocal(returnType, op.name);
-                inIt.emplace(new Operation(op, intermediate, local, otherConst));
+                inIt.emplace(std::make_unique<Operation>(op, intermediate, local, otherConst));
                 inIt.nextInBlock();
-                inIt.emplace(new Operation(op, out, oneConst, intermediate));
+                inIt.emplace(std::make_unique<Operation>(op, out, oneConst, intermediate));
                 inIt.nextInBlock();
-                outIt.emplace(new Operation(op, out, local, op(oneConst, otherConst).first.value()));
+                outIt.emplace(std::make_unique<Operation>(op, out, local, op(oneConst, otherConst).first.value()));
                 outIt.nextInBlock();
             }
         }
@@ -816,35 +816,35 @@ void TestOptimizationSteps::testCombineArithmetics()
             // (a op constB) op constC -> a op (constB + constC)
             auto intermediate = inputMethod.addNewLocal(returnType, op.name);
             auto out = inputMethod.addNewLocal(returnType, op.name);
-            inIt.emplace(new Operation(op, intermediate, local, oneConst));
+            inIt.emplace(std::make_unique<Operation>(op, intermediate, local, oneConst));
             inIt.nextInBlock();
-            inIt.emplace(new Operation(op, out, intermediate, otherConst));
+            inIt.emplace(std::make_unique<Operation>(op, out, intermediate, otherConst));
             inIt.nextInBlock();
-            outIt.emplace(new Operation(op, out, local, OP_ADD(oneConst, otherConst).first.value()));
+            outIt.emplace(std::make_unique<Operation>(op, out, local, OP_ADD(oneConst, otherConst).first.value()));
             outIt.nextInBlock();
 
             // a op (constB op constC) -> unchanged
             intermediate = inputMethod.addNewLocal(returnType, op.name);
             out = inputMethod.addNewLocal(returnType, op.name);
-            inIt.emplace(new Operation(op, intermediate, oneConst, otherConst));
+            inIt.emplace(std::make_unique<Operation>(op, intermediate, oneConst, otherConst));
             inIt.nextInBlock();
-            inIt.emplace(new Operation(op, out, local, intermediate));
+            inIt.emplace(std::make_unique<Operation>(op, out, local, intermediate));
             inIt.nextInBlock();
-            outIt.emplace(new Operation(op, intermediate, oneConst, otherConst));
+            outIt.emplace(std::make_unique<Operation>(op, intermediate, oneConst, otherConst));
             outIt.nextInBlock();
-            outIt.emplace(new Operation(op, out, local, intermediate));
+            outIt.emplace(std::make_unique<Operation>(op, out, local, intermediate));
             outIt.nextInBlock();
 
             // (constA op b) op constC -> unchanged
             intermediate = inputMethod.addNewLocal(returnType, op.name);
             out = inputMethod.addNewLocal(returnType, op.name);
-            inIt.emplace(new Operation(op, intermediate, oneConst, local));
+            inIt.emplace(std::make_unique<Operation>(op, intermediate, oneConst, local));
             inIt.nextInBlock();
-            inIt.emplace(new Operation(op, out, intermediate, otherConst));
+            inIt.emplace(std::make_unique<Operation>(op, out, intermediate, otherConst));
             inIt.nextInBlock();
-            outIt.emplace(new Operation(op, intermediate, oneConst, local));
+            outIt.emplace(std::make_unique<Operation>(op, intermediate, oneConst, local));
             outIt.nextInBlock();
-            outIt.emplace(new Operation(op, out, intermediate, otherConst));
+            outIt.emplace(std::make_unique<Operation>(op, out, intermediate, otherConst));
             outIt.nextInBlock();
         }
         else if(op.numOperands == 2)
@@ -852,13 +852,13 @@ void TestOptimizationSteps::testCombineArithmetics()
             // any other operation -> not combined
             auto intermediate = inputMethod.addNewLocal(returnType, op.name);
             auto out = inputMethod.addNewLocal(returnType, op.name);
-            inIt.emplace(new Operation(op, intermediate, local, oneConst));
+            inIt.emplace(std::make_unique<Operation>(op, intermediate, local, oneConst));
             inIt.nextInBlock();
-            inIt.emplace(new Operation(op, out, intermediate, otherConst));
+            inIt.emplace(std::make_unique<Operation>(op, out, intermediate, otherConst));
             inIt.nextInBlock();
-            outIt.emplace(new Operation(op, intermediate, local, oneConst));
+            outIt.emplace(std::make_unique<Operation>(op, intermediate, local, oneConst));
             outIt.nextInBlock();
-            outIt.emplace(new Operation(op, out, intermediate, otherConst));
+            outIt.emplace(std::make_unique<Operation>(op, out, intermediate, otherConst));
             outIt.nextInBlock();
         }
     }
@@ -1059,20 +1059,20 @@ void TestOptimizationSteps::testSimplifyBranches()
         auto inIt = oneIn.walkEnd();
         auto outIt = oneOut.walkEnd();
 
-        inIt.emplace(new Branch(oneIn.getLabel()->getLabel()));
+        inIt.emplace(std::make_unique<Branch>(oneIn.getLabel()->getLabel()));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one.remove1").walkEnd();
-        inIt.emplace(new Branch(oneIn.getLabel()->getLabel()));
+        inIt.emplace(std::make_unique<Branch>(oneIn.getLabel()->getLabel()));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one.remove2").walkEnd();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%one.remove3").walkEnd();
-        inIt.emplace(new Branch(oneIn.getLabel()->getLabel()));
+        inIt.emplace(std::make_unique<Branch>(oneIn.getLabel()->getLabel()));
         inIt.nextInBlock();
 
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one.remove1").walkEnd();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one.remove2").walkEnd();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%one.remove3").walkEnd();
-        outIt.emplace(new Branch(oneOut.getLabel()->getLabel()));
+        outIt.emplace(std::make_unique<Branch>(oneOut.getLabel()->getLabel()));
         outIt.nextInBlock();
     }
 
@@ -1081,7 +1081,7 @@ void TestOptimizationSteps::testSimplifyBranches()
         auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%second").walkEnd();
         auto inNextLabel =
             inputMethod.createAndInsertNewBlock(inputMethod.end(), "%second.next").getLabel()->getLabel();
-        inIt.emplace(new Branch(inNextLabel));
+        inIt.emplace(std::make_unique<Branch>(inNextLabel));
         inIt.nextInBlock();
 
         outputMethod.createAndInsertNewBlock(outputMethod.end(), "%second");
@@ -1101,13 +1101,13 @@ void TestOptimizationSteps::testSimplifyBranches()
 
         BranchCond cond = BRANCH_ALWAYS;
         std::tie(inIt, cond) = insertBranchCondition(inputMethod, inIt, UNIFORM_REGISTER);
-        inIt.emplace(new Branch(ifIn.getLabel()->getLabel(), cond));
+        inIt.emplace(std::make_unique<Branch>(ifIn.getLabel()->getLabel(), cond));
         inIt.nextInBlock();
-        inIt.emplace(new Branch(inNextLabel, cond.invert()));
+        inIt.emplace(std::make_unique<Branch>(inNextLabel, cond.invert()));
         inIt.nextInBlock();
 
         std::tie(outIt, cond) = insertBranchCondition(outputMethod, outIt, UNIFORM_REGISTER);
-        outIt.emplace(new Branch(ifOut.getLabel()->getLabel(), cond));
+        outIt.emplace(std::make_unique<Branch>(ifOut.getLabel()->getLabel(), cond));
         outIt.nextInBlock();
     }
 
@@ -1124,13 +1124,13 @@ void TestOptimizationSteps::testSimplifyBranches()
 
         BranchCond cond = BRANCH_ALWAYS;
         std::tie(inIt, cond) = insertBranchCondition(inputMethod, inIt, UNIFORM_REGISTER);
-        inIt.emplace(new Branch(inNextLabel, cond));
+        inIt.emplace(std::make_unique<Branch>(inNextLabel, cond));
         inIt.nextInBlock();
-        inIt.emplace(new Branch(ifElseIn.getLabel()->getLabel(), cond.invert()));
+        inIt.emplace(std::make_unique<Branch>(ifElseIn.getLabel()->getLabel(), cond.invert()));
         inIt.nextInBlock();
 
         std::tie(outIt, cond) = insertBranchCondition(outputMethod, outIt, UNIFORM_REGISTER);
-        outIt.emplace(new Branch(ifElseOut.getLabel()->getLabel(), cond.invert()));
+        outIt.emplace(std::make_unique<Branch>(ifElseOut.getLabel()->getLabel(), cond.invert()));
         outIt.nextInBlock();
     }
 
@@ -1143,25 +1143,25 @@ void TestOptimizationSteps::testSimplifyBranches()
 
         BranchCond cond = BRANCH_ALWAYS;
         std::tie(inIt, cond) = insertBranchCondition(inputMethod, inIt, UNIFORM_REGISTER);
-        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), cond));
+        inIt.emplace(std::make_unique<Branch>(thirdIn.getLabel()->getLabel(), cond));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove1").walkEnd();
-        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel(), cond));
+        inIt.emplace(std::make_unique<Branch>(thirdIn.getLabel()->getLabel(), cond));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove2").walkEnd();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%third.notremove3").walkEnd();
-        inIt.emplace(new Branch(thirdIn.getLabel()->getLabel()));
+        inIt.emplace(std::make_unique<Branch>(thirdIn.getLabel()->getLabel()));
         inIt.nextInBlock();
 
         std::tie(outIt, cond) = insertBranchCondition(outputMethod, outIt, UNIFORM_REGISTER);
-        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), cond));
+        outIt.emplace(std::make_unique<Branch>(thirdOut.getLabel()->getLabel(), cond));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove1").walkEnd();
-        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel(), cond));
+        outIt.emplace(std::make_unique<Branch>(thirdOut.getLabel()->getLabel(), cond));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove2").walkEnd();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%third.notremove3").walkEnd();
-        outIt.emplace(new Branch(thirdOut.getLabel()->getLabel()));
+        outIt.emplace(std::make_unique<Branch>(thirdOut.getLabel()->getLabel()));
         outIt.nextInBlock();
     }
 
@@ -1172,22 +1172,22 @@ void TestOptimizationSteps::testSimplifyBranches()
         auto inIt = otherIn.walkEnd();
         auto outIt = otherOut.walkEnd();
 
-        inIt.emplace(new Branch(otherIn.getLabel()->getLabel()));
+        inIt.emplace(std::make_unique<Branch>(otherIn.getLabel()->getLabel()));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%other.notremove1").walkEnd();
-        inIt.emplace(new Branch(oneIn.getLabel()->getLabel()));
+        inIt.emplace(std::make_unique<Branch>(oneIn.getLabel()->getLabel()));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%other.notremove2").walkEnd();
-        inIt.emplace(new Branch(otherIn.getLabel()->getLabel()));
+        inIt.emplace(std::make_unique<Branch>(otherIn.getLabel()->getLabel()));
         inIt.nextInBlock();
 
-        outIt.emplace(new Branch(otherOut.getLabel()->getLabel()));
+        outIt.emplace(std::make_unique<Branch>(otherOut.getLabel()->getLabel()));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%other.notremove1").walkEnd();
-        outIt.emplace(new Branch(oneOut.getLabel()->getLabel()));
+        outIt.emplace(std::make_unique<Branch>(oneOut.getLabel()->getLabel()));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%other.notremove2").walkEnd();
-        outIt.emplace(new Branch(otherOut.getLabel()->getLabel()));
+        outIt.emplace(std::make_unique<Branch>(otherOut.getLabel()->getLabel()));
         outIt.nextInBlock();
     }
 
@@ -1198,22 +1198,22 @@ void TestOptimizationSteps::testSimplifyBranches()
         auto inIt = someIn.walkEnd();
         auto outIt = someOut.walkEnd();
 
-        inIt.emplace(new Branch(someIn.getLabel()->getLabel()));
+        inIt.emplace(std::make_unique<Branch>(someIn.getLabel()->getLabel()));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%some.notremove1").walkEnd();
-        inIt.emplace(new MoveOperation(UNIFORM_REGISTER, INT_ONE));
+        inIt.emplace(std::make_unique<MoveOperation>(UNIFORM_REGISTER, INT_ONE));
         inIt.nextInBlock();
         inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%some.notremove2").walkEnd();
-        inIt.emplace(new Branch(someIn.getLabel()->getLabel()));
+        inIt.emplace(std::make_unique<Branch>(someIn.getLabel()->getLabel()));
         inIt.nextInBlock();
 
-        outIt.emplace(new Branch(someOut.getLabel()->getLabel()));
+        outIt.emplace(std::make_unique<Branch>(someOut.getLabel()->getLabel()));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%some.notremove1").walkEnd();
-        outIt.emplace(new MoveOperation(UNIFORM_REGISTER, INT_ONE));
+        outIt.emplace(std::make_unique<MoveOperation>(UNIFORM_REGISTER, INT_ONE));
         outIt.nextInBlock();
         outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%some.notremove2").walkEnd();
-        outIt.emplace(new Branch(someOut.getLabel()->getLabel()));
+        outIt.emplace(std::make_unique<Branch>(someOut.getLabel()->getLabel()));
         outIt.nextInBlock();
     }
 
@@ -1255,12 +1255,12 @@ void TestOptimizationSteps::testCombineConstantLoads()
 
     // test combine loading of constants (part 1)
     {
-        inIt.emplace(new LoadImmediate(first, 123456_lit, COND_ALWAYS, SetFlag::SET_FLAGS));
+        inIt.emplace(std::make_unique<LoadImmediate>(first, 123456_lit, COND_ALWAYS, SetFlag::SET_FLAGS));
         inIt.nextInBlock();
-        inIt.emplace(new LoadImmediate(second, 123456_lit));
+        inIt.emplace(std::make_unique<LoadImmediate>(second, 123456_lit));
         inIt.nextInBlock();
         assign(inIt, UNIFORM_REGISTER) = second;
-        inIt.emplace(new LoadImmediate(third, 123456_lit));
+        inIt.emplace(std::make_unique<LoadImmediate>(third, 123456_lit));
         inIt.nextInBlock();
         assign(inIt, UNIFORM_REGISTER) = third;
     }
@@ -1275,10 +1275,10 @@ void TestOptimizationSteps::testCombineConstantLoads()
 
     // test not combine loads with side-effects (part 1)
     {
-        inIt.emplace(new LoadImmediate(sixth, 123456_lit));
+        inIt.emplace(std::make_unique<LoadImmediate>(sixth, 123456_lit));
         inIt.nextInBlock();
         assign(inIt, UNIFORM_REGISTER) = sixth;
-        inIt.emplace(new LoadImmediate(seventh, 123456_lit, COND_ALWAYS, SetFlag::SET_FLAGS));
+        inIt.emplace(std::make_unique<LoadImmediate>(seventh, 123456_lit, COND_ALWAYS, SetFlag::SET_FLAGS));
         inIt.nextInBlock();
         assign(inIt, UNIFORM_REGISTER) = seventh;
 
@@ -1290,10 +1290,10 @@ void TestOptimizationSteps::testCombineConstantLoads()
 
     // test not combine loads with different constants (part 1)
     {
-        inIt.emplace(new LoadImmediate(tenth, 123456_lit));
+        inIt.emplace(std::make_unique<LoadImmediate>(tenth, 123456_lit));
         inIt.nextInBlock();
         assign(inIt, UNIFORM_REGISTER) = tenth;
-        inIt.emplace(new LoadImmediate(eleventh, 654321_lit));
+        inIt.emplace(std::make_unique<LoadImmediate>(eleventh, 654321_lit));
         inIt.nextInBlock();
         assign(inIt, UNIFORM_REGISTER) = eleventh;
     }
@@ -1303,7 +1303,7 @@ void TestOptimizationSteps::testCombineConstantLoads()
 
     // test combine loading of constants (part 2)
     {
-        outIt.emplace(new LoadImmediate(first, 123456_lit, COND_ALWAYS, SetFlag::SET_FLAGS));
+        outIt.emplace(std::make_unique<LoadImmediate>(first, 123456_lit, COND_ALWAYS, SetFlag::SET_FLAGS));
         outIt.nextInBlock();
         assign(outIt, UNIFORM_REGISTER) = first;
         assign(outIt, UNIFORM_REGISTER) = first;
@@ -1318,10 +1318,10 @@ void TestOptimizationSteps::testCombineConstantLoads()
 
     // test not combine loads with side-effects (part 2)
     {
-        outIt.emplace(new LoadImmediate(sixth, 123456_lit));
+        outIt.emplace(std::make_unique<LoadImmediate>(sixth, 123456_lit));
         outIt.nextInBlock();
         assign(outIt, UNIFORM_REGISTER) = sixth;
-        outIt.emplace(new LoadImmediate(seventh, 123456_lit, COND_ALWAYS, SetFlag::SET_FLAGS));
+        outIt.emplace(std::make_unique<LoadImmediate>(seventh, 123456_lit, COND_ALWAYS, SetFlag::SET_FLAGS));
         outIt.nextInBlock();
         assign(outIt, UNIFORM_REGISTER) = seventh;
 
@@ -1333,10 +1333,10 @@ void TestOptimizationSteps::testCombineConstantLoads()
 
     // test not combine loads with different constants (part 2)
     {
-        outIt.emplace(new LoadImmediate(tenth, 123456_lit));
+        outIt.emplace(std::make_unique<LoadImmediate>(tenth, 123456_lit));
         outIt.nextInBlock();
         assign(outIt, UNIFORM_REGISTER) = tenth;
-        outIt.emplace(new LoadImmediate(eleventh, 654321_lit));
+        outIt.emplace(std::make_unique<LoadImmediate>(eleventh, 654321_lit));
         outIt.nextInBlock();
         assign(outIt, UNIFORM_REGISTER) = eleventh;
     }
@@ -1661,18 +1661,21 @@ void TestOptimizationSteps::testCombineRotations()
         assign(inIt, ROTATION_REGISTER) = 11_val;
         assign(outIt, ROTATION_REGISTER) = 11_val;
 
-        inIt.emplace(new VectorRotation(a, in, SmallImmediate::fromRotationOffset(4), RotationType::FULL));
+        inIt.emplace(
+            std::make_unique<VectorRotation>(a, in, SmallImmediate::fromRotationOffset(4), RotationType::FULL));
         inIt->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         inIt.nextInBlock();
-        inIt.emplace((new VectorRotation(b, a, VECTOR_ROTATE_R5, RotationType::ANY))
-                         ->setCondition(COND_NEGATIVE_SET)
-                         ->setSetFlags(SetFlag::SET_FLAGS));
+        inIt.emplace(std::make_unique<VectorRotation>(b, a, VECTOR_ROTATE_R5, RotationType::ANY))
+            .setCondition(COND_NEGATIVE_SET)
+            .setSetFlags(SetFlag::SET_FLAGS);
         inIt->addDecorations(InstructionDecorations::ALLOW_RECIP);
         inIt.nextInBlock();
 
-        outIt.emplace((new VectorRotation(b, in, SmallImmediate::fromRotationOffset(15), RotationType::FULL))
-                          ->setCondition(COND_NEGATIVE_SET)
-                          ->setSetFlags(SetFlag::SET_FLAGS));
+        outIt
+            .emplace(
+                std::make_unique<VectorRotation>(b, in, SmallImmediate::fromRotationOffset(15), RotationType::FULL))
+            .setCondition(COND_NEGATIVE_SET)
+            .setSetFlags(SetFlag::SET_FLAGS);
         outIt->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         outIt->addDecorations(InstructionDecorations::ALLOW_RECIP);
         outIt.nextInBlock();
@@ -1683,16 +1686,20 @@ void TestOptimizationSteps::testCombineRotations()
         auto c = inputMethod.addNewLocal(TYPE_INT32, "%c");
         auto d = inputMethod.addNewLocal(TYPE_INT32, "%d");
 
-        inIt.emplace((new VectorRotation(c, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
-                         ->setUnpackMode(UNPACK_8A_32));
+        inIt.emplace(
+                std::make_unique<VectorRotation>(c, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
+            .setUnpackMode(UNPACK_8A_32);
         inIt.nextInBlock();
-        inIt.emplace((new VectorRotation(d, c, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD))
-                         ->setPackMode(PACK_32_8888));
+        inIt.emplace(
+                std::make_unique<VectorRotation>(d, c, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD))
+            .setPackMode(PACK_32_8888);
         inIt.nextInBlock();
 
-        outIt.emplace((new VectorRotation(d, in, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD))
-                          ->setUnpackMode(UNPACK_8A_32)
-                          ->setPackMode(PACK_32_8888));
+        outIt
+            .emplace(
+                std::make_unique<VectorRotation>(d, in, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD))
+            .setUnpackMode(UNPACK_8A_32)
+            .setPackMode(PACK_32_8888);
         outIt.nextInBlock();
     }
 
@@ -1705,20 +1712,24 @@ void TestOptimizationSteps::testCombineRotations()
         auto i = inputMethod.addNewLocal(TYPE_INT32, "%i");
         auto j = inputMethod.addNewLocal(TYPE_INT32, "%j");
 
-        inIt.emplace(new VectorRotation(e, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
+        inIt.emplace(
+            std::make_unique<VectorRotation>(e, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
         inIt.nextInBlock();
-        inIt.emplace(new VectorRotation(f, e, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD));
+        inIt.emplace(
+            std::make_unique<VectorRotation>(f, e, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD));
         inIt.nextInBlock();
-        inIt.emplace(new VectorRotation(g, in, SmallImmediate::fromRotationOffset(7), RotationType::FULL));
+        inIt.emplace(
+            std::make_unique<VectorRotation>(g, in, SmallImmediate::fromRotationOffset(7), RotationType::FULL));
         inIt.nextInBlock();
-        inIt.emplace(new VectorRotation(h, g, SmallImmediate::fromRotationOffset(9), RotationType::FULL));
+        inIt.emplace(std::make_unique<VectorRotation>(h, g, SmallImmediate::fromRotationOffset(9), RotationType::FULL));
         inIt.nextInBlock();
         assign(inIt, ROTATION_REGISTER) = 4_val;
-        inIt.emplace(new VectorRotation(i, in, VECTOR_ROTATE_R5, RotationType::PER_QUAD));
+        inIt.emplace(std::make_unique<VectorRotation>(i, in, VECTOR_ROTATE_R5, RotationType::PER_QUAD));
         inIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
         inIt.nextInBlock();
         assign(inIt, ROTATION_REGISTER) = 16_val;
-        inIt.emplace((new VectorRotation(j, in, VECTOR_ROTATE_R5, RotationType::FULL))->setPackMode(PACK_32_16B_S));
+        inIt.emplace(std::make_unique<VectorRotation>(j, in, VECTOR_ROTATE_R5, RotationType::FULL))
+            .setPackMode(PACK_32_16B_S);
         inIt.nextInBlock();
 
         assign(outIt, f) = in;
@@ -1738,14 +1749,18 @@ void TestOptimizationSteps::testCombineRotations()
         auto A = inputMethod.addNewLocal(TYPE_INT32, "%A");
         auto B = inputMethod.addNewLocal(TYPE_INT32, "%B");
 
-        inIt.emplace(new VectorRotation(A, in, SmallImmediate::fromRotationOffset(1), RotationType::FULL));
+        inIt.emplace(
+            std::make_unique<VectorRotation>(A, in, SmallImmediate::fromRotationOffset(1), RotationType::FULL));
         inIt.nextInBlock();
-        inIt.emplace(new VectorRotation(B, A, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
+        inIt.emplace(
+            std::make_unique<VectorRotation>(B, A, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
         inIt.nextInBlock();
 
-        outIt.emplace(new VectorRotation(A, in, SmallImmediate::fromRotationOffset(1), RotationType::FULL));
+        outIt.emplace(
+            std::make_unique<VectorRotation>(A, in, SmallImmediate::fromRotationOffset(1), RotationType::FULL));
         outIt.nextInBlock();
-        outIt.emplace(new VectorRotation(B, A, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
+        outIt.emplace(
+            std::make_unique<VectorRotation>(B, A, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
         outIt.nextInBlock();
     }
 
@@ -1754,16 +1769,21 @@ void TestOptimizationSteps::testCombineRotations()
         auto C = inputMethod.addNewLocal(TYPE_INT32, "%C");
         auto D = inputMethod.addNewLocal(TYPE_INT32, "%D");
 
-        inIt.emplace((new VectorRotation(C, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
-                         ->setPackMode(PACK_32_16A_S));
+        inIt.emplace(
+                std::make_unique<VectorRotation>(C, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
+            .setPackMode(PACK_32_16A_S);
         inIt.nextInBlock();
-        inIt.emplace(new VectorRotation(D, C, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
+        inIt.emplace(
+            std::make_unique<VectorRotation>(D, C, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
         inIt.nextInBlock();
 
-        outIt.emplace((new VectorRotation(C, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
-                          ->setPackMode(PACK_32_16A_S));
+        outIt
+            .emplace(
+                std::make_unique<VectorRotation>(C, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
+            .setPackMode(PACK_32_16A_S);
         outIt.nextInBlock();
-        outIt.emplace(new VectorRotation(D, C, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
+        outIt.emplace(
+            std::make_unique<VectorRotation>(D, C, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD));
         outIt.nextInBlock();
     }
 
@@ -1772,16 +1792,21 @@ void TestOptimizationSteps::testCombineRotations()
         auto E = inputMethod.addNewLocal(TYPE_INT32, "%E");
         auto F = inputMethod.addNewLocal(TYPE_INT32, "%F");
 
-        inIt.emplace(new VectorRotation(E, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
+        inIt.emplace(
+            std::make_unique<VectorRotation>(E, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
         inIt.nextInBlock();
-        inIt.emplace((new VectorRotation(F, E, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD))
-                         ->setUnpackMode(UNPACK_8A_32));
+        inIt.emplace(
+                std::make_unique<VectorRotation>(F, E, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD))
+            .setUnpackMode(UNPACK_8A_32);
         inIt.nextInBlock();
 
-        outIt.emplace(new VectorRotation(E, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
+        outIt.emplace(
+            std::make_unique<VectorRotation>(E, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD));
         outIt.nextInBlock();
-        outIt.emplace((new VectorRotation(F, E, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD))
-                          ->setUnpackMode(UNPACK_8A_32));
+        outIt
+            .emplace(
+                std::make_unique<VectorRotation>(F, E, SmallImmediate::fromRotationOffset(2), RotationType::PER_QUAD))
+            .setUnpackMode(UNPACK_8A_32);
         outIt.nextInBlock();
     }
 
@@ -1790,16 +1815,21 @@ void TestOptimizationSteps::testCombineRotations()
         auto G = inputMethod.addNewLocal(TYPE_INT32, "%G");
         auto H = inputMethod.addNewLocal(TYPE_INT32, "%H");
 
-        inIt.emplace((new VectorRotation(G, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
-                         ->setSetFlags(SetFlag::SET_FLAGS));
+        inIt.emplace(
+                std::make_unique<VectorRotation>(G, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
+            .setSetFlags(SetFlag::SET_FLAGS);
         inIt.nextInBlock();
-        inIt.emplace(new VectorRotation(H, G, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD));
+        inIt.emplace(
+            std::make_unique<VectorRotation>(H, G, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD));
         inIt.nextInBlock();
 
-        outIt.emplace((new VectorRotation(G, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
-                          ->setSetFlags(SetFlag::SET_FLAGS));
+        outIt
+            .emplace(
+                std::make_unique<VectorRotation>(G, in, SmallImmediate::fromRotationOffset(1), RotationType::PER_QUAD))
+            .setSetFlags(SetFlag::SET_FLAGS);
         outIt.nextInBlock();
-        outIt.emplace(new VectorRotation(H, G, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD));
+        outIt.emplace(
+            std::make_unique<VectorRotation>(H, G, SmallImmediate::fromRotationOffset(3), RotationType::PER_QUAD));
         outIt.nextInBlock();
     }
 
@@ -1818,26 +1848,26 @@ void TestOptimizationSteps::testCombineRotations()
         // test rewrite rotation of constant to load of constant (move and load instructions) (part 1)
         assign(inIt, k) = 116_val;
         assign(inIt, ROTATION_REGISTER) = 7_val;
-        inIt.emplace(new VectorRotation(l, k, SmallImmediate::fromRotationOffset(3), RotationType::FULL));
+        inIt.emplace(std::make_unique<VectorRotation>(l, k, SmallImmediate::fromRotationOffset(3), RotationType::FULL));
         inIt.nextInBlock();
-        inIt.emplace(new LoadImmediate(m, 1234_lit));
+        inIt.emplace(std::make_unique<LoadImmediate>(m, 1234_lit));
         inIt.nextInBlock();
-        inIt.emplace(new VectorRotation(n, m, VECTOR_ROTATE_R5, RotationType::FULL));
+        inIt.emplace(std::make_unique<VectorRotation>(n, m, VECTOR_ROTATE_R5, RotationType::FULL));
         inIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
         inIt.nextInBlock();
     }
 
     {
         // test rewrite rotation of masked load to rotated load of mask (full and quad rotation) (part 1)
-        inIt.emplace(new LoadImmediate(o, 0x12340000, LoadType::PER_ELEMENT_SIGNED));
+        inIt.emplace(std::make_unique<LoadImmediate>(o, 0x12340000, LoadType::PER_ELEMENT_SIGNED));
         inIt.nextInBlock();
-        inIt.emplace((new VectorRotation(p, o, SmallImmediate::fromRotationOffset(4), RotationType::FULL))
-                         ->setSetFlags(SetFlag::SET_FLAGS));
+        inIt.emplace(std::make_unique<VectorRotation>(p, o, SmallImmediate::fromRotationOffset(4), RotationType::FULL))
+            .setSetFlags(SetFlag::SET_FLAGS);
         inIt.nextInBlock();
-        inIt.emplace(new LoadImmediate(r, 0x00001234, LoadType::PER_ELEMENT_UNSIGNED));
+        inIt.emplace(std::make_unique<LoadImmediate>(r, 0x00001234, LoadType::PER_ELEMENT_UNSIGNED));
         inIt.nextInBlock();
         // TODO test per-quad rotation, full rotation is already tested above
-        inIt.emplace(new VectorRotation(s, r, SmallImmediate::fromRotationOffset(2), RotationType::FULL));
+        inIt.emplace(std::make_unique<VectorRotation>(s, r, SmallImmediate::fromRotationOffset(2), RotationType::FULL));
         inIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
         inIt.nextInBlock();
     }
@@ -1850,23 +1880,23 @@ void TestOptimizationSteps::testCombineRotations()
         assign(outIt, k) = 116_val;
         assign(outIt, ROTATION_REGISTER) = 7_val;
         assign(outIt, l) = k;
-        outIt.emplace(new LoadImmediate(m, 1234_lit));
+        outIt.emplace(std::make_unique<LoadImmediate>(m, 1234_lit));
         outIt.nextInBlock();
-        outIt.emplace(new LoadImmediate(n, 1234_lit));
+        outIt.emplace(std::make_unique<LoadImmediate>(n, 1234_lit));
         outIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
         outIt.nextInBlock();
     }
 
     {
         // test rewrite rotation of masked load to rotated load of mask (full and quad rotation) (part 2)
-        outIt.emplace(new LoadImmediate(o, 0x12340000, LoadType::PER_ELEMENT_SIGNED));
+        outIt.emplace(std::make_unique<LoadImmediate>(o, 0x12340000, LoadType::PER_ELEMENT_SIGNED));
         outIt.nextInBlock();
-        outIt.emplace(
-            (new LoadImmediate(p, 0x34120000, LoadType::PER_ELEMENT_SIGNED))->setSetFlags(SetFlag::SET_FLAGS));
+        outIt.emplace(std::make_unique<LoadImmediate>(p, 0x34120000, LoadType::PER_ELEMENT_SIGNED))
+            .setSetFlags(SetFlag::SET_FLAGS);
         outIt.nextInBlock();
-        outIt.emplace(new LoadImmediate(r, 0x00001234, LoadType::PER_ELEMENT_UNSIGNED));
+        outIt.emplace(std::make_unique<LoadImmediate>(r, 0x00001234, LoadType::PER_ELEMENT_UNSIGNED));
         outIt.nextInBlock();
-        outIt.emplace(new LoadImmediate(s, 0x00002341, LoadType::PER_ELEMENT_UNSIGNED));
+        outIt.emplace(std::make_unique<LoadImmediate>(s, 0x00002341, LoadType::PER_ELEMENT_UNSIGNED));
         outIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
         outIt.nextInBlock();
     }
@@ -1895,14 +1925,14 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
 
     // loading of constants
     {
-        it.emplace(new LoadImmediate(out0, Literal(12345)));
+        it.emplace(std::make_unique<LoadImmediate>(out0, Literal(12345)));
         firstHoistedInstructions.emplace_back(it.get());
         it.nextInBlock();
     }
 
     // constant operation
     {
-        it.emplace(new Operation(OP_ADD, out1, out0, INT_ONE));
+        it.emplace(std::make_unique<Operation>(OP_ADD, out1, out0, INT_ONE));
         firstHoistedInstructions.emplace_back(it.get());
         it.nextInBlock();
     }
@@ -1912,21 +1942,21 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
 
     // loading of constant in inner loop
     {
-        it.emplace(new LoadImmediate(out2, Literal(42)));
+        it.emplace(std::make_unique<LoadImmediate>(out2, Literal(42)));
         secondHoistedInstructions.emplace_back(it.get());
         it.nextInBlock();
     }
 
     // calculation depending on value of outer loop
     {
-        it.emplace(new Operation(OP_ADD, out3, out0, out2));
+        it.emplace(std::make_unique<Operation>(OP_ADD, out3, out0, out2));
         secondHoistedInstructions.emplace_back(it.get());
         it.nextInBlock();
     }
 
     // non-constant operation which is not moved
     {
-        it.emplace(new Operation(OP_SUB, NOP_REGISTER, out3, UNIFORM_REGISTER));
+        it.emplace(std::make_unique<Operation>(OP_SUB, NOP_REGISTER, out3, UNIFORM_REGISTER));
         it.nextInBlock();
     }
 

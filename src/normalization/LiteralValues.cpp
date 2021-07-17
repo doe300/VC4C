@@ -30,7 +30,7 @@ static NODISCARD InstructionWalker insertCopyVector(
 
     if(realOut != out)
     {
-        it.emplace(new intermediate::MoveOperation(out, realOut));
+        it.emplace(std::make_unique<intermediate::MoveOperation>(out, realOut));
         it.nextInBlock();
     }
     return it;
@@ -586,7 +586,7 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
                     // requires load immediate
                     CPPLOG_LAZY(
                         logging::Level::DEBUG, log << "Loading immediate value: " << lit->to_string() << logging::endl);
-                    it.emplace(new intermediate::LoadImmediate(tmp, *lit, op.getCondition()));
+                    it.emplace(std::make_unique<intermediate::LoadImmediate>(tmp, *lit, op.getCondition()));
                     // propagate the decorations so the loads are displayed as setups, not value loads
                     if(op.hasDecoration(intermediate::InstructionDecorations::VPM_READ_CONFIGURATION))
                         it->addDecorations(intermediate::InstructionDecorations::VPM_READ_CONFIGURATION);
@@ -604,11 +604,11 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
                             << mapped.opCode.name << "' and immediate value " << mapped.immediate.to_string()
                             << logging::endl);
                     if(mapped.opCode.numOperands == 1)
-                        it.emplace(new intermediate::Operation(
+                        it.emplace(std::make_unique<intermediate::Operation>(
                             mapped.opCode, tmp, Value(mapped.immediate, type), op.getCondition()));
                     else
-                        it.emplace(new intermediate::Operation(mapped.opCode, tmp, Value(mapped.immediate, type),
-                            Value(mapped.immediate, type), op.getCondition()));
+                        it.emplace(std::make_unique<intermediate::Operation>(mapped.opCode, tmp,
+                            Value(mapped.immediate, type), Value(mapped.immediate, type), op.getCondition()));
                     it->addDecorations(intermediate::InstructionDecorations::CONSTANT_LOAD);
                     it.nextInBlock();
                     op.setArgument(i, std::move(tmp));
@@ -644,7 +644,8 @@ static NODISCARD InstructionWalker handleImmediateInMove(
                 // requires load immediate
                 CPPLOG_LAZY(
                     logging::Level::DEBUG, log << "Loading immediate value: " << lit->to_string() << logging::endl);
-                it.reset((new intermediate::LoadImmediate(move->getOutput().value(), *lit))->copyExtrasFrom(move));
+                it.reset(intermediate::createWithExtras<intermediate::LoadImmediate>(
+                    *move, move->getOutput().value(), *lit));
                 it->addDecorations(intermediate::InstructionDecorations::CONSTANT_LOAD);
             }
             else if(mapped.opCode != OP_NOP)
@@ -654,14 +655,12 @@ static NODISCARD InstructionWalker handleImmediateInMove(
                         << mapped.opCode.name << "' and immediate value " << mapped.immediate.to_string()
                         << logging::endl);
                 if(mapped.opCode.numOperands == 1)
-                    it.reset((new intermediate::Operation(mapped.opCode, move->getOutput().value(),
-                                  Value(mapped.immediate, move->getSource().type)))
-                                 ->copyExtrasFrom(move));
+                    it.reset(intermediate::createWithExtras<intermediate::Operation>(*move, mapped.opCode,
+                        move->getOutput().value(), Value(mapped.immediate, move->getSource().type)));
                 else
-                    it.reset((new intermediate::Operation(mapped.opCode, move->getOutput().value(),
-                                  Value(mapped.immediate, move->getSource().type),
-                                  Value(mapped.immediate, move->getSource().type)))
-                                 ->copyExtrasFrom(move));
+                    it.reset(intermediate::createWithExtras<intermediate::Operation>(*move, mapped.opCode,
+                        move->getOutput().value(), Value(mapped.immediate, move->getSource().type),
+                        Value(mapped.immediate, move->getSource().type)));
                 it->addDecorations(intermediate::InstructionDecorations::CONSTANT_LOAD);
             }
             else
@@ -779,7 +778,7 @@ static InstructionWalker handleOperationWithImmediate(const Module& module, Meth
                 if(auto data = localIt->local()->get<ReferenceData>())
                     // the use-with literal also references the value referenced by the original local
                     tmp.local()->set(ReferenceData(*data));
-                it.emplace(new intermediate::MoveOperation(tmp, *localIt));
+                it.emplace(std::make_unique<intermediate::MoveOperation>(tmp, *localIt));
                 // since we simply move the source, some decorations for the writing of the source still apply
                 // TODO or more generally propagate (unsigned) decoration for every moves and some operations (e.g.
                 // and with constant/unsigned, etc.)
@@ -797,7 +796,7 @@ static InstructionWalker handleOperationWithImmediate(const Module& module, Meth
                 log << "Inserting temporary to split up use of physical register on file B with immediate value: "
                     << op.to_string() << logging::endl);
             auto tmp = method.addNewLocal(registerIt->type);
-            it.emplace(new intermediate::MoveOperation(tmp, *registerIt));
+            it.emplace(std::make_unique<intermediate::MoveOperation>(tmp, *registerIt));
             it.nextInBlock();
             op.replaceValue(*registerIt, tmp, LocalUse::Type::READER);
         }

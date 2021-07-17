@@ -981,7 +981,7 @@ void TestAnalyses::testStaticFlags()
     {
         // test with simple scalar constant
         auto out = method.addNewLocal(TYPE_INT32);
-        it.emplace(new LoadImmediate(out, Literal(-12345)));
+        it.emplace(std::make_unique<LoadImmediate>(out, Literal(-12345)));
         auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
         TEST_ASSERT(!!flags);
         for(auto elem : *flags)
@@ -991,7 +991,7 @@ void TestAnalyses::testStaticFlags()
         }
 
         // test with differing constant vector
-        it.reset(new LoadImmediate(out, 0x32100123, intermediate::LoadType::PER_ELEMENT_SIGNED));
+        it.reset(std::make_unique<LoadImmediate>(out, 0x32100123, intermediate::LoadType::PER_ELEMENT_SIGNED));
         auto vector = LoadImmediate::toLoadedValues(0x32100123, intermediate::LoadType::PER_ELEMENT_SIGNED);
         flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
         TEST_ASSERT(!!flags);
@@ -1012,7 +1012,7 @@ void TestAnalyses::testStaticFlags()
         auto cond = assignNop(it) = as_unsigned{input} == as_unsigned{13_val};
         auto booleanValue = assign(it, TYPE_BOOL) = (BOOL_TRUE, cond);
         assign(it, booleanValue) = (BOOL_FALSE, cond.invert());
-        it.emplace(new MoveOperation(NOP_REGISTER, booleanValue, COND_ALWAYS, SetFlag::SET_FLAGS));
+        it.emplace(std::make_unique<MoveOperation>(NOP_REGISTER, booleanValue, COND_ALWAYS, SetFlag::SET_FLAGS));
         auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it);
         TEST_ASSERT(!!flags);
         for(auto elem : *flags)
@@ -1035,7 +1035,7 @@ void TestAnalyses::testStaticFlags()
         auto booleanB = assign(it, TYPE_BOOL) = (BOOL_TRUE, cond);
         assign(it, booleanB) = (BOOL_FALSE, cond.invert());
 
-        it.emplace(new Operation(OP_OR, NOP_REGISTER, booleanA, booleanB));
+        it.emplace(std::make_unique<Operation>(OP_OR, NOP_REGISTER, booleanA, booleanB));
         auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
         TEST_ASSERT(!!flags);
         for(auto elem : *flags)
@@ -1059,7 +1059,7 @@ void TestAnalyses::testStaticFlags()
         auto booleanB = assign(it, TYPE_BOOL) = (BOOL_TRUE, cond);
         assign(it, booleanB) = (BOOL_FALSE, cond.invert());
 
-        it.emplace(new Operation(OP_AND, NOP_REGISTER, booleanA, booleanB));
+        it.emplace(std::make_unique<Operation>(OP_AND, NOP_REGISTER, booleanA, booleanB));
         auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
         TEST_ASSERT(!!flags);
         for(auto elem : *flags)
@@ -1077,8 +1077,8 @@ void TestAnalyses::testStaticFlags()
         auto cond = assignNop(it) = as_unsigned{input} == as_unsigned{13_val};
         auto booleanValue = assign(it, TYPE_BOOL) = (BOOL_TRUE, cond);
         assign(it, booleanValue) = (BOOL_FALSE, cond.invert());
-        it.emplace(
-            new Operation(OP_OR, NOP_REGISTER, booleanValue, ELEMENT_NUMBER_REGISTER, COND_ALWAYS, SetFlag::SET_FLAGS));
+        it.emplace(std::make_unique<Operation>(
+            OP_OR, NOP_REGISTER, booleanValue, ELEMENT_NUMBER_REGISTER, COND_ALWAYS, SetFlag::SET_FLAGS));
         auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it);
         TEST_ASSERT(!!flags);
         for(uint8_t i = 0; i < flags->size(); ++i)
@@ -1096,7 +1096,7 @@ void TestAnalyses::testStaticFlags()
     {
         auto input = assign(it, TYPE_INT16) = UNIFORM_REGISTER;
 
-        it.emplace(new Operation(OP_MAX, NOP_REGISTER, input, 13_val));
+        it.emplace(std::make_unique<Operation>(OP_MAX, NOP_REGISTER, input, 13_val));
         auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
         TEST_ASSERT(!!flags);
         for(auto elem : *flags)
@@ -1106,7 +1106,7 @@ void TestAnalyses::testStaticFlags()
                 (ElementFlags{FlagStatus::CLEAR, FlagStatus::CLEAR, FlagStatus::UNDEFINED, FlagStatus::CLEAR}), elem);
         }
 
-        it.reset(new Operation(OP_MIN, NOP_REGISTER, input, Value(Literal(-13), TYPE_INT16)));
+        it.reset(std::make_unique<Operation>(OP_MIN, NOP_REGISTER, input, Value(Literal(-13), TYPE_INT16)));
         flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
         TEST_ASSERT(!!flags);
         for(auto elem : *flags)
@@ -1116,7 +1116,7 @@ void TestAnalyses::testStaticFlags()
                 (ElementFlags{FlagStatus::CLEAR, FlagStatus::SET, FlagStatus::UNDEFINED, FlagStatus::CLEAR}), elem);
         }
 
-        it.emplace(new Operation(OP_FMAX, NOP_REGISTER, input, Value(Literal(-13.4f), TYPE_FLOAT)));
+        it.emplace(std::make_unique<Operation>(OP_FMAX, NOP_REGISTER, input, Value(Literal(-13.4f), TYPE_FLOAT)));
         flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
         TEST_ASSERT(!!flags);
         for(auto elem : *flags)
@@ -1127,7 +1127,7 @@ void TestAnalyses::testStaticFlags()
                 elem);
         }
 
-        it.emplace(new Operation(OP_FMAXABS, NOP_REGISTER, input, Value(Literal(-13.4f), TYPE_FLOAT)));
+        it.emplace(std::make_unique<Operation>(OP_FMAXABS, NOP_REGISTER, input, Value(Literal(-13.4f), TYPE_FLOAT)));
         flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
         TEST_ASSERT(!!flags);
         for(auto elem : *flags)
@@ -1137,7 +1137,7 @@ void TestAnalyses::testStaticFlags()
                 (ElementFlags{FlagStatus::CLEAR, FlagStatus::CLEAR, FlagStatus::UNDEFINED, FlagStatus::CLEAR}), elem);
         }
 
-        it.emplace(new Operation(OP_FMINABS, NOP_REGISTER, input, FLOAT_ZERO));
+        it.emplace(std::make_unique<Operation>(OP_FMINABS, NOP_REGISTER, input, FLOAT_ZERO));
         flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
         TEST_ASSERT(!!flags);
         for(auto elem : *flags)
@@ -1153,7 +1153,7 @@ void TestAnalyses::testStaticFlags()
     // can not be detected - flag set based on parameter
     {
         auto input = assign(it, TYPE_INT16) = UNIFORM_REGISTER;
-        it.emplace(new MoveOperation(NOP_REGISTER, input));
+        it.emplace(std::make_unique<MoveOperation>(NOP_REGISTER, input));
         auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it, true);
         TEST_ASSERT(!flags);
 
@@ -1167,7 +1167,7 @@ void TestAnalyses::testStaticFlags()
         auto cond = assignNop(it) = as_unsigned{input} == as_unsigned{13_val};
         auto booleanValue = assign(it, TYPE_BOOL) = (32_val, cond);
         assign(it, booleanValue) = (4_val, cond.invert());
-        it.emplace(new MoveOperation(NOP_REGISTER, booleanValue, COND_ALWAYS, SetFlag::SET_FLAGS));
+        it.emplace(std::make_unique<MoveOperation>(NOP_REGISTER, booleanValue, COND_ALWAYS, SetFlag::SET_FLAGS));
         auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it);
         TEST_ASSERT(!flags);
 
@@ -1183,7 +1183,7 @@ void TestAnalyses::testStaticFlags()
     // can not be detected - instruction does not set flags
     {
         auto input = assign(it, TYPE_INT16) = UNIFORM_REGISTER;
-        it.emplace(new MoveOperation(NOP_REGISTER, input));
+        it.emplace(std::make_unique<MoveOperation>(NOP_REGISTER, input));
         auto flags = StaticFlagsAnalysis::analyzeStaticFlags(it.get(), it);
         TEST_ASSERT(!flags);
     }
@@ -1323,7 +1323,7 @@ void TestAnalyses::testIntegerComparisonDetection()
     for(auto& test : tests)
     {
         auto out = m.addNewLocal(TYPE_BOOL, std::string("%out.") + test.inputComparison);
-        it.emplace(new Comparison(
+        it.emplace(std::make_unique<Comparison>(
             test.inputComparison, Value(out), Value(test.inputLeftOperand), Value(test.inputRightOperand)));
         auto comparisonString = it->to_string();
         auto checkIt = it.copy().previousInBlock();
@@ -1429,7 +1429,7 @@ void TestAnalyses::testIntegerComparisonDetection()
         // comparison with elem_num on single element only
         auto startIt = it.copy().previousInBlock();
         auto expectedCond = assignNop(it) = selectSIMDElement(13);
-        it.emplace(new intermediate::MoveOperation(NOP_REGISTER, NOP_REGISTER, expectedCond));
+        it.emplace(std::make_unique<MoveOperation>(NOP_REGISTER, NOP_REGISTER, expectedCond));
 
         auto comp = analysis::getComparison(it.get(), startIt);
         TEST_ASSERT(!!comp);

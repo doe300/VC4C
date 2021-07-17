@@ -112,7 +112,7 @@ bool optimizations::compressWorkGroupLocals(const Module& module, Method& method
         return false;
     unsigned char index = 0;
     const Value container = method.addNewLocal(TYPE_INT32.toVectorType(16), "%work_group_info");
-    method.begin()->walk().nextInBlock().emplace(new intermediate::MoveOperation(container, INT_ZERO));
+    method.begin()->walk().nextInBlock().emplace(std::make_unique<intermediate::MoveOperation>(container, INT_ZERO));
     for(auto type : workGroupLocalNames)
     {
         if(auto local = method.findBuiltin(type))

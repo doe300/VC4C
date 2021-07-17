@@ -151,9 +151,9 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
             else
             {
                 subOffset = method.addNewLocal(TYPE_INT32, "%index_offset");
-                it.emplace(new intermediate::IntrinsicOperation("mul", Value(subOffset), Value(index),
-                    Value(Literal(subContainerType.getElementType().getInMemoryWidth()), TYPE_INT32)));
-                it->addDecorations(InstructionDecorations::SIGNED_OVERFLOW_IS_UB);
+                it.emplace(std::make_unique<intermediate::IntrinsicOperation>("mul", Value(subOffset), Value(index),
+                               Value(Literal(subContainerType.getElementType().getInMemoryWidth()), TYPE_INT32)))
+                    .addDecorations(InstructionDecorations::SIGNED_OVERFLOW_IS_UB);
                 it.nextInBlock();
             }
 
@@ -288,11 +288,11 @@ InstructionWalker intermediate::insertByteSwap(
     {
         // A B C D -> B C D A
         const Value tmpAC0 = method.addNewLocal(src.type, "byte_swap");
-        it.emplace(new Operation(OP_ROR, tmpAC0, src, Value(Literal(24u), TYPE_INT8)));
+        it.emplace(std::make_unique<Operation>(OP_ROR, tmpAC0, src, Value(Literal(24u), TYPE_INT8)));
         it.nextInBlock();
         // A B C D -> D A B C
         const Value tmpBD0 = method.addNewLocal(src.type, "byte_swap");
-        it.emplace(new Operation(OP_ROR, tmpBD0, src, Value(Literal(8u), TYPE_INT8)));
+        it.emplace(std::make_unique<Operation>(OP_ROR, tmpBD0, src, Value(Literal(8u), TYPE_INT8)));
         it.nextInBlock();
         // B C D A -> 0 0 0 A
         Value tmpA1 = assign(it, src.type, "byte_swap") = tmpAC0 & 0x000000FF_val;
@@ -418,22 +418,23 @@ BasicBlock& intermediate::insertLoop(
     auto afterLoopLabel = method.addNewLocal(TYPE_LABEL, loopLabel.local()->name, "after");
 
     // we need to insert all blocks before inserting the branches to them to make a possible existing CFG happy!
-    auto headerIt = method.emplaceLabel(it, new BranchLabel(*headerLabel.local()));
-    auto inLoopIt = method.emplaceLabel(headerIt.copy().nextInBlock(), new BranchLabel(*loopLabel.local()));
-    it = method.emplaceLabel(inLoopIt.copy().nextInBlock(), new BranchLabel(*afterLoopLabel.local()));
+    auto headerIt = method.emplaceLabel(it, std::make_unique<BranchLabel>(*headerLabel.local()));
+    auto inLoopIt =
+        method.emplaceLabel(headerIt.copy().nextInBlock(), std::make_unique<BranchLabel>(*loopLabel.local()));
+    it = method.emplaceLabel(inLoopIt.copy().nextInBlock(), std::make_unique<BranchLabel>(*afterLoopLabel.local()));
 
     // in the header, jump over loop only when condition becomes false, otherwise fall through loop content block
     headerIt.nextInBlock();
     BranchCond cond = BRANCH_ALWAYS;
     std::tie(headerIt, cond) = insertBranchCondition(method, headerIt, conditionValue);
-    headerIt.emplace(new Branch(loopLabel.local(), cond));
+    headerIt.emplace(std::make_unique<Branch>(loopLabel.local(), cond));
     headerIt.nextInBlock();
-    headerIt.emplace(new Branch(afterLoopLabel.local(), cond.invert()));
+    headerIt.emplace(std::make_unique<Branch>(afterLoopLabel.local(), cond.invert()));
     headerIt.nextInBlock();
 
     // in loop content block, unconditionally jump back to header
     inLoopIt.nextInBlock();
-    inLoopIt.emplace(new Branch(headerLabel.local()));
+    inLoopIt.emplace(std::make_unique<Branch>(headerLabel.local()));
     inLoopIt.nextInBlock();
 
     return *inLoopIt.getBasicBlock();
@@ -457,9 +458,8 @@ std::pair<InstructionWalker, BranchCond> intermediate::insertBranchCondition(Met
     {
         // more special case for jump on different element(s)
         auto elementMask = it.getBasicBlock()->getMethod().addNewLocal(TYPE_INT8.toVectorType(16));
-        it.emplace(new intermediate::LoadImmediate(elementMask,
-            static_cast<uint32_t>((~conditionalElements).to_ulong()), intermediate::LoadType::PER_ELEMENT_UNSIGNED));
-        it.nextInBlock();
+        assign(it, elementMask) = load(
+            static_cast<uint32_t>((~conditionalElements).to_ulong()), intermediate::LoadType::PER_ELEMENT_UNSIGNED);
         assign(it, NOP_REGISTER) = (elementMask | conditionValue, SetFlag::SET_FLAGS);
     }
     return std::make_pair(it, BRANCH_ALL_Z_CLEAR);
@@ -527,8 +527,7 @@ void intermediate::redirectAllBranches(BasicBlock& oldTarget, BasicBlock& newTar
             log << "Resetting branch in block '" << walker.getBasicBlock()->to_string() << "' to jump to '"
                 << newTarget.to_string() << "' instead: " << walker->to_string() << logging::endl);
         // need to reset the instruction to correctly update the CFG
-        walker.reset((new intermediate::Branch(newTarget.getLabel()->getLabel(), branch->branchCondition))
-                         ->copyExtrasFrom(branch));
+        walker.reset(createWithExtras<Branch>(*branch, newTarget.getLabel()->getLabel(), branch->branchCondition));
     }
 }
 

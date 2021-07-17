@@ -148,7 +148,7 @@ void SPIRVParserBase::parse(Module& module)
     module.methods.reserve(methods.size());
     for(auto& method : methods)
     {
-        module.methods.emplace_back(method.second.method.release());
+        module.methods.emplace_back(std::move(method.second.method));
     }
 
     addFunctionAliases(module);
@@ -821,7 +821,7 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFunctionCall:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getWord(3), parsed_instruction.getTypeId(), parsed_instruction.parseArguments(4)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpVariable:
@@ -927,32 +927,32 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         return UNSUPPORTED_INSTRUCTION("OpImageTexelPointer");
     case spv::Op::OpLoad:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCopy(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVCopy>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), parsed_instruction.getWord(3), MemoryAccess::READ));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpStore:
-        instructions.emplace_back(new SPIRVCopy(parsed_instruction.getWord(1), *currentMethod, UNDEFINED_ID,
-            parsed_instruction.getWord(2), MemoryAccess::WRITE));
+        instructions.emplace_back(std::make_unique<SPIRVCopy>(parsed_instruction.getWord(1), *currentMethod,
+            UNDEFINED_ID, parsed_instruction.getWord(2), MemoryAccess::WRITE));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpCopyMemory:
-        instructions.emplace_back(new SPIRVCopy(parsed_instruction.getWord(1), *currentMethod, UNDEFINED_ID,
-            parsed_instruction.getWord(2), MemoryAccess::READ_WRITE));
+        instructions.emplace_back(std::make_unique<SPIRVCopy>(parsed_instruction.getWord(1), *currentMethod,
+            UNDEFINED_ID, parsed_instruction.getWord(2), MemoryAccess::READ_WRITE));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpCopyMemorySized:
-        instructions.emplace_back(new SPIRVCopy(parsed_instruction.getWord(1), *currentMethod, UNDEFINED_ID,
-            parsed_instruction.getWord(2), MemoryAccess::READ_WRITE, parsed_instruction.getWord(3)));
+        instructions.emplace_back(std::make_unique<SPIRVCopy>(parsed_instruction.getWord(1), *currentMethod,
+            UNDEFINED_ID, parsed_instruction.getWord(2), MemoryAccess::READ_WRITE, parsed_instruction.getWord(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAccessChain: // pointer into element(s) of composite
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(
-            new SPIRVIndexOf(parsed_instruction.getResultId(), *currentMethod, parsed_instruction.getTypeId(),
-                parsed_instruction.getWord(3), parsed_instruction.parseArguments(4), false));
+        instructions.emplace_back(std::make_unique<SPIRVIndexOf>(parsed_instruction.getResultId(), *currentMethod,
+            parsed_instruction.getTypeId(), parsed_instruction.getWord(3), parsed_instruction.parseArguments(4),
+            false));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpInBoundsAccessChain:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(
-            new SPIRVIndexOf(parsed_instruction.getResultId(), *currentMethod, parsed_instruction.getTypeId(),
-                parsed_instruction.getWord(3), parsed_instruction.parseArguments(4), false));
+        instructions.emplace_back(std::make_unique<SPIRVIndexOf>(parsed_instruction.getResultId(), *currentMethod,
+            parsed_instruction.getTypeId(), parsed_instruction.getWord(3), parsed_instruction.parseArguments(4),
+            false));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpPtrAccessChain:
         // For pointers, the "Element" field is the first (top-level) index (see SPIR-V specification,
@@ -960,7 +960,7 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         // the first element of an array, and the Element element’s address is computed to be the base for the Indexes
         //[...]"
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVIndexOf(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVIndexOf>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), parsed_instruction.getWord(3), parsed_instruction.parseArguments(4), true));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpGenericPtrMemSemantics:
@@ -970,7 +970,7 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         return ParseResultCode::SUCCESS;
     case spv::Op::OpInBoundsPtrAccessChain:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVIndexOf(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVIndexOf>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), parsed_instruction.getWord(3), parsed_instruction.parseArguments(4), true));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpNoLine: // source level debug info -> skip
@@ -1026,38 +1026,39 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         return UNSUPPORTED_INSTRUCTION("OpGroupMemberDecorate");
     case spv::Op::OpVectorExtractDynamic:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInsertionExtraction(parsed_instruction.getResultId(), *currentMethod,
-            parsed_instruction.getTypeId(), parsed_instruction.getWord(3), parsed_instruction.parseArguments(4),
-            false));
+        instructions.emplace_back(std::make_unique<SPIRVInsertionExtraction>(parsed_instruction.getResultId(),
+            *currentMethod, parsed_instruction.getTypeId(), parsed_instruction.getWord(3),
+            parsed_instruction.parseArguments(4), false));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpVectorInsertDynamic:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInsertionExtraction(parsed_instruction.getResultId(), *currentMethod,
-            parsed_instruction.getTypeId(), parsed_instruction.getWord(3), parsed_instruction.getWord(4),
-            parsed_instruction.parseArguments(5), false));
+        instructions.emplace_back(std::make_unique<SPIRVInsertionExtraction>(parsed_instruction.getResultId(),
+            *currentMethod, parsed_instruction.getTypeId(), parsed_instruction.getWord(3),
+            parsed_instruction.getWord(4), parsed_instruction.parseArguments(5), false));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpVectorShuffle:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(
-            new SPIRVShuffle(parsed_instruction.getResultId(), *currentMethod, parsed_instruction.getTypeId(),
-                parsed_instruction.getWord(3), parsed_instruction.getWord(4), parsed_instruction.parseArguments(5)));
+        instructions.emplace_back(std::make_unique<SPIRVShuffle>(parsed_instruction.getResultId(), *currentMethod,
+            parsed_instruction.getTypeId(), parsed_instruction.getWord(3), parsed_instruction.getWord(4),
+            parsed_instruction.parseArguments(5)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpCompositeConstruct:
         return UNSUPPORTED_INSTRUCTION("OpCompositeConstruct");
     case spv::Op::OpCompositeExtract:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInsertionExtraction(parsed_instruction.getResultId(), *currentMethod,
-            parsed_instruction.getTypeId(), parsed_instruction.getWord(3), parsed_instruction.parseArguments(4), true));
+        instructions.emplace_back(std::make_unique<SPIRVInsertionExtraction>(parsed_instruction.getResultId(),
+            *currentMethod, parsed_instruction.getTypeId(), parsed_instruction.getWord(3),
+            parsed_instruction.parseArguments(4), true));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpCompositeInsert:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInsertionExtraction(parsed_instruction.getResultId(), *currentMethod,
-            parsed_instruction.getTypeId(), parsed_instruction.getWord(4), parsed_instruction.getWord(3),
-            parsed_instruction.parseArguments(5), true));
+        instructions.emplace_back(std::make_unique<SPIRVInsertionExtraction>(parsed_instruction.getResultId(),
+            *currentMethod, parsed_instruction.getTypeId(), parsed_instruction.getWord(4),
+            parsed_instruction.getWord(3), parsed_instruction.parseArguments(5), true));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpCopyObject:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCopy(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVCopy>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), parsed_instruction.getWord(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSampledImage:
@@ -1102,95 +1103,95 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         //"Query the image format of an image [...]."
         //"The resulting value is an enumerant from Image Channel Data Type."
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVImageQuery(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVImageQuery>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), ImageQuery::CHANNEL_DATA_TYPE, parsed_instruction.getWord(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpImageQueryOrder:
         //"Query the channel order of an image [...]."
         //"The resulting value is an enumerant from Image Channel Order."
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVImageQuery(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVImageQuery>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), ImageQuery::CHANNEL_ORDER, parsed_instruction.getWord(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpImageQuerySizeLod:
         //"Query the dimensions of Image for mipmap level for Level of Detail."
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(
-            new SPIRVImageQuery(parsed_instruction.getResultId(), *currentMethod, parsed_instruction.getTypeId(),
-                ImageQuery::SIZES_LOD, parsed_instruction.getWord(3), parsed_instruction.getWord(4)));
+        instructions.emplace_back(std::make_unique<SPIRVImageQuery>(parsed_instruction.getResultId(), *currentMethod,
+            parsed_instruction.getTypeId(), ImageQuery::SIZES_LOD, parsed_instruction.getWord(3),
+            parsed_instruction.getWord(4)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpImageQuerySize:
         //"Query the dimensions of Image, with no level of detail."
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVImageQuery(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVImageQuery>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), ImageQuery::SIZES, parsed_instruction.getWord(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpImageQueryLevels:
         //"Query the number of mipmap levels accessible through Image."
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVImageQuery(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVImageQuery>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), ImageQuery::MIPMAP_LEVELS, parsed_instruction.getWord(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpImageQuerySamples:
         //"Query the number of samples available per texel fetch in a multisample image."
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVImageQuery(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVImageQuery>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), ImageQuery::SAMPLES_PER_TEXEL, parsed_instruction.getWord(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpConvertFToU:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "fptoui",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "fptoui", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             add_flag(toInstructionDecorations(parsed_instruction.getResultId()),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpConvertFToS:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "fptosi",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "fptosi", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpConvertSToF:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "sitofp",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "sitofp", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpConvertUToF:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "uitofp",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "uitofp", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpUConvert: // change bit-width (type) of value
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVConversion(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVConversion>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), parsed_instruction.getWord(3), ConversionType::UNSIGNED_TO_UNSIGNED,
             add_flag(toInstructionDecorations(parsed_instruction.getResultId()),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSConvert: // change bit-width (type) of value
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVConversion(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVConversion>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), parsed_instruction.getWord(3), ConversionType::SIGNED_TO_SIGNED,
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFConvert: // change bit-width (type) of value
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVConversion(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVConversion>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), parsed_instruction.getWord(3), ConversionType::FLOATING,
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpConvertPtrToU: // pointer to unsigned -> same as OpUConvert
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVConversion(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVConversion>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), parsed_instruction.getWord(3), ConversionType::UNSIGNED_TO_UNSIGNED,
             add_flag(toInstructionDecorations(parsed_instruction.getResultId()),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSatConvertSToU: // signed to unsigned (with saturation)
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVConversion(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVConversion>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), parsed_instruction.getWord(3), ConversionType::SIGNED_TO_UNSIGNED,
             add_flag(toInstructionDecorations(parsed_instruction.getResultId()),
                 add_flag(intermediate::InstructionDecorations::UNSIGNED_RESULT,
@@ -1198,14 +1199,14 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSatConvertUToS: // unsigned to signed (with saturation)
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVConversion(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVConversion>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), parsed_instruction.getWord(3), ConversionType::UNSIGNED_TO_SIGNED,
             add_flag(toInstructionDecorations(parsed_instruction.getResultId()),
                 intermediate::InstructionDecorations::SATURATED_CONVERSION)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpConvertUToPtr: // unsigned to pointer -> same as OpUConvert
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVConversion(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVConversion>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), parsed_instruction.getWord(3), ConversionType::UNSIGNED_TO_UNSIGNED,
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
@@ -1213,7 +1214,7 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         //"Convert a pointer’s Storage Class to Generic."
         // -> simply copy the pointer
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVConversion(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVConversion>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), parsed_instruction.getWord(3), ConversionType::BITCAST,
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
@@ -1221,7 +1222,7 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         //"Convert a pointer’s Storage Class to a non-Generic class."
         // -> simple copy the pointer
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVConversion(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVConversion>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), parsed_instruction.getWord(3), ConversionType::BITCAST,
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
@@ -1229,124 +1230,124 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         //"Attempts to explicitly convert Pointer to Storage storage-class pointer value."
         // -> simple copy the pointer
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVConversion(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVConversion>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getTypeId(), parsed_instruction.getWord(3), ConversionType::BITCAST,
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpBitcast:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(
-            new SPIRVConversion(parsed_instruction.getResultId(), *currentMethod, parsed_instruction.getTypeId(),
-                parsed_instruction.getWord(3), ConversionType::BITCAST, intermediate::InstructionDecorations::NONE));
+        instructions.emplace_back(std::make_unique<SPIRVConversion>(parsed_instruction.getResultId(), *currentMethod,
+            parsed_instruction.getTypeId(), parsed_instruction.getWord(3), ConversionType::BITCAST,
+            intermediate::InstructionDecorations::NONE));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSNegate:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, OP_NEGATE,
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            OP_NEGATE, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFNegate:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, OP_NEGATE,
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            OP_NEGATE, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpIAdd:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "add",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "add", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFAdd:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "fadd",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "fadd", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpISub:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "sub",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "sub", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFSub:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "fsub",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "fsub", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpIMul:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "mul",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "mul", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFMul:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "fmul",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "fmul", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpUDiv:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "udiv",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "udiv", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             add_flag(toInstructionDecorations(parsed_instruction.getResultId()),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSDiv:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "sdiv",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "sdiv", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFDiv:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "fdiv",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "fdiv", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpUMod:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "umod",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "umod", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             add_flag(toInstructionDecorations(parsed_instruction.getResultId()),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSRem:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "srem",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "srem", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSMod:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "smod",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "smod", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFRem:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "frem",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "frem", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFMod:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "fmod",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "fmod", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpVectorTimesScalar: // type must be floating point
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "fmul",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "fmul", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpDot:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "dot",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3)));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "dot", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpIAddCarry:
         return UNSUPPORTED_INSTRUCTION("OpIAddCarry");
@@ -1360,71 +1361,71 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         // This is NOT the OpenCL any(...), it does NOT check the MSB, instead it takes a vector of boolean values and
         // checks whether any of them is true!
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(
-            new SPIRVFoldInstruction(parsed_instruction.getResultId(), *currentMethod, parsed_instruction.getTypeId(),
-                "or", parsed_instruction.getWord(3), intermediate::InstructionDecorations::UNSIGNED_RESULT));
+        instructions.emplace_back(std::make_unique<SPIRVFoldInstruction>(parsed_instruction.getResultId(),
+            *currentMethod, parsed_instruction.getTypeId(), "or", parsed_instruction.getWord(3),
+            intermediate::InstructionDecorations::UNSIGNED_RESULT));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAll:
         // This is NOT the OpenCL all(...), it does NOT check the MSB, instead it takes a vector of boolean values and
         // checks whether all of them are true!
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(
-            new SPIRVFoldInstruction(parsed_instruction.getResultId(), *currentMethod, parsed_instruction.getTypeId(),
-                "and", parsed_instruction.getWord(3), intermediate::InstructionDecorations::UNSIGNED_RESULT));
+        instructions.emplace_back(std::make_unique<SPIRVFoldInstruction>(parsed_instruction.getResultId(),
+            *currentMethod, parsed_instruction.getTypeId(), "and", parsed_instruction.getWord(3),
+            intermediate::InstructionDecorations::UNSIGNED_RESULT));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpIsNan:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVBoolCallSite(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVBoolCallSite>(parsed_instruction.getResultId(), *currentMethod,
             "vc4cl_is_nan", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpIsInf:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVBoolCallSite(parsed_instruction.getResultId(), *currentMethod, "isinf",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3)));
+        instructions.emplace_back(std::make_unique<SPIRVBoolCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "isinf", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpIsFinite:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVBoolCallSite(parsed_instruction.getResultId(), *currentMethod, "isfinite",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3)));
+        instructions.emplace_back(std::make_unique<SPIRVBoolCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "isfinite", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpIsNormal:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVBoolCallSite(parsed_instruction.getResultId(), *currentMethod, "isnormal",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3)));
+        instructions.emplace_back(std::make_unique<SPIRVBoolCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "isnormal", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSignBitSet:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementations are reverted back to the SPIR-V
         // opcodes, create a function call to the VC4CL function definition
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVBoolCallSite(parsed_instruction.getResultId(), *currentMethod, "signbit",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3)));
+        instructions.emplace_back(std::make_unique<SPIRVBoolCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "signbit", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpLessOrGreater:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVBoolCallSite(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVBoolCallSite>(parsed_instruction.getResultId(), *currentMethod,
             "islessgreater", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpOrdered:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_ORDERED, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpUnordered:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_UNORDERED, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpLogicalEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_EQ, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpLogicalNotEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_NEQ, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
@@ -1432,225 +1433,226 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         //"Result Type must be a scalar or vector of Boolean type."
         // -> same as bitwise OR
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(
-            new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "or", parsed_instruction.getTypeId(),
-                parsed_instruction.parseArguments(3), toInstructionDecorations(parsed_instruction.getResultId())));
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "or", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+            toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpLogicalAnd:
         //"Result Type must be a scalar or vector of Boolean type."
         // -> same as bitwise AND
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "and",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "and", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpLogicalNot:
         //"Result Type must be a scalar or vector of Boolean type."
         // -> same as bitwise NOT
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "not",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "not", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSelect:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(
-            new SPIRVSelect(parsed_instruction.getResultId(), *currentMethod, parsed_instruction.getTypeId(),
-                parsed_instruction.getWord(3), parsed_instruction.getWord(4), parsed_instruction.getWord(5)));
+        instructions.emplace_back(std::make_unique<SPIRVSelect>(parsed_instruction.getResultId(), *currentMethod,
+            parsed_instruction.getTypeId(), parsed_instruction.getWord(3), parsed_instruction.getWord(4),
+            parsed_instruction.getWord(5)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpIEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_EQ, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpINotEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_NEQ, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpUGreaterThan:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_UNSIGNED_GT, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             add_flag(toInstructionDecorations(parsed_instruction.getResultId()),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSGreaterThan:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_SIGNED_GT, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpUGreaterThanEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_UNSIGNED_GE, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             add_flag(toInstructionDecorations(parsed_instruction.getResultId()),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSGreaterThanEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_SIGNED_GE, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpULessThan:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_UNSIGNED_LT, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             add_flag(toInstructionDecorations(parsed_instruction.getResultId()),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSLessThan:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_SIGNED_LT, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpULessThanEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_UNSIGNED_LE, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             add_flag(toInstructionDecorations(parsed_instruction.getResultId()),
                 intermediate::InstructionDecorations::UNSIGNED_RESULT)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSLessThanEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_SIGNED_LE, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFOrdEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_ORDERED_EQ, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFUnordEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_UNORDERED_EQ, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFOrdNotEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_ORDERED_NEQ, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFUnordNotEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_UNORDERED_NEQ, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFOrdLessThan:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_ORDERED_LT, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFUnordLessThan:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_UNORDERED_LT, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFOrdGreaterThan:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_ORDERED_GT, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFUnordGreaterThan:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_UNORDERED_GT, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFOrdLessThanEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_ORDERED_LE, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFUnordLessThanEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_UNORDERED_LE, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFOrdGreaterThanEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_ORDERED_GE, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpFUnordGreaterThanEqual:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVComparison(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVComparison>(parsed_instruction.getResultId(), *currentMethod,
             intermediate::COMP_UNORDERED_GE, parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpShiftRightLogical:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "shr",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "shr", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpShiftRightArithmetic:
         // Instead of directly mapping to "asr" operation, we let the intrinsics lowering handle the shift to apply
         // sign-extension for non-32-bit types.
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "ashr",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "ashr", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpShiftLeftLogical:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "shl",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "shl", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpBitwiseOr:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(
-            new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "or", parsed_instruction.getTypeId(),
-                parsed_instruction.parseArguments(3), toInstructionDecorations(parsed_instruction.getResultId())));
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "or", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+            toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpBitwiseXor:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "xor",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "xor", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpBitwiseAnd:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "and",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "and", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpNot:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVInstruction(parsed_instruction.getResultId(), *currentMethod, "not",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(parsed_instruction.getResultId(), *currentMethod,
+            "not", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3),
             toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpBitCount:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "vc4cl_popcount",
-            parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3)));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "vc4cl_popcount", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpControlBarrier:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation of "barrier()" is reverted back
         // to this OpControlBarrier, create a call to the intrinsified version of the "barrier()" function
-        instructions.emplace_back(new SPIRVCallSite(*currentMethod, "vc4cl_barrier", {parsed_instruction.getWord(1)}));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(
+            *currentMethod, "vc4cl_barrier", std::vector<uint32_t>{parsed_instruction.getWord(1)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpMemoryBarrier:
-        instructions.emplace_back(
-            new SPIRVMemoryBarrier(*currentMethod, parsed_instruction.getWord(1), parsed_instruction.getWord(2)));
+        instructions.emplace_back(std::make_unique<SPIRVMemoryBarrier>(
+            *currentMethod, parsed_instruction.getWord(1), parsed_instruction.getWord(2)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAtomicLoad:
         // OpenCL 2.x feature
@@ -1662,8 +1664,9 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
         // opcode, create a function call to the function definition
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "atomic_xchg",
-            parsed_instruction.getTypeId(), {parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "atomic_xchg", parsed_instruction.getTypeId(),
+            std::vector<uint32_t>{parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAtomicCompareExchangeWeak:
         // OpenCL 2.x feature
@@ -1672,86 +1675,96 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
         // opcode, create a function call to the function definition
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "atomic_cmpxchg",
-            parsed_instruction.getTypeId(),
-            {parsed_instruction.getWord(3), parsed_instruction.getWord(8), parsed_instruction.getWord(7)}));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "atomic_cmpxchg", parsed_instruction.getTypeId(),
+            std::vector<uint32_t>{
+                parsed_instruction.getWord(3), parsed_instruction.getWord(8), parsed_instruction.getWord(7)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAtomicIIncrement:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
         // opcode, create a function call to the function definition
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "atomic_inc",
-            parsed_instruction.getTypeId(), {parsed_instruction.getWord(3)}));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "atomic_inc", parsed_instruction.getTypeId(), std::vector<uint32_t>{parsed_instruction.getWord(3)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAtomicIDecrement:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
         // opcode, create a function call to the function definition
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "atomic_dec",
-            parsed_instruction.getTypeId(), {parsed_instruction.getWord(3)}));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "atomic_dec", parsed_instruction.getTypeId(), std::vector<uint32_t>{parsed_instruction.getWord(3)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAtomicIAdd:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
         // opcode, create a function call to the function definition
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "atomic_add",
-            parsed_instruction.getTypeId(), {parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "atomic_add", parsed_instruction.getTypeId(),
+            std::vector<uint32_t>{parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAtomicISub:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
         // opcode, create a function call to the function definition
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "atomic_sub",
-            parsed_instruction.getTypeId(), {parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "atomic_sub", parsed_instruction.getTypeId(),
+            std::vector<uint32_t>{parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAtomicSMin:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
         // opcode, create a function call to the function definition
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "atomic_min",
-            parsed_instruction.getTypeId(), {parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "atomic_min", parsed_instruction.getTypeId(),
+            std::vector<uint32_t>{parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAtomicUMin:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
         // opcode, create a function call to the function definition
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "atomic_min",
-            parsed_instruction.getTypeId(), {parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "atomic_min", parsed_instruction.getTypeId(),
+            std::vector<uint32_t>{parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAtomicSMax:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
         // opcode, create a function call to the function definition
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "atomic_max",
-            parsed_instruction.getTypeId(), {parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "atomic_max", parsed_instruction.getTypeId(),
+            std::vector<uint32_t>{parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAtomicUMax:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
         // opcode, create a function call to the function definition
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "atomic_max",
-            parsed_instruction.getTypeId(), {parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "atomic_max", parsed_instruction.getTypeId(),
+            std::vector<uint32_t>{parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAtomicAnd:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
         // opcode, create a function call to the function definition
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "atomic_and",
-            parsed_instruction.getTypeId(), {parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "atomic_and", parsed_instruction.getTypeId(),
+            std::vector<uint32_t>{parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAtomicOr:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
         // opcode, create a function call to the function definition
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "atomic_or",
-            parsed_instruction.getTypeId(), {parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "atomic_or", parsed_instruction.getTypeId(),
+            std::vector<uint32_t>{parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAtomicXor:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation is reverted back to the SPIR-V
         // opcode, create a function call to the function definition
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod, "atomic_xor",
-            parsed_instruction.getTypeId(), {parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
+            "atomic_xor", parsed_instruction.getTypeId(),
+            std::vector<uint32_t>{parsed_instruction.getWord(3), parsed_instruction.getWord(6)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpPhi:
     {
@@ -1763,7 +1776,7 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
             sources.emplace_back(args[i], args[i + 1]);
         }
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVPhi(
+        instructions.emplace_back(std::make_unique<SPIRVPhi>(
             parsed_instruction.getResultId(), *currentMethod, parsed_instruction.getTypeId(), std::move(sources)));
         return ParseResultCode::SUCCESS;
     }
@@ -1775,27 +1788,27 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         return UNSUPPORTED_INSTRUCTION("OpSelectionMerge");
     case spv::Op::OpLabel:
         typeMappings.emplace(parsed_instruction.getResultId(), TYPE_LABEL);
-        instructions.emplace_back(new SPIRVLabel(parsed_instruction.getResultId(), *currentMethod));
+        instructions.emplace_back(std::make_unique<SPIRVLabel>(parsed_instruction.getResultId(), *currentMethod));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpBranch:
-        instructions.emplace_back(new SPIRVBranch(*currentMethod, parsed_instruction.getWord(1)));
+        instructions.emplace_back(std::make_unique<SPIRVBranch>(*currentMethod, parsed_instruction.getWord(1)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpBranchConditional:
-        instructions.emplace_back(new SPIRVBranch(*currentMethod, parsed_instruction.getWord(1),
+        instructions.emplace_back(std::make_unique<SPIRVBranch>(*currentMethod, parsed_instruction.getWord(1),
             parsed_instruction.getWord(2), parsed_instruction.getWord(3)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpSwitch:
     {
         std::vector<uint32_t> args = parsed_instruction.parseArguments(3);
-        instructions.emplace_back(new SPIRVSwitch(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVSwitch>(parsed_instruction.getResultId(), *currentMethod,
             parsed_instruction.getWord(1), parsed_instruction.getWord(2), std::move(args)));
         return ParseResultCode::SUCCESS;
     }
     case spv::Op::OpReturn:
-        instructions.emplace_back(new SPIRVReturn(*currentMethod));
+        instructions.emplace_back(std::make_unique<SPIRVReturn>(*currentMethod));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpReturnValue:
-        instructions.emplace_back(new SPIRVReturn(parsed_instruction.getWord(1), *currentMethod));
+        instructions.emplace_back(std::make_unique<SPIRVReturn>(parsed_instruction.getWord(1), *currentMethod));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpUnreachable:
         return ParseResultCode::SUCCESS;
@@ -1803,29 +1816,31 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
     {
         // for temporary variables (e.g. Function-Scope), the size is set via the OpLifetimeStart, since the OpVariable
         // is of type void
-        instructions.emplace_back(new SPIRVLifetimeInstruction(parsed_instruction.getWord(1), *currentMethod,
-            parsed_instruction.getWord(2), false, toInstructionDecorations(parsed_instruction.getResultId())));
+        instructions.emplace_back(
+            std::make_unique<SPIRVLifetimeInstruction>(parsed_instruction.getWord(1), *currentMethod,
+                parsed_instruction.getWord(2), false, toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     }
     case spv::Op::OpLifetimeStop:
-        instructions.emplace_back(new SPIRVLifetimeInstruction(parsed_instruction.getWord(1), *currentMethod,
-            parsed_instruction.getWord(2), true, toInstructionDecorations(parsed_instruction.getResultId())));
+        instructions.emplace_back(
+            std::make_unique<SPIRVLifetimeInstruction>(parsed_instruction.getWord(1), *currentMethod,
+                parsed_instruction.getWord(2), true, toInstructionDecorations(parsed_instruction.getResultId())));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpGroupAsyncCopy:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation of "async_work_group_copy()" is
         // reverted back to this OpGroupAsyncCopy, create a function call to the "async_work_group_copy()" function
         // TODO support for strided version (word 7), map to async_work_group_strided_copy
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
             "async_work_group_copy", parsed_instruction.getTypeId(),
-            {parsed_instruction.getWord(4), parsed_instruction.getWord(5), parsed_instruction.getWord(6),
-                parsed_instruction.getWord(8)}));
+            std::vector<uint32_t>{parsed_instruction.getWord(4), parsed_instruction.getWord(5),
+                parsed_instruction.getWord(6), parsed_instruction.getWord(8)}));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpGroupWaitEvents:
         // for usage with SPIRV-LLVM translator, where the VC4CL std-lib implementation of "wait_group_events()" is
         // reverted back to this OpGroupWaitEvents, create a function call to the "wait_group_events()" function
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
-        instructions.emplace_back(new SPIRVCallSite(parsed_instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(parsed_instruction.getResultId(), *currentMethod,
             "wait_group_events", parsed_instruction.getTypeId(), parsed_instruction.parseArguments(2)));
         return ParseResultCode::SUCCESS;
     case spv::Op::OpAtomicFlagTestAndSet:
@@ -1852,14 +1867,14 @@ ParseResultCode SPIRVParserBase::consumeOpenCLInstruction(const ParsedInstructio
     localTypes[instruction.getResultId()] = instruction.getTypeId();
     if(instruction.getWord(4) == OpenCLLIB::Entrypoints::Shuffle2)
     {
-        instructions.emplace_back(new SPIRVShuffle(instruction.getResultId(), *currentMethod, instruction.getTypeId(),
-            instruction.getWord(5), instruction.getWord(6), instruction.getWord(7)));
+        instructions.emplace_back(std::make_unique<SPIRVShuffle>(instruction.getResultId(), *currentMethod,
+            instruction.getTypeId(), instruction.getWord(5), instruction.getWord(6), instruction.getWord(7)));
         return ParseResultCode::SUCCESS;
     }
     if(instruction.getWord(4) == OpenCLLIB::Entrypoints::Shuffle)
     {
-        instructions.emplace_back(new SPIRVShuffle(instruction.getResultId(), *currentMethod, instruction.getTypeId(),
-            instruction.getWord(5), UNDEFINED_ID, instruction.getWord(6)));
+        instructions.emplace_back(std::make_unique<SPIRVShuffle>(instruction.getResultId(), *currentMethod,
+            instruction.getTypeId(), instruction.getWord(5), UNDEFINED_ID, instruction.getWord(6)));
         return ParseResultCode::SUCCESS;
     }
     auto resultTypeIt = typeMappings.find(instruction.getTypeId());
@@ -1868,24 +1883,25 @@ ParseResultCode SPIRVParserBase::consumeOpenCLInstruction(const ParsedInstructio
         resultTypeIt != typeMappings.end() && resultTypeIt->second.getScalarBitCount() == 32)
     {
         // map directly to opcode to avoid fmax()/max() function naming issues
-        instructions.emplace_back(
-            new SPIRVInstruction(instruction.getResultId(), *currentMethod, "fmax", instruction.getTypeId(),
-                instruction.parseArguments(5), toInstructionDecorations(instruction.getResultId())));
+        // FIXME this is wrong, since fmax/fmin opcodes do not handle NaN correctly
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(instruction.getResultId(), *currentMethod, "fmax",
+            instruction.getTypeId(), instruction.parseArguments(5),
+            toInstructionDecorations(instruction.getResultId())));
     }
     else if((instruction.getWord(4) == OpenCLLIB::Entrypoints::Fmin ||
                 instruction.getWord(4) == OpenCLLIB::Entrypoints::FMin_common) &&
         resultTypeIt != typeMappings.end() && resultTypeIt->second.getScalarBitCount() == 32)
     {
         // map directly to opcode to avoid fmin()/min() function naming issues
-        instructions.emplace_back(
-            new SPIRVInstruction(instruction.getResultId(), *currentMethod, "fmin", instruction.getTypeId(),
-                instruction.parseArguments(5), toInstructionDecorations(instruction.getResultId())));
+        instructions.emplace_back(std::make_unique<SPIRVInstruction>(instruction.getResultId(), *currentMethod, "fmin",
+            instruction.getTypeId(), instruction.parseArguments(5),
+            toInstructionDecorations(instruction.getResultId())));
     }
     else
     {
         // the OpenCL built-in operations are not supported directly, but there might be a function definition for them
         // here, we simply map them to function calls and resolve the possible matching definitions later
-        instructions.emplace_back(new SPIRVCallSite(instruction.getResultId(), *currentMethod,
+        instructions.emplace_back(std::make_unique<SPIRVCallSite>(instruction.getResultId(), *currentMethod,
             getOpenCLMethodName(instruction.getWord(4)), instruction.getTypeId(), instruction.parseArguments(5)));
     }
     return ParseResultCode::SUCCESS;

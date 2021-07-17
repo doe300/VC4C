@@ -284,7 +284,7 @@ static void selectInstructions(analysis::DependencyGraph& graph, BasicBlock& blo
             !(it.get<intermediate::Nop>() && !it->hasSideEffects() &&
                 it.get<const intermediate::Nop>()->type != intermediate::DelayType::THREAD_END))
             // remove all non side-effect NOPs
-            openNodes.emplace(it.release());
+            openNodes.emplace(it.release().release());
         it.safeErase();
     }
 
@@ -297,11 +297,11 @@ static void selectInstructions(analysis::DependencyGraph& graph, BasicBlock& blo
             // no instruction could be scheduled not violating the fixed latency, insert NOPs
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Failed to schedule an instruction, falling back to inserting NOP" << logging::endl);
-            block.walkEnd().emplace(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER));
+            block.walkEnd().emplace(std::make_unique<intermediate::Nop>(intermediate::DelayType::WAIT_REGISTER));
         }
         else
         {
-            block.walkEnd().emplace(*inst);
+            block.walkEnd().emplace(std::unique_ptr<intermediate::IntermediateInstruction>{*inst});
             openNodes.erase(inst);
         }
     }

@@ -538,9 +538,8 @@ static void fixInitialValueAndStep(Method& method, ControlFlowLoop& loop, Induct
         (initialValueWalker = findWalker(loop.findPredecessor(), move)))
     {
         // more general case: initial value is a literal and step is +1
-        initialValueWalker->reset(
-            (new intermediate::Operation(OP_ADD, move->getOutput().value(), move->getSource(), ELEMENT_NUMBER_REGISTER))
-                ->copyExtrasFrom(move));
+        initialValueWalker->reset(intermediate::createWithExtras<intermediate::Operation>(
+            *move, OP_ADD, move->getOutput().value(), move->getSource(), ELEMENT_NUMBER_REGISTER));
         initialValueWalker.value()->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
         inductionVariable.initialAssignment = initialValueWalker->get();
         CPPLOG_LAZY(logging::Level::DEBUG,
@@ -550,10 +549,9 @@ static void fixInitialValueAndStep(Method& method, ControlFlowLoop& loop, Induct
         (initialValueWalker = findWalker(loop.findPredecessor(), inductionVariable.initialAssignment)))
     {
         // more general case: initial value is some constant and step is +1
-        initialValueWalker->reset(
-            (new intermediate::Operation(OP_ADD, inductionVariable.initialAssignment->getOutput().value(),
-                 *precalculatedInitialValue, ELEMENT_NUMBER_REGISTER))
-                ->copyExtrasFrom(inductionVariable.initialAssignment));
+        initialValueWalker->reset(intermediate::createWithExtras<intermediate::Operation>(
+            *inductionVariable.initialAssignment, OP_ADD, inductionVariable.initialAssignment->getOutput().value(),
+            *precalculatedInitialValue, ELEMENT_NUMBER_REGISTER));
         initialValueWalker.value()->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
         inductionVariable.initialAssignment = initialValueWalker->get();
         CPPLOG_LAZY(logging::Level::DEBUG,
@@ -573,9 +571,8 @@ static void fixInitialValueAndStep(Method& method, ControlFlowLoop& loop, Induct
             source = tmp;
         }
         initialValueWalker->reset(
-            (new intermediate::Operation(
-                 OP_ADD, inductionVariable.initialAssignment->getOutput().value(), source, ELEMENT_NUMBER_REGISTER))
-                ->copyExtrasFrom(inductionVariable.initialAssignment));
+            intermediate::createWithExtras<intermediate::Operation>(*inductionVariable.initialAssignment, OP_ADD,
+                inductionVariable.initialAssignment->getOutput().value(), source, ELEMENT_NUMBER_REGISTER));
         (*initialValueWalker)->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
         inductionVariable.initialAssignment = initialValueWalker->get();
         CPPLOG_LAZY(logging::Level::DEBUG,
@@ -660,9 +657,7 @@ static unsigned fixRepetitionBranch(Method& method, ControlFlowLoop& loop, Induc
              * for the highest used element or for the 0th element.
              */
             auto tmp = method.addNewLocal(mask.type, "%cond_mask");
-            it.emplace(new LoadImmediate(tmp, 0xFFFE, LoadType::PER_ELEMENT_UNSIGNED));
-            it->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
-            it.nextInBlock();
+            assign(it, tmp) = (load(0xFFFE, LoadType::PER_ELEMENT_UNSIGNED), InstructionDecorations::AUTO_VECTORIZED);
             if(inductionVariable.conditionCheckedBeforeStep)
             {
                 /*
@@ -691,10 +686,8 @@ static unsigned fixRepetitionBranch(Method& method, ControlFlowLoop& loop, Induc
             // removes the need to rewrite the actual repetition branch, since we retain the (zero/not-zero) flag
             // behavior.
             // TODO is this correct in all cases?
-            it.emplace(
-                new LoadImmediate(mask, 0xFFFF ^ (1u << (vectorizationFactor - 1)), LoadType::PER_ELEMENT_UNSIGNED));
-            it->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
-            it.nextInBlock();
+            assign(it, mask) = (load(0xFFFF ^ (1u << (vectorizationFactor - 1)), LoadType::PER_ELEMENT_UNSIGNED),
+                InstructionDecorations::AUTO_VECTORIZED);
         }
         it->replaceValue(ELEMENT_NUMBER_REGISTER, mask, LocalUse::Type::READER);
         it->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
@@ -888,7 +881,8 @@ static unsigned fixLCSSAElementMask(Method& method, ControlFlowLoop& loop,
 
             // The instruction itself is conditional on the branch condition. Since we want to rewrite the condition of
             // the instruction, we need to move it before the current set-flags instruction
-            auto insertIt = lastSettingIt->emplace(inLoopIt->release());
+            lastSettingIt->emplace(inLoopIt->release());
+            auto insertIt = *lastSettingIt;
             inLoopIt->erase();
 
             auto cond = assignNop(insertIt) = (as_signed{ELEMENT_NUMBER_REGISTER} < as_signed{dynamicElementCount},

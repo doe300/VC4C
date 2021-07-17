@@ -8,6 +8,7 @@
 #define HELPER_H
 
 #include <functional>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -235,6 +236,28 @@ namespace vc4c
     inline void ignoreReturnValue(T&& val) noexcept
     {
         (void) val;
+    }
+
+    template <typename Return, typename Argument>
+    std::unique_ptr<Return> staticPointerCast(std::unique_ptr<Argument>&& arg)
+    {
+        if(auto val = dynamic_cast<Return*>(arg.get()))
+        {
+            arg.release();
+            return std::unique_ptr<Return>{val};
+        }
+        throw CompilationError(CompilationStep::GENERAL, "Failed to cast unique_ptr to expected type!");
+    }
+
+    template <typename Return, typename Argument>
+    std::unique_ptr<Return> dynamicPointerCast(std::unique_ptr<Argument>& arg)
+    {
+        if(auto val = dynamic_cast<Return*>(arg.get()))
+        {
+            arg.release();
+            return std::unique_ptr<Return>{val};
+        }
+        return nullptr;
     }
 
     template <typename Signature>

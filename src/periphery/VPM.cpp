@@ -315,7 +315,7 @@ InstructionWalker periphery::insertReadDMA(
     if(useMutex)
     {
         // acquire mutex
-        it.emplace(new MutexLock(MutexAccess::LOCK));
+        it.emplace(std::make_unique<MutexLock>(MutexAccess::LOCK));
         it.nextInBlock();
     }
 
@@ -326,7 +326,7 @@ InstructionWalker periphery::insertReadDMA(
     if(useMutex)
     {
         // free mutex
-        it.emplace(new MutexLock(MutexAccess::RELEASE));
+        it.emplace(std::make_unique<MutexLock>(MutexAccess::RELEASE));
         it.nextInBlock();
     }
     return it;
@@ -338,7 +338,7 @@ InstructionWalker periphery::insertWriteDMA(
     if(useMutex)
     {
         // acquire mutex
-        it.emplace(new MutexLock(MutexAccess::LOCK));
+        it.emplace(std::make_unique<MutexLock>(MutexAccess::LOCK));
         it.nextInBlock();
     }
 
@@ -349,7 +349,7 @@ InstructionWalker periphery::insertWriteDMA(
     if(useMutex)
     {
         // free mutex
-        it.emplace(new MutexLock(MutexAccess::RELEASE));
+        it.emplace(std::make_unique<MutexLock>(MutexAccess::RELEASE));
         it.nextInBlock();
     }
     return it;
@@ -452,13 +452,15 @@ NODISCARD InstructionWalker VPM::insertReadVPM(
 {
     if(auto data = Local::getLocalData<MultiRegisterData>(dest.checkLocal()))
     {
-        it.emplace(new CacheAccessInstruction(MemoryOperation::READ, data->lower->createReference(), cacheEntry));
+        it.emplace(std::make_unique<CacheAccessInstruction>(
+            MemoryOperation::READ, data->lower->createReference(), cacheEntry));
         it.nextInBlock();
-        it.emplace(new CacheAccessInstruction(MemoryOperation::READ, data->upper->createReference(), cacheEntry));
-        it.get<CacheAccessInstruction>()->upperWord = true;
+        it.emplace(std::make_unique<CacheAccessInstruction>(
+                       MemoryOperation::READ, data->upper->createReference(), cacheEntry))
+            .upperWord = true;
     }
     else
-        it.emplace(new CacheAccessInstruction(MemoryOperation::READ, dest, cacheEntry));
+        it.emplace(std::make_unique<CacheAccessInstruction>(MemoryOperation::READ, dest, cacheEntry));
     it.nextInBlock();
     return it;
 }
@@ -472,13 +474,15 @@ NODISCARD InstructionWalker VPM::insertWriteVPM(
         convertedSource = assign(it, src.type) = src;
     if(auto data = Local::getLocalData<MultiRegisterData>(convertedSource.checkLocal()))
     {
-        it.emplace(new CacheAccessInstruction(MemoryOperation::WRITE, data->lower->createReference(), cacheEntry));
+        it.emplace(std::make_unique<CacheAccessInstruction>(
+            MemoryOperation::WRITE, data->lower->createReference(), cacheEntry));
         it.nextInBlock();
-        it.emplace(new CacheAccessInstruction(MemoryOperation::WRITE, data->upper->createReference(), cacheEntry));
-        it.get<CacheAccessInstruction>()->upperWord = true;
+        it.emplace(std::make_unique<CacheAccessInstruction>(
+                       MemoryOperation::WRITE, data->upper->createReference(), cacheEntry))
+            .upperWord = true;
     }
     else
-        it.emplace(new CacheAccessInstruction(MemoryOperation::WRITE, convertedSource, cacheEntry));
+        it.emplace(std::make_unique<CacheAccessInstruction>(MemoryOperation::WRITE, convertedSource, cacheEntry));
     it.nextInBlock();
     return it;
 }
@@ -486,7 +490,7 @@ NODISCARD InstructionWalker VPM::insertWriteVPM(
 NODISCARD InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
     const std::shared_ptr<VPMCacheEntry>& cacheEntry, const Value& numEntries)
 {
-    it.emplace(new RAMAccessInstruction(MemoryOperation::READ, memoryAddress, cacheEntry, numEntries));
+    it.emplace(std::make_unique<RAMAccessInstruction>(MemoryOperation::READ, memoryAddress, cacheEntry, numEntries));
     it.nextInBlock();
     return it;
 }
@@ -494,7 +498,7 @@ NODISCARD InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker
 NODISCARD InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
     const std::shared_ptr<VPMCacheEntry>& cacheEntry, const Value& numEntries)
 {
-    it.emplace(new RAMAccessInstruction(MemoryOperation::WRITE, memoryAddress, cacheEntry, numEntries));
+    it.emplace(std::make_unique<RAMAccessInstruction>(MemoryOperation::WRITE, memoryAddress, cacheEntry, numEntries));
     it.nextInBlock();
     return it;
 }
@@ -544,9 +548,7 @@ static NODISCARD InstructionWalker calculateElementOffsetInVPM(Method& method, I
         auto inMemorySize = assign(it, TYPE_INT8, "%memory_size") =
             vectorWidth * Literal(TYPE_INT32.getScalarBitCount() / 8);
         // NOTE: This only works for in-memory-size is a power of 2!
-        auto logMemorySize = method.addNewLocal(TYPE_INT8, "%memory_size");
-        it.emplace(new Operation(OP_CLZ, logMemorySize, inMemorySize));
-        it.nextInBlock();
+        auto logMemorySize = assign(it, TYPE_INT8, "%memory_size") = clz(inMemorySize);
         logMemorySize = assign(it, TYPE_INT8, "%memory_size") = (31_val - logMemorySize);
         elementOffset = assign(it, TYPE_INT16, "%vpm_element_offset") = as_unsigned{inAreaOffset} >> logMemorySize;
     }
@@ -555,9 +557,7 @@ static NODISCARD InstructionWalker calculateElementOffsetInVPM(Method& method, I
         auto inMemorySize = assign(it, TYPE_INT8, "%memory_size") =
             vectorWidth * Literal(scalarType.getScalarBitCount() / 8 + (scalarType.getScalarBitCount() % 8 != 0));
         // NOTE: This only works for in-memory-size is a power of 2!
-        auto logMemorySize = method.addNewLocal(TYPE_INT8, "%memory_size");
-        it.emplace(new Operation(OP_CLZ, logMemorySize, inMemorySize));
-        it.nextInBlock();
+        auto logMemorySize = assign(it, TYPE_INT8, "%memory_size") = clz(inMemorySize);
         logMemorySize = assign(it, TYPE_INT8, "%memory_size") = (31_val - logMemorySize);
         elementOffset = assign(it, TYPE_INT16, "%vpm_element_offset") = as_unsigned{inAreaOffset} >> logMemorySize;
     }
@@ -1249,7 +1249,7 @@ InstructionWalker VPM::insertLockMutex(InstructionWalker it, bool useMutex) cons
     if(useMutex)
     {
         // acquire mutex
-        it.emplace(new MutexLock(MutexAccess::LOCK));
+        it.emplace(std::make_unique<MutexLock>(MutexAccess::LOCK));
         it.nextInBlock();
     }
     return it;
@@ -1260,7 +1260,7 @@ InstructionWalker VPM::insertUnlockMutex(InstructionWalker it, bool useMutex) co
     if(useMutex)
     {
         // free mutex
-        it.emplace(new MutexLock(MutexAccess::RELEASE));
+        it.emplace(std::make_unique<MutexLock>(MutexAccess::RELEASE));
         it.nextInBlock();
     }
     return it;
@@ -1354,11 +1354,8 @@ NODISCARD static InstructionWalker lowerReadVPM(
     }
     Value outputValue = VPM_IO_REGISTER;
     if(internalOffset == INT_ZERO)
-    {
-        it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(genericSetup.value)));
-        it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
-        it.nextInBlock();
-    }
+        assign(it, VPM_IN_SETUP_REGISTER) =
+            (load(Literal(genericSetup.value)), InstructionDecorations::VPM_READ_CONFIGURATION);
     else if(isUnalignedMemoryVPMAccess(internalOffset, dataType))
     {
         // TODO make sure this block is only used where really really required!
@@ -1450,11 +1447,8 @@ NODISCARD static InstructionWalker lowerWriteVPM(
             genericSetup.genericSetup.setWordRow(genericSetup.genericSetup.getWordRow() + 1u);
     }
     if(internalOffset == INT_ZERO)
-    {
-        it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(genericSetup.value)));
-        it->addDecorations(InstructionDecorations::VPM_WRITE_CONFIGURATION);
-        it.nextInBlock();
-    }
+        assign(it, VPM_OUT_SETUP_REGISTER) =
+            (load(Literal(genericSetup.value)), InstructionDecorations::VPM_WRITE_CONFIGURATION);
     else if(isUnalignedMemoryVPMAccess(internalOffset, dataType))
     {
         // TODO make sure this block is only used where really really required!
@@ -1585,9 +1579,8 @@ NODISCARD static InstructionWalker lowerReadRAM(
         // TODO if we have dynamic vector size, we can't do this, since we cannot statically determine the stride!
         strideSetup.strideSetup = VPRStrideSetup(static_cast<uint16_t>(cacheEntry.getVectorType().getInMemoryWidth()));
     }
-    it.emplace(new LoadImmediate(VPM_IN_SETUP_REGISTER, Literal(strideSetup.value)));
-    it->addDecorations(InstructionDecorations::VPM_READ_CONFIGURATION);
-    it.nextInBlock();
+    assign(it, VPM_IN_SETUP_REGISTER) =
+        (load(Literal(strideSetup.value)), InstructionDecorations::VPM_READ_CONFIGURATION);
 
     //"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or
     // VCD_ST_ADDR register" (p. 56)
@@ -1640,9 +1633,8 @@ NODISCARD static InstructionWalker lowerWriteRAM(
 
     // set stride to zero
     const VPWSetup strideSetup(VPWStrideSetup(0));
-    it.emplace(new LoadImmediate(VPM_OUT_SETUP_REGISTER, Literal(strideSetup.value)));
-    it->addDecorations(InstructionDecorations::VPM_WRITE_CONFIGURATION);
-    it.nextInBlock();
+    assign(it, VPM_OUT_SETUP_REGISTER) =
+        (load(Literal(strideSetup.value)), InstructionDecorations::VPM_WRITE_CONFIGURATION);
 
     //"the actual DMA load or store operation is initiated by writing the memory address to the VCD_LD_ADDR or
     // VCD_ST_ADDR register" (p. 56)

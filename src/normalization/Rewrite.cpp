@@ -56,8 +56,7 @@ static void resolveRegisterConflicts(Method& method, InstructionWalker it, FastS
     auto tmp = method.addNewLocal(fixedArg.type);
     auto cond = (check(it.get<intermediate::ExtendedInstruction>()) & &intermediate::ExtendedInstruction::getCondition)
                     .value_or(COND_ALWAYS);
-    it.emplace(new intermediate::MoveOperation(tmp, fixedArg, cond));
-    it.nextInBlock();
+    assign(it, tmp) = (fixedArg, cond);
     it->replaceValue(fixedArg, tmp, LocalUse::Type::READER);
 }
 
@@ -96,9 +95,9 @@ void normalization::extendBranches(const Module& module, Method& method, const C
             // go to next instruction
             it.nextInBlock();
             // insert 3 NOPs before
-            it.emplace(new intermediate::Nop(intermediate::DelayType::BRANCH_DELAY));
-            it.emplace(new intermediate::Nop(intermediate::DelayType::BRANCH_DELAY));
-            it.emplace(new intermediate::Nop(intermediate::DelayType::BRANCH_DELAY));
+            it.emplace(std::make_unique<intermediate::Nop>(intermediate::DelayType::BRANCH_DELAY));
+            it.emplace(std::make_unique<intermediate::Nop>(intermediate::DelayType::BRANCH_DELAY));
+            it.emplace(std::make_unique<intermediate::Nop>(intermediate::DelayType::BRANCH_DELAY));
         }
         it.nextInMethod();
     }
@@ -196,13 +195,10 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
         // (conditional) branch jumping to this basic block.
 
         if(jumpCondition != COND_ALWAYS && !condition.isUndefined())
-        {
             // Since the correct flags for the branch might not be set, we need to set them here.
             // Also, don't "or" with element number, since we might need to set the flags for more than the first
             // SIMD-element, this way, we set it for all
-            blockIt.emplace(new intermediate::MoveOperation(NOP_REGISTER, condition, COND_ALWAYS, SetFlag::SET_FLAGS));
-            blockIt.nextInBlock();
-        }
+            assignNop(blockIt) = (condition, SetFlag::SET_FLAGS);
         if(auto literalParts = is64BitLiteralLoad(pair.second.checkLocal()))
         {
             // for phi-nodes moving 64-bit literal values, the source constant is not directly used as the argument for
@@ -217,21 +213,21 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
             Value upDest = UNDEFINED_VALUE;
             std::tie(lowDest, upDest) = normalization::getLowerAndUpperWords(node.getOutput().value());
 
-            blockIt.emplace(
-                (new intermediate::LoadImmediate(lowDest, literalParts->first, jumpCondition))
-                    ->copyExtrasFrom(&node)
-                    ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
+            blockIt
+                .emplace(intermediate::createWithExtras<intermediate::LoadImmediate>(
+                    node, lowDest, literalParts->first, jumpCondition))
+                .addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE));
             blockIt.nextInBlock();
-            blockIt.emplace(
-                (new intermediate::LoadImmediate(upDest, literalParts->second, jumpCondition))
-                    ->copyExtrasFrom(&node)
-                    ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
+            blockIt
+                .emplace(intermediate::createWithExtras<intermediate::LoadImmediate>(
+                    node, upDest, literalParts->second, jumpCondition))
+                .addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE));
         }
         else
-            blockIt.emplace(
-                (new intermediate::MoveOperation(node.getOutput().value(), pair.second, jumpCondition))
-                    ->copyExtrasFrom(&node)
-                    ->addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE)));
+            blockIt
+                .emplace(intermediate::createWithExtras<intermediate::MoveOperation>(
+                    node, node.getOutput().value(), pair.second, jumpCondition))
+                .addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE));
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Inserting into end of basic-block '" << pair.first->name << "': " << blockIt->to_string()
                 << logging::endl);
@@ -324,7 +320,7 @@ void normalization::moveRotationSourcesToAccumulators(
                         log << "Moving source of vector-rotation to temporary for: " << it->to_string()
                             << logging::endl);
                     const Value tmp = method.addNewLocal(loc->type, "%vector_rotation");
-                    mapper.emplace(new intermediate::MoveOperation(tmp, loc->createReference()));
+                    mapper.emplace(std::make_unique<intermediate::MoveOperation>(tmp, loc->createReference()));
                     if(mapper.nextInBlock() == it)
                         /*
                          * I.e. if the vector rotation is the first (non-label) instruction in a block, there are no
@@ -334,7 +330,7 @@ void normalization::moveRotationSourcesToAccumulators(
                          * writes to the accumulator that is being rotated."
                          * - Broadcom specification, page 37
                          */
-                        mapper.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER));
+                        mapper.emplace(std::make_unique<intermediate::Nop>(intermediate::DelayType::WAIT_REGISTER));
                     it->replaceLocal(loc, tmp.local(), LocalUse::Type::READER);
                 }
             }
@@ -344,10 +340,8 @@ void normalization::moveRotationSourcesToAccumulators(
                 // e.g. inserting into vector from reading VPM
                 // insert temporary local to be read into, rotate local and NOP, since it is required
                 auto tmp = method.addNewLocal(arg.type, "%vector_rotation");
-                it.emplace(new intermediate::MoveOperation(tmp, arg));
-                it.nextInBlock();
-                it.emplace(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER));
-                it.nextInBlock();
+                assign(it, tmp) = arg;
+                nop(it, intermediate::DelayType::WAIT_REGISTER);
                 it->replaceValue(arg, tmp, LocalUse::Type::READER);
             }
         }

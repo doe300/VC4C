@@ -71,7 +71,7 @@ void TestPatternMatching::testInstructionMatch()
     // successful test - match load
     {
         auto out = m.addNewLocal(TYPE_INT32);
-        it.emplace(new intermediate::LoadImmediate(out, 42_lit));
+        it.emplace(std::make_unique<intermediate::LoadImmediate>(out, 42_lit));
 
         Value realOut = UNDEFINED_VALUE;
         Literal realConstant = UNDEFINED_LITERAL;
@@ -115,7 +115,7 @@ void TestPatternMatching::testInstructionMatch()
     // successful test - match rotation
     {
         auto out = m.addNewLocal(TYPE_INT32);
-        it.emplace(new intermediate::VectorRotation(
+        it.emplace(std::make_unique<intermediate::VectorRotation>(
             out, 17_val, SmallImmediate::fromRotationOffset(3), intermediate::RotationType::FULL));
 
         Value arg = UNDEFINED_VALUE;
@@ -131,8 +131,8 @@ void TestPatternMatching::testInstructionMatch()
     // successful test - capture rotation
     {
         auto out = m.addNewLocal(TYPE_INT32);
-        it.emplace(
-            new intermediate::VectorRotation(out, 42_val, VECTOR_ROTATE_R5, intermediate::RotationType::PER_QUAD));
+        it.emplace(std::make_unique<intermediate::VectorRotation>(
+            out, 42_val, VECTOR_ROTATE_R5, intermediate::RotationType::PER_QUAD));
 
         Value arg = UNDEFINED_VALUE;
         Value offset = UNDEFINED_VALUE;
@@ -195,7 +195,7 @@ void TestPatternMatching::testInstructionMatch()
 
     // failing test - unsupported operation
     {
-        it.emplace(new intermediate::SemaphoreAdjustment(Semaphore::BARRIER_WORK_ITEM_10, false));
+        it.emplace(std::make_unique<intermediate::SemaphoreAdjustment>(Semaphore::BARRIER_WORK_ITEM_10, false));
 
         Value realOut = UNDEFINED_VALUE;
         OpCode realCode = OP_NOP;

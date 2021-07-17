@@ -93,15 +93,14 @@ static void generateStopSegment(Method& method)
 {
     // write interrupt for host
     // write QPU number finished (value must be NON-NULL, so we invert it -> the first 28 bits are always 1)
-    method.appendToEnd(
-        (new intermediate::Operation(OP_NOT, Value(REG_HOST_INTERRUPT, TYPE_INT8), Value(REG_QPU_NUMBER, TYPE_INT8)))
-            ->addDecorations(InstructionDecorations::IDENTICAL_ELEMENTS));
-    auto nop = new intermediate::Nop(intermediate::DelayType::THREAD_END);
+    method
+        .appendToEnd(std::make_unique<intermediate::Operation>(
+            OP_NOT, Value(REG_HOST_INTERRUPT, TYPE_INT8), Value(REG_QPU_NUMBER, TYPE_INT8)))
+        .addDecorations(InstructionDecorations::IDENTICAL_ELEMENTS);
     // set signals to stop thread/program
-    nop->setSignaling(SIGNAL_END_PROGRAM);
-    method.appendToEnd(nop);
-    method.appendToEnd(new intermediate::Nop(intermediate::DelayType::THREAD_END));
-    method.appendToEnd(new intermediate::Nop(intermediate::DelayType::THREAD_END));
+    method.appendToEnd(std::make_unique<intermediate::Nop>(intermediate::DelayType::THREAD_END, SIGNAL_END_PROGRAM));
+    method.appendToEnd(std::make_unique<intermediate::Nop>(intermediate::DelayType::THREAD_END));
+    method.appendToEnd(std::make_unique<intermediate::Nop>(intermediate::DelayType::THREAD_END));
 }
 
 static const Local* isLocalUsed(Method& method, BuiltinLocal::Type type, bool forceUse = false)
@@ -695,7 +694,7 @@ bool optimizations::reorderBasicBlocks(const Module& module, Method& method, con
                         << node.key->to_string() << "' to '" << fallThroughSuccessor->key->to_string() << '\''
                         << logging::endl);
                 node.key->walkEnd().emplace(
-                    new intermediate::Branch(fallThroughSuccessor->key->getLabel()->getLabel()));
+                    std::make_unique<intermediate::Branch>(fallThroughSuccessor->key->getLabel()->getLabel()));
             }
         }
         else
@@ -964,7 +963,7 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
                         continue;
                     }
 
-                    lastIt.emplace(inst.release());
+                    lastIt.emplace(std::move(inst));
 
                     // 3.) modify all instructions writing non-locals to only write under same condition as the
                     // branch
@@ -1010,7 +1009,7 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
 
         // insert branch to successor block to guarantee we switch into that, independent of the block order
         block.predecessor->key->walkEnd().emplace(
-            new intermediate::Branch(block.successor->key->getLabel()->getLabel()));
+            std::make_unique<intermediate::Branch>(block.successor->key->getLabel()->getLabel()));
 
         changedCode = true;
     }
@@ -1066,7 +1065,7 @@ NODISCARD static InstructionWalker insertAddressResetBlock(
     Method& method, InstructionWalker it, const Value& maxGroupIdX, const Value& maxGroupIdY, const Value& maxGroupIdZ)
 {
     it = method.emplaceLabel(
-        it, new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL, "", "%work_group_repetition").local()));
+        it, std::make_unique<BranchLabel>(*method.addNewLocal(TYPE_LABEL, "", "%work_group_repetition").local()));
 
     // insert after label, not before
     it.nextInBlock();
@@ -1093,7 +1092,7 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Inserting repetition block for: " << id.to_string() << logging::endl);
     it = method.emplaceLabel(it,
-        new intermediate::BranchLabel(
+        std::make_unique<BranchLabel>(
             *method.addNewLocal(TYPE_LABEL, "", "%repeat_" + id.local()->name.substr(1)).local()));
     it->addDecorations(InstructionDecorations::WORK_GROUP_LOOP);
     // insert after label, not before
@@ -1137,8 +1136,8 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     BranchCond branchCond = BRANCH_ALWAYS;
     std::tie(it, branchCond) =
         intermediate::insertBranchCondition(method, it, condValue, 1u << std::max(int8_t{0}, mergedValueIndex));
-    it.emplace((new intermediate::Branch(defaultBlock.getLabel()->getLabel(), branchCond))
-                   ->addDecorations(InstructionDecorations::WORK_GROUP_LOOP));
+    it.emplace(std::make_unique<intermediate::Branch>(defaultBlock.getLabel()->getLabel(), branchCond))
+        .addDecorations(InstructionDecorations::WORK_GROUP_LOOP);
     it.nextInMethod();
     return it;
 }
@@ -1188,7 +1187,7 @@ static bool insertSynchronizationBlock(Method& method, BasicBlock& lastBlock)
     // synchronization block is not inserted. In case the synchronization is not used, the empty block is just optimized
     // away anyway.
     auto it = method.emplaceLabel(lastBlock.walk(),
-        new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL, "", "%work_item_synchronization").local()));
+        std::make_unique<BranchLabel>(*method.addNewLocal(TYPE_LABEL, "", "%work_item_synchronization").local()));
     auto& syncBlock = *it.getBasicBlock();
     intermediate::redirectAllBranches(lastBlock, syncBlock);
 
@@ -1250,7 +1249,7 @@ bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const
 
     // The new head block, the block initializing the group ids
     auto startIt = method.emplaceLabel(method.walkAllInstructions(),
-        new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL, "", "%group_id_initializer").local()));
+        std::make_unique<BranchLabel>(*method.addNewLocal(TYPE_LABEL, "", "%group_id_initializer").local()));
     startIt->addDecorations(InstructionDecorations::WORK_GROUP_LOOP);
     auto& startBlock = *startIt.getBasicBlock();
 

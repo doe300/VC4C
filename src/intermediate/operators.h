@@ -114,21 +114,82 @@ namespace vc4c
                 return std::move(*this);
             }
 
-            NODISCARD intermediate::IntermediateInstruction* toInstruction(const Value& result)
+            NODISCARD std::unique_ptr<intermediate::IntermediateInstruction> toInstruction(const Value& result)
             {
-                intermediate::UnpackingInstruction* res = nullptr;
+                std::unique_ptr<intermediate::UnpackingInstruction> res = nullptr;
                 if(op == OP_V8MIN)
-                    res = new intermediate::MoveOperation(result, arg0);
+                    res = std::make_unique<intermediate::MoveOperation>(result, arg0);
                 else if(op.numOperands == 1)
-                    res = new intermediate::Operation(op, result, arg0);
+                    res = std::make_unique<intermediate::Operation>(op, result, arg0);
                 else
-                    res = new intermediate::Operation(op, result, arg0, arg1.value());
-                return res->setUnpackMode(unpackMode)
-                    ->setPackMode(packMode)
-                    ->setCondition(conditional)
-                    ->setSetFlags(setFlags)
-                    ->setSignaling(signal)
-                    ->addDecorations(decoration);
+                    res = std::make_unique<intermediate::Operation>(op, result, arg0, arg1.value());
+                res->setUnpackMode(unpackMode)
+                    .setPackMode(packMode)
+                    .setCondition(conditional)
+                    .setSetFlags(setFlags)
+                    .setSignaling(signal)
+                    .addDecorations(decoration);
+                return res;
+            }
+        };
+
+        struct LoadWrapper : private NonCopyable
+        {
+            intermediate::LoadType type;
+            Literal value;
+
+            LoadWrapper(Literal value) : type(intermediate::LoadType::REPLICATE_INT32), value(value) {}
+            LoadWrapper(uint32_t mask, intermediate::LoadType type) : type(type), value(mask) {}
+
+            Signaling signal = SIGNAL_NONE;
+            Pack packMode = PACK_NOP;
+            ConditionCode conditional = COND_ALWAYS;
+            SetFlag setFlags = SetFlag::DONT_SET;
+            intermediate::InstructionDecorations decoration = intermediate::InstructionDecorations::NONE;
+
+            NODISCARD LoadWrapper operator,(Signaling sig) &&
+            {
+                signal = sig;
+                return std::move(*this);
+            }
+
+            NODISCARD LoadWrapper operator,(Pack pack) &&
+            {
+                packMode = pack;
+                return std::move(*this);
+            }
+
+            NODISCARD LoadWrapper operator,(ConditionCode cond) &&
+            {
+                conditional = cond;
+                return std::move(*this);
+            }
+
+            NODISCARD LoadWrapper operator,(SetFlag flags) &&
+            {
+                setFlags = flags;
+                return std::move(*this);
+            }
+
+            NODISCARD LoadWrapper operator,(intermediate::InstructionDecorations deco) &&
+            {
+                decoration = add_flag(decoration, deco);
+                return std::move(*this);
+            }
+
+            NODISCARD std::unique_ptr<intermediate::IntermediateInstruction> toInstruction(const Value& result)
+            {
+                std::unique_ptr<intermediate::LoadImmediate> res = nullptr;
+                if(type == intermediate::LoadType::REPLICATE_INT32)
+                    res = std::make_unique<intermediate::LoadImmediate>(result, value);
+                else
+                    res = std::make_unique<intermediate::LoadImmediate>(result, value.unsignedInt(), type);
+                res->setPackMode(packMode)
+                    .setCondition(conditional)
+                    .setSetFlags(setFlags)
+                    .setSignaling(signal)
+                    .addDecorations(decoration);
+                return res;
             }
         };
 
@@ -421,6 +482,31 @@ namespace vc4c
             return OperationWrapper{OP_MUL24, arg1, arg2};
         }
 
+        NODISCARD inline OperationWrapper itof(const Value& arg)
+        {
+            return OperationWrapper{OP_ITOF, arg};
+        }
+
+        NODISCARD inline OperationWrapper ftoi(const Value& arg)
+        {
+            return OperationWrapper{OP_FTOI, arg};
+        }
+
+        NODISCARD inline OperationWrapper clz(const Value& arg)
+        {
+            return OperationWrapper{OP_CLZ, arg};
+        }
+
+        NODISCARD inline LoadWrapper load(Literal value)
+        {
+            return LoadWrapper{value};
+        }
+
+        NODISCARD inline LoadWrapper load(uint32_t mask, intermediate::LoadType type)
+        {
+            return LoadWrapper{mask, type};
+        }
+
         struct AssignmentWrapper : private NonCopyable
         {
             InstructionWalker& it;
@@ -434,15 +520,21 @@ namespace vc4c
                 it.nextInBlock();
             }
 
+            void operator=(LoadWrapper&& op) &&
+            {
+                it.emplace(op.toInstruction(result));
+                it.nextInBlock();
+            }
+
             void operator=(const Value& src) &&
             {
-                it.emplace(new intermediate::MoveOperation(result, src));
+                it.emplace(std::make_unique<intermediate::MoveOperation>(result, src));
                 it.nextInBlock();
             }
 
             void operator=(Value&& src) &&
             {
-                it.emplace(new intermediate::MoveOperation(Value(result), std::move(src)));
+                it.emplace(std::make_unique<intermediate::MoveOperation>(Value(result), std::move(src)));
                 it.nextInBlock();
             }
 
@@ -493,7 +585,7 @@ namespace vc4c
             NODISCARD Value operator=(const Value& src) &&
             {
                 auto result = method.addNewLocal(type, name);
-                it.emplace(new intermediate::MoveOperation(result, src));
+                it.emplace(std::make_unique<intermediate::MoveOperation>(result, src));
                 it.nextInBlock();
                 return result;
             }
@@ -501,7 +593,7 @@ namespace vc4c
             NODISCARD Value operator=(Value&& src) &&
             {
                 auto result = method.addNewLocal(type, name);
-                it.emplace(new intermediate::MoveOperation(Value(result), std::move(src)));
+                it.emplace(std::make_unique<intermediate::MoveOperation>(Value(result), std::move(src)));
                 it.nextInBlock();
                 return result;
             }
@@ -546,7 +638,7 @@ namespace vc4c
          */
         inline void nop(InstructionWalker& it, intermediate::DelayType type, Signaling signal = SIGNAL_NONE)
         {
-            it.emplace((new intermediate::Nop(type))->setSignaling(signal));
+            it.emplace(std::make_unique<intermediate::Nop>(type, signal));
             it.nextInBlock();
         }
 
@@ -679,9 +771,9 @@ namespace vc4c
             // isnan(a) <=> fmaxabs(a, Inf) -> sets carry
             static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
                                          intermediate::InstructionDecorations deco) {
-                it.emplace((new intermediate::Operation(OP_FMAXABS, out, arg0, FLOAT_INF))
-                               ->setSetFlags(SetFlag::SET_FLAGS)
-                               ->addDecorations(deco));
+                it.emplace(std::make_unique<intermediate::Operation>(OP_FMAXABS, out, arg0, FLOAT_INF))
+                    .setSetFlags(SetFlag::SET_FLAGS)
+                    .addDecorations(deco);
                 it.nextInBlock();
             };
             return ComparisonWrapper{COND_CARRY_SET, val.val, UNDEFINED_VALUE, func};
@@ -693,9 +785,10 @@ namespace vc4c
             // isinf(a) || isnan(a) <=> fmaxabs(a, highest-float) -> sets carry
             static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
                                          intermediate::InstructionDecorations deco) {
-                it.emplace((new intermediate::Operation(OP_FMAXABS, out, arg0, Value(Literal(0x7F7FFFFFu), TYPE_FLOAT)))
-                               ->setSetFlags(SetFlag::SET_FLAGS)
-                               ->addDecorations(deco));
+                it.emplace(std::make_unique<intermediate::Operation>(
+                               OP_FMAXABS, out, arg0, Value(Literal(0x7F7FFFFFu), TYPE_FLOAT)))
+                    .setSetFlags(SetFlag::SET_FLAGS)
+                    .addDecorations(deco);
                 it.nextInBlock();
             };
             return ComparisonWrapper{COND_CARRY_SET, val.val, UNDEFINED_VALUE, func};
@@ -740,10 +833,11 @@ namespace vc4c
         {
             static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
                                          intermediate::InstructionDecorations deco) {
-                it.emplace((new intermediate::LoadImmediate(out, arg0.getLiteralValue().value().unsignedInt(),
-                                intermediate::LoadType::PER_ELEMENT_UNSIGNED))
-                               ->setSetFlags(SetFlag::SET_FLAGS)
-                               ->addDecorations(deco));
+                it.emplace(
+                      std::make_unique<intermediate::LoadImmediate>(out, arg0.getLiteralValue().value().unsignedInt(),
+                          intermediate::LoadType::PER_ELEMENT_UNSIGNED))
+                    .setSetFlags(SetFlag::SET_FLAGS)
+                    .addDecorations(deco);
                 it.nextInBlock();
             };
             return ComparisonWrapper{COND_ZERO_CLEAR,

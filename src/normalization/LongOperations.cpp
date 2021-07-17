@@ -247,8 +247,8 @@ static void lowerLongOperation(
     }
     else if(op.op == OP_AND || op.op == OP_OR || op.op == OP_XOR)
     {
-        it.emplace(new intermediate::Operation(op.op, out->lower->createReference(), in0Low, in1Low.value()));
-        it->copyExtrasFrom(&op);
+        it.emplace(intermediate::createWithExtras<intermediate::Operation>(
+            op, op.op, out->lower->createReference(), in0Low, in1Low.value()));
         it.nextInBlock();
         op.setOutput(out->upper->createReference());
         op.setArgument(0, in0Up);
@@ -258,9 +258,7 @@ static void lowerLongOperation(
     else if(op.op == OP_SHR || op.op == OP_ASR)
     {
         auto offsetType = TYPE_INT8.toVectorType(outLocal->type.getVectorWidth());
-        it.emplace((new intermediate::Operation(OP_MIN, NOP_REGISTER, 32_val, in1Low.value()))
-                       ->setSetFlags(SetFlag::SET_FLAGS));
-        it.nextInBlock();
+        assignNop(it) = (min(as_signed{32_val}, as_signed{in1Low.value()}), SetFlag::SET_FLAGS);
         auto cond = COND_CARRY_CLEAR;
         auto zeroCond = COND_ZERO_SET;
         /*
@@ -307,9 +305,7 @@ static void lowerLongOperation(
     else if(op.op == OP_SHL)
     {
         auto offsetType = TYPE_INT8.toVectorType(outLocal->type.getVectorWidth());
-        it.emplace((new intermediate::Operation(OP_MIN, NOP_REGISTER, 32_val, in1Low.value()))
-                       ->setSetFlags(SetFlag::SET_FLAGS));
-        it.nextInBlock();
+        assignNop(it) = (min(as_signed{32_val}, as_signed{in1Low.value()}), SetFlag::SET_FLAGS);
         auto cond = COND_CARRY_CLEAR;
         auto zeroCond = COND_ZERO_SET;
         /*
@@ -371,10 +367,8 @@ static void lowerLongOperation(
         auto upperEqualOrLessLower = assign(it, out->lower->type, "%long_max") = (upperEqualLower, equalCond);
         assign(it, upperEqualOrLessLower) = (in1Low.value(), equalCond.invert());
 
-        it.emplace((new intermediate::Operation(OP_MAX, out->upper->createReference(), in0Up, in1Up.value()))
-                       ->setSetFlags(SetFlag::SET_FLAGS));
-        it.nextInBlock();
-
+        assign(it, out->upper->createReference()) =
+            (max(as_signed{in0Up}, as_signed{in1Up.value()}), SetFlag::SET_FLAGS);
         assign(it, out->lower->createReference()) = (in0Low, COND_CARRY_SET);
 
         op.op = OP_OR;
@@ -419,10 +413,8 @@ static void lowerLongOperation(
         assign(it, upperEqualOrGreaterLower) = (in1Low.value(), equalCond.invert());
 
         // min(a, b) sets carry flag is a > b, so we invert operands to set carry if %a < %b
-        it.emplace((new intermediate::Operation(OP_MIN, out->upper->createReference(), in1Up.value(), in0Up))
-                       ->setSetFlags(SetFlag::SET_FLAGS));
-        it.nextInBlock();
-
+        assign(it, out->upper->createReference()) =
+            (min(as_signed{in1Up.value()}, as_signed{in0Up}), SetFlag::SET_FLAGS);
         assign(it, out->lower->createReference()) = (in0Low, COND_CARRY_SET);
 
         op.op = OP_OR;
@@ -510,9 +502,8 @@ void normalization::lowerLongOperation(
         {
             auto rot = it->getVectorRotation();
             // split into 2 rotations
-            it.emplace(new intermediate::VectorRotation(
-                out->lower->createReference(), src->lower->createReference(), rot->offset, rot->type));
-            it->copyExtrasFrom(move);
+            it.emplace(intermediate::createWithExtras<intermediate::VectorRotation>(
+                *move, out->lower->createReference(), src->lower->createReference(), rot->offset, rot->type));
             it.nextInBlock();
             move->setOutput(out->upper->createReference());
             move->setSource(src->upper->createReference());
@@ -527,8 +518,8 @@ void normalization::lowerLongOperation(
         else if(!move->hasOtherSideEffects(intermediate::SideEffectType::FLAGS) && src)
         {
             // simple copy move -> copy the parts
-            it.emplace(new intermediate::MoveOperation(out->lower->createReference(), src->lower->createReference()));
-            it->copyExtrasFrom(move);
+            it.emplace(intermediate::createWithExtras<intermediate::MoveOperation>(
+                *move, out->lower->createReference(), src->lower->createReference()));
             it.nextInBlock();
             move->setOutput(out->upper->createReference());
             move->setSource(src->upper->createReference());
@@ -623,23 +614,23 @@ void normalization::lowerLongOperation(
         else if(out && src && call->methodName.find("vc4cl_bitcast_long") != std::string::npos)
         {
             // simple copy move -> copy the parts
-            it.emplace(new intermediate::MoveOperation(out->lower->createReference(), src->lower->createReference()));
-            it->copyExtrasFrom(call);
+            it.emplace(intermediate::createWithExtras<intermediate::MoveOperation>(
+                *call, out->lower->createReference(), src->lower->createReference()));
             it.nextInBlock();
-            it.emplace(new intermediate::MoveOperation(out->upper->createReference(), src->upper->createReference()));
-            it->copyExtrasFrom(call);
+            it.emplace(intermediate::createWithExtras<intermediate::MoveOperation>(
+                *call, out->upper->createReference(), src->upper->createReference()));
             it.nextInBlock();
             it.erase();
         }
         else if(out && src && call->methodName.find("vc4cl_bitcast_ulong") != std::string::npos)
         {
             // simple copy move -> copy the parts
-            it.emplace(new intermediate::MoveOperation(out->lower->createReference(), src->lower->createReference()));
-            it->copyExtrasFrom(call);
+            it.emplace(intermediate::createWithExtras<intermediate::MoveOperation>(
+                *call, out->lower->createReference(), src->lower->createReference()));
             it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
             it.nextInBlock();
-            it.emplace(new intermediate::MoveOperation(out->upper->createReference(), src->upper->createReference()));
-            it->copyExtrasFrom(call);
+            it.emplace(intermediate::createWithExtras<intermediate::MoveOperation>(
+                *call, out->upper->createReference(), src->upper->createReference()));
             it->addDecorations(intermediate::InstructionDecorations::UNSIGNED_RESULT);
             it.nextInBlock();
             it.erase();

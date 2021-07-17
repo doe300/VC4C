@@ -114,8 +114,7 @@ static NODISCARD InstructionWalker insertCombiningBitcast(
 
     Value destination = method.addNewLocal(dest.type, "%bit_cast");
     // initialize destination with zero so register-allocation finds unconditional assignment
-    it.emplace(new MoveOperation(destination, INT_ZERO));
-    it.nextInBlock();
+    assign(it, destination) = INT_ZERO;
 
     for(unsigned i = 0; i < dest.type.getVectorWidth(); ++i)
     {
@@ -128,7 +127,7 @@ static NODISCARD InstructionWalker insertCombiningBitcast(
         it = insertVectorInsertion(it, method, destination, Value(Literal(i), TYPE_INT8), tmp);
     }
 
-    it.emplace(new MoveOperation(dest, destination));
+    it.emplace(std::make_unique<MoveOperation>(dest, destination));
     return it;
 }
 
@@ -183,8 +182,7 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
 
     const Value destination = method.addNewLocal(dest.type, "%bit_cast");
     // initialize destination with zero so register-allocation finds unconditional assignment
-    it.emplace(new MoveOperation(destination, INT_ZERO));
-    it.nextInBlock();
+    assign(it, destination) = INT_ZERO;
 
     for(unsigned i = 0; i < dest.type.getVectorWidth(); ++i)
     {
@@ -199,7 +197,7 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
         it = insertVectorInsertion(it, method, destination, Value(Literal(i), TYPE_INT8), tmp);
     }
 
-    it.emplace(new MoveOperation(dest, destination));
+    it.emplace(std::make_unique<MoveOperation>(dest, destination));
     return it;
 }
 
@@ -207,16 +205,16 @@ InstructionWalker intermediate::insertBitcast(
     InstructionWalker it, Method& method, const Value& src, const Value& dest, InstructionDecorations deco)
 {
     if(src.isUndefined())
-        it.emplace(new intermediate::MoveOperation(dest, UNDEFINED_VALUE));
+        it.emplace(std::make_unique<intermediate::MoveOperation>(dest, UNDEFINED_VALUE));
     else if(src.isZeroInitializer())
-        it.emplace(new intermediate::MoveOperation(dest, INT_ZERO));
+        it.emplace(std::make_unique<intermediate::MoveOperation>(dest, INT_ZERO));
     else if(src.type.getVectorWidth() > dest.type.getVectorWidth())
         it = insertCombiningBitcast(it, method, src, dest);
     else if(src.type.getVectorWidth() < dest.type.getVectorWidth())
         it = insertSplittingBitcast(it, method, src, dest);
     else
         // bit-casts with types of same vector-size (and therefore same element-size) are simple moves
-        it.emplace((new intermediate::MoveOperation(dest, src))->addDecorations(deco));
+        it.emplace(std::make_unique<intermediate::MoveOperation>(dest, src)).addDecorations(deco);
 
     // last step: map destination to source (if bit-cast of pointers)
     if(dest.checkLocal() && src.checkLocal() && dest.type.getPointerType() && src.type.getPointerType())
@@ -233,14 +231,14 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
     if(src.type.getScalarBitCount() == 32 && dest.type.getScalarBitCount() <= 32)
     {
         //"extend" to smaller type
-        it.emplace(new MoveOperation(dest, src, conditional, setFlags));
+        auto newMove = &it.emplace(std::make_unique<MoveOperation>(dest, src, conditional, setFlags));
         switch(dest.type.getScalarBitCount())
         {
         case 8:
-            it.get<ExtendedInstruction>()->setPackMode(PACK_INT_TO_CHAR_TRUNCATE);
+            newMove->setPackMode(PACK_INT_TO_CHAR_TRUNCATE);
             break;
         case 16:
-            it.get<ExtendedInstruction>()->setPackMode(PACK_INT_TO_SHORT_TRUNCATE);
+            newMove->setPackMode(PACK_INT_TO_SHORT_TRUNCATE);
             break;
         case 32:
             // no pack mode
@@ -262,13 +260,13 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
         else
             assign(it, out->lower->createReference()) = (src, conditional, setFlags);
         // set upper word to all zeros
-        it.emplace(new MoveOperation(out->upper->createReference(), INT_ZERO));
+        it.emplace(std::make_unique<MoveOperation>(out->upper->createReference(), INT_ZERO));
         it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
     }
     else if(dest.type.getScalarBitCount() >= 32 && src.type.getScalarBitCount() >= 32)
     {
         // do nothing, is just a move, since we truncate the 64-bit integers anyway
-        it.emplace(new MoveOperation(dest, src, conditional, setFlags));
+        it.emplace(std::make_unique<MoveOperation>(dest, src, conditional, setFlags));
     }
     else if(src.checkRegister() &&
         (has_flag(src.reg().file, RegisterFile::PHYSICAL_A) || has_flag(src.reg().file, RegisterFile::ACCUMULATOR)) &&
@@ -276,19 +274,19 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
     {
         // if we zero-extend from register-file A, use unpack-modes
         // this is applied e.g. for unpacking parameters in code-generation, since the source is UNIFORM
-        it.emplace((new MoveOperation(dest, src, conditional, setFlags))->setUnpackMode(UNPACK_CHAR_TO_INT_ZEXT));
+        it.emplace(std::make_unique<MoveOperation>(dest, src, conditional, setFlags))
+            .setUnpackMode(UNPACK_CHAR_TO_INT_ZEXT);
     }
     else if(allowLiteral)
     {
-        it.emplace(new Operation(
+        it.emplace(std::make_unique<Operation>(
             OP_AND, dest, src, Value(Literal(src.type.getScalarWidthMask()), TYPE_INT32), conditional, setFlags));
     }
     else
     {
         const Value tmp = method.addNewLocal(TYPE_INT32, "%zext");
-        it.emplace(new LoadImmediate(tmp, Literal(src.type.getScalarWidthMask())));
-        it.nextInBlock();
-        it.emplace(new Operation(OP_AND, dest, src, tmp, conditional, setFlags));
+        assign(it, tmp) = load(Literal(src.type.getScalarWidthMask()));
+        it.emplace(std::make_unique<Operation>(OP_AND, dest, src, tmp, conditional, setFlags));
     }
 
     it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
@@ -317,8 +315,7 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
         if(!allowLiteral)
         {
             offset = method.addNewLocal(TYPE_INT8, "%sext");
-            it.emplace(new LoadImmediate(offset, 31_lit));
-            it.nextInBlock();
+            assign(it, offset) = load(31_lit);
         }
         // replicate the high bit across the whole word to be written to the upper word
         assign(it, out->upper->createReference()) =
@@ -328,7 +325,7 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
     else if(dest.type.getScalarBitCount() >= 32 && src.type.getScalarBitCount() >= 32)
     {
         // do nothing, is just a move, since we truncate the 64-bit integers anyway
-        it.emplace(new MoveOperation(dest, src, conditional, setFlags));
+        it.emplace(std::make_unique<MoveOperation>(dest, src, conditional, setFlags));
     }
     else if(src.checkRegister() &&
         (has_flag(src.reg().file, RegisterFile::PHYSICAL_A) || has_flag(src.reg().file, RegisterFile::ACCUMULATOR)) &&
@@ -336,7 +333,8 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
     {
         // if we sign-extend from register-file A, use unpack-modes
         // this is applied e.g. for unpacking parameters in code-generation, since the source is UNIFORM
-        it.emplace((new MoveOperation(dest, src, conditional, setFlags))->setUnpackMode(UNPACK_SHORT_TO_INT_SEXT));
+        it.emplace(std::make_unique<MoveOperation>(dest, src, conditional, setFlags))
+            .setUnpackMode(UNPACK_SHORT_TO_INT_SEXT);
     }
     else
     {
@@ -348,13 +346,12 @@ InstructionWalker intermediate::insertSignExtension(InstructionWalker it, Method
         if(!allowLiteral)
         {
             Value tmp = method.addNewLocal(TYPE_INT8, "%sext");
-            it.emplace(new LoadImmediate(tmp, diffLit));
-            it.nextInBlock();
+            assign(it, tmp) = load(diffLit);
             widthDiff = tmp;
         }
 
         Value tmp = assign(it, TYPE_INT32, "%sext") = (src << widthDiff, conditional);
-        it.emplace(new Operation(OP_ASR, dest, tmp, widthDiff, conditional, setFlags));
+        it.emplace(std::make_unique<Operation>(OP_ASR, dest, tmp, widthDiff, conditional, setFlags));
         // we shifted the exact same number of bits to the left before, so all N trailing bits are zero
         it->addDecorations(InstructionDecorations::EXACT_OPERATION);
     }
@@ -381,26 +378,29 @@ InstructionWalker intermediate::insertSaturation(
         switch(dest.type.getScalarBitCount())
         {
         case 8:
-            return it.emplace((new MoveOperation(dest,
-                                   Value(isOutputSigned ? Literal(saturate<int8_t>(lit->signedInt())) :
-                                                          Literal(saturate<uint8_t>(lit->unsignedInt())),
-                                       dest.type)))
-                                  ->addDecorations(isOutputSigned ? InstructionDecorations::NONE :
-                                                                    InstructionDecorations::UNSIGNED_RESULT));
+            it.emplace(std::make_unique<MoveOperation>(dest,
+                           Value(isOutputSigned ? Literal(saturate<int8_t>(lit->signedInt())) :
+                                                  Literal(saturate<uint8_t>(lit->unsignedInt())),
+                               dest.type)))
+                .addDecorations(
+                    isOutputSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT);
+            return it;
         case 16:
-            return it.emplace((new MoveOperation(dest,
-                                   Value(isOutputSigned ? Literal(saturate<int16_t>(lit->signedInt())) :
-                                                          Literal(saturate<uint16_t>(lit->unsignedInt())),
-                                       dest.type)))
-                                  ->addDecorations(isOutputSigned ? InstructionDecorations::NONE :
-                                                                    InstructionDecorations::UNSIGNED_RESULT));
+            it.emplace(std::make_unique<MoveOperation>(dest,
+                           Value(isOutputSigned ? Literal(saturate<int16_t>(lit->signedInt())) :
+                                                  Literal(saturate<uint16_t>(lit->unsignedInt())),
+                               dest.type)))
+                .addDecorations(
+                    isOutputSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT);
+            return it;
         case 32:
-            return it.emplace((new MoveOperation(dest,
-                                   Value(isOutputSigned ? Literal(saturate<int32_t>(lit->signedInt())) :
-                                                          Literal(saturate<uint32_t>(lit->unsignedInt())),
-                                       dest.type)))
-                                  ->addDecorations(isOutputSigned ? InstructionDecorations::NONE :
-                                                                    InstructionDecorations::UNSIGNED_RESULT));
+            it.emplace(std::make_unique<MoveOperation>(dest,
+                           Value(isOutputSigned ? Literal(saturate<int32_t>(lit->signedInt())) :
+                                                  Literal(saturate<uint32_t>(lit->unsignedInt())),
+                               dest.type)))
+                .addDecorations(
+                    isOutputSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT);
+            return it;
         default:
             throw CompilationError(
                 CompilationStep::GENERAL, "Invalid target type for saturation", dest.type.to_string());
@@ -420,13 +420,17 @@ InstructionWalker intermediate::insertSaturation(
                 // dest = min(max(src, -128), 127)
                 auto tmp = assign(it, src.type) =
                     max(as_signed{tmpSrc}, as_signed{Value(Literal(std::numeric_limits<int8_t>::min()), TYPE_INT8)});
-                return it.emplace(
-                    new Operation(OP_MIN, dest, tmp, Value(Literal(std::numeric_limits<int8_t>::max()), TYPE_INT8)));
+                it.emplace(std::make_unique<Operation>(
+                    OP_MIN, dest, tmp, Value(Literal(std::numeric_limits<int8_t>::max()), TYPE_INT8)));
+                return it;
             }
             else
-                return it.emplace((new MoveOperation(dest, tmpSrc))
-                                      ->setPackMode(PACK_INT_TO_UNSIGNED_CHAR_SATURATE)
-                                      ->addDecorations(InstructionDecorations::UNSIGNED_RESULT));
+            {
+                it.emplace(std::make_unique<MoveOperation>(dest, tmpSrc))
+                    .setPackMode(PACK_INT_TO_UNSIGNED_CHAR_SATURATE)
+                    .addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+                return it;
+            }
         }
         else if(dest.type.getScalarBitCount() == 16)
         {
@@ -435,33 +439,45 @@ InstructionWalker intermediate::insertSaturation(
                 // if unsigned and MSB is set, will interpret as negative signed -> mask off MSB
                 tmpSrc = assign(it, src.type) = (src & 0x7FFFFFFF_val, InstructionDecorations::UNSIGNED_RESULT);
             if(isOutputSigned)
-                return it.emplace((new MoveOperation(dest, tmpSrc))->setPackMode(PACK_INT_TO_SIGNED_SHORT_SATURATE));
+            {
+                it.emplace(std::make_unique<MoveOperation>(dest, tmpSrc))
+                    .setPackMode(PACK_INT_TO_SIGNED_SHORT_SATURATE);
+                return it;
+            }
             else
             {
                 auto tmp = assign(it, src.type) =
                     max(as_signed{tmpSrc}, as_signed{Value(Literal(std::numeric_limits<uint16_t>::min()), TYPE_INT16)});
-                return it.emplace(
-                    new Operation(OP_MIN, dest, tmp, Value(Literal(std::numeric_limits<uint16_t>::max()), TYPE_INT16)));
+                it.emplace(std::make_unique<Operation>(
+                    OP_MIN, dest, tmp, Value(Literal(std::numeric_limits<uint16_t>::max()), TYPE_INT16)));
+                return it;
             }
         }
 
         if(isOutputSigned == isInputSigned)
+        {
             // signed -> signed or unsigned -> unsigned => move
-            return it.emplace((new MoveOperation(dest, src))
-                                  ->addDecorations(isOutputSigned ? InstructionDecorations::NONE :
-                                                                    InstructionDecorations::UNSIGNED_RESULT));
+            it.emplace(std::make_unique<MoveOperation>(dest, src))
+                .addDecorations(
+                    isOutputSigned ? InstructionDecorations::NONE : InstructionDecorations::UNSIGNED_RESULT);
+            return it;
+        }
 
         if(isInputSigned && !isOutputSigned)
+        {
             // signed -> unsigned => dest = max(src, 0)
-            return it.emplace(
-                (new Operation(OP_MAX, dest, src, INT_ZERO))->addDecorations(InstructionDecorations::UNSIGNED_RESULT));
+            it.emplace(std::make_unique<Operation>(OP_MAX, dest, src, INT_ZERO))
+                .addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+            return it;
+        }
         if(!isInputSigned && isOutputSigned)
         {
             // unsigned -> signed => dest = MSB(src) ? INT_MAX : src
             auto negativeCond = assignNop(it) = as_signed{src} < as_signed{INT_ZERO};
             assign(it, dest) = (0x7FFFFFFF_val, negativeCond, InstructionDecorations::UNSIGNED_RESULT);
-            return it.emplace((new MoveOperation(dest, src, negativeCond.invert()))
-                                  ->addDecorations(InstructionDecorations::UNSIGNED_RESULT));
+            it.emplace(std::make_unique<MoveOperation>(dest, src, negativeCond.invert()))
+                .addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+            return it;
         }
         throw CompilationError(CompilationStep::GENERAL, "Saturation to this type is not yet supported",
             "from " + src.type.to_string() + " to " + dest.type.to_string());
@@ -484,19 +500,17 @@ InstructionWalker intermediate::insertFloatingPointConversion(
     InstructionWalker it, Method& method, const Value& src, const Value& dest)
 {
     if(src.type.getScalarBitCount() == dest.type.getScalarBitCount())
-        it.emplace(new MoveOperation(dest, src));
+        assign(it, dest) = src;
     else if(src.type.getScalarBitCount() == 16 && dest.type.getScalarBitCount() == 32)
-        it.emplace((new Operation(OP_FMUL, dest, src, OP_FMUL.getRightIdentity().value()))
-                       ->setUnpackMode(UNPACK_HALF_TO_FLOAT));
+        assign(it, dest) = (as_float{src} * as_float{OP_FMUL.getRightIdentity().value()}, UNPACK_HALF_TO_FLOAT);
     else if(src.type.getScalarBitCount() == 32 && dest.type.getScalarBitCount() == 16)
-        it.emplace((new intermediate::Operation(OP_FMUL, dest, src, OP_FMUL.getRightIdentity().value()))
-                       ->setPackMode(PACK_FLOAT_TO_HALF_TRUNCATE));
+        assign(it, dest) = (as_float{src} * as_float{OP_FMUL.getRightIdentity().value()}, PACK_FLOAT_TO_HALF_TRUNCATE);
     else
         // XXX conversion from/to double would not be that hard (extract exponent, deduct bias, add new bias, extract
         // mantissa, shift), but we cannot store the resulting 64-bit value...
         throw CompilationError(CompilationStep::GENERAL, "Unsupported floating-point conversion",
             src.to_string() + " to " + dest.to_string());
-    return it.nextInBlock();
+    return it;
 }
 
 InstructionWalker intermediate::insertFloatToIntegerSaturation(
@@ -508,8 +522,7 @@ InstructionWalker intermediate::insertFloatToIntegerSaturation(
     auto minInteger = Value(Literal(minInt), dest.type);
 
     // default -> dest = ftoi(src)
-    it.emplace((new Operation(OP_FTOI, dest, src)));
-    it.nextInBlock();
+    assign(it, dest) = ftoi(src);
     // src >= itof(max) -> dest = max
     auto overflowCond = assignNop(it) = as_float{src} >= as_float{maxFloat};
     assign(it, dest) = (maxInteger, overflowCond);
@@ -527,8 +540,7 @@ InstructionWalker intermediate::insertUnsignedToFloatConversion(
         // make sure, leading bits are zeroes
         const uint32_t mask = src.type.getScalarWidthMask();
         auto tmp = assign(it, dest.type, "%uitofp") = (src & Value(Literal(mask), TYPE_INT32));
-        it.emplace(new Operation(OP_ITOF, dest, tmp));
-        it.nextInBlock();
+        assign(it, dest) = itof(tmp);
     }
     else if(src.type.getScalarBitCount() > 32)
     {
@@ -550,13 +562,11 @@ InstructionWalker intermediate::insertUnsignedToFloatConversion(
         // uitof(x) = y * uitof(x/y) + uitof(x & |y|), where |y| is the bits for y
         auto tmpInt = assign(it, src.type) = src / 2_lit;
         auto tmpFloat = method.addNewLocal(dest.type);
-        it.emplace(new Operation(OP_ITOF, tmpFloat, tmpInt));
-        it.nextInBlock();
+        assign(it, tmpFloat) = itof(tmpInt);
         auto tmpFloat2 = assign(it, tmpFloat.type) = tmpFloat * Value(Literal(2.0f), TYPE_FLOAT);
         auto tmpInt2 = assign(it, src.type) = src % 2_lit;
         auto tmpFloat3 = method.addNewLocal(dest.type);
-        it.emplace(new Operation(OP_ITOF, tmpFloat3, tmpInt2));
-        it.nextInBlock();
+        assign(it, tmpFloat3) = itof(tmpInt2);
         assign(it, dest) = as_float{tmpFloat2} + as_float{tmpFloat3};
     }
     return it;
@@ -572,9 +582,7 @@ InstructionWalker intermediate::insertSignedToFloatConversion(
             throw CompilationError(CompilationStep::NORMALIZER,
                 "Can't convert long to floating value without having multi-register data", it->to_string());
 
-        auto upperPart = method.addNewLocal(dest.type);
-        it.emplace(new intermediate::Operation(OP_ITOF, upperPart, parts->upper->createReference()));
-        it.nextInBlock();
+        auto upperPart = assign(it, dest.type) = itof(parts->upper->createReference());
         upperPart = assign(it, upperPart.type) = upperPart * Value(Literal(std::pow(2.0f, 32.0f)), TYPE_FLOAT);
         /*
          * Case handling:
@@ -600,8 +608,7 @@ InstructionWalker intermediate::insertSignedToFloatConversion(
         // if upper part is all ones, do not add it (since it is only the sign, no value)
         cond = assignNop(it) = as_signed{parts->upper->createReference()} == as_signed{0xFFFFFFFF_val};
         assign(it, upperPart) = (FLOAT_ZERO, cond);
-        it.emplace(new intermediate::Operation(OP_FADD, dest, upperPart, lowerPart));
-        it.nextInBlock();
+        assign(it, dest) = as_float{upperPart} + as_float{lowerPart};
         return it;
     }
 
@@ -613,7 +620,6 @@ InstructionWalker intermediate::insertSignedToFloatConversion(
         it = insertSignExtension(it, method, src, intValue, true);
     }
 
-    it.emplace(new Operation(OP_ITOF, dest, intValue));
-    it.nextInBlock();
+    assign(it, dest) = itof(intValue);
     return it;
 }

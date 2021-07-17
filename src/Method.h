@@ -11,6 +11,8 @@
 #include "KernelMetaData.h"
 #include "Optional.h"
 
+#include <memory>
+
 namespace vc4c
 {
     namespace periphery
@@ -153,7 +155,7 @@ namespace vc4c
          * Checks if all usages of this local are within a certain range from the current instruction, but following
          * branches
          */
-        bool isLocallyLimited(InstructionWalker curIt, const Local* locale, std::size_t threshold) const;
+        bool isLocallyLimited(InstructionWalker curIt, const Local* local, std::size_t threshold) const;
 
         /*
          * Returns an iterator to the beginning of the first basic block
@@ -182,7 +184,8 @@ namespace vc4c
          * NOTE: This method allows for insertion of labels and also creates a default label, if no basic-block exists
          * yet
          */
-        void appendToEnd(intermediate::IntermediateInstruction* instr);
+        intermediate::IntermediateInstruction& appendToEnd(
+            std::unique_ptr<intermediate::IntermediateInstruction>&& instr);
         /*
          * Returns an iterator pointing one after the last instruction in this method
          */
@@ -269,7 +272,8 @@ namespace vc4c
          * This function splits the current basic block, moving all following instructions to the newly created basic
          * block
          */
-        NODISCARD InstructionWalker emplaceLabel(InstructionWalker it, intermediate::BranchLabel* label);
+        NODISCARD InstructionWalker emplaceLabel(
+            InstructionWalker it, std::unique_ptr<intermediate::BranchLabel>&& label);
 
         /*
          * Calculates the offsets (within a stack-frame) of the single stack-items

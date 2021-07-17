@@ -65,17 +65,16 @@ std::string Operation::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* Operation::copyFor(
+std::unique_ptr<IntermediateInstruction> Operation::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     if(!getSecondArg())
-        return (new Operation(op, renameValue(method, getOutput().value(), localPrefix, localMapping),
-                    renameValue(method, getFirstArg(), localPrefix, localMapping), conditional, setFlags))
-            ->copyExtrasFrom(this);
-    return (new Operation(op, renameValue(method, getOutput().value(), localPrefix, localMapping),
-                renameValue(method, getFirstArg(), localPrefix, localMapping),
-                renameValue(method, assertArgument(1), localPrefix, localMapping), conditional, setFlags))
-        ->copyExtrasFrom(this);
+        return createWithExtras<Operation>(*this, op,
+            renameValue(method, getOutput().value(), localPrefix, localMapping),
+            renameValue(method, getFirstArg(), localPrefix, localMapping), conditional, setFlags);
+    return createWithExtras<Operation>(*this, op, renameValue(method, getOutput().value(), localPrefix, localMapping),
+        renameValue(method, getFirstArg(), localPrefix, localMapping),
+        renameValue(method, assertArgument(1), localPrefix, localMapping), conditional, setFlags);
 }
 
 static InputMultiplex getInputMux(Register reg, const bool isExplicitRegister,
@@ -457,19 +456,17 @@ std::string IntrinsicOperation::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* IntrinsicOperation::copyFor(
+std::unique_ptr<IntermediateInstruction> IntrinsicOperation::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
     if(!getSecondArg())
-        return (new IntrinsicOperation(std::string(opCode),
-                    renameValue(method, getOutput().value(), localPrefix, localMapping),
-                    renameValue(method, getFirstArg(), localPrefix, localMapping)))
-            ->copyExtrasFrom(this);
-    return (
-        new IntrinsicOperation(std::string(opCode), renameValue(method, getOutput().value(), localPrefix, localMapping),
-            renameValue(method, getFirstArg(), localPrefix, localMapping),
-            renameValue(method, assertArgument(1), localPrefix, localMapping)))
-        ->copyExtrasFrom(this);
+        return createWithExtras<IntrinsicOperation>(*this, std::string(opCode),
+            renameValue(method, getOutput().value(), localPrefix, localMapping),
+            renameValue(method, getFirstArg(), localPrefix, localMapping));
+    return createWithExtras<IntrinsicOperation>(*this, std::string(opCode),
+        renameValue(method, getOutput().value(), localPrefix, localMapping),
+        renameValue(method, getFirstArg(), localPrefix, localMapping),
+        renameValue(method, assertArgument(1), localPrefix, localMapping));
 }
 
 LCOV_EXCL_START
@@ -538,12 +535,11 @@ std::string MoveOperation::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* MoveOperation::copyFor(
+std::unique_ptr<IntermediateInstruction> MoveOperation::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new MoveOperation(renameValue(method, getOutput().value(), localPrefix, localMapping),
-                renameValue(method, getSource(), localPrefix, localMapping), conditional, setFlags))
-        ->copyExtrasFrom(this);
+    return createWithExtras<MoveOperation>(*this, renameValue(method, getOutput().value(), localPrefix, localMapping),
+        renameValue(method, getSource(), localPrefix, localMapping), conditional, setFlags);
 }
 
 qpu_asm::DecoratedInstruction MoveOperation::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
@@ -564,24 +560,25 @@ qpu_asm::DecoratedInstruction MoveOperation::convertToAsm(const FastMap<const Lo
     return op.convertToAsm(registerMapping, labelMapping, instructionIndex);
 }
 
-Operation* MoveOperation::combineWith(const OpCode& otherOpCode) const
+std::unique_ptr<Operation> MoveOperation::combineWith(const OpCode& otherOpCode) const
 {
     if(otherOpCode == OP_NOP)
         throw CompilationError(CompilationStep::GENERAL,
             "Cannot combine move-operation with operation without a valid ALU instruction", to_string());
-    Operation* op = nullptr;
+    std::unique_ptr<Operation> op = nullptr;
     if(otherOpCode.runsOnMulALU() && (!packMode.hasEffect() || !packMode.supportsMulALU()))
     {
         // use ADD ALU
-        op = new Operation(OP_OR, getOutput().value(), getSource(), getSource(), conditional, setFlags);
+        op = std::make_unique<Operation>(OP_OR, getOutput().value(), getSource(), getSource(), conditional, setFlags);
     }
     else if(otherOpCode.runsOnAddALU() && (!packMode.hasEffect() || packMode.supportsMulALU()) &&
         setFlags == SetFlag::DONT_SET)
     {
         // use MUL ALU
-        op = new Operation(OP_V8MIN, getOutput().value(), getSource(), getSource(), conditional, setFlags);
+        op =
+            std::make_unique<Operation>(OP_V8MIN, getOutput().value(), getSource(), getSource(), conditional, setFlags);
     }
-    if(op != nullptr)
+    if(op)
     {
         op->setPackMode(packMode);
         op->setUnpackMode(unpackMode);
@@ -688,12 +685,11 @@ VectorRotation::VectorRotation(Value&& dest, Value&& src, SmallImmediate&& offse
             CompilationStep::GENERAL, "Can only rotate by one of the rotation immediate values", to_string());
 }
 
-IntermediateInstruction* VectorRotation::copyFor(
+std::unique_ptr<IntermediateInstruction> VectorRotation::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new VectorRotation(renameValue(method, getOutput().value(), localPrefix, localMapping),
-                renameValue(method, getSource(), localPrefix, localMapping), getOffset(), type, conditional, setFlags))
-        ->copyExtrasFrom(this);
+    return createWithExtras<VectorRotation>(*this, renameValue(method, getOutput().value(), localPrefix, localMapping),
+        renameValue(method, getSource(), localPrefix, localMapping), getOffset(), type, conditional, setFlags);
 }
 
 qpu_asm::DecoratedInstruction VectorRotation::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
@@ -730,7 +726,7 @@ qpu_asm::DecoratedInstruction VectorRotation::convertToAsm(const FastMap<const L
         outReg.num, OP_V8MIN, OP_NOP, input.first.num, getOffset(), MULTIPLEX_NONE, MULTIPLEX_NONE, inMux, inMux);
 }
 
-Operation* VectorRotation::combineWith(const OpCode& otherOpCode) const
+std::unique_ptr<Operation> VectorRotation::combineWith(const OpCode& otherOpCode) const
 {
     // for now, don't support this
     return nullptr;
@@ -812,9 +808,10 @@ std::string Nop::to_string() const
 }
 LCOV_EXCL_STOP
 
-IntermediateInstruction* Nop::copyFor(Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
+std::unique_ptr<IntermediateInstruction> Nop::copyFor(
+    Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new Nop(type))->copyExtrasFrom(this);
+    return createWithExtras<Nop>(*this, type);
 }
 
 qpu_asm::DecoratedInstruction Nop::convertToAsm(const FastMap<const Local*, Register>& registerMapping,
@@ -842,21 +839,22 @@ Comparison::Comparison(std::string&& comp, Value&& dest, Value&& val0, Value&& v
 {
 }
 
-IntermediateInstruction* Comparison::copyFor(
+std::unique_ptr<IntermediateInstruction> Comparison::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new Comparison(std::string(opCode), renameValue(method, getOutput().value(), localPrefix, localMapping),
-                renameValue(method, getFirstArg(), localPrefix, localMapping),
-                renameValue(method, assertArgument(1), localPrefix, localMapping)))
-        ->copyExtrasFrom(this);
+    return createWithExtras<Comparison>(*this, std::string(opCode),
+        renameValue(method, getOutput().value(), localPrefix, localMapping),
+        renameValue(method, getFirstArg(), localPrefix, localMapping),
+        renameValue(method, assertArgument(1), localPrefix, localMapping));
 }
 
-CombinedOperation::CombinedOperation(Operation* op1, Operation* op2) :
-    IntermediateInstruction(Optional<Value>{}), op1((op1 && op1->op.runsOnAddALU()) ? op1 : op2),
-    op2((op1 && op1->op.runsOnAddALU()) ? op2 : op1)
+CombinedOperation::CombinedOperation(std::unique_ptr<Operation>&& op1, std::unique_ptr<Operation>&& op2) :
+    IntermediateInstruction(Optional<Value>{}), op1(std::move(op1)), op2(std::move(op2))
 {
-    if(!op1 || !op2)
+    if(!this->op1 || !this->op2)
         throw CompilationError(CompilationStep::GENERAL, "Cannot combine NULL operation!");
+    if(!this->op1->op.runsOnAddALU())
+        std::swap(this->op1, this->op2);
 }
 
 FastMap<const Local*, LocalUse::Type> CombinedOperation::getUsedLocals() const
@@ -1001,12 +999,12 @@ SideEffectType CombinedOperation::getSideEffects() const
         op1 ? op1->getSideEffects() : SideEffectType::NONE, op2 ? op2->getSideEffects() : SideEffectType::NONE);
 }
 
-IntermediateInstruction* CombinedOperation::copyFor(
+std::unique_ptr<IntermediateInstruction> CombinedOperation::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new CombinedOperation(dynamic_cast<Operation*>(op1->copyFor(method, localPrefix, localMapping)),
-                dynamic_cast<Operation*>(op2->copyFor(method, localPrefix, localMapping))))
-        ->copyExtrasFrom(this);
+    return createWithExtras<CombinedOperation>(*this,
+        staticPointerCast<Operation>(op1->copyFor(method, localPrefix, localMapping)),
+        staticPointerCast<Operation>(op2->copyFor(method, localPrefix, localMapping)));
 }
 
 bool CombinedOperation::mapsToASMInstruction() const

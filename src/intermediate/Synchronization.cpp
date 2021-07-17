@@ -52,10 +52,12 @@ SideEffectType SemaphoreAdjustment::getSideEffects() const
     return add_flag(IntermediateInstruction::getSideEffects(), SideEffectType::SEMAPHORE);
 }
 
-IntermediateInstruction* SemaphoreAdjustment::copyFor(
+std::unique_ptr<IntermediateInstruction> SemaphoreAdjustment::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new SemaphoreAdjustment(semaphore, increase))->copyExtrasFrom(this)->setOutput(getOutput());
+    auto inst = createWithExtras<SemaphoreAdjustment>(*this, semaphore, increase);
+    inst->setOutput(getOutput());
+    return inst;
 }
 
 bool SemaphoreAdjustment::innerEquals(const IntermediateInstruction& other) const
@@ -131,10 +133,10 @@ bool MemoryBarrier::isNormalized() const
     return true;
 }
 
-IntermediateInstruction* MemoryBarrier::copyFor(
+std::unique_ptr<IntermediateInstruction> MemoryBarrier::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new MemoryBarrier(scope, semantics))->copyExtrasFrom(this);
+    return createWithExtras<MemoryBarrier>(*this, scope, semantics);
 }
 
 bool MemoryBarrier::mapsToASMInstruction() const
@@ -178,11 +180,11 @@ bool LifetimeBoundary::isNormalized() const
     return true;
 }
 
-IntermediateInstruction* LifetimeBoundary::copyFor(
+std::unique_ptr<IntermediateInstruction> LifetimeBoundary::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return (new LifetimeBoundary(renameValue(method, getStackAllocation(), localPrefix, localMapping), isLifetimeEnd))
-        ->copyExtrasFrom(this);
+    return createWithExtras<LifetimeBoundary>(
+        *this, renameValue(method, getStackAllocation(), localPrefix, localMapping), isLifetimeEnd);
 }
 
 bool LifetimeBoundary::mapsToASMInstruction() const
@@ -238,10 +240,10 @@ SideEffectType MutexLock::getSideEffects() const
         locksMutex() ? SideEffectType::REGISTER_READ : SideEffectType::REGISTER_WRITE);
 }
 
-IntermediateInstruction* MutexLock::copyFor(
+std::unique_ptr<IntermediateInstruction> MutexLock::copyFor(
     Method& method, const std::string& localPrefix, InlineMapping& localMapping) const
 {
-    return new MutexLock(accessType);
+    return createWithExtras<MutexLock>(*this, accessType);
 }
 
 bool MutexLock::locksMutex() const

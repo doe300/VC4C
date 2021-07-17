@@ -221,6 +221,7 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
                 throw CompilationError(CompilationStep::NORMALIZER,
                     "Mapping copy with more than 1 entry is not yet implemented", mem->to_string());
             }
+            MemoryInstruction* memFill = nullptr;
             if(wholeRegister && srcInfo.mappedRegisterOrConstant->isAllSame() &&
                 srcInfo.mappedRegisterOrConstant->type.getArrayType())
             {
@@ -230,20 +231,20 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
                 // (e.g. 2 uint16 writes for the i8[128] example).
                 auto arrayType = srcInfo.mappedRegisterOrConstant->type.getArrayType();
                 tmpVal.type = arrayType->elementType;
-                it.reset(new MemoryInstruction(MemoryOperation::FILL, Value(mem->getDestination()), std::move(tmpVal),
-                    Value(Literal(arrayType->size), TYPE_INT32)));
+                memFill = &it.reset(std::make_unique<MemoryInstruction>(MemoryOperation::FILL,
+                    Value(mem->getDestination()), std::move(tmpVal), Value(Literal(arrayType->size), TYPE_INT32)));
             }
             else
-                it.reset(
-                    new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal)));
+                memFill = &it.reset(std::make_unique<MemoryInstruction>(
+                    MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal)));
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Replaced memory copy from constant memory to memory write of constant value: "
                     << it->to_string() << logging::endl);
-            return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfos, destInfos);
+            return mapMemoryAccess(method, it, memFill, srcInfos, destInfos);
         }
         if(mem->op == MemoryOperation::READ)
         {
-            it.reset(new MoveOperation(mem->getDestination(), tmpVal));
+            it.reset(std::make_unique<MoveOperation>(mem->getDestination(), tmpVal));
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Replaced loading of constant memory with constant literal: " << it->to_string()
                     << logging::endl);
@@ -254,7 +255,7 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
     {
         if(mem->op == MemoryOperation::READ)
         {
-            it.reset(new MoveOperation(mem->getDestination(), tmpVal));
+            it.reset(std::make_unique<MoveOperation>(mem->getDestination(), tmpVal));
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Replaced loading of constant memory with vector rotation of register: " << it->to_string()
                     << logging::endl);
@@ -270,8 +271,9 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
                 throw CompilationError(CompilationStep::NORMALIZER,
                     "Mapping copy with more than 1 entry is not yet implemented", mem->to_string());
             }
-            it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal)));
-            it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfos, destInfos);
+            auto memWrite = &it.reset(std::make_unique<MemoryInstruction>(
+                MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal)));
+            it = mapMemoryAccess(method, it, memWrite, srcInfos, destInfos);
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Replaced copying from constant memory with vector rotation and writing of memory: "
                     << it->to_string() << logging::endl);
@@ -292,8 +294,9 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
             }
             // since a copy always involves another memory object, this rewrite is picked up when the other
             // object is processed
-            it.reset(new MemoryInstruction(MemoryOperation::WRITE, Value(mem->getDestination()), *std::move(constant)));
-            it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfos, destInfos);
+            auto memWrite = &it.reset(std::make_unique<MemoryInstruction>(
+                MemoryOperation::WRITE, Value(mem->getDestination()), *std::move(constant)));
+            it = mapMemoryAccess(method, it, memWrite, srcInfos, destInfos);
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Replaced memory copy from constant memory to memory write of constant value: "
                     << it->to_string() << logging::endl);
@@ -301,7 +304,7 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
         }
         else
         {
-            it.reset(new MoveOperation(mem->getOutput().value(), *constant));
+            it.reset(std::make_unique<MoveOperation>(mem->getOutput().value(), *constant));
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Replaced loading of constant memory with constant literal: " << it->to_string()
                     << logging::endl);
@@ -433,9 +436,9 @@ static InstructionWalker lowerMemoryCopyToRegister(Method& method, InstructionWa
                 tmp = method.addNewLocal(mem->getSourceElementType());
             it = insertVectorExtraction(it, method, *srcInfo.mappedRegisterOrConstant, tmpIndex, tmp);
         }
-        it.reset(new MemoryInstruction(
+        auto memWrite = &it.reset(std::make_unique<MemoryInstruction>(
             MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmp), std::move(numEntries)));
-        return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfos, destInfos);
+        return mapMemoryAccess(method, it, memWrite, srcInfos, destInfos);
     }
     if(destInfo.mappedRegisterOrConstant)
     {
@@ -443,8 +446,9 @@ static InstructionWalker lowerMemoryCopyToRegister(Method& method, InstructionWa
         throw CompilationError(CompilationStep::NORMALIZER,
             "lowerMemoryCopyToRegister should not be called to copy into register", mem->to_string());
         auto tmp = method.addNewLocal(mem->getDestinationElementType());
-        it.emplace(new MemoryInstruction(MemoryOperation::READ, std::move(tmp), Value(mem->getSource())));
-        it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfos, destInfos);
+        auto memRead = &it.emplace(
+            std::make_unique<MemoryInstruction>(MemoryOperation::READ, std::move(tmp), Value(mem->getSource())));
+        it = mapMemoryAccess(method, it, memRead, srcInfos, destInfos);
         it = insertVectorInsertion(it, method, *destInfo.mappedRegisterOrConstant, tmpIndex, mem->getSource());
         return it.erase();
     }
@@ -568,7 +572,7 @@ static InstructionWalker lowerMemoryWriteToVPM(Method& method, InstructionWalker
             auto vpmTypeSize = Literal(vpmType.first.getInMemoryWidth());
             if(mem->guardAccess)
             {
-                it.emplace(new MutexLock(MutexAccess::LOCK));
+                it.emplace(std::make_unique<MutexLock>(MutexAccess::LOCK));
                 it.nextInBlock();
             }
             for(unsigned i = 0; i < vpmType.second; ++i)
@@ -579,7 +583,7 @@ static InstructionWalker lowerMemoryWriteToVPM(Method& method, InstructionWalker
             }
             if(mem->guardAccess)
             {
-                it.emplace(new MutexLock(MutexAccess::RELEASE));
+                it.emplace(std::make_unique<MutexLock>(MutexAccess::RELEASE));
                 it.nextInBlock();
             }
             return it.erase();
@@ -641,7 +645,7 @@ static InstructionWalker accessMemoryInRAMViaVPM(Method& method, InstructionWalk
     {
         if(mem->guardAccess)
         {
-            it.emplace(new MutexLock(MutexAccess::LOCK));
+            it.emplace(std::make_unique<MutexLock>(MutexAccess::LOCK));
             it.nextInBlock();
         }
         auto numCopies = mem->getNumEntries().getLiteralValue();
@@ -666,7 +670,7 @@ static InstructionWalker accessMemoryInRAMViaVPM(Method& method, InstructionWalk
                 method, it, mem->getDestination(), mem->getSource(), mem->getNumEntries(), false);
         if(mem->guardAccess)
         {
-            it.emplace(new MutexLock(MutexAccess::RELEASE));
+            it.emplace(std::make_unique<MutexLock>(MutexAccess::RELEASE));
             it.nextInBlock();
         }
         for(auto destInfo : destInfos)
@@ -812,19 +816,19 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
                 "Copying within VPM with more than 1 entries is not yet implemented", mem->to_string());
         if(mem->guardAccess)
         {
-            it.emplace(new MutexLock(MutexAccess::LOCK));
+            it.emplace(std::make_unique<MutexLock>(MutexAccess::LOCK));
             it.nextInBlock();
         }
         auto tmpVal = method.addNewLocal(mem->getSourceElementType(), "%vpm_copy_tmp");
-        it.emplace(new MemoryInstruction(
+        auto memRead = &it.emplace(std::make_unique<MemoryInstruction>(
             MemoryOperation::READ, Value(tmpVal), Value(mem->getSource()), Value(numEntries), false));
-        it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfos, destInfos);
-        it.reset(new MemoryInstruction(
+        it = mapMemoryAccess(method, it, memRead, srcInfos, destInfos);
+        auto memWrite = &it.reset(std::make_unique<MemoryInstruction>(
             MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal), Value(numEntries), false));
-        it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfos, destInfos);
+        it = mapMemoryAccess(method, it, memWrite, srcInfos, destInfos);
         if(mem->guardAccess)
         {
-            it.emplace(new MutexLock(MutexAccess::RELEASE));
+            it.emplace(std::make_unique<MutexLock>(MutexAccess::RELEASE));
             it.nextInBlock();
         }
         return it;
@@ -890,10 +894,11 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Mapping copy of whole register from VPM/RAM into register to read from VPM/RAM: "
                     << mem->to_string() << logging::endl);
-            it.reset(new MemoryInstruction(MemoryOperation::READ, Value(*destInfo.mappedRegisterOrConstant),
-                Value(mem->getSource().local(), method.createPointerType(*destInfo.convertedRegisterOrAreaType)),
-                Value(INT_ONE), mem->guardAccess));
-            return mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfos, destInfos);
+            auto memRead = &it.reset(
+                std::make_unique<MemoryInstruction>(MemoryOperation::READ, Value(*destInfo.mappedRegisterOrConstant),
+                    Value(mem->getSource().local(), method.createPointerType(*destInfo.convertedRegisterOrAreaType)),
+                    Value(INT_ONE), mem->guardAccess));
+            return mapMemoryAccess(method, it, memRead, srcInfos, destInfos);
         }
         else if(numEntries.getLiteralValue() &&
             (numEntries.getLiteralValue()->unsignedInt() * mem->getSourceElementType().getLogicalWidth()) <=
@@ -915,20 +920,20 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
 
             if(mem->guardAccess)
             {
-                it.emplace(new MutexLock(MutexAccess::LOCK));
+                it.emplace(std::make_unique<MutexLock>(MutexAccess::LOCK));
                 it.nextInBlock();
             }
             auto tmp = method.addNewLocal(
                 mem->getSourceElementType().toVectorType(static_cast<uint8_t>(numElements)), "%mem_read_tmp");
-            it.emplace(new MemoryInstruction(
+            auto memRead = &it.emplace(std::make_unique<MemoryInstruction>(
                 MemoryOperation::READ, Value(tmp), Value(mem->getSource()), Value(INT_ONE), false));
-            it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfos, destInfos);
-            it.reset(new MemoryInstruction(
+            it = mapMemoryAccess(method, it, memRead, srcInfos, destInfos);
+            auto memWrite = &it.reset(std::make_unique<MemoryInstruction>(
                 MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmp), Value(INT_ONE), false));
-            it = mapMemoryAccess(method, it, it.get<MemoryInstruction>(), srcInfos, destInfos);
+            it = mapMemoryAccess(method, it, memWrite, srcInfos, destInfos);
             if(mem->guardAccess)
             {
-                it.emplace(new MutexLock(MutexAccess::RELEASE));
+                it.emplace(std::make_unique<MutexLock>(MutexAccess::RELEASE));
                 it.nextInBlock();
             }
             return it;
@@ -995,17 +1000,20 @@ static InstructionWalker insertWriteBackCode(
         // of entries written. TODO how to reliably get the actual number of entries written by all work-items?
         // calculate the scalar local size
         auto localSizeX = method.addNewLocal(TYPE_INT8, "%local_size_x");
-        it.emplace(new MethodCall(Value(localSizeX), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), {0_val}));
+        it.emplace(std::make_unique<MethodCall>(
+            Value(localSizeX), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), std::vector<Value>{0_val}));
         auto oldIt = it;
         it.nextInBlock();
         intrinsics::intrinsifyWorkItemFunction(method, oldIt);
         auto localSizeY = method.addNewLocal(TYPE_INT8, "%local_size_y");
-        it.emplace(new MethodCall(Value(localSizeY), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), {1_val}));
+        it.emplace(std::make_unique<MethodCall>(
+            Value(localSizeY), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), std::vector<Value>{1_val}));
         oldIt = it;
         it.nextInBlock();
         intrinsics::intrinsifyWorkItemFunction(method, oldIt);
         auto localSizeZ = method.addNewLocal(TYPE_INT8, "%local_size_z");
-        it.emplace(new MethodCall(Value(localSizeZ), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), {2_val}));
+        it.emplace(std::make_unique<MethodCall>(
+            Value(localSizeZ), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), std::vector<Value>{2_val}));
         oldIt = it;
         it.nextInBlock();
         intrinsics::intrinsifyWorkItemFunction(method, oldIt);
@@ -1028,7 +1036,7 @@ void normalization::insertCacheSynchronizationCode(
         // insert control-flow barrier block at end of kernel with cache write-back code
         auto lastBlock = method.findBasicBlock(BasicBlock::LAST_BLOCK);
         auto newLabel = method.addNewLocal(TYPE_LABEL, "%cache_write_back").local();
-        auto it = method.emplaceLabel(lastBlock->walk(), new intermediate::BranchLabel(*newLabel));
+        auto it = method.emplaceLabel(lastBlock->walk(), std::make_unique<intermediate::BranchLabel>(*newLabel));
         auto newBlock = it.getBasicBlock();
         it.nextInBlock();
         intrinsics::insertControlFlowBarrier(method, it, [&](InstructionWalker blockIt) -> InstructionWalker {

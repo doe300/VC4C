@@ -265,7 +265,9 @@ static std::vector<Entry> allKernels = {
         "-DKEYLEN=16 -DSALTLEN=32 -DOUTLEN=16"},
     Entry{PENDING_LLVM | PENDING_SPIRV, SLOW, "./testing/JohnTheRipper/bf_kernel.cl", "-DWORK_GROUP_SIZE=8"},
     Entry{PENDING_LLVM | PENDING_SPIRV, SLOW, "./testing/JohnTheRipper/bitlocker_kernel.cl", ""},
-    // FIXME SEGFAULTs
+    // FIXME SEGFAULTs in memory mappings, since VPM dynamic copy inserts loop and therefore labels which invalidates
+    // instruction walkers reused for second memory location accessed by copy in normalization::mapMemoryAccess
+    // (iteration over memoryAccessInfo.accessInstructions)
     Entry{PENDING_LLVM | PENDING_SPIRV, FAST, "./testing/JohnTheRipper/cryptmd5_kernel.cl", "-DPLAINTEXT_LENGTH=32"},
     Entry{PASSED, FAST, "./testing/JohnTheRipper/DES_bs_finalize_keys_kernel.cl", "-DITER_COUNT=4"},
     Entry{PENDING_LLVM | PENDING_SPIRV, FAST, "./testing/JohnTheRipper/DES_bs_kernel.cl", "-DITER_COUNT=4"},

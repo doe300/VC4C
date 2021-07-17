@@ -118,9 +118,9 @@ void TestOptimizations::testEmptyIterator(std::string passParamName)
      */
     Module mod{config};
     Method method{mod};
-    method.appendToEnd(new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL).local()));
-    method.appendToEnd(new intermediate::Nop(intermediate::DelayType::WAIT_REGISTER));
-    method.appendToEnd(new intermediate::BranchLabel(*method.addNewLocal(TYPE_LABEL).local()));
+    method.appendToEnd(std::make_unique<intermediate::BranchLabel>(*method.addNewLocal(TYPE_LABEL).local()));
+    method.appendToEnd(std::make_unique<intermediate::Nop>(intermediate::DelayType::WAIT_REGISTER));
+    method.appendToEnd(std::make_unique<intermediate::BranchLabel>(*method.addNewLocal(TYPE_LABEL).local()));
 
     method.appendToEnd(nullptr);
 

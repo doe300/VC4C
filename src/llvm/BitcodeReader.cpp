@@ -543,7 +543,7 @@ void BitcodeReader::parseFunctionBody(
     for(const llvm::BasicBlock& block : func)
     {
         // need to extract label from basic block
-        instructions.emplace_back(new LLVMLabel(toValue(method, &block, &instructions)));
+        instructions.emplace_back(std::make_unique<LLVMLabel>(toValue(method, &block, &instructions)));
         for(const llvm::Instruction& inst : block)
         {
             parseInstruction(module, method, instructions, inst);
@@ -658,9 +658,9 @@ void BitcodeReader::parseInstruction(
     {
         const llvm::BranchInst* br = llvm::cast<const llvm::BranchInst>(&inst);
         if(br->isUnconditional())
-            instructions.emplace_back(new Branch(toValue(method, br->getSuccessor(0), &instructions)));
+            instructions.emplace_back(std::make_unique<Branch>(toValue(method, br->getSuccessor(0), &instructions)));
         else
-            instructions.emplace_back(new Branch(toValue(method, br->getCondition(), &instructions),
+            instructions.emplace_back(std::make_unique<Branch>(toValue(method, br->getCondition(), &instructions),
                 toValue(method, br->getSuccessor(0), &instructions),
                 toValue(method, br->getSuccessor(1), &instructions)));
         instructions.back()->setDecorations(deco);
@@ -670,9 +670,10 @@ void BitcodeReader::parseInstruction(
     {
         const llvm::ReturnInst* ret = llvm::cast<const llvm::ReturnInst>(&inst);
         if(ret->getReturnValue() == nullptr)
-            instructions.emplace_back(new ValueReturn());
+            instructions.emplace_back(std::make_unique<ValueReturn>());
         else
-            instructions.emplace_back(new ValueReturn(toValue(method, ret->getReturnValue(), &instructions)));
+            instructions.emplace_back(
+                std::make_unique<ValueReturn>(toValue(method, ret->getReturnValue(), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -690,7 +691,8 @@ void BitcodeReader::parseInstruction(
             caseValue = caseValue & casePair.getCaseValue()->getType()->getBitMask();
             caseLabels.emplace(caseValue, toValue(method, casePair.getCaseSuccessor(), &instructions));
         }
-        instructions.emplace_back(new Switch(std::move(cond), std::move(defaultLabel), std::move(caseLabels)));
+        instructions.emplace_back(
+            std::make_unique<Switch>(std::move(cond), std::move(defaultLabel), std::move(caseLabels)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -731,8 +733,8 @@ void BitcodeReader::parseInstruction(
     case BinaryOps::Xor:
     {
         const llvm::BinaryOperator* binOp = llvm::cast<const llvm::BinaryOperator>(&inst);
-        instructions.emplace_back(new BinaryOperator(binOp->getOpcodeName(), toValue(method, binOp, &instructions),
-            toValue(method, binOp->getOperand(0), &instructions),
+        instructions.emplace_back(std::make_unique<BinaryOperator>(binOp->getOpcodeName(),
+            toValue(method, binOp, &instructions), toValue(method, binOp->getOperand(0), &instructions),
             toValue(method, binOp->getOperand(1), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
@@ -759,7 +761,7 @@ void BitcodeReader::parseInstruction(
         std::for_each(indexOf->idx_begin(), indexOf->idx_end(),
             [this, &method, &indices, &instructions](
                 const llvm::Value* val) -> void { indices.emplace_back(toValue(method, val, &instructions)); });
-        instructions.emplace_back(new IndexOf(toValue(method, indexOf, &instructions),
+        instructions.emplace_back(std::make_unique<IndexOf>(toValue(method, indexOf, &instructions),
             toValue(method, indexOf->getPointerOperand(), &instructions), std::move(indices)));
         instructions.back()->setDecorations(deco);
         break;
@@ -776,7 +778,8 @@ void BitcodeReader::parseInstruction(
         if(load->isVolatile() && src.checkLocal() && src.local()->is<Parameter>())
             src.local()->as<Parameter>()->decorations =
                 add_flag(src.local()->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
-        instructions.emplace_back(new Copy(toValue(method, load, &instructions), std::move(src), true, true));
+        instructions.emplace_back(
+            std::make_unique<Copy>(toValue(method, load, &instructions), std::move(src), true, true));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -792,8 +795,8 @@ void BitcodeReader::parseInstruction(
         if(store->isVolatile() && dest.checkLocal() && dest.local()->is<Parameter>())
             dest.local()->as<Parameter>()->decorations =
                 add_flag(dest.local()->as<Parameter>()->decorations, ParameterDecorations::VOLATILE);
-        instructions.emplace_back(
-            new Copy(std::move(dest), toValue(method, store->getValueOperand(), &instructions), true, false));
+        instructions.emplace_back(std::make_unique<Copy>(
+            std::move(dest), toValue(method, store->getValueOperand(), &instructions), true, false));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -802,7 +805,7 @@ void BitcodeReader::parseInstruction(
         FALL_THROUGH
     case CastOps::BitCast:
     {
-        instructions.emplace_back(new Copy(toValue(method, &inst, &instructions),
+        instructions.emplace_back(std::make_unique<Copy>(toValue(method, &inst, &instructions),
             toValue(method, inst.getOperand(0), &instructions), false, false, true));
         instructions.back()->setDecorations(deco);
         break;
@@ -826,8 +829,8 @@ void BitcodeReader::parseInstruction(
         FALL_THROUGH
     case CastOps::UIToFP:
     {
-        instructions.emplace_back(new UnaryOperator(inst.getOpcodeName(), toValue(method, &inst, &instructions),
-            toValue(method, inst.getOperand(0), &instructions)));
+        instructions.emplace_back(std::make_unique<UnaryOperator>(inst.getOpcodeName(),
+            toValue(method, &inst, &instructions), toValue(method, inst.getOperand(0), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
     }
@@ -841,7 +844,7 @@ void BitcodeReader::parseInstruction(
          * Both inttoptr-cast and ptrtoint-case say:
          * "by applying either a zero extension or a truncation"
          */
-        instructions.emplace_back(new UnaryOperator(
+        instructions.emplace_back(std::make_unique<UnaryOperator>(
             "zext", toValue(method, &inst, &instructions), toValue(method, inst.getOperand(0), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
@@ -889,14 +892,14 @@ void BitcodeReader::parseInstruction(
         {
             // functions without definitions (e.g. intrinsic functions)
             std::string funcName = static_cast<std::string>(func->getName());
-            instructions.emplace_back(new CallSite(toValue(method, call, &instructions),
+            instructions.emplace_back(std::make_unique<CallSite>(toValue(method, call, &instructions),
                 cleanMethodName(funcName.find("_Z") == 0 ? std::string("@") + funcName : funcName), std::move(args)));
         }
         else
         {
             Method& dest = parseFunction(module, *func);
-            instructions.emplace_back(
-                new CallSite(toValue(method, call, &instructions), dest, std::move(args), func->isVarArg()));
+            instructions.emplace_back(std::make_unique<CallSite>(
+                toValue(method, call, &instructions), dest, std::move(args), func->isVarArg()));
         }
 
         instructions.back()->setDecorations(deco);
@@ -904,7 +907,7 @@ void BitcodeReader::parseInstruction(
     }
     case OtherOps::ExtractElement:
     {
-        instructions.emplace_back(new ContainerExtraction(toValue(method, &inst, &instructions),
+        instructions.emplace_back(std::make_unique<ContainerExtraction>(toValue(method, &inst, &instructions),
             toValue(method, inst.getOperand(0), &instructions), toValue(method, inst.getOperand(1), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
@@ -918,7 +921,7 @@ void BitcodeReader::parseInstruction(
             throw CompilationError(
                 CompilationStep::PARSER, "Container extraction with multi-level indices is not yet implemented!");
         }
-        instructions.emplace_back(new ContainerExtraction(toValue(method, extraction, &instructions),
+        instructions.emplace_back(std::make_unique<ContainerExtraction>(toValue(method, extraction, &instructions),
             toValue(method, extraction->getAggregateOperand(), &instructions),
             Value(Literal(extraction->getIndices().front()), TYPE_INT32)));
         instructions.back()->setDecorations(deco);
@@ -930,15 +933,16 @@ void BitcodeReader::parseInstruction(
     {
         const llvm::CmpInst* comp = llvm::cast<const llvm::CmpInst>(&inst);
         auto compName = toComparison(comp->getPredicate());
-        instructions.emplace_back(new Comparison(toValue(method, &inst, &instructions), std::move(compName),
-            toValue(method, inst.getOperand(0), &instructions), toValue(method, inst.getOperand(1), &instructions)));
+        instructions.emplace_back(std::make_unique<Comparison>(toValue(method, &inst, &instructions),
+            std::move(compName), toValue(method, inst.getOperand(0), &instructions),
+            toValue(method, inst.getOperand(1), &instructions)));
         instructions.back()->setDecorations(deco);
         break;
     }
 
     case OtherOps::InsertElement:
     {
-        instructions.emplace_back(new ContainerInsertion(toValue(method, &inst, &instructions),
+        instructions.emplace_back(std::make_unique<ContainerInsertion>(toValue(method, &inst, &instructions),
             toValue(method, inst.getOperand(0), &instructions), toValue(method, inst.getOperand(1), &instructions),
             toValue(method, inst.getOperand(2), &instructions)));
         instructions.back()->setDecorations(deco);
@@ -953,7 +957,7 @@ void BitcodeReader::parseInstruction(
             throw CompilationError(
                 CompilationStep::PARSER, "Container insertion with multi-level indices is not yet implemented!");
         }
-        instructions.emplace_back(new ContainerInsertion(toValue(method, insertion, &instructions),
+        instructions.emplace_back(std::make_unique<ContainerInsertion>(toValue(method, insertion, &instructions),
             toValue(method, insertion->getAggregateOperand(), &instructions),
             toValue(method, insertion->getInsertedValueOperand(), &instructions),
             Value(Literal(insertion->getIndices().front()), TYPE_INT32)));
@@ -969,14 +973,14 @@ void BitcodeReader::parseInstruction(
             labels.emplace_back(std::make_pair(toValue(method, phi->getIncomingValue(i), &instructions),
                 toValue(method, phi->getIncomingBlock(i), &instructions).local()));
         }
-        instructions.emplace_back(new PhiNode(toValue(method, phi, &instructions), std::move(labels)));
+        instructions.emplace_back(std::make_unique<PhiNode>(toValue(method, phi, &instructions), std::move(labels)));
         instructions.back()->setDecorations(deco);
         break;
     }
     case OtherOps::Select:
     {
         const llvm::SelectInst* selection = llvm::cast<const llvm::SelectInst>(&inst);
-        instructions.emplace_back(new Selection(toValue(method, selection, &instructions),
+        instructions.emplace_back(std::make_unique<Selection>(toValue(method, selection, &instructions),
             toValue(method, selection->getCondition(), &instructions),
             toValue(method, selection->getTrueValue(), &instructions),
             toValue(method, selection->getFalseValue(), &instructions)));
@@ -986,7 +990,7 @@ void BitcodeReader::parseInstruction(
     case OtherOps::ShuffleVector:
     {
         const llvm::ShuffleVectorInst* shuffle = llvm::cast<const llvm::ShuffleVectorInst>(&inst);
-        instructions.emplace_back(new ShuffleVector(toValue(method, shuffle, &instructions),
+        instructions.emplace_back(std::make_unique<ShuffleVector>(toValue(method, shuffle, &instructions),
             toValue(method, shuffle->getOperand(0), &instructions),
             toValue(method, shuffle->getOperand(1), &instructions),
 #if LLVM_LIBRARY_VERSION >= 110
@@ -1095,7 +1099,8 @@ Value BitcodeReader::toConstant(
             {
                 // insert instruction loading the 64-bit constant, since we cannot handle 64-bit literals
                 auto constantValue = method->addNewLocal(type, "%constant");
-                instructions->emplace_back(new LongConstant(Value(constantValue), constant->getSExtValue()));
+                instructions->emplace_back(
+                    std::make_unique<LongConstant>(Value(constantValue), constant->getSExtValue()));
                 return constantValue;
             }
             dumpLLVM(constant);
@@ -1137,7 +1142,7 @@ Value BitcodeReader::toConstant(
             // e.g. for 64-bit vectors, the elements do not fit into literals, so we need to build up the vector
             // manually
             auto constantValue = method->addNewLocal(type, "%constant");
-            instructions->emplace_back(new LongConstant(Value(constantValue), std::move(elements)));
+            instructions->emplace_back(std::make_unique<LongConstant>(Value(constantValue), std::move(elements)));
             return constantValue;
         }
         else
@@ -1171,7 +1176,7 @@ Value BitcodeReader::toConstant(
             // e.g. for 64-bit vectors, the elements do not fit into literals, so we need to build up the vector
             // manually
             auto constantValue = method->addNewLocal(type, "%constant");
-            instructions->emplace_back(new LongConstant(Value(constantValue), std::move(elements)));
+            instructions->emplace_back(std::make_unique<LongConstant>(Value(constantValue), std::move(elements)));
             return constantValue;
         }
         else
@@ -1268,7 +1273,8 @@ Value BitcodeReader::precalculateConstantExpression(
         {
             // insert dynamic calculation of indices
             auto elementOffset = method->addNewLocal(toDataType(module, expr->getType()), "%constant_offset");
-            instructions->emplace_back(new IndexOf(Value(elementOffset), std::move(srcConstant), std::move(indices)));
+            instructions->emplace_back(
+                std::make_unique<IndexOf>(Value(elementOffset), std::move(srcConstant), std::move(indices)));
             return elementOffset;
         }
         else
