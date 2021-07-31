@@ -156,7 +156,7 @@ std::string DataType::getTypeName(bool isSigned, bool isUnsigned) const
     std::string tName = isFloatingPoint ?
         toFloatingPointTypeName(bitWidth, simpleName) :
         (isSigned ? toSignedIntegerTypeName(bitWidth, simpleName) :
-                    isUnsigned ? toUnsignedIntegerTypeName(bitWidth, simpleName) : simpleName);
+                    (isUnsigned ? toUnsignedIntegerTypeName(bitWidth, simpleName) : simpleName));
     if(numElements > 1)
         return tName + std::to_string(numElements);
     return tName;

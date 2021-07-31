@@ -141,7 +141,7 @@ std::shared_ptr<Expression> Expression::createExpression(const intermediate::Int
         &intermediate::ExtendedInstruction::getPackMode)
                         .value_or(PACK_NOP);
     return std::make_shared<Expression>(code, instr.getArgument(0).value(),
-        instr.getArgument(1) ? instr.getArgument(1) : code == OP_V8MIN ? instr.getArgument(0) : NO_VALUE, unpackMode,
+        instr.getArgument(1) ? instr.getArgument(1) : (code == OP_V8MIN ? instr.getArgument(0) : NO_VALUE), unpackMode,
         packMode, instr.decoration, instr.checkOutputLocal());
 }
 
@@ -335,11 +335,12 @@ static std::shared_ptr<Expression> combineWithInner(
     // replace move expressions by their sources, if possible
     if(firstExpr && firstExpr->isMoveExpression())
     {
-        if(firstExpr->arg0.checkLocal() && inputs.find(firstExpr->arg0.checkLocal()) != inputs.end())
+        auto loc = firstExpr->arg0.checkLocal();
+        if(loc && inputs.find(loc) != inputs.end())
         {
             // replace left expression by source
             firstVal = NO_VALUE;
-            firstExpr = inputs.at(firstExpr->arg0.checkLocal());
+            firstExpr = inputs.at(loc);
             arg0 = firstExpr;
         }
         else
@@ -353,11 +354,12 @@ static std::shared_ptr<Expression> combineWithInner(
 
     if(secondExpr && secondExpr->isMoveExpression())
     {
-        if(secondExpr->arg0.checkLocal() && inputs.find(secondExpr->arg0.checkLocal()) != inputs.end())
+        auto loc = secondExpr->arg0.checkLocal();
+        if(loc && inputs.find(loc) != inputs.end())
         {
             // replace right expression by source
             secondVal = NO_VALUE;
-            secondExpr = inputs.at(secondExpr->arg0.checkLocal());
+            secondExpr = inputs.at(loc);
             arg1 = secondExpr;
         }
         else
@@ -979,7 +981,7 @@ Optional<Value> Expression::getConvergenceLimit(Optional<Literal> initialValue) 
             // a >> 0 -> a
             // a >> x -> 0/-1
             return constantLiteral->unsignedInt() == 0 ? Value(*initialValue, TYPE_INT32) :
-                                                         initialValue->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO;
+                                                         (initialValue->signedInt() < 0 ? INT_MINUS_ONE : INT_ZERO);
         return NO_VALUE;
     case OP_SHL.opAdd:
         if(leftIsLocal && constantLiteral && constantLiteral->unsignedInt() == 0)

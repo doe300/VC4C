@@ -88,7 +88,7 @@ ValueRange::ValueRange(Literal lit, DataType type) : type(RangeType::FIXED)
 {
     minValue = type.isFloatingType() ?
         static_cast<double>(lit.real()) :
-        isUnsignedType(type) ? static_cast<double>(lit.unsignedInt()) : static_cast<double>(lit.signedInt());
+        (isUnsignedType(type) ? static_cast<double>(lit.unsignedInt()) : static_cast<double>(lit.signedInt()));
     maxValue = type.isFloatingType() ? static_cast<double>(lit.real()) : static_cast<double>(lit.unsignedInt());
 }
 

@@ -254,6 +254,7 @@ namespace vc4c
             MemoryAddress baseAddress = 0;
             bool isSet = false;
             bool isBeingFilled = false;
+            uint32_t numCurrentAccesses = 0;
             uint16_t lineNum;
             std::array<Element, NumElements> data{};
             uint32_t cycleWritten = 0;

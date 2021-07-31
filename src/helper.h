@@ -163,7 +163,8 @@ namespace vc4c
     CONST inline To bit_cast(From in) noexcept
     {
         static_assert(sizeof(From) == sizeof(To), "Can't convert types from different sizes!");
-        union {
+        union
+        {
             From f;
             To t;
         } bit_cast;

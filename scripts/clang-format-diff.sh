@@ -9,12 +9,9 @@ clang-format --version
 for file in src/*.cpp src/*/*.cpp include/*.h src/*.h src/*/*.h; do
     clang-format $file > /tmp/file
     A=$(diff $file /tmp/file)
-    if [ "$?" == 1 ] || [ "$RET" == 1 ]; then
-        RET=1
+    if [ "$?" == 1 ]; then
         echo "file: $file"
         echo "$A"
-    else
-        RET=0
     fi
 done
 

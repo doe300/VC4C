@@ -286,7 +286,8 @@ namespace vc4c
 
         struct VPWSetup
         {
-            union {
+            union
+            {
                 uint32_t value;
                 VPWGenericSetup genericSetup;
                 VPWDMASetup dmaSetup;
@@ -540,7 +541,8 @@ namespace vc4c
 
         struct VPRSetup
         {
-            union {
+            union
+            {
                 uint32_t value;
                 VPRGenericSetup genericSetup;
                 VPRDMASetup dmaSetup;

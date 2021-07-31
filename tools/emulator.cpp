@@ -51,7 +51,7 @@ void printValue(uint32_t val, BufferType type)
     }
     case BufferType::CHARACTER:
     {
-        std::array<char, 4> c;
+        std::array<char, 4> c{};
         memcpy(c.data(), &val, c.size());
         std::cout << c[0] << c[1] << c[2] << c[3];
         break;

@@ -34,7 +34,8 @@ enum HostEndian
     ENDIAN_BIG = 0x00010203ul,
 };
 
-static const union {
+static const union
+{
     uint8_t bytes[4];
     uint32_t value;
 } host_order = {{0, 1, 2, 3}};

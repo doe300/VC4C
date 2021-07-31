@@ -246,7 +246,7 @@ KernelHeader qpu_asm::createKernelHeader(
             (paramType.getPointerType() ? static_cast<uint8_t>(1) : paramType.getVectorWidth()));
         paramHeader.setAddressSpace(paramType.getPointerType() ?
                 paramType.getPointerType()->addressSpace :
-                paramType.getImageType() ? AddressSpace::GLOBAL : AddressSpace::PRIVATE);
+                (paramType.getImageType() ? AddressSpace::GLOBAL : AddressSpace::PRIVATE));
         paramHeader.setFloatingType(paramType.isFloatingType());
         // FIXME signedness is only recognized correctly for non-32 bit scalar types (e.g. (u)char, (u)short), not for
         // pointers or even vector-types

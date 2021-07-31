@@ -582,7 +582,8 @@ namespace vc4c
         /*
          * The bit-wise representation of this literal
          */
-        union {
+        union
+        {
             int32_t i;
             uint32_t u;
             float f;

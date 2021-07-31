@@ -387,7 +387,7 @@ DataType BitcodeReader::toDataType(Module& module, const llvm::Type* type, Optio
         {
             auto dimensions = str->getName().find('3') != llvm::StringRef::npos ?
                 3 :
-                str->getName().find('2') != llvm::StringRef::npos ? 2 : 1;
+                (str->getName().find('2') != llvm::StringRef::npos ? 2 : 1);
             auto isImageArray = str->getName().find("array") != llvm::StringRef::npos;
             auto isImageBuffer = str->getName().find("buffer") != llvm::StringRef::npos;
             auto isSampled = false;
@@ -1001,6 +1001,17 @@ void BitcodeReader::parseInstruction(
         instructions.back()->setDecorations(deco);
         break;
     }
+#if LLVM_LIBRARY_VERSION >= 100
+    case OtherOps::Freeze:
+    {
+        // is basically a move which does not propagate undef or poison values, an arbitrary fixed value of the given
+        // type is returned instead in such cases. We don't case about poison values, so just insert a move
+        instructions.emplace_back(std::make_unique<Copy>(
+            toValue(method, &inst, &instructions), toValue(method, inst.getOperand(0), &instructions)));
+        instructions.back()->setDecorations(deco);
+        break;
+    }
+#endif
     case TermOps::Unreachable:
     {
         // since this instruction can never be reached, we do not need to emit it. If it every gets reached, this is

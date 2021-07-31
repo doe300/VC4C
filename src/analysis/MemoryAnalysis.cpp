@@ -344,8 +344,8 @@ static Optional<MemoryAccessRange> determineAccessRange(
     {
         auto checkLocal = memInst->op == intermediate::MemoryOperation::READ ?
             memInst->getSource().checkLocal() :
-            memInst->op == intermediate::MemoryOperation::WRITE ? memInst->getDestination().checkLocal() : nullptr;
-        if(checkLocal && (checkLocal->is<Parameter>() || checkLocal->residesInMemory()))
+            (memInst->op == intermediate::MemoryOperation::WRITE ? memInst->getDestination().checkLocal() : nullptr);
+        if(checkLocal && checkLocal->residesInMemory())
         {
             // direct write of address (e.g. all work items access the same location)
             MemoryAccessRange range;

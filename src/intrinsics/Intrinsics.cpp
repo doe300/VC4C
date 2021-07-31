@@ -7,7 +7,6 @@
 #include "Intrinsics.h"
 
 #include "../SIMDVector.h"
-#include "../analysis/ValueRange.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/TypeConversions.h"
 #include "../intermediate/VectorHelper.h"
@@ -891,15 +890,6 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying multiplication via binary method: " << op->to_string() << logging::endl);
             it = intrinsifyIntegerMultiplicationViaBinaryMethod(method, it, *op);
-        }
-        else if(std::all_of(op->getArguments().begin(), op->getArguments().end(), [](const Value& arg) -> bool {
-                    return vc4c::analysis::ValueRange::getValueRange(arg).isUnsigned();
-                }))
-        {
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Intrinsifying signed multiplication of purely unsigned values to unsigned multiplication: "
-                    << op->to_string() << logging::endl);
-            it = intrinsifyUnsignedIntegerMultiplication(method, it, *op);
         }
         else
             it = intrinsifySignedIntegerMultiplication(method, it, *op);

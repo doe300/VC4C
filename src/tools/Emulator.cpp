@@ -1089,9 +1089,9 @@ void VPM::setDMAWriteAddress(const SIMDVector& val)
         // invert columns and rows
         sizes = std::make_pair(setup.dmaSetup.getDepth(), setup.dmaSetup.getUnits());
     uint32_t typeSize =
-        setup.dmaSetup.getMode() >= 4 ? 1 /* Byte */ : setup.dmaSetup.getMode() >= 2 ? 2 /* Half-word */ : 4 /* Word */;
+        setup.dmaSetup.getMode() >= 4 ? 1 /* Byte */ : (setup.dmaSetup.getMode() >= 2 ? 2 /* Half-word */ : 4 /* Word */);
     uint32_t byteOffset =
-        typeSize == 4 ? 0 : typeSize == 2 ? setup.dmaSetup.getHalfRowOffset() * 2 : setup.dmaSetup.getByteOffset();
+        typeSize == 4 ? 0 : (typeSize == 2 ? setup.dmaSetup.getHalfRowOffset() * 2 : setup.dmaSetup.getByteOffset());
 
     if(typeSize * sizes.second > sizeof(Word) * NATIVE_VECTOR_SIZE)
         throw CompilationError(
@@ -1173,9 +1173,9 @@ void VPM::setDMAReadAddress(const SIMDVector& val)
         // invert columns and rows
         std::swap(sizes.first, sizes.second);
     uint32_t typeSize =
-        setup.dmaSetup.getMode() >= 4 ? 1 /* Byte */ : setup.dmaSetup.getMode() >= 2 ? 2 /* Half-word */ : 4 /* Word */;
+        setup.dmaSetup.getMode() >= 4 ? 1 /* Byte */ : (setup.dmaSetup.getMode() >= 2 ? 2 /* Half-word */ : 4 /* Word */);
     uint32_t byteOffset =
-        typeSize == 4 ? 0 : typeSize == 2 ? setup.dmaSetup.getHalfRowOffset() * 2 : setup.dmaSetup.getByteOffset();
+        typeSize == 4 ? 0 : (typeSize == 2 ? setup.dmaSetup.getHalfRowOffset() * 2 : setup.dmaSetup.getByteOffset());
     uint32_t vpitch = setup.dmaSetup.getVPitch() == 0 ? 16 : setup.dmaSetup.getVPitch();
 
     if(typeSize * sizes.second > sizeof(Word) * NATIVE_VECTOR_SIZE)
@@ -1660,9 +1660,9 @@ AsynchronousExecution Slice::startTMURead(uint8_t tmuIndex, AsynchronousHandle<W
         cacheLine.containsAddress(address) && cacheLine.cycleWritten <= clock.currentCycle);
     if(!cacheLine.containsAddress(address))
     {
-        if(cacheLine.isBeingFilled)
+        if(cacheLine.isBeingFilled || cacheLine.numCurrentAccesses > 0)
         {
-            // we need to wait until the previous read is done before evicting its cache line immediately again
+            // we need to wait until the previous reads are done before evicting its cache line immediately again
             // TODO log for performance, since this is a very bad case!
             return {"TMU cache blocked",
                 [remainingCycles{1}, handle{std::move(handle)}, address, &cacheLine, this, tmuIndex](
@@ -1712,6 +1712,8 @@ AsynchronousExecution Slice::startTMURead(uint8_t tmuIndex, AsynchronousHandle<W
                 return true;
             });
     }
+    // this counter avoids eviction of a TMU cache line which was not filled from RAM but is still accessed (read from)
+    ++cacheLine.numCurrentAccesses;
     // read from cache, takes 9 cycles
     return {"TMU cache read",
         [remainingCycles{9}, &cacheLine, this, address, handle{std::move(handle)}, result{0u}](
@@ -1732,6 +1734,7 @@ AsynchronousExecution Slice::startTMURead(uint8_t tmuIndex, AsynchronousHandle<W
                 --remainingCycles;
                 return false;
             }
+            --cacheLine.numCurrentAccesses;
             handle.set_value(result);
             return true;
         }};

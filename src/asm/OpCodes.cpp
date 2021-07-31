@@ -1333,7 +1333,7 @@ PrecalculatedValue OpCode::operator()(const Value& firstOperand, const Optional<
     const Literal firstLit = firstOperand.getLiteralValue() ? *firstOperand.getLiteralValue() : (*firstVector)[0];
     const Literal secondLit = (!secondVal || numOperands == 1) ?
         Literal(0u) :
-        secondVal->getLiteralValue() ? *secondVal->getLiteralValue() : (*secondVector)[0];
+        (secondVal->getLiteralValue() ? *secondVal->getLiteralValue() : (*secondVector)[0]);
     return operator()(firstLit, secondLit, resultType);
 }
 
