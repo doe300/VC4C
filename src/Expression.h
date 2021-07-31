@@ -75,6 +75,9 @@ namespace vc4c
             return nullptr;
         }
 
+        // Similar to as checkLocal() above, but also returns the output local of the underlying expression, if any
+        const Local* checkLocal(bool includeExpressionOutput) const;
+
         inline Optional<Literal> getLiteralValue() const
         {
             if(auto val = VariantNamespace::get_if<Value>(this))

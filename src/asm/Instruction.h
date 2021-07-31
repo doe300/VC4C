@@ -8,7 +8,6 @@
 #define INSTRUCTION_H
 
 #include "../Bitfield.h"
-#include "CompilationError.h"
 #include "OpCodes.h"
 
 #include <string>

@@ -139,7 +139,7 @@ const intermediate::IntermediateInstruction* analysis::getSingleWriter(
         if(auto loc = val.checkLocal())
         {
             // if the value is the parameter/global directly, the address write might not yet exist
-            if(loc->is<Parameter>() || loc->residesInMemory())
+            if(loc->residesInMemory())
                 return defaultInst;
         }
         CPPLOG_LAZY(logging::Level::DEBUG,
@@ -213,7 +213,7 @@ static bool findMemoryObjectAndBaseAddressAdd(
         const auto& arg0 = trackInst->assertArgument(0);
         const auto& arg1 = trackInst->assertArgument(1);
         if(arg0.checkLocal() &&
-            (arg0.local()->is<Parameter>() || arg0.local()->residesInMemory() ||
+            (arg0.local()->residesInMemory() ||
                 (arg0.local()->is<BuiltinLocal>() &&
                     arg0.local()->as<BuiltinLocal>()->builtinType == BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)))
         {
@@ -221,7 +221,7 @@ static bool findMemoryObjectAndBaseAddressAdd(
             varArg = arg1;
         }
         else if(arg1.checkLocal() &&
-            (arg1.local()->is<Parameter>() || arg1.local()->residesInMemory() ||
+            (arg1.local()->residesInMemory() ||
                 (arg1.local()->is<BuiltinLocal>() &&
                     arg1.local()->as<BuiltinLocal>()->builtinType == BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)))
         {
@@ -269,10 +269,10 @@ static bool findMemoryObjectAndBaseAddressAdd(
             bool isHandled = false;
             if(expr && expr->code == OP_ADD)
             {
-                auto firstLoc = expr->arg0.checkLocal();
-                auto secondLoc = expr->arg1.checkLocal();
+                auto firstLoc = expr->arg0.checkLocal(true);
+                auto secondLoc = expr->arg1.checkLocal(true);
                 if(firstLoc &&
-                    (firstLoc->is<Parameter>() || firstLoc->residesInMemory() ||
+                    (firstLoc->residesInMemory() ||
                         (firstLoc->is<BuiltinLocal>() &&
                             firstLoc->as<BuiltinLocal>()->builtinType == BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)))
                 {
@@ -281,7 +281,7 @@ static bool findMemoryObjectAndBaseAddressAdd(
                     isHandled = true;
                 }
                 else if(secondLoc &&
-                    (secondLoc->is<Parameter>() || secondLoc->residesInMemory() ||
+                    (secondLoc->residesInMemory() ||
                         (secondLoc->is<BuiltinLocal>() &&
                             secondLoc->as<BuiltinLocal>()->builtinType == BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)))
                 {
@@ -294,7 +294,7 @@ static bool findMemoryObjectAndBaseAddressAdd(
             else if(expr && expr->isMoveExpression() && expr->arg0.checkValue() & &Value::checkLocal)
             {
                 auto loc = expr->arg0.checkValue()->local();
-                if(loc->is<Parameter>() || loc->residesInMemory() ||
+                if(loc->residesInMemory() ||
                     (loc->is<BuiltinLocal>() &&
                         loc->as<BuiltinLocal>()->builtinType == BuiltinLocal::Type::GLOBAL_DATA_ADDRESS))
                 {
@@ -361,7 +361,7 @@ static Optional<MemoryAccessRange> determineAccessRange(
     }
     auto memInst = memIt.get<intermediate::MemoryInstruction>();
     auto moveSourceLocal = inst.getMoveSource() & &Value::checkLocal;
-    if(memInst && moveSourceLocal && (moveSourceLocal->is<Parameter>() || moveSourceLocal->residesInMemory()))
+    if(memInst && moveSourceLocal && moveSourceLocal->residesInMemory())
     {
         // direct write of address (e.g. all work items access the same location)
         MemoryAccessRange range;

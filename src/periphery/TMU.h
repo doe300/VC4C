@@ -8,6 +8,7 @@
 #define VC4C_TMU_H
 
 #include "../Method.h"
+#include "../Values.h"
 #include "../asm/OpCodes.h"
 #include "CacheEntry.h"
 

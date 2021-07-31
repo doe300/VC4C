@@ -7,6 +7,7 @@
 #include "InstructionScheduler.h"
 
 #include "../InstructionWalker.h"
+#include "../Method.h"
 #include "../Profiler.h"
 #include "../analysis/DependencyGraph.h"
 #include "../intermediate/IntermediateInstruction.h"

@@ -7,6 +7,7 @@
 #include "KernelInfo.h"
 
 #include "../GlobalValues.h"
+#include "../Method.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "Instruction.h"
 #include "log.h"

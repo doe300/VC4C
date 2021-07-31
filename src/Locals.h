@@ -8,7 +8,9 @@
 #define LOCALS_H
 
 #include "CompilationError.h"
-#include "Values.h"
+#include "Optional.h"
+#include "Types.h"
+#include "performance.h"
 #include "tools/SmallMap.h"
 
 #include <functional>
@@ -18,6 +20,15 @@
 
 namespace vc4c
 {
+    class Value;
+
+    namespace intermediate
+    {
+        class IntermediateInstruction;
+    } /* namespace intermediate */
+
+    using LocalUser = intermediate::IntermediateInstruction;
+
     /*
      * Represents a edge between a Local and a LocalUser.
      *
@@ -193,7 +204,12 @@ namespace vc4c
          *
          * "Default" locals are always stored in registers
          */
-        virtual bool residesInMemory() const;
+        virtual bool residesInMemory() const noexcept;
+
+        /**
+         * Whether the local references read-only memory.
+         */
+        virtual bool residesInConstantMemory() const noexcept;
 
         /*
          * Returns the base local, this local refers to.
@@ -202,6 +218,12 @@ namespace vc4c
          * \param includeOffsets whether to also follow references with offsets != 0
          */
         const Local* getBase(bool includeOffsets) const;
+
+        /**
+         * Whether this local is a "marker" for a specific value/indication and therefore e.g. is not renamed on
+         * inlining.
+         */
+        virtual bool isMarker() const noexcept;
 
         template <typename T>
         T* get()
@@ -332,6 +354,8 @@ namespace vc4c
         Parameter& operator=(Parameter&&) noexcept = delete;
 
         std::string to_string(bool withContent = false) const override;
+        bool residesInMemory() const noexcept override;
+        bool residesInConstantMemory() const noexcept override;
 
         /*
          * Whether this parameter is read from, only meaningful for pointer-types and images
@@ -399,7 +423,7 @@ namespace vc4c
         /*
          * Since the "stack" is located in memory, so are allocations on it
          */
-        bool residesInMemory() const override;
+        bool residesInMemory() const noexcept override;
 
         /*
          * The offset from the start of the stack-allocations area (per QPU).
@@ -486,6 +510,46 @@ namespace vc4c
         const Type builtinType;
 
         bool isWorkGroupUniform() const;
+    };
+
+    /**
+     * A local which is used as a marker for a specific purpose, e.g. a named constant.
+     *
+     * Instances of this class (or its subclasses) are intended to be global static constants and therefore the
+     * use-counter should not be heeded, since it tracks users across kernel functions.
+     */
+    template <typename T>
+    class MarkerLocal : public Local
+    {
+    public:
+        MarkerLocal(DataType type, const std::string& name, T value) : Local(type, name), value(std::move(value)) {}
+        MarkerLocal(const MarkerLocal&) = delete;
+        MarkerLocal(MarkerLocal&&) noexcept = delete;
+        ~MarkerLocal() noexcept override = default;
+
+        MarkerLocal& operator=(const MarkerLocal&) = delete;
+        MarkerLocal& operator=(MarkerLocal&&) noexcept = delete;
+
+        inline bool isMarker() const noexcept final
+        {
+            return true;
+        }
+
+        inline const T& getValue() const noexcept
+        {
+            return value;
+        }
+
+    protected:
+        // To be implemented by locals shared across kernels (and therefore across threads) to prevent concurrent
+        // modifications
+        inline std::unique_lock<std::mutex> getUsersLock() const override
+        {
+            return std::unique_lock<std::mutex>{usersLock};
+        }
+
+        mutable std::mutex usersLock;
+        T value;
     };
 
     /**

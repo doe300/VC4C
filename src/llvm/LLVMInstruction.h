@@ -8,6 +8,7 @@
 #define LLVMINSTRUCTION_H
 
 #include "../Values.h"
+#include "../performance.h"
 
 #include <map>
 #include <memory>

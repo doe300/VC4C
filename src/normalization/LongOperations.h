@@ -11,6 +11,8 @@
 
 namespace vc4c
 {
+    class Module;
+
     namespace normalization
     {
         std::pair<Value, Value> getLowerAndUpperWords(const Value& longValue);

@@ -87,7 +87,8 @@ namespace vc4c
         /*
          * Returns true, since global data resides in memory
          */
-        bool residesInMemory() const override;
+        bool residesInMemory() const noexcept override;
+        bool residesInConstantMemory() const noexcept override;
 
         /*
          * The initial value, usually defaults to a zero-initializer

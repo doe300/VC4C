@@ -6,6 +6,7 @@
 
 #include "IntermediateInstruction.h"
 
+#include "../Method.h"
 #include "../asm/Instruction.h"
 
 using namespace vc4c;

@@ -10,7 +10,7 @@
 #include "Optional.h"
 #include "config.h"
 
-#include "Locals.h"
+#include "Register.h"
 #include "helper.h"
 #include "performance.h"
 
@@ -28,8 +28,7 @@ namespace vc4c
         class IntermediateInstruction;
         struct BranchLabel;
 
-        using IL = std::unique_ptr<IntermediateInstruction>;
-        using InstructionsList = FastModificationList<IL>;
+        using InstructionsList = FastModificationList<std::unique_ptr<IntermediateInstruction>>;
         using InstructionsIterator = InstructionsList::iterator;
         using ConstInstructionsIterator = InstructionsList::const_iterator;
     } // namespace intermediate
@@ -37,6 +36,7 @@ namespace vc4c
     class InstructionWalker;
     class ConstInstructionWalker;
     class Method;
+    class Local;
 
     /*
      * A basic-block is a sequence of continuous instructions within a function body.

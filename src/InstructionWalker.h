@@ -7,6 +7,7 @@
 #ifndef INSTRUCTION_WALKER_H
 #define INSTRUCTION_WALKER_H
 
+#include "BasicBlock.h"
 #include "intermediate/IntermediateInstruction.h"
 
 #include <functional>
@@ -31,6 +32,8 @@ namespace vc4c
         // stop completely
         STOP_ALL
     };
+
+    class InstructionWalker;
 
     /*
      * Visitor-pattern to iterate over instructions in a method

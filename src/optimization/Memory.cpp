@@ -87,14 +87,14 @@ static Optional<BaseAndOffset> findBaseAndOffset(const Value& address)
     if(!loc)
         return {};
 
-    if(loc->is<Parameter>() || loc->residesInMemory())
+    if(loc->residesInMemory())
         // direct access of memory location
         return BaseAndOffset{loc, INT_ZERO, INT_ZERO};
 
     auto addressWriter = loc->getSingleWriter();
     auto expr = addressWriter ? Expression::createRecursiveExpression(*addressWriter, 24) : nullptr;
-    if(expr && expr->isMoveExpression() && expr->arg0.checkLocal())
-        return BaseAndOffset{expr->arg0.checkLocal(), INT_ZERO, INT_ZERO};
+    if(expr && expr->isMoveExpression() && expr->arg0.checkLocal(true))
+        return BaseAndOffset{expr->arg0.checkLocal(true), INT_ZERO, INT_ZERO};
     if(!expr || expr->code != OP_ADD)
         return {};
 
@@ -151,7 +151,7 @@ static Optional<BaseAndOffset> findBaseAndOffset(const Value& address)
         }
         return BaseAndOffset{localIt->checkLocal(), offsets.first, constantPart};
     }
-    else if(auto loc = offsets.second.checkLocal())
+    else if(auto loc = offsets.second.checkLocal(true))
         return BaseAndOffset{loc, offsets.first, INT_ZERO};
 
     return {};
@@ -1408,16 +1408,14 @@ static FastMap<InstructionWalker, TMULoadOffset> findTMULoadsInLoop(
 
                 const Local* baseLocal = nullptr;
                 SubExpression addressOffset{};
-                auto leftLocal = expr->arg0.checkLocal();
-                if(leftLocal &&
-                    (leftLocal->is<Parameter>() || leftLocal->residesInMemory() || leftLocal == globalDataAddress))
+                auto leftLocal = expr->arg0.checkLocal(true);
+                if(leftLocal && (leftLocal->residesInMemory() || leftLocal == globalDataAddress))
                 {
                     baseLocal = leftLocal;
                     addressOffset = expr->arg1;
                 }
-                auto rightLocal = expr->arg1.checkLocal();
-                if(rightLocal &&
-                    (rightLocal->is<Parameter>() || rightLocal->residesInMemory() || rightLocal == globalDataAddress))
+                auto rightLocal = expr->arg1.checkLocal(true);
+                if(rightLocal && (rightLocal->residesInMemory() || rightLocal == globalDataAddress))
                 {
                     baseLocal = rightLocal;
                     addressOffset = expr->arg0;
@@ -1442,9 +1440,9 @@ static FastMap<InstructionWalker, TMULoadOffset> findTMULoadsInLoop(
                 {
                     auto varIt = std::find_if(inductionVariables.begin(), inductionVariables.end(),
                         [&](const analysis::InductionVariable& var) -> bool {
-                            return (var.local == offsetExpr->arg0.checkLocal() &&
+                            return (var.local == offsetExpr->arg0.checkLocal(true) &&
                                        offsetExpr->arg1.getConstantExpression()) ||
-                                (var.local == offsetExpr->arg1.checkLocal() &&
+                                (var.local == offsetExpr->arg1.checkLocal(true) &&
                                     offsetExpr->arg0.getConstantExpression());
                         });
                     if(varIt != inductionVariables.end())

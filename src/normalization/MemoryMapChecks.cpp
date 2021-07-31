@@ -179,10 +179,7 @@ static bool hasMemoryWrites(const Local* local)
 static bool isMemoryOnlyRead(const Local* local)
 {
     auto base = local->getBase(true);
-    if(base->is<Parameter>() && has_flag(base->as<const Parameter>()->decorations, ParameterDecorations::READ_ONLY))
-        return true;
-
-    if(base->is<Global>() && base->as<Global>()->isConstant)
+    if(base->residesInConstantMemory())
         return true;
 
     if(base->type.getPointerType() && base->type.getPointerType()->addressSpace == AddressSpace::CONSTANT)
@@ -331,7 +328,7 @@ static void mapConditionalOrPhiWrites(const FastSet<const IntermediateInstructio
         if(const Local* loc = writer->assertArgument(0).local())
         {
             loc = loc->getBase(true);
-            if(loc->residesInMemory() || loc->is<Parameter>())
+            if(loc->residesInMemory())
             {
                 auto tmp = conditionalAddressWrites.emplace(ConditionalMemoryAccess{writer, loc});
                 localAccesses.emplace(&*tmp.first);
@@ -991,7 +988,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
         if(auto source = VariantNamespace::get_if<Value>(&conditionalWrite.source))
         {
             // check whether conditional source is a conditionally read memory location
-            if(source->checkLocal() && (source->local()->residesInMemory() || source->local()->is<Parameter>()))
+            if(source->checkLocal() && source->local()->residesInMemory())
             {
                 logging::debug() << "Using source of conditional address write '" << source->to_string()
                                  << "' as source of main address write: "
@@ -1028,8 +1025,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                 const Local* sourceLocal = nullptr;
                 if(auto innerSource = VariantNamespace::get_if<Value>(&recursiveAccess.source))
                 {
-                    if(innerSource->checkLocal() &&
-                        (innerSource->local()->residesInMemory() || innerSource->local()->is<Parameter>()))
+                    if(innerSource->checkLocal() && innerSource->local()->residesInMemory())
                         sourceLocal = innerSource->local();
                     else if(!innerSource->hasLocal(conditionalWrite.conditionalWrite->checkOutputLocal()))
                     {

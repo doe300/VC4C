@@ -6,6 +6,7 @@
 
 #include "Reordering.h"
 
+#include "../Method.h"
 #include "../Profiler.h"
 #include "../intermediate/Helper.h"
 #include "log.h"

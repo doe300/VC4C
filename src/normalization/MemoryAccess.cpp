@@ -315,10 +315,8 @@ static bool hasOnlyAddressesDerivateOfLocalId(const MemoryAccessRange& range, un
 
 static bool mayHaveCrossWorkItemMemoryDependency(const Local* memoryObject, const MemoryInfo& info)
 {
-    if(check(memoryObject->as<Global>()) & &Global::isConstant ||
-            check(memoryObject->as<Parameter>()) & [](const Parameter& param) -> bool {
-           return has_flag(param.decorations, ParameterDecorations::READ_ONLY);
-       })
+    // TODO to be precise, we need an alias check here too!
+    if(memoryObject && memoryObject->residesInConstantMemory())
         // constant memory -> no write -> no dependency
         return false;
     switch(info.type)

@@ -13,6 +13,7 @@ target_sources(${VC4C_LIBRARY_NAME}
     Module.cpp
     ProcessUtil.cpp
     Profiler.cpp
+    Register.cpp
     signals.cpp
     SIMDVector.cpp
     ThreadPool.cpp

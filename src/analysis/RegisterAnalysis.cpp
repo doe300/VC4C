@@ -7,6 +7,7 @@
 #include "RegisterAnalysis.h"
 
 #include <climits>
+#include <numeric>
 #include <sstream>
 
 using namespace vc4c;

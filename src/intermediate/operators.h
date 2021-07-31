@@ -8,10 +8,12 @@
 #define VC4C_INSTRUCTION_OPERATORS_H
 
 #include "../InstructionWalker.h"
+#include "../Method.h"
 #include "../asm/OpCodes.h"
 #include "../helper.h"
 #include "IntermediateInstruction.h"
 
+#include <bitset>
 #include <cmath>
 
 namespace vc4c
@@ -494,7 +496,7 @@ namespace vc4c
 
         NODISCARD inline OperationWrapper clz(const Value& arg)
         {
-            return OperationWrapper{OP_CLZ, arg};
+            return (OperationWrapper{OP_CLZ, arg}, intermediate::InstructionDecorations::UNSIGNED_RESULT);
         }
 
         NODISCARD inline LoadWrapper load(Literal value)
@@ -552,12 +554,26 @@ namespace vc4c
             std::string name;
 
             ValueWrapper(Method& method, InstructionWalker& it, DataType type, std::string&& name) :
-                method(method), it(it), type(type), name(std::forward<std::string>(name))
+                method(method), it(it), type(type), name(std::move(name))
             {
             }
 
             NODISCARD Value operator=(OperationWrapper&& op) &&
             {
+                if(type.isUnknown())
+                {
+                    // auto-deduce type
+                    type = op.op.returnsFloat ? TYPE_FLOAT : TYPE_INT32;
+                    auto arg0Mask = op.unpackMode(op.arg0.getReadMask(), op.op.acceptsFloat);
+                    auto arg1Mask = op.arg1 ? op.unpackMode(op.arg1->getReadMask(), op.op.acceptsFloat) : BITMASK_NONE;
+                    auto mask = op.packMode(op.op(arg0Mask, arg1Mask).resultMask);
+                    if(mask.getUpperHalfWord() == 0)
+                        type = op.op.returnsFloat ? TYPE_HALF : TYPE_INT16;
+                    if(mask.getByte3() == 0 && mask.getByte2() == 0 && mask.getByte1() == 0)
+                        type = TYPE_INT8;
+                    auto secondWidth = op.arg1 ? op.arg1->type.getVectorWidth() : uint8_t{0};
+                    type = type.toVectorType(std::max(op.arg0.type.getVectorWidth(), secondWidth));
+                }
                 if(op.setFlags != SetFlag::SET_FLAGS && !op.signal.hasSideEffects() &&
                     (!op.arg0.checkRegister() || !op.arg0.reg().hasSideEffectsOnRead()) &&
                     (!op.arg1 || !op.arg1->checkRegister() || !op.arg1->reg().hasSideEffectsOnRead()) &&
@@ -618,7 +634,19 @@ namespace vc4c
          */
         NODISCARD inline ValueWrapper assign(InstructionWalker& it, DataType type, std::string&& name = "")
         {
-            return ValueWrapper{it.getBasicBlock()->getMethod(), it, type, std::forward<std::string>(name)};
+            return ValueWrapper{it.getBasicBlock()->getMethod(), it, type, std::move(name)};
+        }
+
+        /**
+         * Inserts an instruction that assigns the output of the given calculation to the Value returned.
+         * If the operation can be calculated on compile-time, the direct result will be returned and no instruction
+         * will be inserted.
+         *
+         * NOTE: The InstructionWalker is automatically incremented (iff an instruction is generated)
+         */
+        NODISCARD inline ValueWrapper assign(InstructionWalker& it, std::string&& name = "")
+        {
+            return ValueWrapper{it.getBasicBlock()->getMethod(), it, TYPE_UNKNOWN, std::move(name)};
         }
 
         /**

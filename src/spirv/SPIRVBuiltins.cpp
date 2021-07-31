@@ -7,46 +7,67 @@
 #include "SPIRVBuiltins.h"
 
 #include "../InstructionWalker.h"
+#include "../Method.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/VectorHelper.h"
 #include "log.h"
 
+#include "spirv/unified1/spirv.hpp11"
+
 using namespace vc4c;
 using namespace vc4c::spirv;
 
-SPIRVBuiltin::~SPIRVBuiltin() noexcept = default;
-
-std::unique_lock<std::mutex> SPIRVBuiltin::getUsersLock() const
-{
-    return std::unique_lock<std::mutex>{usersLock};
-}
-
 // get_work_dim - scalar integer
-SPIRVBuiltin spirv::BUILTIN_WORK_DIMENSIONS{
-    spv::BuiltIn::WorkDim, TYPE_INT8, "%builtin_work_dimensions", "vc4cl_work_dimensions", false};
+static const SPIRVBuiltin BUILTIN_WORK_DIMENSIONS{
+    TYPE_INT8, "%builtin_work_dimensions", std::make_pair("vc4cl_work_dimensions", false)};
 // get_global_size - int3 vector
-SPIRVBuiltin spirv::BUILTIN_GLOBAL_SIZE{
-    spv::BuiltIn::GlobalSize, TYPE_INT32.toVectorType(3), "%builtin_global_size", "vc4cl_global_size", true};
+static const SPIRVBuiltin BUILTIN_GLOBAL_SIZE{
+    TYPE_INT32.toVectorType(3), "%builtin_global_size", std::make_pair("vc4cl_global_size", true)};
 // get_global_id - int3 vector
-SPIRVBuiltin spirv::BUILTIN_GLOBAL_ID{
-    spv::BuiltIn::GlobalInvocationId, TYPE_INT32.toVectorType(3), "%builtin_global_id", "vc4cl_global_id", true};
+static const SPIRVBuiltin BUILTIN_GLOBAL_ID{
+    TYPE_INT32.toVectorType(3), "%builtin_global_id", std::make_pair("vc4cl_global_id", true)};
 // get_local_size - int3 vector
-SPIRVBuiltin spirv::BUILTIN_LOCAL_SIZE{
-    spv::BuiltIn::WorkgroupSize, TYPE_INT8.toVectorType(3), "%builtin_local_size", "vc4cl_local_size", true};
+static const SPIRVBuiltin BUILTIN_LOCAL_SIZE{
+    TYPE_INT8.toVectorType(3), "%builtin_local_size", std::make_pair("vc4cl_local_size", true)};
 // get_local_id - int3 vector
-SPIRVBuiltin spirv::BUILTIN_LOCAL_ID{
-    spv::BuiltIn::LocalInvocationId, TYPE_INT8.toVectorType(3), "%builtin_local_id", "vc4cl_local_id", true};
+static const SPIRVBuiltin BUILTIN_LOCAL_ID{
+    TYPE_INT8.toVectorType(3), "%builtin_local_id", std::make_pair("vc4cl_local_id", true)};
 // get_num_groups - int3 vector
-SPIRVBuiltin spirv::BUILTIN_NUM_GROUPS{
-    spv::BuiltIn::NumWorkgroups, TYPE_INT32.toVectorType(3), "%builtin_num_groups", "vc4cl_num_groups", true};
+static const SPIRVBuiltin BUILTIN_NUM_GROUPS{
+    TYPE_INT32.toVectorType(3), "%builtin_num_groups", std::make_pair("vc4cl_num_groups", true)};
 // get_group_id - int3 vector
-SPIRVBuiltin spirv::BUILTIN_GROUP_ID{
-    spv::BuiltIn::WorkgroupId, TYPE_INT32.toVectorType(3), "%builtin_group_id", "vc4cl_group_id", true};
+static const SPIRVBuiltin BUILTIN_GROUP_ID{
+    TYPE_INT32.toVectorType(3), "%builtin_group_id", std::make_pair("vc4cl_group_id", true)};
 // get_global_offset - int3 vector
-SPIRVBuiltin spirv::BUILTIN_GLOBAL_OFFSET{
-    spv::BuiltIn::GlobalOffset, TYPE_INT32.toVectorType(3), "%builtin_global_offset", "vc4cl_global_offset", true};
+static const SPIRVBuiltin BUILTIN_GLOBAL_OFFSET{
+    TYPE_INT32.toVectorType(3), "%builtin_global_offset", std::make_pair("vc4cl_global_offset", true)};
 
 std::string spirv::BUILTIN_INTRINSIC{"load_builtin"};
+
+const SPIRVBuiltin* spirv::mapToBuiltinLocal(spv::BuiltIn builtin)
+{
+    switch(builtin)
+    {
+    case spv::BuiltIn::WorkDim:
+        return &BUILTIN_WORK_DIMENSIONS;
+    case spv::BuiltIn::GlobalSize:
+        return &BUILTIN_GLOBAL_SIZE;
+    case spv::BuiltIn::GlobalInvocationId:
+        return &BUILTIN_GLOBAL_ID;
+    case spv::BuiltIn::WorkgroupSize:
+        return &BUILTIN_LOCAL_SIZE;
+    case spv::BuiltIn::LocalInvocationId:
+        return &BUILTIN_LOCAL_ID;
+    case spv::BuiltIn::NumWorkgroups:
+        return &BUILTIN_NUM_GROUPS;
+    case spv::BuiltIn::WorkgroupId:
+        return &BUILTIN_GROUP_ID;
+    case spv::BuiltIn::GlobalOffset:
+        return &BUILTIN_GLOBAL_OFFSET;
+    default:
+        return nullptr;
+    }
+}
 
 static Optional<Value> getDimensionalArgument(const intermediate::IntrinsicOperation& intrinsicOp)
 {
@@ -98,11 +119,11 @@ void spirv::lowerBuiltins(Module& module, Method& method, InstructionWalker it, 
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Lowering reading of SPIR-V built-in to intrinsic function call: " << it->to_string()
                 << logging::endl);
-        if(!builtInt->hasDimensionalArgument)
+        if(!builtInt->getValue().second)
         {
             // built-in has no dimensional argument -> simply convert to intrinsic function
             it.reset(intermediate::createWithExtras<intermediate::MethodCall>(
-                *intrinsicOp, Value{*it->getOutput()}, std::string{builtInt->intrinsicFunction}));
+                *intrinsicOp, Value{*it->getOutput()}, std::string{builtInt->getValue().first}));
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Replaced reading of SPIR-V built-in with intrinsic function call: " << it->to_string()
                     << logging::endl);
@@ -118,7 +139,7 @@ void spirv::lowerBuiltins(Module& module, Method& method, InstructionWalker it, 
         // insert intrinsic function call to temporary
         auto tmp = method.addNewLocal(builtInt->type.getElementType(), builtInt->name);
         it.emplace(std::make_unique<intermediate::MethodCall>(
-            Value{tmp}, std::string{builtInt->intrinsicFunction}, std::vector<Value>{*arg}));
+            Value{tmp}, std::string{builtInt->getValue().first}, std::vector<Value>{*arg}));
 
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Replaced reading of SPIR-V built-in with intrinsic function call and vector rotation: "

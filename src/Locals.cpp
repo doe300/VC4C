@@ -144,7 +144,12 @@ std::string Local::to_string(bool withContent) const
 }
 LCOV_EXCL_STOP
 
-bool Local::residesInMemory() const
+bool Local::residesInMemory() const noexcept
+{
+    return false;
+}
+
+bool Local::residesInConstantMemory() const noexcept
 {
     return false;
 }
@@ -157,6 +162,11 @@ const Local* Local::getBase(bool includeOffsets) const
             return data->base->getBase(includeOffsets);
     }
     return this;
+}
+
+bool Local::isMarker() const noexcept
+{
+    return false;
 }
 
 std::unique_lock<std::mutex> Local::getUsersLock() const
@@ -216,6 +226,16 @@ std::string Parameter::to_string(bool withContent) const
 }
 LCOV_EXCL_STOP
 
+bool Parameter::residesInMemory() const noexcept
+{
+    return type.getPointerType() || type.getArrayType() || type.getStructType();
+}
+
+bool Parameter::residesInConstantMemory() const noexcept
+{
+    return residesInMemory() && has_flag(decorations, ParameterDecorations::READ_ONLY);
+}
+
 bool Parameter::isInputParameter() const
 {
     return has_flag(decorations, ParameterDecorations::INPUT);
@@ -237,7 +257,7 @@ StackAllocation::StackAllocation(const std::string& name, DataType type, std::si
             CompilationStep::GENERAL, "Stack allocations must have private address space", to_string());
 }
 
-bool StackAllocation::residesInMemory() const
+bool StackAllocation::residesInMemory() const noexcept
 {
     return true;
 }

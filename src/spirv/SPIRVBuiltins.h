@@ -9,9 +9,10 @@
 
 #include "../Locals.h"
 
-#include "spirv/unified1/spirv.hpp11"
-
-#include <mutex>
+namespace spv
+{
+    enum class BuiltIn : unsigned;
+} // namespace spv
 
 namespace vc4c
 {
@@ -27,45 +28,15 @@ namespace vc4c
          *
          * NOTE: This type is to be used by the SPIR-V front-end only and only to correctly lower the built-ins!
          */
-        struct SPIRVBuiltin : public Local
-        {
-            explicit SPIRVBuiltin(
-                spv::BuiltIn builtin, DataType type, const std::string& name, std::string&& intrinsic, bool withArg) :
-                Local(type, name),
-                builtInId(builtin), intrinsicFunction(std::move(intrinsic)), hasDimensionalArgument(withArg)
-            {
-            }
-
-            ~SPIRVBuiltin() noexcept override;
-
-            spv::BuiltIn builtInId;
-            std::string intrinsicFunction;
-            bool hasDimensionalArgument;
-
-        protected:
-            mutable std::mutex usersLock;
-            std::unique_lock<std::mutex> getUsersLock() const override;
-        };
-
-        // get_work_dim - scalar integer
-        extern SPIRVBuiltin BUILTIN_WORK_DIMENSIONS;
-        // get_global_size - int3 vector
-        extern SPIRVBuiltin BUILTIN_GLOBAL_SIZE;
-        // get_global_id - int3 vector
-        extern SPIRVBuiltin BUILTIN_GLOBAL_ID;
-        // get_local_size - int3 vector
-        extern SPIRVBuiltin BUILTIN_LOCAL_SIZE;
-        // get_local_id - int3 vector
-        extern SPIRVBuiltin BUILTIN_LOCAL_ID;
-        // get_num_groups - int3 vector
-        extern SPIRVBuiltin BUILTIN_NUM_GROUPS;
-        // get_group_id - int3 vector
-        extern SPIRVBuiltin BUILTIN_GROUP_ID;
-        // get_global_offset - int3 vector
-        extern SPIRVBuiltin BUILTIN_GLOBAL_OFFSET;
+        using SPIRVBuiltin = MarkerLocal<std::pair<std::string, bool>>;
 
         // The magic constant indicating an intermediate::IntrinsicOperation which for reading a built-in value
         extern std::string BUILTIN_INTRINSIC;
+
+        /**
+         * Returns the local representing the underlying built-in value or NULL if the built-in is not mapped
+         */
+        const SPIRVBuiltin* mapToBuiltinLocal(spv::BuiltIn builtin);
 
         /**
          * Lowers the "loading" of OpenCL C work-item functions from SPIR-V constant memory into the "normal" intrinsic

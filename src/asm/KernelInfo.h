@@ -13,9 +13,7 @@
 #include "../shared/BinaryHeader.h"
 #include "config.h"
 
-#include <array>
 #include <iostream>
-#include <vector>
 
 namespace vc4c
 {

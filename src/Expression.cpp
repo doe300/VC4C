@@ -86,6 +86,15 @@ bool SubExpression::isConstant() const
     return false;
 }
 
+const Local* SubExpression::checkLocal(bool includeExpressionOutput) const
+{
+    if(auto loc = checkLocal())
+        return loc;
+    if(auto expr = checkExpression())
+        return expr->outputValue;
+    return nullptr;
+}
+
 static bool isWorkGroupUniform(const SubExpression& exp)
 {
     auto expr = exp.checkExpression();

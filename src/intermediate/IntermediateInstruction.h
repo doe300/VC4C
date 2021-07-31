@@ -7,12 +7,15 @@
 #ifndef INTERMEDIATEINSTRUCTION_H
 #define INTERMEDIATEINSTRUCTION_H
 
-#include "../Method.h"
+#include "../Locals.h"
+#include "../Values.h"
 #include "../asm/OpCodes.h"
-#include "CompilationError.h"
+#include "../performance.h"
 #include "Optional.h"
 
+#include <functional>
 #include <memory>
+#include <string>
 
 namespace vc4c
 {
@@ -27,6 +30,8 @@ namespace vc4c
         struct TMUCacheEntry;
         struct VPMCacheEntry;
     } // namespace periphery
+
+    class Method;
 
     namespace intermediate
     {

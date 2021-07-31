@@ -870,38 +870,15 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         {
             // This is a built-in, do not generate a global variable, but reference to the UNIFORM/convert to vector3.
             /*
-             * From SPI-V view, they are constants (OpVariable in UniformConstant address space) which are read as such
+             * From SPIR-V view, they are constants (OpVariable in UniformConstant address space) which are read as such
              * (e.g. via OpLoad instruction). Since in OpenCL C source code, only a single dimension can be accessed at
              * any time, the loaded value will be converted to one of the elements (assuming no optimizations occur
              * here) (e.g. via OpCompositeExtract instruction).
              */
-            switch(builtinId)
+            if(auto builtin = mapToBuiltinLocal(builtinId))
+                memoryAllocatedData.emplace(parsed_instruction.getResultId(), builtin);
+            else
             {
-            case spv::BuiltIn::WorkDim:
-                memoryAllocatedData.emplace(parsed_instruction.getResultId(), &BUILTIN_WORK_DIMENSIONS);
-                break;
-            case spv::BuiltIn::GlobalSize:
-                memoryAllocatedData.emplace(parsed_instruction.getResultId(), &BUILTIN_GLOBAL_SIZE);
-                break;
-            case spv::BuiltIn::GlobalInvocationId:
-                memoryAllocatedData.emplace(parsed_instruction.getResultId(), &BUILTIN_GLOBAL_ID);
-                break;
-            case spv::BuiltIn::WorkgroupSize:
-                memoryAllocatedData.emplace(parsed_instruction.getResultId(), &BUILTIN_LOCAL_SIZE);
-                break;
-            case spv::BuiltIn::LocalInvocationId:
-                memoryAllocatedData.emplace(parsed_instruction.getResultId(), &BUILTIN_LOCAL_ID);
-                break;
-            case spv::BuiltIn::NumWorkgroups:
-                memoryAllocatedData.emplace(parsed_instruction.getResultId(), &BUILTIN_NUM_GROUPS);
-                break;
-            case spv::BuiltIn::WorkgroupId:
-                memoryAllocatedData.emplace(parsed_instruction.getResultId(), &BUILTIN_GROUP_ID);
-                break;
-            case spv::BuiltIn::GlobalOffset:
-                memoryAllocatedData.emplace(parsed_instruction.getResultId(), &BUILTIN_GLOBAL_OFFSET);
-                break;
-            default:
                 logging::error() << "Met unsupported builtin " << static_cast<uint32_t>(builtinId) << logging::endl;
                 return ParseResultCode::UNSUPPORTED;
             }

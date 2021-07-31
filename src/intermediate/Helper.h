@@ -9,6 +9,8 @@
 
 #include "../InstructionWalker.h"
 
+#include <bitset>
+
 namespace vc4c
 {
     namespace intermediate

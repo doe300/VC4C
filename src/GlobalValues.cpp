@@ -153,9 +153,14 @@ std::string Global::to_string(bool withContent) const
 }
 LCOV_EXCL_STOP
 
-bool Global::residesInMemory() const
+bool Global::residesInMemory() const noexcept
 {
     return true;
+}
+
+bool Global::residesInConstantMemory() const noexcept
+{
+    return isConstant;
 }
 
 std::unique_lock<std::mutex> Global::getUsersLock() const

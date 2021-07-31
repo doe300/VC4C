@@ -101,7 +101,7 @@ namespace vc4c
             Optional<Value> getUpperLimit(DataType type) const;
             constexpr Optional<double> getSingletonValue() const noexcept
             {
-                if(minValue == maxValue)
+                if(hasExplicitBoundaries() && minValue == maxValue)
                     return minValue;
                 return {};
             }

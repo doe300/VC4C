@@ -9,6 +9,7 @@
 
 #include "BasicBlock.h"
 #include "KernelMetaData.h"
+#include "Locals.h"
 #include "Optional.h"
 
 #include <memory>

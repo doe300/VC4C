@@ -7,7 +7,7 @@
 #include "IntermediateInstruction.h"
 
 #include "../GlobalValues.h"
-#include "../spirv/SPIRVBuiltins.h"
+#include "../Method.h"
 #include "log.h"
 
 using namespace vc4c;
@@ -353,7 +353,7 @@ Value IntermediateInstruction::renameValue(
     if(!orig.checkLocal())
         return orig;
     auto origLocal = orig.local();
-    if(origLocal->is<Global>() || origLocal->is<spirv::SPIRVBuiltin>())
+    if(origLocal->is<Global>() || origLocal->isMarker())
         return orig;
     if(auto alloc = origLocal->as<StackAllocation>())
     {
