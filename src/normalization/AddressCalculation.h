@@ -61,6 +61,20 @@ namespace vc4c
             const Value& ptrValue);
 
         /*
+         * Converts an address (e.g. an index chain) and the corresponding base pointer to the pointer difference
+         *
+         * Additionally to #insertAddressToOffset(), this function also returns the selected container/pointed-to object
+         * at run-time in an output parameter.
+         *
+         * NOTE: The result itself is still in "memory-address mode", meaning the offset is the number of bytes
+         *
+         * Returns (char*)address - (char*)baseAddress
+         */
+        NODISCARD InstructionWalker insertAddressToOffsetAndContainer(InstructionWalker it, Method& method, Value& out,
+            const FastMap<const Local*, Value>& baseAddressesAndContainers, Value& outContainer,
+            const intermediate::MemoryInstruction* mem, const Value& ptrValue);
+
+        /*
          * Converts an address (e.g. an index-chain) and a base-address to the offset of the vector denoting the element
          * accessed by the index-chain. In addition to #insertAddressToOffset, this function also handles multiple
          * stack-frames.
@@ -82,8 +96,8 @@ namespace vc4c
          * Return ((char*)address - (char*)baseAddress) / sizeof(elementType)
          */
         NODISCARD InstructionWalker insertAddressToElementOffset(InstructionWalker it, Method& method, Value& out,
-            const FastMap<const Local*, Value>& baseAddressesAndContainers, Value& outContainer,
-            const intermediate::MemoryInstruction* mem, const Value& ptrValue);
+            const FastMap<const Local*, Value>& baseAddressesAndContainers, const intermediate::MemoryInstruction* mem,
+            const Value& ptrValue);
 
         /*
          * Converts an address (e.g. index-chain) which contains work-group uniform and work-item specific parts (as

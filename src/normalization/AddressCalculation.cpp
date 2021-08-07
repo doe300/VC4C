@@ -157,6 +157,32 @@ InstructionWalker normalization::insertAddressToOffset(InstructionWalker it, Met
     return insertAddressToOffsetInner(it, method, out, baseAddresses, mem, ptrValue, {});
 }
 
+InstructionWalker normalization::insertAddressToOffsetAndContainer(InstructionWalker it, Method& method, Value& out,
+    const FastMap<const Local*, Value>& baseAddressesAndContainers, Value& outContainer,
+    const intermediate::MemoryInstruction* mem, const Value& ptrValue)
+{
+    tools::SmallSortedPointerSet<const Local*> baseAddresses;
+    auto containerType = baseAddressesAndContainers.begin()->second.type;
+    for(const auto& entry : baseAddressesAndContainers)
+    {
+        baseAddresses.emplace(entry.first);
+        if(entry.second.type != containerType)
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Calculating conditional address into register/constant-lowered memory areas with different types is "
+                "not yet implemented",
+                it->to_string());
+    }
+
+    outContainer = method.addNewLocal(containerType, "%conditional_container");
+    return insertAddressToOffsetInner(it, method, out, baseAddresses, mem, ptrValue,
+        [&](InstructionWalker it, const Local* loc, ConditionCode cond) -> InstructionWalker {
+            // additionally to selecting the base address, we also need to select the lowered container
+            assign(it, outContainer) = (baseAddressesAndContainers.at(loc), cond);
+            return it;
+        });
+    return it;
+}
+
 InstructionWalker normalization::insertAddressToStackOffset(InstructionWalker it, Method& method, Value& out,
     const Local* baseAddress, MemoryAccessType type, const MemoryInstruction* mem, const Value& ptrValue)
 {
@@ -179,8 +205,7 @@ InstructionWalker normalization::insertAddressToStackOffset(InstructionWalker it
 }
 
 InstructionWalker normalization::insertAddressToElementOffset(InstructionWalker it, Method& method, Value& out,
-    const FastMap<const Local*, Value>& baseAddressesAndContainers, Value& outContainer, const MemoryInstruction* mem,
-    const Value& ptrValue)
+    const FastMap<const Local*, Value>& baseAddressesAndContainers, const MemoryInstruction* mem, const Value& ptrValue)
 {
     tools::SmallSortedPointerSet<const Local*> baseAddresses;
     auto containerType = baseAddressesAndContainers.begin()->second.type;
@@ -195,13 +220,7 @@ InstructionWalker normalization::insertAddressToElementOffset(InstructionWalker 
     }
 
     Value tmpIndex = UNDEFINED_VALUE;
-    outContainer = method.addNewLocal(containerType, "%conditional_container");
-    it = insertAddressToOffsetInner(it, method, tmpIndex, baseAddresses, mem, ptrValue,
-        [&](InstructionWalker it, const Local* loc, ConditionCode cond) -> InstructionWalker {
-            // additionally to selecting the base address, we also need to select the lowered container
-            assign(it, outContainer) = (baseAddressesAndContainers.at(loc), cond);
-            return it;
-        });
+    it = insertAddressToOffsetInner(it, method, tmpIndex, baseAddresses, mem, ptrValue, {});
     // the index (as per index calculation) is in bytes, but we need index in elements, so divide by element size
     unsigned elementTypeSize = 0;
     if(containerType.isSimpleType() || containerType.getArrayType())

@@ -16,14 +16,47 @@ using namespace vc4c;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
 
-/*
+/**
+ * Inserts a bit-cast from a source to a destination with the same element bit-width, but with omitting of elements.
+ *
+ * Since the element stride is not 1 (i.e. we skip elements, e.g. for intN to lower/upper part of longN conversion), we
+ * cannot just simply copy, but instead have to rotate every element into place.
+ */
+static NODISCARD InstructionWalker insertStridedBitcast(
+    InstructionWalker it, Method& method, const Value& src, const Value& dest, uint32_t elementStride)
+{
+    auto destination = method.addNewLocal(dest.type, "%bit_cast");
+
+    for(unsigned i = 0; i < dest.type.getVectorWidth(); ++i)
+    {
+        // This allows us to e.g. skip every second word for casting 32-bit word to lower word of 64-bit value
+        unsigned sourceIndex = i * elementStride;
+
+        const Value tmp = method.addNewLocal(dest.type, "%bit_cast");
+        // the vector-rotation to element 0 and then to the destination element should be combined by optimization-step
+        // #combineVectorRotations
+        if(i == 0)
+            // assign destination with first element, so register-allocation finds unconditional write
+            assign(it, destination) = src;
+        else
+        {
+            it = insertVectorExtraction(it, method, src, Value(Literal(sourceIndex), TYPE_INT8), tmp);
+            it = insertVectorInsertion(it, method, destination, Value(Literal(i), TYPE_INT8), tmp);
+        }
+    }
+
+    it.emplace(std::make_unique<MoveOperation>(dest, destination));
+    return it;
+}
+
+/**
  * Inserts a bit-cast where the destination element-type is larger than the source element-type, combining multiple
  * elements into a single one.
  *
  * This also means, the source vector has more elements (of smaller type-size) than the destination vector
  */
 static NODISCARD InstructionWalker insertCombiningBitcast(
-    InstructionWalker it, Method& method, const Value& src, const Value& dest)
+    InstructionWalker it, Method& method, const Value& src, const Value& dest, uint32_t elementStride)
 {
     // the number of source elements to combine in a single destination element
     unsigned sizeFactor = dest.type.getScalarBitCount() / src.type.getScalarBitCount();
@@ -49,7 +82,11 @@ static NODISCARD InstructionWalker insertCombiningBitcast(
         shiftedTruncatedVectors.emplace_back(
             method.addNewLocal(dest.type.toVectorType(src.type.getVectorWidth()), "%bit_cast"));
         const Value& result = shiftedTruncatedVectors.back();
-        assign(it, result) = truncatedSource << Value(Literal(shift * i), TYPE_INT8);
+        if(i == 0)
+            // no need to shift for 0th element
+            assign(it, result) = truncatedSource;
+        else
+            assign(it, result) = truncatedSource << Value(Literal(shift * i), TYPE_INT8);
     }
 
     /*
@@ -111,35 +148,21 @@ static NODISCARD InstructionWalker insertCombiningBitcast(
      *
      * Finally, we rotate the single elements to fit their position in the destination
      */
-
-    Value destination = method.addNewLocal(dest.type, "%bit_cast");
-    // initialize destination with zero so register-allocation finds unconditional assignment
-    assign(it, destination) = INT_ZERO;
-
-    for(unsigned i = 0; i < dest.type.getVectorWidth(); ++i)
-    {
-        unsigned sourceIndex = i * sizeFactor;
-
-        const Value tmp = method.addNewLocal(dest.type, "%bit_cast");
-        // the vector-rotation to element 0 and then to the destination element should be combined by optimization-step
-        // #combineVectorRotations
-        it = insertVectorExtraction(it, method, combinedVector, Value(Literal(sourceIndex), TYPE_INT8), tmp);
-        it = insertVectorInsertion(it, method, destination, Value(Literal(i), TYPE_INT8), tmp);
-    }
-
-    it.emplace(std::make_unique<MoveOperation>(dest, destination));
-    return it;
+    return insertStridedBitcast(it, method, combinedVector, dest, elementStride * sizeFactor);
 }
 
-/*
+/**
  * Inserts a bit-cast where the destination element-type is smaller than the source element-type, splitting a single
  * element into several ones.
  *
  * This also means, the source vector has less elements (of larger type-size) than the destination vector
  */
 static NODISCARD InstructionWalker insertSplittingBitcast(
-    InstructionWalker it, Method& method, const Value& src, const Value& dest)
+    InstructionWalker it, Method& method, const Value& src, const Value& dest, uint32_t elementStride)
 {
+    if(elementStride != 1)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Splitting bit-cast with element stride is not yet implemented");
     // the number of destination elements to extract from a single source element
     unsigned sizeFactor = src.type.getScalarBitCount() / dest.type.getScalarBitCount();
     // the number of bits to shift per element
@@ -151,21 +174,30 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
      * E.g. int2 -> short4 can be written as
      * (int2 >> 0) & 0xFFFF -> short4 (lower half-words)
      * (int2 >> 16) & 0xFFFF -> short4 (upper half-words)
-     * -> we only need 2 shifts and 2 ANDs instead of 4 (per element)
+     * -> we only need 1 shift and 1 AND instead of 4 (per element)
      */
     std::vector<Value> shiftedTruncatedVectors;
     shiftedTruncatedVectors.reserve(sizeFactor);
     auto srcLongData = Local::getLocalData<MultiRegisterData>(src.checkLocal());
     for(unsigned i = 0; i < sizeFactor; ++i)
     {
-        shiftedTruncatedVectors.emplace_back(method.addNewLocal(dest.type, "%bit_cast"));
+        shiftedTruncatedVectors.emplace_back(
+            method.addNewLocal(dest.type.toVectorType(src.type.getVectorWidth()), "%bit_cast"));
         const Value& result = shiftedTruncatedVectors.back();
         auto srcVal = src;
         if(srcLongData)
             // need to correctly take the lower or upper part for 64-bit locals
             srcVal = (i >= (sizeFactor / 2) ? srcLongData->upper : srcLongData->lower)->createReference();
-        Value tmp = assign(it, dest.type, "%bit_cast") = as_unsigned{srcVal} >> Value(Literal(shift * i), TYPE_INT8);
-        assign(it, result) = tmp & Value(Literal(dest.type.getScalarWidthMask()), TYPE_INT32);
+        Value tmpShifted = srcVal;
+        if(i > 0)
+            // no need to shift for 0th element
+            tmpShifted = assign(it, result.type, "%bit_cast") =
+                as_unsigned{srcVal} >> Value(Literal(shift * i), TYPE_INT8);
+        if(i == (sizeFactor - 1u))
+            // no need to AND for upper-most element
+            assign(it, result) = tmpShifted;
+        else
+            assign(it, result) = tmpShifted & Value(Literal(dest.type.getScalarWidthMask()), TYPE_INT32);
     }
 
     /*
@@ -181,8 +213,6 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
      */
 
     const Value destination = method.addNewLocal(dest.type, "%bit_cast");
-    // initialize destination with zero so register-allocation finds unconditional assignment
-    assign(it, destination) = INT_ZERO;
 
     for(unsigned i = 0; i < dest.type.getVectorWidth(); ++i)
     {
@@ -194,24 +224,30 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
         // the vector-rotation to element 0 and then to the destination element should be combined by optimization-step
         // #combineVectorRotations
         it = insertVectorExtraction(it, method, stv, Value(Literal(sourceElement), TYPE_INT8), tmp);
-        it = insertVectorInsertion(it, method, destination, Value(Literal(i), TYPE_INT8), tmp);
+        if(i == 0)
+            // assign destination with first element, so register-allocation finds unconditional write
+            assign(it, destination) = tmp;
+        else
+            it = insertVectorInsertion(it, method, destination, Value(Literal(i), TYPE_INT8), tmp);
     }
 
     it.emplace(std::make_unique<MoveOperation>(dest, destination));
     return it;
 }
 
-InstructionWalker intermediate::insertBitcast(
-    InstructionWalker it, Method& method, const Value& src, const Value& dest, InstructionDecorations deco)
+InstructionWalker intermediate::insertBitcast(InstructionWalker it, Method& method, const Value& src, const Value& dest,
+    InstructionDecorations deco, uint32_t elementStride)
 {
     if(src.isUndefined())
         it.emplace(std::make_unique<intermediate::MoveOperation>(dest, UNDEFINED_VALUE));
     else if(src.isZeroInitializer())
         it.emplace(std::make_unique<intermediate::MoveOperation>(dest, INT_ZERO));
-    else if(src.type.getVectorWidth() > dest.type.getVectorWidth())
-        it = insertCombiningBitcast(it, method, src, dest);
-    else if(src.type.getVectorWidth() < dest.type.getVectorWidth())
-        it = insertSplittingBitcast(it, method, src, dest);
+    else if(src.type.getScalarBitCount() < dest.type.getScalarBitCount())
+        it = insertCombiningBitcast(it, method, src, dest, elementStride);
+    else if(src.type.getScalarBitCount() > dest.type.getScalarBitCount())
+        it = insertSplittingBitcast(it, method, src, dest, elementStride);
+    else if(elementStride != 1u)
+        it = insertStridedBitcast(it, method, src, dest, elementStride);
     else
         // bit-casts with types of same vector-size (and therefore same element-size) are simple moves
         it.emplace(std::make_unique<intermediate::MoveOperation>(dest, src)).addDecorations(deco);
@@ -231,14 +267,14 @@ InstructionWalker intermediate::insertZeroExtension(InstructionWalker it, Method
     if(src.type.getScalarBitCount() == 32 && dest.type.getScalarBitCount() <= 32)
     {
         //"extend" to smaller type
-        auto newMove = &it.emplace(std::make_unique<MoveOperation>(dest, src, conditional, setFlags));
+        auto& newMove = it.emplace(std::make_unique<MoveOperation>(dest, src, conditional, setFlags));
         switch(dest.type.getScalarBitCount())
         {
         case 8:
-            newMove->setPackMode(PACK_INT_TO_CHAR_TRUNCATE);
+            newMove.setPackMode(PACK_INT_TO_CHAR_TRUNCATE);
             break;
         case 16:
-            newMove->setPackMode(PACK_INT_TO_SHORT_TRUNCATE);
+            newMove.setPackMode(PACK_INT_TO_SHORT_TRUNCATE);
             break;
         case 32:
             // no pack mode

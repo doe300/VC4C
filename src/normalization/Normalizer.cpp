@@ -102,7 +102,7 @@ static void propagateDecorations(Module& module, Method& method, InstructionWalk
             continue;
         if(check.first == intermediate::InstructionDecorations::IDENTICAL_ELEMENTS)
         {
-            if(it.get<intermediate::MemoryInstruction>())
+            if(it.get<intermediate::MemoryInstruction>() || it.get<intermediate::MemoryAccessInstruction>())
                 continue;
             auto load = it.get<intermediate::LoadImmediate>();
             if(load && load->type != intermediate::LoadType::REPLICATE_INT32)

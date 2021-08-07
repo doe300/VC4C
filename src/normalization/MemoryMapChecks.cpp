@@ -130,7 +130,7 @@ static Optional<DataType> convertSmallArrayToRegister(const Local* local)
             return arrayType->elementType.toVectorType(static_cast<uint8_t>(arrayType->size));
         if(auto pointerType = baseType.getPointerType())
             // pointer to pointer (the content is a pointer) fits into register
-            return baseType;
+            return TYPE_INT32;
         if(baseType.isSimpleType())
             // any simple type fits into register
             return baseType;

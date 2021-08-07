@@ -54,11 +54,11 @@ std::string LoadImmediate::to_string() const
     case LoadType::PER_ELEMENT_SIGNED:
 
         return (getOutput()->to_string(true) + " = loadsi ") + TYPE_INT32.toVectorType(16).to_string() + " " +
-            toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_SIGNED).to_string() +
+            toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_SIGNED).to_string(true) +
             createAdditionalInfoString();
     case LoadType::PER_ELEMENT_UNSIGNED:
         return (getOutput()->to_string(true) + " = loadui ") + TYPE_INT8.toVectorType(16).to_string() + " " +
-            toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_UNSIGNED).to_string() +
+            toLoadedValues(assertArgument(0).literal().unsignedInt(), LoadType::PER_ELEMENT_UNSIGNED).to_string(true) +
             createAdditionalInfoString();
     }
     throw CompilationError(

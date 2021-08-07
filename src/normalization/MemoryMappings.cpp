@@ -11,6 +11,7 @@
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
 #include "../intrinsics/WorkItems.h"
+#include "../periphery/RegisterLoweredMemory.h"
 #include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
 #include "log.h"
@@ -183,9 +184,8 @@ static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, Instructi
             CompilationStep::NORMALIZER, "Cannot perform a non-read operation on constant memory", mem->to_string());
 
     Value tmpIndex = UNDEFINED_VALUE;
-    Value selectedContainer = UNDEFINED_VALUE;
     it = insertAddressToElementOffset(
-        it, method, tmpIndex, getBaseAddressesAndContainers(srcInfos), selectedContainer, mem, mem->getSource());
+        it, method, tmpIndex, getBaseAddressesAndContainers(srcInfos), mem, mem->getSource());
     // TODO check whether index is guaranteed to be in range [0, 16[
     auto elementType = srcInfo.convertedRegisterOrAreaType ? *srcInfo.convertedRegisterOrAreaType :
                                                              srcInfo.mappedRegisterOrConstant->type.getElementType();
@@ -340,24 +340,24 @@ static InstructionWalker lowerMemoryReadWriteToRegister(Method& method, Instruct
                     "Cannot map memory location to register without mapping register specified", mem->to_string());
     }
 
-    // TODO check whether index is guaranteed to be in range [0, 16[
     if(mem->op == MemoryOperation::READ)
     {
-        Value tmpIndex = UNDEFINED_VALUE;
+        Value offset = UNDEFINED_VALUE;
         Value selectedContainer = UNDEFINED_VALUE;
-        it = insertAddressToElementOffset(
-            it, method, tmpIndex, getBaseAddressesAndContainers(srcInfos), selectedContainer, mem, mem->getSource());
-        it = insertVectorExtraction(it, method, selectedContainer, tmpIndex, mem->getDestination());
+        it = insertAddressToOffsetAndContainer(
+            it, method, offset, getBaseAddressesAndContainers(srcInfos), selectedContainer, mem, mem->getSource());
+        if(auto src = check(selectedContainer.getSingleWriter()) & &LocalUser::getMoveSource)
+            selectedContainer = *src;
+        it = periphery::insertReadLoweredRegister(method, it, mem->getDestination(), offset, selectedContainer);
     }
     else if(mem->op == MemoryOperation::WRITE)
     {
         ASSERT_SINGLE_DESTINATION("lowerMemoryReadWriteToRegister");
         // TODO copying the container does not work, since we need to write back...
-        Value tmpIndex = UNDEFINED_VALUE;
-        Value selectedContainer = UNDEFINED_VALUE;
-        it = insertAddressToElementOffset(it, method, tmpIndex, getBaseAddressesAndContainers(destInfos),
-            selectedContainer, mem, mem->getDestination());
-        it = insertVectorInsertion(it, method, destInfo.mappedRegisterOrConstant.value(), tmpIndex, mem->getSource());
+        Value offset = UNDEFINED_VALUE;
+        it = insertAddressToOffset(it, method, offset, getBaseAddresses(destInfos), mem, mem->getDestination());
+        it = periphery::insertWriteLoweredRegister(
+            method, it, mem->getSource(), offset, destInfo.mappedRegisterOrConstant.value());
     }
     else if(mem->op == MemoryOperation::FILL && mem->getSource().type.isScalarType())
     {
@@ -395,13 +395,10 @@ static InstructionWalker lowerMemoryCopyToRegister(Method& method, InstructionWa
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Mapping copy with register-mapped memory: " << mem->to_string() << logging::endl);
 
-    Value tmpIndex = UNDEFINED_VALUE;
-    Value selectedContainer = UNDEFINED_VALUE;
-    it = insertAddressToElementOffset(
-        it, method, tmpIndex, getBaseAddressesAndContainers(srcInfos), selectedContainer, mem, mem->getSource());
+    Value offset = UNDEFINED_VALUE;
+    it = insertAddressToOffset(it, method, offset, getBaseAddresses(srcInfos), mem, mem->getSource());
     if(srcInfo.mappedRegisterOrConstant)
     {
-        // TODO check whether index is guaranteed to be in range [0, 16[
         Value tmp(UNDEFINED_VALUE);
         Value numEntries = INT_ONE;
         if(wholeRegister)
@@ -434,7 +431,7 @@ static InstructionWalker lowerMemoryCopyToRegister(Method& method, InstructionWa
             }
             else
                 tmp = method.addNewLocal(mem->getSourceElementType());
-            it = insertVectorExtraction(it, method, *srcInfo.mappedRegisterOrConstant, tmpIndex, tmp);
+            it = periphery::insertReadLoweredRegister(method, it, tmp, offset, *srcInfo.mappedRegisterOrConstant);
         }
         auto memWrite = &it.reset(std::make_unique<MemoryInstruction>(
             MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmp), std::move(numEntries)));
@@ -449,7 +446,8 @@ static InstructionWalker lowerMemoryCopyToRegister(Method& method, InstructionWa
         auto memRead = &it.emplace(
             std::make_unique<MemoryInstruction>(MemoryOperation::READ, std::move(tmp), Value(mem->getSource())));
         it = mapMemoryAccess(method, it, memRead, srcInfos, destInfos);
-        it = insertVectorInsertion(it, method, *destInfo.mappedRegisterOrConstant, tmpIndex, mem->getSource());
+        it = periphery::insertWriteLoweredRegister(
+            method, it, mem->getSource(), offset, *destInfo.mappedRegisterOrConstant);
         return it.erase();
     }
     throw CompilationError(
@@ -924,7 +922,8 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
                 it.nextInBlock();
             }
             auto tmp = method.addNewLocal(
-                mem->getSourceElementType().toVectorType(static_cast<uint8_t>(numElements)), "%mem_read_tmp");
+                destInfo.convertedRegisterOrAreaType->getElementType().toVectorType(static_cast<uint8_t>(numElements)),
+                "%mem_read_tmp");
             auto memRead = &it.emplace(std::make_unique<MemoryInstruction>(
                 MemoryOperation::READ, Value(tmp), Value(mem->getSource()), Value(INT_ONE), false));
             it = mapMemoryAccess(method, it, memRead, srcInfos, destInfos);

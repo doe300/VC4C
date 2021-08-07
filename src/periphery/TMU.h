@@ -22,7 +22,7 @@ namespace vc4c
 
         struct TMUCacheEntry : CacheEntry
         {
-            explicit TMUCacheEntry(const TMU& tmu, const Value& addr, DataType originalType);
+            TMUCacheEntry(const TMU& tmu, const Value& addr, DataType originalType);
             ~TMUCacheEntry() noexcept override;
 
             std::string to_string() const override;

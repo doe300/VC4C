@@ -8,6 +8,7 @@
 #define IMAGES_H
 
 #include "../InstructionWalker.h"
+#include "../Module.h"
 
 #include <cstdint>
 

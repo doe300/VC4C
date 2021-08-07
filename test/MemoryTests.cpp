@@ -7,6 +7,8 @@
 
 #include "test_files.h"
 
+#include <algorithm>
+
 using namespace test_files;
 
 static const std::string COPY64BIT = R"(
@@ -66,6 +68,35 @@ __kernel void test(__global TYPE* out, const __global TYPE* in) {
 }
 )";
 
+static const std::string LOAD_PRIVATE_REGISTER_ALIAS = R"(
+#define CONCAT(a,b) a ## b
+#define CAT(a,b) CONCAT(a,b)
+
+__kernel void test(const __global STORAGE* in, __global TYPE* out, __global CAT(TYPE,2)* out2, __global TYPE* out3, __global CAT(TYPE,4)* out4, __global CAT(TYPE,8)* out8, __global CAT(TYPE,16)* out16)
+{
+    // should be lowered to register
+    __private STORAGE data[16];
+    __private TYPE* data_in = (__private TYPE*) data;
+    size_t i = get_global_id(0);
+    for(int k = 0; k < 16; k++)
+        data[k] = in[i + k] + 1;
+
+    // test out the different vload versions
+    float factor = ((float)sizeof(STORAGE)) / sizeof(TYPE);
+    for(int k = 0; k < (int)(factor * 16); ++k)
+        out[k] = data_in[k];
+    for(int k = 0; k < (int)(factor * 8); ++k)
+        out2[k] = vload2(k, data_in);
+    for(int k = 0; k < (int)(factor * 5); ++k)
+        vstore3(vload3(k, data_in), k, out3);
+    for(int k = 0; k < (int)(factor * 4); ++k)
+        out4[k] = vload4(k, data_in);
+    for(int k = 0; k < (int)(factor * 2); ++k)
+        out8[k] = vload8(k, data_in);
+    for(int k = 0; k < (int)factor; ++k)
+        out16[k] = vload16(k, data_in);
+})";
+
 template <typename T, T divisor>
 static bool checkIsMultipleOf(T val, std::size_t index)
 {
@@ -81,6 +112,61 @@ static std::vector<T> toStorageTestResult(std::vector<T>&& input)
         val = static_cast<T>(val + (val + 3) + (val + 7) + (val + 11) + (val + 13) + (val + 17));
     }
     return result;
+}
+
+template <typename T>
+static void registerPrivateAliasingTests(const std::string& storageType)
+{
+    using namespace test_data;
+
+    std::vector<T> data(16);
+    std::iota(data.begin(), data.end(), -5);
+
+    std::vector<T> result(16);
+    std::transform(data.begin(), data.end(), result.begin(), [](T val) { return val + 1; });
+
+    // the actual types do not matter, behavior is only dependent on the type's bit-width
+    std::vector<std::pair<std::string, uint8_t>> outputTypes = {{"char", 1}, {"short", 2}, {"int", 4}, {"long", 8}};
+    for(const auto& type : outputTypes)
+    {
+        auto vector3Result = result;
+        // we have 16 * N bytes of data and load/store 3 * I * 5 * M bytes of data
+        // e.g. for char16 to int3, we do not transfer 4 byte
+        // e.g. for int16 to 20 * char3, we do not transfer 4 byte
+        // e.g. for char16 to 2 * short3, we do not transfer 4 byte
+        // e.g. for short16 to 2 * int3, we do not transfer 8 byte
+        // e.g. for short16 to long3, we do not transfer 8 byte
+        // e.g. for long16 to 21 * short3, we do not transfer 2 byte
+        auto bytesToRemove = (sizeof(T) * 16) % (type.second * 3);
+        for(std::size_t i = 0; i < bytesToRemove; i += sizeof(T))
+            vector3Result.pop_back();
+
+        std::vector<ResultVerification> checks{
+            checkParameterEquals(1, std::vector<T>{result}),
+            checkParameterEquals(2, std::vector<T>{result}),
+        };
+        if(type.second <= sizeof(T) * 4)
+        {
+            checks.push_back(checkParameterEquals(3, std::move(vector3Result)));
+            checks.push_back(checkParameterEquals(4, std::vector<T>{result}));
+        }
+        if(type.second <= sizeof(T) * 2)
+            checks.push_back(checkParameterEquals(5, std::vector<T>{result}));
+        if(type.second <= sizeof(T))
+            // we can't e.g. run the vload16 with 64-bit data type on 16 * 32-bit of data
+            checks.push_back(checkParameterEquals(6, std::vector<T>{result}));
+
+        registerTest(
+            TestData{"vload_alias_private_register_" + storageType + "_to_" + type.first, DataFilter::MEMORY_ACCESS,
+                &LOAD_PRIVATE_REGISTER_ALIAS, "-DSTORAGE=" + storageType + " -DTYPE=" + type.first, "test",
+                {toBufferParameter(std::vector<T>{data}), toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                    toBufferParameter(std::vector<T>(data.size(), 0x42))},
+                toDimensions(1), std::move(checks)});
+    }
 }
 
 void test_data::registerMemoryTests()
@@ -510,4 +596,9 @@ void test_data::registerMemoryTests()
                 108, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42,                  // sum([10, 17])
                 188, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42,                  //
                 268, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42})}});
+
+    registerPrivateAliasingTests<int8_t>("char");
+    registerPrivateAliasingTests<int16_t>("short");
+    registerPrivateAliasingTests<int32_t>("int");
+    registerPrivateAliasingTests<int64_t>("long");
 }

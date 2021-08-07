@@ -1090,11 +1090,17 @@ try
         return result;
     for(const auto& verification : data->verifications)
     {
-        result = verification(runner);
-        if(!result)
-            return result;
+        auto tmpResult = verification(runner);
+        if(!tmpResult)
+        {
+            // combine the errors into one
+            result.wasSuccess = false;
+            if(!result.error.empty())
+                result.error.append("\n");
+            result.error.append(tmpResult.error);
+        }
     }
-    return RESULT_OK;
+    return result;
 }
 catch(const std::exception& err)
 {

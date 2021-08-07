@@ -6,6 +6,7 @@
 
 #include "LLVMInstruction.h"
 
+#include "../Method.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/TypeConversions.h"
@@ -85,9 +86,10 @@ bool CallSite::mapInstruction(Method& method)
         method.appendToEnd(std::make_unique<intermediate::Operation>(OP_FADD, output, tmp, arguments.at(2)));
         return true;
     }
-    if(methodName.find("llvm.memcpy") == 0)
+    if(methodName.find("llvm.memcpy") == 0 || methodName.find("llvm.memmove") == 0)
     {
         //@llvm.memcpy.p0i8.p0i8.i32(i8* <dest>, i8* <src>, i32 <len>, i32 <align>, i1 <isvolatile>)
+        //@llvm.memmove.p0i8.p0i8.i32(i8* <dest>, i8* <src>, i32 <len>, i1 <isvolatile>)
         /*
          * For later LLVM versions (7.0+), this syntax changes, see
          * https://releases.llvm.org/7.0.0/docs/ReleaseNotes.html#changes-to-the-llvm-ir

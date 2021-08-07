@@ -20,6 +20,7 @@
 #include "../intermediate/operators.h"
 #include "../intrinsics/Intrinsics.h"
 #include "../performance.h"
+#include "../periphery/RegisterLoweredMemory.h"
 #include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
 #include "log.h"
@@ -49,6 +50,8 @@ bool optimizations::lowerMemoryAccess(const Module& module, Method& method, cons
                     it = periphery::lowerTMURead(method, it);
                 else if(memoryAccess->getVPMCacheEntry())
                     it = periphery::lowerVPMAccess(method, it);
+                else if(memoryAccess->getRegisterCacheEntry())
+                    it = periphery::lowerRegisterAccess(method, it);
                 else
                     throw CompilationError(
                         CompilationStep::OPTIMIZER, "Unhandled memory access instruction", it->to_string());

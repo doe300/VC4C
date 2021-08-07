@@ -1,6 +1,7 @@
 target_sources(${VC4C_LIBRARY_NAME}
   PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/CacheEntry.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/RegisterLoweredMemory.cpp
     ${CMAKE_CURRENT_LIST_DIR}/SFU.cpp
     ${CMAKE_CURRENT_LIST_DIR}/TMU.cpp
     ${CMAKE_CURRENT_LIST_DIR}/VPM.cpp

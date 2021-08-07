@@ -29,6 +29,7 @@ namespace vc4c
         struct CacheEntry;
         struct TMUCacheEntry;
         struct VPMCacheEntry;
+        struct RegisterCacheEntry;
     } // namespace periphery
 
     class Method;
@@ -1195,6 +1196,7 @@ namespace vc4c
 
             std::shared_ptr<periphery::TMUCacheEntry> getTMUCacheEntry() const;
             std::shared_ptr<periphery::VPMCacheEntry> getVPMCacheEntry() const;
+            std::shared_ptr<periphery::RegisterCacheEntry> getRegisterCacheEntry() const;
             bool isLoadAccess() const noexcept;
             bool isStoreAccess() const noexcept;
 
