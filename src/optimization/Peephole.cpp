@@ -238,7 +238,7 @@ void optimizations::removeObsoleteInstructions(
     });
 
     PROFILE_COUNTER(
-        vc4c::profiler::COUNTER_OPTIMIZATION + 7010, "PeepholeRemoveInstructions (before)", kernel.countInstructions());
+        vc4c::profiler::COUNTER_OPTIMIZATION, "PeepholeRemoveInstructions (before)", kernel.countInstructions());
     PROFILE_START(PeepholeRemoveInstructions);
 
     auto it = kernel.walkAllInstructions();
@@ -382,8 +382,8 @@ void optimizations::removeObsoleteInstructions(
     }
 
     PROFILE_END(PeepholeRemoveInstructions);
-    PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_OPTIMIZATION + 7011, "PeepholeRemoveInstructions (after)",
-        kernel.countInstructions(), vc4c::profiler::COUNTER_OPTIMIZATION + 7010);
+    PROFILE_COUNTER_WITH_PREV(
+        vc4c::profiler::COUNTER_OPTIMIZATION, "PeepholeRemoveInstructions (after)", kernel.countInstructions());
 }
 
 void optimizations::combineRegisterMappedOperations(const Module& module, Method& kernel, const Configuration& config,
@@ -394,8 +394,8 @@ void optimizations::combineRegisterMappedOperations(const Module& module, Method
         logging::debug() << "Running peephole pass: CombineInstructions" << logging::endl;
     });
 
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + 7020, "PeepholeCombineInstructions (before)",
-        kernel.countInstructions());
+    PROFILE_COUNTER(
+        vc4c::profiler::COUNTER_OPTIMIZATION, "PeepholeCombineInstructions (before)", kernel.countInstructions());
     PROFILE_START(PeepholeCombineInstructions);
 
     for(auto& block : kernel)
@@ -448,6 +448,6 @@ void optimizations::combineRegisterMappedOperations(const Module& module, Method
         }
     }
     PROFILE_END(PeepholeCombineInstructions);
-    PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_OPTIMIZATION + 7021, "PeepholeCombineInstructions (after)",
-        kernel.countInstructions(), vc4c::profiler::COUNTER_OPTIMIZATION + 7020);
+    PROFILE_COUNTER_WITH_PREV(
+        vc4c::profiler::COUNTER_OPTIMIZATION, "PeepholeCombineInstructions (after)", kernel.countInstructions());
 }

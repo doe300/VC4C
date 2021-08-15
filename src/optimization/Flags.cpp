@@ -15,19 +15,6 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 
-static bool isFlagDefined(ConditionCode cond, ElementFlags flags)
-{
-    if(cond == COND_ALWAYS || cond == COND_NEVER)
-        return true;
-    if(cond == COND_ZERO_CLEAR || cond == COND_ZERO_SET)
-        return flags.zero != FlagStatus::UNDEFINED;
-    if(cond == COND_NEGATIVE_CLEAR || cond == COND_NEGATIVE_SET)
-        return flags.negative != FlagStatus::UNDEFINED;
-    if(cond == COND_CARRY_CLEAR || cond == COND_CARRY_SET)
-        return flags.carry != FlagStatus::UNDEFINED;
-    throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled condition code", cond.to_string());
-}
-
 static bool rewriteSettingOfFlags(
     InstructionWalker setFlags, FastAccessList<InstructionWalker>&& conditionalInstructions)
 {
@@ -65,7 +52,7 @@ static bool rewriteSettingOfFlags(
                 cond = extendedInst->getCondition();
             else if(branch)
                 cond = branch->branchCondition.toConditionCode();
-            if(isFlagDefined(cond, flags))
+            if(flags.isFlagDefined(cond))
             {
                 if(branch && allFlags->matchesCondition(branch->branchCondition))
                 {

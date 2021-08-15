@@ -717,7 +717,7 @@ bool optimizations::groupVPMAccess(const Module& module, Method& method, const C
                 {
                     didChanges = true;
                     PROFILE_COUNTER(
-                        vc4c::profiler::COUNTER_OPTIMIZATION + 6000, "DMA access groups", group.genericSetups.size());
+                        vc4c::profiler::COUNTER_OPTIMIZATION, "DMA access groups", group.genericSetups.size());
                 }
             }
         }
@@ -1363,8 +1363,7 @@ bool optimizations::groupTMUAccess(const Module& module, Method& method, const C
                 if(groupTMUReads(method, group))
                 {
                     didChanges = true;
-                    PROFILE_COUNTER(
-                        vc4c::profiler::COUNTER_OPTIMIZATION + 6010, "TMU access groups", group.ramReads.size());
+                    PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION, "TMU access groups", group.ramReads.size());
                 }
             }
         }

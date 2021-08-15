@@ -282,10 +282,10 @@ void Normalizer::normalize(Module& module) const
             logging::debug() << "Running pass: EliminatePhiNodes" << logging::endl;
         });
         PROFILE_COUNTER(
-            vc4c::profiler::COUNTER_NORMALIZATION + 1, "Eliminate Phi-nodes (before)", method->countInstructions());
+            vc4c::profiler::COUNTER_NORMALIZATION, "Eliminate Phi-nodes (before)", method->countInstructions());
         eliminatePhiNodes(module, *method, config);
-        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 2, "Eliminate Phi-nodes (after)",
-            method->countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 1);
+        PROFILE_COUNTER_WITH_PREV(
+            vc4c::profiler::COUNTER_NORMALIZATION, "Eliminate Phi-nodes (after)", method->countInstructions());
     }
     auto kernels = module.getKernels();
     // 2. inline kernel-functions
@@ -293,12 +293,11 @@ void Normalizer::normalize(Module& module) const
     {
         Method& kernel = *kernelFunc;
 
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_NORMALIZATION + 4, "Inline (before)", kernel.countInstructions());
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_NORMALIZATION, "Inline (before)", kernel.countInstructions());
         PROFILE_START(Inline);
         inlineMethods(module, kernel, config);
         PROFILE_END(Inline);
-        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION + 5, "Inline (after)",
-            kernel.countInstructions(), vc4c::profiler::COUNTER_NORMALIZATION + 4);
+        PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION, "Inline (after)", kernel.countInstructions());
     }
     // 3. run other normalization steps on kernel functions
     const auto f = [&module, this](Method* kernelFunc) -> void { normalizeMethod(module, *kernelFunc); };

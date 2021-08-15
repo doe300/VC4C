@@ -23,9 +23,11 @@ using namespace vc4c::operators;
  * cannot just simply copy, but instead have to rotate every element into place.
  */
 static NODISCARD InstructionWalker insertStridedBitcast(
-    InstructionWalker it, Method& method, const Value& src, const Value& dest, uint32_t elementStride)
+    InstructionWalker it, Method& method, const Value& src, const Value& dest, uint32_t elementStride, bool zeroOutput)
 {
-    auto destination = method.addNewLocal(dest.type, "%bit_cast");
+    auto destination = method.addNewLocal(dest.type, "%bit_cast_result");
+    if(zeroOutput)
+        assign(it, destination) = INT_ZERO;
 
     for(unsigned i = 0; i < dest.type.getVectorWidth(); ++i)
     {
@@ -35,7 +37,7 @@ static NODISCARD InstructionWalker insertStridedBitcast(
         const Value tmp = method.addNewLocal(dest.type, "%bit_cast");
         // the vector-rotation to element 0 and then to the destination element should be combined by optimization-step
         // #combineVectorRotations
-        if(i == 0)
+        if(i == 0 && !zeroOutput)
             // assign destination with first element, so register-allocation finds unconditional write
             assign(it, destination) = src;
         else
@@ -56,7 +58,7 @@ static NODISCARD InstructionWalker insertStridedBitcast(
  * This also means, the source vector has more elements (of smaller type-size) than the destination vector
  */
 static NODISCARD InstructionWalker insertCombiningBitcast(
-    InstructionWalker it, Method& method, const Value& src, const Value& dest, uint32_t elementStride)
+    InstructionWalker it, Method& method, const Value& src, const Value& dest, uint32_t elementStride, bool zeroOutput)
 {
     // the number of source elements to combine in a single destination element
     unsigned sizeFactor = dest.type.getScalarBitCount() / src.type.getScalarBitCount();
@@ -148,7 +150,7 @@ static NODISCARD InstructionWalker insertCombiningBitcast(
      *
      * Finally, we rotate the single elements to fit their position in the destination
      */
-    return insertStridedBitcast(it, method, combinedVector, dest, elementStride * sizeFactor);
+    return insertStridedBitcast(it, method, combinedVector, dest, elementStride * sizeFactor, zeroOutput);
 }
 
 /**
@@ -158,7 +160,7 @@ static NODISCARD InstructionWalker insertCombiningBitcast(
  * This also means, the source vector has less elements (of larger type-size) than the destination vector
  */
 static NODISCARD InstructionWalker insertSplittingBitcast(
-    InstructionWalker it, Method& method, const Value& src, const Value& dest, uint32_t elementStride)
+    InstructionWalker it, Method& method, const Value& src, const Value& dest, uint32_t elementStride, bool zeroOutput)
 {
     if(elementStride != 1)
         throw CompilationError(
@@ -212,7 +214,9 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
      * So we need to assemble the destination vector from these vectors
      */
 
-    const Value destination = method.addNewLocal(dest.type, "%bit_cast");
+    const Value destination = method.addNewLocal(dest.type, "%bit_cast_result");
+    if(zeroOutput)
+        assign(it, destination) = INT_ZERO;
 
     for(unsigned i = 0; i < dest.type.getVectorWidth(); ++i)
     {
@@ -224,7 +228,7 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
         // the vector-rotation to element 0 and then to the destination element should be combined by optimization-step
         // #combineVectorRotations
         it = insertVectorExtraction(it, method, stv, Value(Literal(sourceElement), TYPE_INT8), tmp);
-        if(i == 0)
+        if(i == 0 && !zeroOutput)
             // assign destination with first element, so register-allocation finds unconditional write
             assign(it, destination) = tmp;
         else
@@ -236,18 +240,18 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
 }
 
 InstructionWalker intermediate::insertBitcast(InstructionWalker it, Method& method, const Value& src, const Value& dest,
-    InstructionDecorations deco, uint32_t elementStride)
+    InstructionDecorations deco, uint32_t elementStride, bool zeroOutput)
 {
     if(src.isUndefined())
         it.emplace(std::make_unique<intermediate::MoveOperation>(dest, UNDEFINED_VALUE));
     else if(src.isZeroInitializer())
         it.emplace(std::make_unique<intermediate::MoveOperation>(dest, INT_ZERO));
     else if(src.type.getScalarBitCount() < dest.type.getScalarBitCount())
-        it = insertCombiningBitcast(it, method, src, dest, elementStride);
+        it = insertCombiningBitcast(it, method, src, dest, elementStride, zeroOutput);
     else if(src.type.getScalarBitCount() > dest.type.getScalarBitCount())
-        it = insertSplittingBitcast(it, method, src, dest, elementStride);
+        it = insertSplittingBitcast(it, method, src, dest, elementStride, zeroOutput);
     else if(elementStride != 1u)
-        it = insertStridedBitcast(it, method, src, dest, elementStride);
+        it = insertStridedBitcast(it, method, src, dest, elementStride, zeroOutput);
     else
         // bit-casts with types of same vector-size (and therefore same element-size) are simple moves
         it.emplace(std::make_unique<intermediate::MoveOperation>(dest, src)).addDecorations(deco);

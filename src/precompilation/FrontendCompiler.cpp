@@ -286,7 +286,7 @@ static Optional<std::string> getDefaultHeadersPCHPath(const std::string& userOpt
     auto checkOptions = cleanOptions(userOptions);
     std::lock_guard<std::mutex> guard(pchsMutex);
     auto it = cachedPCHs.find(checkOptions);
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_FRONTEND + 50, "OpenCL C header PCH builds", it == cachedPCHs.end());
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_FRONTEND, "OpenCL C header PCH builds", it == cachedPCHs.end());
     if(it != cachedPCHs.end())
     {
         ++it->second.second;

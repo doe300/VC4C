@@ -684,6 +684,7 @@ namespace vc4c
         FlagStatus overflow = FlagStatus::UNDEFINED;
 
         bool matchesCondition(ConditionCode cond) const;
+        bool isFlagDefined(ConditionCode cond) const;
 
         inline bool operator==(ElementFlags other) const noexcept
         {

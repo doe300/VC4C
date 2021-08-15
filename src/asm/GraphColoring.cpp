@@ -714,11 +714,11 @@ static void processClosedSet(ColoredGraph& graph, FastSet<const Local*>& closedS
             });
 
             if(node->possibleFiles == RegisterFile::ACCUMULATOR)
-                PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 5, "Accumulator assigned", 1);
+                PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_BACKEND, "Accumulator assigned", 1);
             else if(node->possibleFiles == RegisterFile::PHYSICAL_A)
-                PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 6, "Register-file A assigned", 1);
+                PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_BACKEND, "Register-file A assigned", 1);
             else if(node->possibleFiles == RegisterFile::PHYSICAL_B)
-                PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 7, "Register-file B assigned", 1);
+                PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_BACKEND, "Register-file B assigned", 1);
         }
         closedSet.erase(node->key);
     }
@@ -829,7 +829,7 @@ static NODISCARD bool reassignNodeToRegister(ColoredGraph& graph, ColoredNode& n
 
     bool fixed =
         isFixed(node.possibleFiles) && node.hasFreeRegisters(node.possibleFiles) && node.fixToRegister() != SIZE_MAX;
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 40, "reassignNodeToRegister", fixed);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND, "reassignNodeToRegister", fixed);
     return fixed;
 }
 
@@ -961,7 +961,7 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
         // fix read-after-writes, so local can be on non-accumulator:
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Fixing register error case 1 for: " << node.key->to_string() << logging::endl);
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 10, "Register error case 1", 1);
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND, "Register error case 1", 1);
 
         // the register-files which can be used after the fix by this local
         RegisterFile freeFiles = remove_flag(RegisterFile::ANY, use.blockedFiles);
@@ -987,7 +987,7 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Split up combined instruction into '" << firstIt->to_string() << "' and '"
                             << it->to_string() << '\'' << logging::endl);
-                    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 11, "Combined split up", 1);
+                    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND, "Combined split up", 1);
                 }
                 // fall-through on purpose in any case (even if rewritten), since there still could be a
                 // read-after-write to be handled below
@@ -1015,7 +1015,7 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
                         log << "Fixing register-conflict by inserting NOP before: " << it->to_string()
                             << logging::endl);
                     it.emplace(std::make_unique<intermediate::Nop>(intermediate::DelayType::WAIT_REGISTER));
-                    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 12, "NOP insertions", 1);
+                    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND, "NOP insertions", 1);
                 }
             }
             else if(assertUser(users, it).readsLocal())
@@ -1042,15 +1042,15 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
         //-> or, if blocking local is in other combined instruction, split up instructions
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Fixing register error case 2 for: " << node.key->to_string() << logging::endl);
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 20, "Register error case 2", 1);
+        PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_BACKEND, "Register error case 2", 1);
 
         bool fileACouldBeUsed =
             has_flag(node.initialFile, RegisterFile::PHYSICAL_A) && node.hasFreeRegisters(RegisterFile::PHYSICAL_A);
         bool fileBCouldBeUsed =
             has_flag(node.initialFile, RegisterFile::PHYSICAL_B) && node.hasFreeRegisters(RegisterFile::PHYSICAL_B);
 
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 21, "A blocked", !fileACouldBeUsed);
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 22, "B blocked", !fileBCouldBeUsed);
+        PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_BACKEND, "A blocked", !fileACouldBeUsed);
+        PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_BACKEND, "B blocked", !fileBCouldBeUsed);
 
         if(fileACouldBeUsed && fileBCouldBeUsed)
         {
@@ -1099,13 +1099,13 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
         // so we need to copy the local to a temporary before every use, so it can be mapped to the other file
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Fixing register error case 3 for: " << node.key->to_string() << logging::endl);
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 30, "Register error case 3", 1);
+        PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_BACKEND, "Register error case 3", 1);
 
         bool moveToFileA = node.hasFreeRegisters(RegisterFile::PHYSICAL_A);
         bool moveToFileB = node.hasFreeRegisters(RegisterFile::PHYSICAL_B);
 
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 31, "move to A", moveToFileA);
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 32, "move to B", moveToFileB);
+        PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_BACKEND, "move to A", moveToFileA);
+        PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_BACKEND, "move to B", moveToFileB);
 
         if(moveToFileA && moveToFileB)
         {

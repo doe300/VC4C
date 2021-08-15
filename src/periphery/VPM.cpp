@@ -1203,7 +1203,7 @@ const VPMArea* VPM::addArea(
         log << "Allocating " << numRows << " rows (per 64 byte) of VPM cache starting at row " << rowOffset.value()
             << " for local: " << local->to_string(false)
             << (isStackArea ? std::string(" (") + std::to_string(numStacks) + " stacks)" : "") << logging::endl);
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL + 90, "VPM cache size", requestedSize);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL, "VPM cache size", requestedSize);
     return ptr.get();
 }
 

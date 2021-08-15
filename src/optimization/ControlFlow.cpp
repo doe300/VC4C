@@ -1267,8 +1267,7 @@ bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const
 
     // Insert a block to synchronize all work-item/QPUs to avoid data races between work-group iterations
     auto syncBlockInserted = insertSynchronizationBlock(method, *lastBlock);
-    PROFILE_COUNTER(
-        vc4c::profiler::COUNTER_OPTIMIZATION + 7000, "Work-group synchronization blocks", syncBlockInserted);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION, "Work-group synchronization blocks", syncBlockInserted);
 
     // Insert all the code required to increment/reset the ids and repeat the kernel code
     insertRepetitionBlocks(method, defaultBlock, *lastBlock, groupIdsNotUsed);

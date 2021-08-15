@@ -1240,7 +1240,7 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
     {
         // 3. determine operation on iteration variable and bounds
         auto inductionVariable = extractLoopControl(loop, *dependencyGraph);
-        PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + 333, "Loops found", 1);
+        PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_OPTIMIZATION, "Loops found", 1);
         if(inductionVariable.local == nullptr)
             // we could not find the iteration variable, skip this loop
             continue;
@@ -1378,9 +1378,9 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
         hasChanged = true;
 
         if(dynamicElementCount)
-            PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + 335, "Dynamic-sized vectorizations", 1);
+            PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_OPTIMIZATION, "Dynamic-sized vectorizations", 1);
         else
-            PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + 334, "Vectorization factors", vectorizationFactor);
+            PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_OPTIMIZATION, "Vectorization factors", vectorizationFactor);
     }
 
     return hasChanged;

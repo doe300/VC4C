@@ -815,6 +815,20 @@ bool ElementFlags::matchesCondition(ConditionCode cond) const
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled condition code", cond.to_string());
 }
+
+bool ElementFlags::isFlagDefined(ConditionCode cond) const
+{
+    if(cond == COND_ALWAYS || cond == COND_NEVER)
+        return true;
+    if(cond == COND_ZERO_CLEAR || cond == COND_ZERO_SET)
+        return zero != FlagStatus::UNDEFINED;
+    if(cond == COND_NEGATIVE_CLEAR || cond == COND_NEGATIVE_SET)
+        return negative != FlagStatus::UNDEFINED;
+    if(cond == COND_CARRY_CLEAR || cond == COND_CARRY_SET)
+        return carry != FlagStatus::UNDEFINED;
+    throw CompilationError(CompilationStep::OPTIMIZER, "Unhandled condition code", cond.to_string());
+}
+
 LCOV_EXCL_START
 static std::string toFlagString(FlagStatus flag, char flagChar)
 {
@@ -1511,6 +1525,8 @@ analysis::ValueRange OpCode::operator()(
 
     if(opMul == OP_FMUL.opMul)
     {
+        if(firstRange.getSingletonValue() == 0.0 || secondRange.getSingletonValue() == 0.0)
+            return ValueRange{0.0};
         if(!firstRange || !secondRange)
             return ValueRange{TYPE_FLOAT};
         auto options = {firstRange.minValue * secondRange.minValue, firstRange.minValue * secondRange.maxValue,
@@ -1519,6 +1535,8 @@ analysis::ValueRange OpCode::operator()(
     }
     if(opMul == OP_MUL24.opMul)
     {
+        if(firstRange.getSingletonValue() == 0.0 || secondRange.getSingletonValue() == 0.0)
+            return ValueRange{0.0};
         if(!firstRange || !secondRange)
             return RANGE_UINT;
         if(firstRange.minValue < 0.0 || secondRange.minValue < 0.0)

@@ -84,7 +84,7 @@ static FixupResult runRegisterFixupStep(const std::pair<std::string, RegisterFix
 
 const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(Method& method)
 {
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND + 0, "CodeGeneration (before)", method.countInstructions());
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND, "CodeGeneration (before)", method.countInstructions());
 #ifdef MULTI_THREADED
     instructionsLock.lock();
 #endif
@@ -207,8 +207,7 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generated " << std::dec << generatedInstructions.size() << " instructions!" << logging::endl);
 
-    PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_BACKEND + 1000, "CodeGeneration (after)",
-        generatedInstructions.size(), vc4c::profiler::COUNTER_BACKEND + 0);
+    PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_BACKEND, "CodeGeneration (after)", generatedInstructions.size());
     return generatedInstructions;
 }
 

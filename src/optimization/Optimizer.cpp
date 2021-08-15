@@ -157,12 +157,12 @@ static bool runPass(
         logging::debug() << logging::endl;
         logging::debug() << "Running pass: " << pass.name << logging::endl;
     });
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + index, pass.name + " (before)", method.countInstructions());
+    PROFILE_COUNTER_DYNAMIC(vc4c::profiler::COUNTER_OPTIMIZATION, pass.name + " (before)", method.countInstructions());
     PROFILE_START_DYNAMIC(pass.name);
-    bool changedMethod = (pass)(module, method, config);
+    bool changedMethod = (pass) (module, method, config);
     PROFILE_END_DYNAMIC(pass.name);
-    PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_OPTIMIZATION + index + 10, pass.name + " (after)",
-        method.countInstructions(), vc4c::profiler::COUNTER_OPTIMIZATION + index);
+    PROFILE_COUNTER_DYNAMIC_WITH_PREV(
+        vc4c::profiler::COUNTER_OPTIMIZATION, pass.name + " (after)", method.countInstructions());
     return changedMethod;
 }
 
@@ -232,7 +232,7 @@ static void runOptimizationPasses(const Module& module, Method& method, const Co
             logging::info() << "Optimizations done in " << numIterations << " iterations" << logging::endl;
     });
     LCOV_EXCL_STOP
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION + index, "OptimizationIterations", numIterations);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION, "OptimizationIterations", numIterations);
     CPPLOG_LAZY(logging::Level::DEBUG, log << "-----" << logging::endl);
     method.dumpInstructions();
 }

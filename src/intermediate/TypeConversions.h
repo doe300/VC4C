@@ -14,7 +14,8 @@ namespace vc4c
     namespace intermediate
     {
         NODISCARD InstructionWalker insertBitcast(InstructionWalker it, Method& method, const Value& src,
-            const Value& dest, InstructionDecorations deco = InstructionDecorations::NONE, uint32_t elementStride = 1u);
+            const Value& dest, InstructionDecorations deco = InstructionDecorations::NONE, uint32_t elementStride = 1u,
+            bool zeroOutput = false);
         NODISCARD InstructionWalker insertZeroExtension(InstructionWalker it, Method& method, const Value& src,
             const Value& dest, bool allowLiteral, ConditionCode conditional = COND_ALWAYS,
             SetFlag setFlags = SetFlag::DONT_SET);

@@ -598,6 +598,14 @@ namespace vc4c
                 return result;
             }
 
+            NODISCARD Value operator=(LoadWrapper&& op) &&
+            {
+                auto result = method.addNewLocal(type, name);
+                it.emplace(op.toInstruction(result));
+                it.nextInBlock();
+                return result;
+            }
+
             NODISCARD Value operator=(const Value& src) &&
             {
                 auto result = method.addNewLocal(type, name);

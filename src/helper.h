@@ -126,7 +126,7 @@ namespace vc4c
         const VT& values, const std::function<std::string(const T&)>& func, const std::string& separator = ", ")
     {
         std::string tmp;
-        for(const T& val : values)
+        for(const auto& val : values)
         {
             tmp.append(func(val)).append(separator);
         }

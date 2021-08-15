@@ -73,6 +73,7 @@ struct profiler::Entry
 
 struct profiler::Counter
 {
+    std::size_t key;
     std::string name;
     std::atomic<uint64_t> count;
     std::size_t index;
@@ -84,7 +85,7 @@ struct profiler::Counter
     Counter() = default;
     Counter(const Counter&) = delete;
     Counter(Counter&& other) noexcept :
-        name(std::move(other.name)), count(other.count.load()), index(other.index),
+        key(other.key), name(std::move(other.name)), count(other.count.load()), index(other.index),
         invocations(other.invocations.load()), prevCounter(other.prevCounter), fileName(std::move(other.fileName)),
         lineNumber(other.lineNumber)
     {
@@ -96,6 +97,7 @@ struct profiler::Counter
     {
         if(&other != this)
         {
+            key = other.key;
             name = std::move(other.name);
             count = other.count.load();
             index = other.index;
@@ -157,6 +159,7 @@ struct ThreadResultCache
                 {
                     it->second.count += entry.second.count;
                     it->second.invocations += entry.second.invocations;
+                    it->second.index = std::min(it->second.index, entry.second.index);
                 }
                 else
                     counters.emplace(entry.first, std::move(entry.second));
@@ -307,7 +310,7 @@ void profiler::dumpProfileResults(bool writeAsWarning)
         {
             auto prevCount =
                 counter->prevCounter == SIZE_MAX ? 0 : static_cast<int64_t>(counters[counter->prevCounter].count);
-            logFunc() << std::setw(40) << counter->name << std::setw(7) << counter->count << " counts" << std::setw(5)
+            logFunc() << std::setw(40) << counter->name << std::setw(9) << counter->count << " counts" << std::setw(7)
                       << counter->invocations << " calls" << std::setw(6)
                       << counter->count / std::max(counter->invocations.load(), uint64_t{1}) << " avg./call"
                       << std::setw(8) << (counter->prevCounter == SIZE_MAX ? "" : "diff") << std::setw(7)
@@ -337,26 +340,40 @@ void profiler::dumpProfileResults(bool writeAsWarning)
     printResourceUsage(writeAsWarning);
 }
 
-profiler::Counter* profiler::createCounter(
-    std::size_t index, std::string name, std::string file, std::size_t line, std::size_t prevIndex)
+static profiler::Counter& allocateCounter(
+    profiler::HashKey key, std ::map<std::size_t, profiler::Counter>& counters, std::size_t baseIndex)
+{
+    static std::atomic_size_t currentIndex{0};
+    auto it = counters.find(key);
+    if(it == counters.end())
+    {
+        auto nextIndex = currentIndex++;
+        it = counters.emplace(key, profiler::Counter{}).first;
+        it->second.index = baseIndex + nextIndex;
+    }
+    return it->second;
+}
+
+profiler::Counter* profiler::createCounter(HashKey key, std::size_t baseIndex, std::string name, std::string file,
+    std::size_t line, const Counter* prevCounter)
 {
 #ifdef MULTI_THREADED
     if(threadCache)
     {
-        auto& entry = threadCache->localCounters[index];
-        entry.index = index;
+        auto& entry = allocateCounter(key, threadCache->localCounters, baseIndex);
+        entry.key = key;
         entry.name = std::move(name);
-        entry.prevCounter = prevIndex;
+        entry.prevCounter = prevCounter ? prevCounter->key : SIZE_MAX;
         entry.fileName = std::move(file);
         entry.lineNumber = line;
         return &entry;
     }
     std::lock_guard<std::mutex> guard(lockCounters);
 #endif
-    auto& entry = counters[index];
-    entry.index = index;
+    auto& entry = allocateCounter(key, counters, baseIndex);
+    entry.key = key;
     entry.name = std::move(name);
-    entry.prevCounter = prevIndex;
+    entry.prevCounter = prevCounter ? prevCounter->key : SIZE_MAX;
     entry.fileName = std::move(file);
     entry.lineNumber = line;
     return &entry;

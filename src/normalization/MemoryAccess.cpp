@@ -505,5 +505,5 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
     // clean up empty instructions
     method.cleanEmptyInstructions();
     PROFILE_COUNTER(
-        vc4c::profiler::COUNTER_GENERAL + 80, "Scratch memory size (in rows)", method.vpm->getScratchArea().numRows);
+        vc4c::profiler::COUNTER_GENERAL, "Scratch memory size (in rows)", method.vpm->getScratchArea().numRows);
 }
