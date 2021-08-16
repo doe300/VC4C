@@ -6,6 +6,7 @@
 
 #include "Vector.h"
 
+#include "../Module.h"
 #include "../Profiler.h"
 #include "../SIMDVector.h"
 #include "../analysis/ControlFlowGraph.h"
@@ -1564,4 +1565,105 @@ bool optimizations::compactVectorFolding(const Module& module, Method& method, c
     }
 
     return didRewrites;
+}
+
+struct VectorElementCopy
+{
+    InstructionWalker staticFlagsSetter;
+    std::bitset<NATIVE_VECTOR_SIZE> staticElementMask;
+    InstructionWalker copyInstruction;
+    ConditionCode copyCondition;
+    Value source;
+    const Local* destination;
+};
+
+static Optional<std::bitset<NATIVE_VECTOR_SIZE>> toFlagsSetter(const VectorFlags& flags, ConditionCode cond)
+{
+    std::bitset<NATIVE_VECTOR_SIZE> mask{};
+    for(std::size_t i = 0; i < flags.size(); ++i)
+    {
+        if(!flags[i].isFlagDefined(cond))
+            return {};
+        mask.set(i, flags[i].matchesCondition(cond));
+    }
+    return mask;
+}
+
+static SIMDVector toVectorMask(const std::bitset<NATIVE_VECTOR_SIZE>& mask, ConditionCode cond)
+{
+    SIMDVector result{Literal(0)};
+    for(uint8_t i = 0; i < mask.size(); ++i)
+    {
+        if(cond == COND_ZERO_CLEAR)
+            result[i] = mask.test(i) ? 1_lit : 0_lit;
+        if(cond == COND_ZERO_SET)
+            result[i] = mask.test(i) ? 0_lit : 1_lit;
+        if(cond == COND_NEGATIVE_CLEAR)
+            result[i] = mask.test(i) ? 0_lit : Literal(-1);
+        if(cond == COND_NEGATIVE_SET)
+            result[i] = mask.test(i) ? Literal(-1) : 0_lit;
+    }
+    return result;
+}
+
+bool optimizations::combineVectorElementCopies(const Module& module, Method& method, const Configuration& config)
+{
+    bool didChanges = false;
+
+    // run within all basic blocks
+    for(auto& block : method)
+    {
+        Optional<VectorElementCopy> previousCopy;
+
+        for(auto it = block.walk(); !it.isEndOfBlock(); it.nextInBlock())
+        {
+            if(it.has() && it->checkOutputLocal() && it->isSimpleMove() && it->hasConditionalExecution())
+            {
+                auto flagsSetter = block.findLastSettingOfFlags(it);
+                auto staticFlags = flagsSetter ?
+                    StaticFlagsAnalysis::analyzeStaticFlags(flagsSetter->get(), *flagsSetter) :
+                    Optional<VectorFlags>{};
+                auto cond = it.get<ExtendedInstruction>()->getCondition();
+
+                Optional<std::bitset<NATIVE_VECTOR_SIZE>> staticMask;
+                if(flagsSetter && (*flagsSetter)->writesRegister(REG_NOP) && staticFlags &&
+                    (staticMask = toFlagsSetter(*staticFlags, cond)))
+                {
+                    if(previousCopy && it->getMoveSource() == previousCopy->source &&
+                        it->checkOutputLocal() == previousCopy->destination && cond == previousCopy->copyCondition)
+                    {
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Combining element-wise copies of elements "
+                                << previousCopy->staticElementMask.to_string() << " and " << staticMask.to_string()
+                                << " from and to the same values: " << it->to_string() << logging::endl);
+                        auto elementMask = toVectorMask(previousCopy->staticElementMask | *staticMask, cond);
+                        if(auto lit = elementMask.getAllSame())
+                            flagsSetter->reset(
+                                createWithExtras<LoadImmediate>(*flagsSetter->get(), NOP_REGISTER, *lit));
+                        else
+                            flagsSetter->reset(createWithExtras<LoadImmediate>(*flagsSetter->get(), NOP_REGISTER,
+                                LoadImmediate::fromLoadedValues(elementMask, LoadType::PER_ELEMENT_SIGNED),
+                                LoadType::PER_ELEMENT_SIGNED));
+
+                        previousCopy->staticFlagsSetter.erase();
+                        previousCopy->staticFlagsSetter = *flagsSetter;
+                        previousCopy->staticElementMask |= *staticMask;
+                        previousCopy->copyInstruction.erase();
+                        previousCopy->copyInstruction = it;
+                    }
+                    else
+                        previousCopy = VectorElementCopy{
+                            *flagsSetter, *staticMask, it, cond, it->getMoveSource().value(), it->checkOutputLocal()};
+
+                    continue;
+                }
+            }
+            if(it.has() && previousCopy &&
+                (it->writesLocal(previousCopy->destination) || it->readsLocal(previousCopy->destination) ||
+                    it->getOutput() == previousCopy->source))
+                previousCopy = {};
+        }
+    }
+
+    return didChanges;
 }

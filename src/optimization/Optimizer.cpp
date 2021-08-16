@@ -312,6 +312,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "eliminates dead code (move to same, redundant arithmetic operations, ...)", OptimizationType::REPEAT),
     OptimizationPass("RemoveConditionalFlags", "remove-conditional-flags", removeConditionalFlags,
         "removes flags depending on simple conditionals set by previous flags", OptimizationType::REPEAT),
+    OptimizationPass("CombineVectorElementCopies", "combine-vector-element-copies", combineVectorElementCopies,
+        "combines element-wise copies from and to the same vectors", OptimizationType::REPEAT),
     /*
      * The third block of optimizations is executed once after all the other optimizations finished and
      * can therefore introduce instructions or constructs (e.g. combined instructions) not supported by
@@ -372,6 +374,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("group-memory");
         passes.emplace("prefetch-loads");
         passes.emplace("compact-vector-folding");
+        passes.emplace("combine-vector-element-copies");
         FALL_THROUGH
     case OptimizationLevel::BASIC:
         passes.emplace("reorder-blocks");

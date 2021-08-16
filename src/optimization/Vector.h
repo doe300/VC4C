@@ -41,6 +41,21 @@ namespace vc4c
          */
         bool compactVectorFolding(const Module& module, Method& method, const Configuration& config);
 
+        /**
+         * Tries to find element-wise (single elements or masks) copies from and to the same vectors and combines them.
+         *
+         * Combines for example this:
+         *   register - = loadui <1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0> (setf )
+         *   %out = %in (ifzc)
+         *   register - = loadui <0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0> (setf )
+         *   %out = %in (ifzc)
+         *
+         * to this:
+         *   register - = loadui <1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0> (setf )
+         *   %out = %in (ifzc)
+         */
+        bool combineVectorElementCopies(const Module& module, Method& method, const Configuration& config);
+
     } // namespace optimizations
 
 } // namespace vc4c
