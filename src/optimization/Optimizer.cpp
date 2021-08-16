@@ -272,6 +272,8 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "pre-fetches read-only memory loaded in loops", OptimizationType::INITIAL),
     OptimizationPass("GroupTMUAccess", "group-memory", groupTMUAccess,
         "merges memory accesses for adjacent memory and cache areas", OptimizationType::INITIAL),
+    OptimizationPass("GroupLoweredRegisterAccess", "group-memory", groupLoweredRegisterAccess,
+        "merges memory accesses for adjacent memory and cache areas", OptimizationType::INITIAL),
     /*
      * Optimization run before this have access to the MemoryAccessInstructions and their accessed CacheEntries.
      * After this step is run, the direct hardware instructions are available instead.

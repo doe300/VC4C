@@ -43,6 +43,16 @@ public:
     void testClamp(std::string passParamName);
     void testCross(std::string passParamName);
 
+    void testCharPrivateStorage(std::string passParamName);
+    void testCharLocalStorage(std::string passParamName);
+    void testCharGlobalStorage(std::string passParamName);
+    void testShortPrivateStorage(std::string passParamName);
+    void testShortLocalStorage(std::string passParamName);
+    void testShortGlobalStorage(std::string passParamName);
+    void testIntPrivateStorage(std::string passParamName);
+    void testIntLocalStorage(std::string passParamName);
+    void testIntGlobalStorage(std::string passParamName);
+
 private:
     void testSHA1();
     void testSHA256();

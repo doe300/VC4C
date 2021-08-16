@@ -9,7 +9,9 @@
 #include "../Expression.h"
 #include "../GlobalValues.h"
 #include "../Method.h"
+#include "../Module.h"
 #include "../Profiler.h"
+#include "../SIMDVector.h"
 #include "../analysis/ControlFlowGraph.h"
 #include "../analysis/ControlFlowLoop.h"
 #include "../analysis/DataDependencyGraph.h"
@@ -1691,4 +1693,203 @@ bool optimizations::prefetchTMULoads(const Module& module, Method& method, const
         method.cleanEmptyInstructions();
 
     return movedLoads;
+}
+
+struct LoweredRegisterAccessGroup
+{
+    Value loweredRegister = UNDEFINED_VALUE;
+    Value baseByteOffset = UNDEFINED_VALUE;
+    DataType groupedAccessType = TYPE_UNKNOWN;
+    std::vector<InstructionWalker> accessInstructions;
+};
+
+static bool isNextByteOffset(const LoweredRegisterAccessGroup& group, const Value& byteOffset)
+{
+    if(group.baseByteOffset.isUndefined() || group.groupedAccessType.isUnknown())
+        // first offset
+        return !byteOffset.isUndefined();
+
+    auto constantBaseOffset = group.baseByteOffset.getConstantValue() & &Value::getLiteralValue;
+    auto constantByteOffset = byteOffset.getConstantValue() & &Value::getLiteralValue;
+    if(constantBaseOffset && constantByteOffset)
+        return constantBaseOffset->unsignedInt() + group.groupedAccessType.getLogicalWidth() ==
+            constantByteOffset->unsignedInt();
+
+    std::shared_ptr<Expression> baseOffsetExpression{};
+    if(auto writer = group.baseByteOffset.getSingleWriter())
+        baseOffsetExpression = Expression::createRecursiveExpression(*writer);
+    std::shared_ptr<Expression> byteOffsetExpression{};
+    if(auto writer = byteOffset.getSingleWriter())
+        byteOffsetExpression = Expression::createExpression(*writer);
+    if(!baseOffsetExpression || !byteOffsetExpression)
+        return false;
+
+    auto baseParts = baseOffsetExpression->splitIntoDynamicAndConstantPart(false);
+    auto byteParts = byteOffsetExpression->splitIntoDynamicAndConstantPart(false);
+    if(baseParts.first != byteParts.first)
+        // different dynamic offset parts
+        return false;
+
+    constantBaseOffset = baseParts.second.getLiteralValue();
+    constantByteOffset = byteParts.second.getLiteralValue();
+    return constantBaseOffset && constantByteOffset &&
+        constantBaseOffset->unsignedInt() + group.groupedAccessType.getLogicalWidth() ==
+        constantByteOffset->unsignedInt();
+}
+
+NODISCARD static InstructionWalker findGroupOfLoweredRegisterAccesses(
+    InstructionWalker it, LoweredRegisterAccessGroup& group, intermediate::MemoryOperation op)
+{
+    for(; !it.isEndOfBlock(); it.nextInBlock())
+    {
+        if(auto access = it.get<intermediate::CacheAccessInstruction>())
+        {
+            auto loweredCacheEntry = access->getRegisterCacheEntry();
+            if(!loweredCacheEntry)
+                // no access of register-lowered memory
+                // skip this address write for the next check
+                continue;
+            if(!group.loweredRegister.isUndefined() && loweredCacheEntry->loweredRegister != group.loweredRegister)
+                // access of different register-lowered memory, skip
+                continue;
+            if(access->op != op)
+                // different to same register-lowered memory, finish group
+                // skip this address write for the next check
+                return it.nextInBlock();
+            if(!group.groupedAccessType.isUnknown() &&
+                loweredCacheEntry->valueType.getElementType() != group.groupedAccessType.getElementType())
+                // access to same register-lowered memory with different element type, finish group
+                break;
+            if(!group.groupedAccessType.isUnknown() &&
+                (group.groupedAccessType.getVectorWidth() + loweredCacheEntry->valueType.getVectorWidth()) >
+                    NATIVE_VECTOR_SIZE)
+                // too many accesses to combine, finish group
+                break;
+
+            auto byteOffset = loweredCacheEntry->precalculateOffset();
+            if(!isNextByteOffset(group, byteOffset))
+                // access to same register-lowered memory with a different offset, finish group
+                break;
+
+            if(op == intermediate::MemoryOperation::WRITE)
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Found write to register-lowered memory " << loweredCacheEntry->loweredRegister.to_string()
+                        << " with byte-offset " << byteOffset.to_string() << " storing "
+                        << loweredCacheEntry->valueType.to_string() << " from " << access->getData().to_string()
+                        << logging::endl);
+            else
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Found read from register-lowered memory " << loweredCacheEntry->loweredRegister.to_string()
+                        << " with byte-offset " << byteOffset.to_string() << " loading "
+                        << loweredCacheEntry->valueType.to_string() << " into " << access->getData().to_string()
+                        << logging::endl);
+
+            if(group.baseByteOffset.isUndefined())
+                group.baseByteOffset = byteOffset;
+            if(group.loweredRegister.isUndefined())
+                group.loweredRegister = loweredCacheEntry->loweredRegister;
+            if(group.groupedAccessType.isUnknown())
+                group.groupedAccessType = loweredCacheEntry->valueType;
+            else
+                group.groupedAccessType = group.groupedAccessType.toVectorType(
+                    group.groupedAccessType.getVectorWidth() + loweredCacheEntry->valueType.getVectorWidth());
+            group.accessInstructions.emplace_back(it);
+        }
+    }
+    return it;
+}
+
+NODISCARD static bool groupLoweredRegisterWrites(Method& method, LoweredRegisterAccessGroup& group)
+{
+    if(group.accessInstructions.size() <= 1)
+        return false;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Combining " << group.accessInstructions.size()
+            << " writes of register-lowered memory into one store... " << logging::endl);
+
+    uint8_t nextVectorElement = 0;
+    SIMDVector constantElements{};
+    if(std::all_of(group.accessInstructions.begin(), group.accessInstructions.end(), [&](InstructionWalker it) {
+           auto cacheInst = it.get<intermediate::CacheAccessInstruction>();
+           if(auto constantElement = cacheInst->getData().getConstantValue())
+           {
+               SIMDVector writtenElements{};
+               if(auto elementVector = constantElement->checkVector())
+                   writtenElements = *elementVector;
+               else if(auto elementLiteral = constantElement->getLiteralValue())
+               {
+                   for(uint8_t i = 0; i < cacheInst->getData().type.getVectorWidth(); ++i)
+                       writtenElements[i] = *elementLiteral;
+               }
+               else
+                   return false;
+               for(uint8_t i = 0; i < cacheInst->getData().type.getVectorWidth(); ++i)
+                   constantElements[nextVectorElement++] = writtenElements[i];
+               return true;
+           }
+           return false;
+       }))
+    {
+        // we can directly write the assembled vector
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Writing constant vector " << constantElements.to_string(true) << logging::endl);
+
+        auto constantSource = method.module.storeVector(std::move(constantElements), group.groupedAccessType);
+        ignoreReturnValue(periphery::insertWriteLoweredRegister(
+            method, group.accessInstructions.back(), constantSource, group.baseByteOffset, group.loweredRegister));
+    }
+    else
+    {
+        auto tmpData = method.addNewLocal(group.groupedAccessType, "%lowered_register_write_group");
+        auto it = group.accessInstructions.back();
+
+        nextVectorElement = 0;
+        for(const auto& writeIt : group.accessInstructions)
+        {
+            auto writer = writeIt.get<intermediate::CacheAccessInstruction>();
+            auto tmpElement = assign(it, writer->getRegisterCacheEntry()->valueType) = writer->getData();
+            it = intermediate::insertVectorInsertion(
+                it, method, tmpData, Value(Literal(nextVectorElement), TYPE_INT8), tmpElement);
+            nextVectorElement += tmpElement.type.getVectorWidth();
+        }
+
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Writing assembled vector " << tmpData.to_string() << logging::endl);
+        it = periphery::insertWriteLoweredRegister(method, it, tmpData, group.baseByteOffset, group.loweredRegister);
+    }
+
+    for(auto writeIt : group.accessInstructions)
+        writeIt.erase();
+
+    return true;
+}
+
+bool optimizations::groupLoweredRegisterAccess(const Module& module, Method& method, const Configuration& config)
+{
+    bool didChanges = false;
+
+    // run within all basic blocks
+    for(auto& block : method)
+    {
+        auto it = block.walk();
+        while(!it.isEndOfBlock())
+        {
+            LoweredRegisterAccessGroup group;
+            it = findGroupOfLoweredRegisterAccesses(it, group, intermediate::MemoryOperation::WRITE);
+            if(group.accessInstructions.size() > 1)
+            {
+                if(groupLoweredRegisterWrites(method, group))
+                {
+                    didChanges = true;
+                    PROFILE_COUNTER(
+                        vc4c::profiler::COUNTER_OPTIMIZATION, "Register write groups", group.accessInstructions.size());
+                }
+            }
+        }
+    }
+
+    // clean up empty instructions
+    if(didChanges)
+        method.cleanEmptyInstructions();
+
+    return didChanges;
 }

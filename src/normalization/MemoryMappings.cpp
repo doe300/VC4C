@@ -419,8 +419,14 @@ static InstructionWalker lowerMemoryCopyToRegister(Method& method, InstructionWa
                             "Copied number of bytes is not a multiple of the actual register type", mem->to_string());
                     auto numElements = lit->unsignedInt() / typeFactor;
                     if(numElements == 0 || numElements > NATIVE_VECTOR_SIZE)
+                    {
+                        logging::error() << "Cannot copy " << numElements << " elements of "
+                                         << mem->getSourceElementType().to_string() << " from "
+                                         << mem->getSource().to_string() << " into "
+                                         << mem->getDestination().to_string() << logging::endl;
                         throw CompilationError(
                             CompilationStep::NORMALIZER, "Invalid copied number of elements", mem->to_string());
+                    }
                     tmp = method.addNewLocal(
                         srcInfo.mappedRegisterOrConstant->type.toVectorType(static_cast<uint8_t>(numElements)));
                 }
@@ -908,22 +914,29 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
             // e.g. if we copy 2 entries of int2, we need to copy 4 SIMD elements
             // also if we copy 20 entries of i8, we need to copy 5 SIMD elements of i32!
             auto numElements =
-                (numEntries.getLiteralValue()->unsignedInt() * mem->getSourceElementType().getLogicalWidth()) /
-                destInfo.convertedRegisterOrAreaType->getElementType().getLogicalWidth();
-            if(numElements == 0 || numElements > NATIVE_VECTOR_SIZE)
-                // TODO copy e.g. copying 1 byte into an int vector, need to combine the byte with the rest of the word
-                // for the correct element
-                throw CompilationError(
-                    CompilationStep::NORMALIZER, "Invalid copied number of elements", mem->to_string());
+                (numEntries.getLiteralValue()->unsignedInt() * mem->getSourceElementType().getLogicalWidth());
 
             if(mem->guardAccess)
             {
                 it.emplace(std::make_unique<MutexLock>(MutexAccess::LOCK));
                 it.nextInBlock();
             }
-            auto tmp = method.addNewLocal(
-                destInfo.convertedRegisterOrAreaType->getElementType().toVectorType(static_cast<uint8_t>(numElements)),
-                "%mem_read_tmp");
+            auto destRegisterElementType = destInfo.convertedRegisterOrAreaType->getElementType();
+            Value tmp = UNDEFINED_VALUE;
+            if(numElements % destRegisterElementType.getLogicalWidth() == 0 &&
+                (numElements / destRegisterElementType.getLogicalWidth()) <= NATIVE_VECTOR_SIZE)
+            {
+                // simple case, we can directly copy elements of the lowered register type
+                numElements = numElements / destRegisterElementType.getLogicalWidth();
+                tmp = method.addNewLocal(
+                    destRegisterElementType.toVectorType(static_cast<uint8_t>(numElements)), "%mem_read_tmp");
+            }
+            else
+            {
+                // copy e.g. copying 1 byte into an int vector, need to combine the byte with the rest of the word for
+                // the correct element, which is handled in the register-lowered memory functions
+                tmp = method.addNewLocal(mem->getSourceElementType());
+            }
             auto memRead = &it.emplace(std::make_unique<MemoryInstruction>(
                 MemoryOperation::READ, Value(tmp), Value(mem->getSource()), Value(INT_ONE), false));
             it = mapMemoryAccess(method, it, memRead, srcInfos, destInfos);

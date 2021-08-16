@@ -48,6 +48,11 @@ namespace vc4c
          * iteration and thus we can pre-fetch the data loaded for the next loop iteration into the TMU FIFO.
          */
         bool prefetchTMULoads(const Module& module, Method& method, const Configuration& config);
+
+        /**
+         * Tries to find and group memory accesses to reduce the number of accesses while increasing utilization.
+         */
+        bool groupLoweredRegisterAccess(const Module& module, Method& method, const Configuration& config);
     } // namespace optimizations
 } // namespace vc4c
 

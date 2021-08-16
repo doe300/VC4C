@@ -63,6 +63,15 @@ TestOptimizations::TestOptimizations(const vc4c::Configuration& config) : TestEm
     TEST_ADD_WITH_STRING(TestOptimizations::testArithmetic, "");
     TEST_ADD_WITH_STRING(TestOptimizations::testClamp, "");
     TEST_ADD_WITH_STRING(TestOptimizations::testCross, "");
+    TEST_ADD_WITH_STRING(TestOptimizations::testCharPrivateStorage, "");
+    TEST_ADD_WITH_STRING(TestOptimizations::testCharLocalStorage, "");
+    TEST_ADD_WITH_STRING(TestOptimizations::testCharGlobalStorage, "");
+    TEST_ADD_WITH_STRING(TestOptimizations::testShortPrivateStorage, "");
+    TEST_ADD_WITH_STRING(TestOptimizations::testShortLocalStorage, "");
+    TEST_ADD_WITH_STRING(TestOptimizations::testShortGlobalStorage, "");
+    TEST_ADD_WITH_STRING(TestOptimizations::testIntPrivateStorage, "");
+    TEST_ADD_WITH_STRING(TestOptimizations::testIntLocalStorage, "");
+    TEST_ADD_WITH_STRING(TestOptimizations::testIntGlobalStorage, "");
 
     for(const auto& pass : optimizations::Optimizer::ALL_PASSES)
     {
@@ -87,11 +96,17 @@ TestOptimizations::TestOptimizations(const vc4c::Configuration& config) : TestEm
         TEST_ADD_WITH_STRING(TestOptimizations::testArithmetic, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testClamp, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testCross, pass.parameterName);
+        TEST_ADD_WITH_STRING(TestOptimizations::testCharPrivateStorage, pass.parameterName);
+        TEST_ADD_WITH_STRING(TestOptimizations::testCharLocalStorage, pass.parameterName);
+        TEST_ADD_WITH_STRING(TestOptimizations::testCharGlobalStorage, pass.parameterName);
+        TEST_ADD_WITH_STRING(TestOptimizations::testShortPrivateStorage, pass.parameterName);
+        TEST_ADD_WITH_STRING(TestOptimizations::testShortLocalStorage, pass.parameterName);
+        TEST_ADD_WITH_STRING(TestOptimizations::testShortGlobalStorage, pass.parameterName);
+        TEST_ADD_WITH_STRING(TestOptimizations::testIntPrivateStorage, pass.parameterName);
+        TEST_ADD_WITH_STRING(TestOptimizations::testIntLocalStorage, pass.parameterName);
+        TEST_ADD_WITH_STRING(TestOptimizations::testIntGlobalStorage, pass.parameterName);
     }
-    // TODO the profiling info is wrong, since all optimization counters get merged!
-    // TEST_ADD(printProfilingInfo);
-    // TODO the test failures are not printed anymore for some reason (neither is the summary line), iff no other test
-    // suites fail
+    TEST_ADD(TestOptimizations::printProfilingInfo);
 }
 
 TestOptimizations::~TestOptimizations() = default;
@@ -368,4 +383,76 @@ void TestOptimizations::testSHA256()
             ++expectedIt;
         }
     }
+}
+
+void TestOptimizations::testCharPrivateStorage(std::string passParamName)
+{
+    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.optimizationLevel = OptimizationLevel::NONE;
+
+    TestEmulator::runTestData("storage_private_char", false);
+}
+
+void TestOptimizations::testCharLocalStorage(std::string passParamName)
+{
+    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.optimizationLevel = OptimizationLevel::NONE;
+
+    TestEmulator::runTestData("storage_local_char", false);
+}
+
+void TestOptimizations::testCharGlobalStorage(std::string passParamName)
+{
+    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.optimizationLevel = OptimizationLevel::NONE;
+
+    TestEmulator::runTestData("storage_global_char", false);
+}
+
+void TestOptimizations::testShortPrivateStorage(std::string passParamName)
+{
+    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.optimizationLevel = OptimizationLevel::NONE;
+
+    TestEmulator::runTestData("storage_private_short", false);
+}
+
+void TestOptimizations::testShortLocalStorage(std::string passParamName)
+{
+    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.optimizationLevel = OptimizationLevel::NONE;
+
+    TestEmulator::runTestData("storage_local_short", false);
+}
+
+void TestOptimizations::testShortGlobalStorage(std::string passParamName)
+{
+    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.optimizationLevel = OptimizationLevel::NONE;
+
+    TestEmulator::runTestData("storage_global_short", false);
+}
+
+void TestOptimizations::testIntPrivateStorage(std::string passParamName)
+{
+    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.optimizationLevel = OptimizationLevel::NONE;
+
+    TestEmulator::runTestData("storage_private_int", false);
+}
+
+void TestOptimizations::testIntLocalStorage(std::string passParamName)
+{
+    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.optimizationLevel = OptimizationLevel::NONE;
+
+    TestEmulator::runTestData("storage_local_int", false);
+}
+
+void TestOptimizations::testIntGlobalStorage(std::string passParamName)
+{
+    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.optimizationLevel = OptimizationLevel::NONE;
+
+    TestEmulator::runTestData("storage_global_int", false);
 }
