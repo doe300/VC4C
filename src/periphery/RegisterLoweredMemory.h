@@ -31,6 +31,8 @@ namespace vc4c
                 return false;
             }
 
+            Value precalculateOffset() const;
+
             /**
              * The lowered register containing the accessed cached data
              *

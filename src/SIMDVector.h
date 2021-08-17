@@ -11,6 +11,7 @@
 #include "Values.h"
 #include "performance.h"
 
+#include <algorithm>
 #include <mutex>
 
 namespace std
@@ -137,8 +138,8 @@ namespace vc4c
          *
          * NOTE: The parameters withOffset and withFactor cannot be set at the same time
          */
-        bool isElementNumber(bool withOffset = false, bool withFactor = false, bool ignoreUndefined = true) const
-            noexcept;
+        bool isElementNumber(
+            bool withOffset = false, bool withFactor = false, bool ignoreUndefined = true) const noexcept;
 
         /**
          * Returns whether all elements contained are undefined

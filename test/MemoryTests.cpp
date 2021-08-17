@@ -97,6 +97,107 @@ __kernel void test(const __global STORAGE* in, __global TYPE* out, __global CAT(
         out16[k] = vload16(k, data_in);
 })";
 
+static const std::string STORE_PRIVATE_REGISTER_ALIAS = R"(
+#define CONCAT(a,b) a ## b
+#define CAT(a,b) CONCAT(a,b)
+
+__kernel void test(const __global TYPE* in, __global STORAGE* out, __global STORAGE* out2, __global STORAGE* out3, __global STORAGE* out4, __global STORAGE* out8, __global STORAGE* out16)
+{
+    // should be lowered to register
+    __private STORAGE data[16];
+    __private TYPE* data_out = (__private TYPE*) data;
+    size_t i = get_global_id(0);
+
+    // test out the different vstore versions
+    float factor = ((float)sizeof(STORAGE)) / sizeof(TYPE);
+
+    for(int k = 0; k < (int)(factor * 16); ++k)
+        data_out[k] = in[k];
+    for(int k = 0; k < 16; ++k)
+        out[i + k] = data[k] + 1;
+
+    for(int k = 0; k < (int)(factor * 8); ++k)
+        vstore2(((__global CAT(TYPE,2)*)in)[k], k, data_out);
+    for(int k = 0; k < 16; ++k)
+        out2[i + k] = data[k] + 1;
+
+    for(int k = 0; k < (int)(factor * 5); ++k)
+        vstore3(vload3(k, in), k, data_out);
+    for(int k = 0; k < 16; ++k)
+        out3[i + k] = data[k] + 1;
+
+    for(int k = 0; k < (int)(factor * 4); ++k)
+        vstore4(((__global CAT(TYPE,4)*)in)[k], k, data_out);
+    for(int k = 0; k < 16; ++k)
+        out4[i + k] = data[k] + 1;
+
+    for(int k = 0; k < (int)(factor * 2); ++k)
+        vstore8(((__global CAT(TYPE,8)*)in)[k], k, data_out);
+    for(int k = 0; k < 16; ++k)
+        out8[i + k] = data[k] + 1;
+
+    for(int k = 0; k < (int)factor; ++k)
+        vstore16(((__global CAT(TYPE,16)*)in)[k], k, data_out);
+    for(int k = 0; k < 16; ++k)
+        out16[i + k] = data[k] + 1;
+})";
+
+static const std::string STORE_PRIVATE_REGISTER_ALIAS_STRIDED = R"(
+#define CONCAT(a,b) a ## b
+#define CAT(a,b) CONCAT(a,b)
+
+__kernel void test(const __global TYPE* in, __global STORAGE* out, __global STORAGE* out2, __global STORAGE* out3, __global STORAGE* out4, __global STORAGE* out8, __global STORAGE* out16)
+{
+    // should be lowered to register
+    __private STORAGE data[16];
+    __private TYPE* data_out = (__private TYPE*) data;
+    size_t i = get_global_id(0);
+
+    // test out the different vstore versions
+    // also leave some space to test that we do not write surrounding data
+    float factor = ((float)sizeof(STORAGE)) / sizeof(TYPE);
+
+    for(int k = 0; k < 16; ++k)
+        data[k] = 0x42;
+    for(int k = 0; k < (int)(factor * 16); k += 2)
+        data_out[k] = in[k];
+    for(int k = 0; k < 16; ++k)
+        out[i + k] = data[k] + 1;
+
+    for(int k = 0; k < 16; ++k)
+        data[k] = 0x42;
+    for(int k = 0; k < (int)(factor * 8); k += 2)
+        vstore2(((__global CAT(TYPE,2)*)in)[k], k, data_out);
+    for(int k = 0; k < 16; ++k)
+        out2[i + k] = data[k] + 1;
+
+    for(int k = 0; k < (int)(factor * 5); k += 2)
+        vstore3(vload3(k, in), k, data_out);
+    for(int k = 0; k < 16; ++k)
+        out3[i + k] = data[k] + 1;
+
+    for(int k = 0; k < 16; ++k)
+        data[k] = 0x42;
+    for(int k = 0; k < (int)(factor * 4); k += 2)
+        vstore4(((__global CAT(TYPE,4)*)in)[k], k, data_out);
+    for(int k = 0; k < 16; ++k)
+        out4[i + k] = data[k] + 1;
+
+    for(int k = 0; k < 16; ++k)
+        data[k] = 0x42;
+    for(int k = 0; k < (int)(factor * 2); k += 2)
+        vstore8(((__global CAT(TYPE,8)*)in)[k], k, data_out);
+    for(int k = 0; k < 16; ++k)
+        out8[i + k] = data[k] + 1;
+
+    for(int k = 0; k < 16; ++k)
+        data[k] = 0x42;
+    for(int k = 0; k < (int)factor; k+= 2)
+        vstore16(((__global CAT(TYPE,16)*)in)[k], k, data_out);
+    for(int k = 0; k < 16; ++k)
+        out16[i + k] = data[k] + 1;
+})";
+
 template <typename T, T divisor>
 static bool checkIsMultipleOf(T val, std::size_t index)
 {
@@ -114,8 +215,44 @@ static std::vector<T> toStorageTestResult(std::vector<T>&& input)
     return result;
 }
 
+template <typename T, std::size_t N>
+static std::vector<T> maskOffOddEntries(const std::vector<T>& input, std::size_t accessTypeSize, T maskValue)
+{
+    auto result = input;
+    if(sizeof(T) <= accessTypeSize)
+    {
+        // e.g. for storing short3 into short[], set 3 shorts to value and 3 shorts to default
+        // e.g. for storing int2 into short[], set 4 shorts to value and 4 shorts to default
+        auto M = N * accessTypeSize / sizeof(T);
+        for(std::size_t i = 0; i < result.size(); ++i)
+        {
+            result[i] = ((i % (2 * M)) >= M ? maskValue : result[i]) + 1;
+        }
+    }
+    else
+    {
+        // need to set part of the result to the part of the default value
+        auto typeOffset = accessTypeSize * 8;
+        auto typeMask = (1u << typeOffset) - 1u;
+        for(std::size_t i = 0; i < result.size(); ++i)
+        {
+            auto val = result[i];
+            for(std::size_t k = 0; k < (sizeof(T) / accessTypeSize); ++k)
+            {
+                auto offset = typeOffset * k;
+                auto bitMask = typeMask << offset;
+                auto subMask = maskValue & bitMask;
+                if(((i * (sizeof(T) / accessTypeSize) + k) % (2 * N)) >= N)
+                    val = static_cast<T>((val & ~bitMask) | subMask);
+            }
+            result[i] = val + 1;
+        }
+    }
+    return result;
+}
+
 template <typename T>
-static void registerPrivateAliasingTests(const std::string& storageType)
+static void registerPrivateAliasingTests(const std::string& typeName)
 {
     using namespace test_data;
 
@@ -126,8 +263,8 @@ static void registerPrivateAliasingTests(const std::string& storageType)
     std::transform(data.begin(), data.end(), result.begin(), [](T val) { return val + 1; });
 
     // the actual types do not matter, behavior is only dependent on the type's bit-width
-    std::vector<std::pair<std::string, uint8_t>> outputTypes = {{"char", 1}, {"short", 2}, {"int", 4}, {"long", 8}};
-    for(const auto& type : outputTypes)
+    std::vector<std::pair<std::string, uint8_t>> accessTypes = {{"char", 1}, {"short", 2}, {"int", 4}};
+    for(const auto& accessType : accessTypes)
     {
         auto vector3Result = result;
         // we have 16 * N bytes of data and load/store 3 * I * 5 * M bytes of data
@@ -137,35 +274,76 @@ static void registerPrivateAliasingTests(const std::string& storageType)
         // e.g. for short16 to 2 * int3, we do not transfer 8 byte
         // e.g. for short16 to long3, we do not transfer 8 byte
         // e.g. for long16 to 21 * short3, we do not transfer 2 byte
-        auto bytesToRemove = (sizeof(T) * 16) % (type.second * 3);
+        auto bytesToRemove = (sizeof(T) * 16) % (accessType.second * 3);
         for(std::size_t i = 0; i < bytesToRemove; i += sizeof(T))
             vector3Result.pop_back();
 
-        std::vector<ResultVerification> checks{
+        std::vector<ResultVerification> loadChecks{
             checkParameterEquals(1, std::vector<T>{result}),
             checkParameterEquals(2, std::vector<T>{result}),
         };
-        if(type.second <= sizeof(T) * 4)
+        std::vector<ResultVerification> storeStridedChecks{
+            checkParameterEquals(1, maskOffOddEntries<T, 1>(data, accessType.second, T{0x42})),
+            checkParameterEquals(2, maskOffOddEntries<T, 2>(data, accessType.second, T{0x42})),
+        };
+        if(accessType.second <= sizeof(T) * 4)
         {
-            checks.push_back(checkParameterEquals(3, std::move(vector3Result)));
-            checks.push_back(checkParameterEquals(4, std::vector<T>{result}));
+            loadChecks.push_back(checkParameterEquals(3, std::move(vector3Result)));
+            storeStridedChecks.push_back(checkParameterEquals(3,
+                maskOffOddEntries<T, 3>(
+                    std::vector<T>(data.begin(), data.begin() + vector3Result.size()), accessType.second, T{0x42})));
+            loadChecks.push_back(checkParameterEquals(4, std::vector<T>{result}));
+            storeStridedChecks.push_back(
+                checkParameterEquals(4, maskOffOddEntries<T, 4>(data, accessType.second, T{0x42})));
         }
-        if(type.second <= sizeof(T) * 2)
-            checks.push_back(checkParameterEquals(5, std::vector<T>{result}));
-        if(type.second <= sizeof(T))
+        if(accessType.second <= sizeof(T) * 2)
+        {
+            loadChecks.push_back(checkParameterEquals(5, std::vector<T>{result}));
+            storeStridedChecks.push_back(
+                checkParameterEquals(5, maskOffOddEntries<T, 8>(data, accessType.second, T{0x42})));
+        }
+        if(accessType.second <= sizeof(T))
+        {
             // we can't e.g. run the vload16 with 64-bit data type on 16 * 32-bit of data
-            checks.push_back(checkParameterEquals(6, std::vector<T>{result}));
+            loadChecks.push_back(checkParameterEquals(6, std::vector<T>{result}));
+            storeStridedChecks.push_back(
+                checkParameterEquals(6, maskOffOddEntries<T, 16>(data, accessType.second, T{0x42})));
+        }
+
+        auto storeChecks = loadChecks;
 
         registerTest(
-            TestData{"vload_alias_private_register_" + storageType + "_to_" + type.first, DataFilter::MEMORY_ACCESS,
-                &LOAD_PRIVATE_REGISTER_ALIAS, "-DSTORAGE=" + storageType + " -DTYPE=" + type.first, "test",
+            TestData{"vload_alias_private_register_" + typeName + "_to_" + accessType.first, DataFilter::MEMORY_ACCESS,
+                &LOAD_PRIVATE_REGISTER_ALIAS, "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first, "test",
                 {toBufferParameter(std::vector<T>{data}), toBufferParameter(std::vector<T>(data.size(), 0x42)),
                     toBufferParameter(std::vector<T>(data.size(), 0x42)),
                     toBufferParameter(std::vector<T>(data.size(), 0x42)),
                     toBufferParameter(std::vector<T>(data.size(), 0x42)),
                     toBufferParameter(std::vector<T>(data.size(), 0x42)),
                     toBufferParameter(std::vector<T>(data.size(), 0x42))},
-                toDimensions(1), std::move(checks)});
+                toDimensions(1), std::move(loadChecks)});
+
+        registerTest(
+            TestData{"vstore_alias_private_register_" + accessType.first + "_to_" + typeName, DataFilter::MEMORY_ACCESS,
+                &STORE_PRIVATE_REGISTER_ALIAS, "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first, "test",
+                {toBufferParameter(std::vector<T>{data}), toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                    toBufferParameter(std::vector<T>(data.size(), 0x42))},
+                toDimensions(1), std::move(storeChecks)});
+
+        registerTest(TestData{"vstore_alias_private_register_strided_" + accessType.first + "_to_" + typeName,
+            DataFilter::MEMORY_ACCESS, &STORE_PRIVATE_REGISTER_ALIAS_STRIDED,
+            "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first, "test",
+            {toBufferParameter(std::vector<T>{data}), toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42))},
+            toDimensions(1), std::move(storeStridedChecks)});
     }
 }
 
@@ -600,5 +778,4 @@ void test_data::registerMemoryTests()
     registerPrivateAliasingTests<int8_t>("char");
     registerPrivateAliasingTests<int16_t>("short");
     registerPrivateAliasingTests<int32_t>("int");
-    registerPrivateAliasingTests<int64_t>("long");
 }
