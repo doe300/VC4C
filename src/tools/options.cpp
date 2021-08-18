@@ -179,8 +179,6 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
                 config.additionalOptions.accumulatorThreshold = static_cast<unsigned>(intValue);
             else if(paramName == "replace-nop-threshold")
                 config.additionalOptions.replaceNopThreshold = static_cast<unsigned>(intValue);
-            else if(paramName == "move-constants-depth")
-                config.additionalOptions.moveConstantsDepth = intValue;
             else if(paramName == "optimization-iterations")
                 config.additionalOptions.maxOptimizationIterations = static_cast<unsigned>(intValue);
             else if(paramName == "common-subexpression-threshold")

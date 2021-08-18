@@ -260,7 +260,7 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
         {
             in.read(buffer.data(), buffer.size());
             numBytes = write(pipes[STD_IN][WRITE], buffer.data(), static_cast<std::size_t>(in.gcount()));
-            if(numBytes != buffer.size())
+            if(static_cast<std::size_t>(numBytes) != buffer.size())
                 break;
         }
         closePipe(pipes[STD_IN][READ]);

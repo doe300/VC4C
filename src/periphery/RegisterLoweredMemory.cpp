@@ -313,7 +313,8 @@ static NODISCARD InstructionWalker lowerRegisterWrite(Method& method, Instructio
             (Value(Literal(containerType.getScalarBitCount()), TYPE_INT8) - tmpOffset, SetFlag::SET_FLAGS);
         auto lastElementMask = assign(it, TYPE_INT32) = as_unsigned{specialMask} >> tmpOffset;
         assign(it, lastElementMask) = (INT_ZERO, COND_ZERO_SET);
-        auto lastElementCond = assignNop(it) = selectSIMDElement(tmpValue.type.getVectorWidth() - 1u);
+        auto lastElementCond = assignNop(it) =
+            selectSIMDElement(static_cast<uint8_t>(tmpValue.type.getVectorWidth() - 1u));
         assign(it, writeMask) = (lastElementMask, lastElementCond);
         auto adjustedWriteMask = method.addNewLocal(containerType, "%store_register_mask");
         it = insertVectorRotation(it, writeMask, elementOffset, adjustedWriteMask, Direction::UP);

@@ -226,7 +226,7 @@ static std::vector<T> maskOffOddEntries(const std::vector<T>& input, std::size_t
         auto M = N * accessTypeSize / sizeof(T);
         for(std::size_t i = 0; i < result.size(); ++i)
         {
-            result[i] = ((i % (2 * M)) >= M ? maskValue : result[i]) + 1;
+            result[i] = static_cast<T>(((i % (2 * M)) >= M ? maskValue : result[i]) + 1);
         }
     }
     else
@@ -245,7 +245,7 @@ static std::vector<T> maskOffOddEntries(const std::vector<T>& input, std::size_t
                 if(((i * (sizeof(T) / accessTypeSize) + k) % (2 * N)) >= N)
                     val = static_cast<T>((val & ~bitMask) | subMask);
             }
-            result[i] = val + 1;
+            result[i] = static_cast<T>(val + 1);
         }
     }
     return result;

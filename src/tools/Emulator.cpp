@@ -254,7 +254,7 @@ tools::Word Memory::readWord(MemoryAddress address) const
             log << "Reading word from non-word-aligned memory location will be truncated to align with "
                    "word-boundaries: "
                 << toAddressString(address) << logging::endl);
-    address = (address / sizeof(Word)) * sizeof(Word);
+    address = static_cast<MemoryAddress>((address / sizeof(Word)) * sizeof(Word));
     assertAddressInMemory(address, sizeof(Word));
     return *getWordAddress(address);
 }
@@ -541,7 +541,7 @@ static constexpr uint8_t toIndex(Register reg) noexcept
 {
     // we have 2 bits for the register file and need to store the files 1, 2 and 4. By subtracting 1, we can store all
     // of them in 2 bits
-    return (static_cast<uint8_t>(reg.file) - 1) * 64 + reg.num;
+    return static_cast<uint8_t>((static_cast<uint8_t>(reg.file) - 1) * 64 + reg.num);
 }
 
 SIMDVector Registers::readStorageRegister(Register reg, bool anyElementUsed)
@@ -683,7 +683,7 @@ void UniformFifo::triggerFifoFill()
             log << "Triggering read of UNIFORM into FIFO for QPU " << static_cast<unsigned>(qpu.ID)
                 << " from address: " << toAddressString(uniformAddress) << logging::endl);
         clock.schedule(slice.startUniformRead(std::move(handle), uniformAddress));
-        uniformAddress = uniformAddress + sizeof(Word);
+        uniformAddress = static_cast<MemoryAddress>(uniformAddress + sizeof(Word));
     }
 }
 
@@ -1427,7 +1427,7 @@ AsynchronousExecution L2Cache::startCacheLineRead(
         decltype(cacheLine.data) tmpData;
         auto baseAddress = getBaseCacheLineAddress(cache, address);
         for(uint32_t i = 0; i < cacheLine.data.size(); ++i)
-            tmpData[i] = memory.readWord(baseAddress + i * sizeof(Word));
+            tmpData[i] = memory.readWord(static_cast<MemoryAddress>(baseAddress + i * sizeof(Word)));
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Read L2 cache line from memory at address " << toAddressString(baseAddress) << ": "
                 << toDataString(tmpData) << logging::endl);
@@ -1484,7 +1484,7 @@ AsynchronousExecution L2Cache::startCacheLineRead(
 {
     // to not have the instructions also conflicting with the data which is located close to "address" 0, we add some
     // base address offset for the instruction buffer
-    MemoryAddress address = INSTRUCTION_BASE_ADDRESS + pc * sizeof(uint64_t);
+    auto address = static_cast<MemoryAddress>(INSTRUCTION_BASE_ADDRESS + pc * sizeof(uint64_t));
     auto cacheEntry = get4WayAssociatedCacheLine(cache, address);
     auto& cacheLine = cacheEntry.first.get();
     // Since we run the QPUs serially (and have no memory access delay so far), one QPU might already load some value
@@ -1746,7 +1746,7 @@ std::pair<qpu_asm::Instruction, bool> Slice::readInstruction(ProgramCounter pc)
 {
     // to not have the instructions also conflicting with the data which is located close to "address" 0, we add some
     // base address offset for the instruction buffer
-    MemoryAddress instructionAddress = INSTRUCTION_BASE_ADDRESS + pc * sizeof(uint64_t);
+    auto instructionAddress = static_cast<MemoryAddress>(INSTRUCTION_BASE_ADDRESS + pc * sizeof(uint64_t));
     auto cacheEntry = get4WayAssociatedCacheLine(instructionCache, instructionAddress);
     auto& cacheLine = cacheEntry.first.get();
 

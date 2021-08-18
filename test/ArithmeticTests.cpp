@@ -222,7 +222,7 @@ static void registerNonFloatTests(const std::string& typeName, test_data::DataFi
     registerTest(TestData{"unary_bitwise_not_" + typeName, flags, &UNARY_OPERATIONS, options, "test_bitnot",
         {toBufferParameter(std::vector<T>(unaryInputs.size())), toBufferParameter(std::vector<T>(unaryInputs))},
         calculateDimensions(unaryInputs.size()),
-        {checkParameterEquals(0, transform<T>(unaryInputs, [](T val) -> T { return ~val; }))}});
+        {checkParameterEquals(0, transform<T>(unaryInputs, [](T val) -> T { return static_cast<T>(~val); }))}});
 
     ////
     // Binary operators
@@ -239,7 +239,7 @@ static void registerNonFloatTests(const std::string& typeName, test_data::DataFi
             if(val2 == static_cast<T>(-1))
                 // somehow my host does not like divisions by -1 (at least not for some types)
                 return std::is_unsigned<T>::value ? (val1 == static_cast<T>(-1) ? 0 : val1) : 0;
-            return val2 != 0 ? val1 % val2 : val1;
+            return static_cast<T>(val2 != 0 ? val1 % val2 : val1);
         }))}});
 
     registerTest(TestData{"binary_bitwise_and_" + typeName, flags, &BINARY_OPERATIONS, options, "test_bitand",
@@ -354,7 +354,8 @@ static void registerTypeTests(const std::string& typeName)
     registerTest(TestData{"unary_minus_" + typeName, flags, &UNARY_OPERATIONS, options, "test_minus",
         {toBufferParameter(std::vector<T>(unaryInputs.size())), toBufferParameter(std::vector<T>(unaryInputs))},
         calculateDimensions(unaryInputs.size()),
-        {checkParameter<Comparator>(0, transform<T>(unaryInputs, wrap<T>([](T val) -> T { return -val; })))}});
+        {checkParameter<Comparator>(
+            0, transform<T>(unaryInputs, wrap<T>([](T val) -> T { return static_cast<T>(-val); })))}});
 
     // TODO wrong results for (u)long and SPIR-V front-end
     auto additionalFlags = sizeof(T) > sizeof(uint32_t) ? DataFilter::SPIRV_DISABLED : DataFilter::NONE;
@@ -395,7 +396,7 @@ static void registerTypeTests(const std::string& typeName)
             0, transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>([](T val1, T val2) -> T {
                 if(std::is_integral<T>::value && val2 == static_cast<T>(-1))
                     // somehow my host does not like divisions by -1 (at least not for some types)
-                    return std::is_unsigned<T>::value ? (val1 == static_cast<T>(-1) ? 1 : 0) : -val1;
+                    return static_cast<T>(std::is_unsigned<T>::value ? (val1 == static_cast<T>(-1) ? 1 : 0) : -val1);
                 // "A divide by zero with integer types does not cause an exception but will result in an unspecified
                 // value. Division by zero for floating-point types will result in +-infinity or NaN as prescribed by
                 // the IEEE-754 standard"
@@ -403,7 +404,7 @@ static void registerTypeTests(const std::string& typeName)
                     // (u)short and (u)char use float division, while (u)int and (u)long have their own implementation
                     return sizeof(T) <= 3 ? (std::signbit(val1) != std::signbit(val2) ? -1 : 1) :
                                             static_cast<T>(std::signbit(val1) ? 1 : -1);
-                return val1 / val2;
+                return static_cast<T>(val1 / val2);
             })))}});
 
     ////

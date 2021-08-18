@@ -15,6 +15,22 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 
+static uint8_t countIdenticalElementFlags(const Optional<VectorFlags>& flags)
+{
+    uint8_t count = 0;
+    if(flags)
+    {
+        for(const auto& element : *flags)
+        {
+            if(element == (*flags)[0])
+                ++count;
+            else
+                break;
+        }
+    }
+    return count;
+}
+
 static bool rewriteSettingOfFlags(
     InstructionWalker setFlags, FastAccessList<InstructionWalker>&& conditionalInstructions)
 {
@@ -34,12 +50,10 @@ static bool rewriteSettingOfFlags(
         return true;
     }
     auto allFlags = analysis::StaticFlagsAnalysis::analyzeStaticFlags(setFlags.get(), setFlags);
-    if(allFlags && std::all_of(allFlags->begin(), allFlags->end(), [&](ElementFlags flags) -> bool {
-           return flags == (*allFlags)[0];
-       }))
+    auto numIdenticalFlags = countIdenticalElementFlags(allFlags);
+    if(allFlags && numIdenticalFlags == NATIVE_VECTOR_SIZE)
     {
         // flags are compile-time static
-        // TODO improve to also handle container constant flags
         ElementFlags flags = (*allFlags)[0];
         auto condIt = conditionalInstructions.begin();
         bool changedInstructions = false;
@@ -101,6 +115,41 @@ static bool rewriteSettingOfFlags(
             }
             else
                 ++condIt;
+        }
+        if(conditionalInstructions.empty())
+            // to maybe remove the flag
+            rewriteSettingOfFlags(setFlags, FastAccessList<InstructionWalker>{});
+        return changedInstructions;
+    }
+    else if(allFlags && numIdenticalFlags > 0)
+    {
+        ElementFlags flags = (*allFlags)[0];
+        bool changedInstructions = false;
+        for(auto& cond : conditionalInstructions)
+        {
+            auto extendedInst = cond.get<intermediate::ExtendedInstruction>();
+            if(extendedInst && flags.isFlagDefined(extendedInst->getCondition()) && extendedInst->isSimpleMove())
+            {
+                auto moveSource = extendedInst->getMoveSource();
+                bool flagsCoverOutput =
+                    extendedInst->getOutput() && extendedInst->getOutput()->type.getVectorWidth() <= numIdenticalFlags;
+                bool isSingleWriter =
+                    (check(extendedInst->checkOutputLocal()) & &Local::getSingleWriter) == extendedInst;
+                bool flagsCoverSource = moveSource && moveSource->type.getVectorWidth() <= numIdenticalFlags;
+                bool sourceIsUnconditional = moveSource && moveSource->getConstantValue();
+                if(auto writer = moveSource ? moveSource->getSingleWriter() : nullptr)
+                    sourceIsUnconditional = !writer->hasConditionalExecution();
+                if(flagsCoverOutput && isSingleWriter && flagsCoverSource && sourceIsUnconditional)
+                {
+                    // conditional single writer moving from unconditionally written source all elements specified by
+                    // the input and output types with compile-time constant condition
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Making instruction with constant condition covering all used elements unconditional: "
+                            << cond->to_string() << logging::endl);
+                    extendedInst->setCondition(COND_ALWAYS);
+                    changedInstructions = true;
+                }
+            }
         }
         if(conditionalInstructions.empty())
             // to maybe remove the flag

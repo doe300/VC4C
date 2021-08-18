@@ -83,7 +83,7 @@ static unsigned determineVectorizationFactor(const ControlFlowLoop& loop, Option
             << logging::endl);
 
     // find the biggest factor fitting into 16 SIMD-elements
-    unsigned factor = NATIVE_VECTOR_SIZE / maxTypeWidth;
+    auto factor = static_cast<unsigned>(NATIVE_VECTOR_SIZE / maxTypeWidth);
     while(iterationCount && factor > 0)
     {
         if((*iterationCount % factor) == 0)

@@ -102,7 +102,7 @@ static Optional<Value> getDimensionalArgument(const intermediate::IntrinsicOpera
             // all reads have the same offset, the corresponding element is read
             auto offset = *rotationOffsets.begin();
             if(offset != 0)
-                offset = NATIVE_VECTOR_SIZE - offset;
+                offset = static_cast<uint8_t>(NATIVE_VECTOR_SIZE - offset);
             return Value(Literal(offset), TYPE_INT8);
         }
     }

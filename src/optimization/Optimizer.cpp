@@ -159,7 +159,7 @@ static bool runPass(
     });
     PROFILE_COUNTER_DYNAMIC(vc4c::profiler::COUNTER_OPTIMIZATION, pass.name + " (before)", method.countInstructions());
     PROFILE_START_DYNAMIC(pass.name);
-    bool changedMethod = (pass) (module, method, config);
+    bool changedMethod = (pass)(module, method, config);
     PROFILE_END_DYNAMIC(pass.name);
     PROFILE_COUNTER_DYNAMIC_WITH_PREV(
         vc4c::profiler::COUNTER_OPTIMIZATION, pass.name + " (after)", method.countInstructions());

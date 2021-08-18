@@ -811,7 +811,7 @@ NODISCARD static InstructionWalker findGroupOfTMUAccess(InstructionWalker it, TM
                     // a group exists, but the type-width do not match
                     break;
 
-                if(group.usedVectorSize + static_cast<uint8_t>(numVectorElements->unsignedInt()) > NATIVE_VECTOR_SIZE)
+                if(static_cast<uint8_t>(group.usedVectorSize + numVectorElements->unsignedInt()) > NATIVE_VECTOR_SIZE)
                     // group is too big when adding this new load
                     break;
 
@@ -1791,8 +1791,8 @@ NODISCARD static InstructionWalker findGroupOfLoweredRegisterAccesses(
             if(group.groupedAccessType.isUnknown())
                 group.groupedAccessType = loweredCacheEntry->valueType;
             else
-                group.groupedAccessType = group.groupedAccessType.toVectorType(
-                    group.groupedAccessType.getVectorWidth() + loweredCacheEntry->valueType.getVectorWidth());
+                group.groupedAccessType = group.groupedAccessType.toVectorType(static_cast<uint8_t>(
+                    group.groupedAccessType.getVectorWidth() + loweredCacheEntry->valueType.getVectorWidth()));
             group.accessInstructions.emplace_back(it);
         }
     }
@@ -1850,7 +1850,7 @@ NODISCARD static bool groupLoweredRegisterWrites(Method& method, LoweredRegister
             auto tmpElement = assign(it, writer->getRegisterCacheEntry()->valueType) = writer->getData();
             it = intermediate::insertVectorInsertion(
                 it, method, tmpData, Value(Literal(nextVectorElement), TYPE_INT8), tmpElement);
-            nextVectorElement += tmpElement.type.getVectorWidth();
+            nextVectorElement = static_cast<uint8_t>(nextVectorElement + tmpElement.type.getVectorWidth());
         }
 
         CPPLOG_LAZY(logging::Level::DEBUG, log << "Writing assembled vector " << tmpData.to_string() << logging::endl);

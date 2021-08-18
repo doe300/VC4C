@@ -812,7 +812,7 @@ static DataType simplifyComplexTypes(DataType type)
     if(auto structType = type.getStructType())
         // treat single-element struct as the single element
         return structType->elementTypes.size() == 1 ? structType->elementTypes.front() : type;
-    if(auto ptrType = type.getPointerType())
+    if(type.getPointerType())
         // treat pointer as "normal" integer
         return TYPE_INT32;
     return type;
@@ -964,7 +964,7 @@ NODISCARD static VPRGenericSetup toReadSetup(const VPMArea& area, DataType scala
     {
         // 64-bit integer vectors are stored as 2 rows of 32-bit integer vectors in VPM
         scalarBitCount = 32;
-        numRows = 2 * numRows;
+        numRows = static_cast<uint8_t>(2u * numRows);
     }
 
     // if we can pack into a single row, do so. Otherwise set stride to beginning of next row
@@ -1350,7 +1350,7 @@ NODISCARD static InstructionWalker lowerReadVPM(
         // FIXME this is way less efficient then loading both rows at once!
         genericSetup.genericSetup.setNumber(genericSetup.genericSetup.getNumber() / 2);
         if(access.upperWord)
-            genericSetup.genericSetup.setWordRow(genericSetup.genericSetup.getWordRow() + 1u);
+            genericSetup.genericSetup.setWordRow(static_cast<uint8_t>(genericSetup.genericSetup.getWordRow() + 1u));
     }
     Value outputValue = VPM_IO_REGISTER;
     if(internalOffset == INT_ZERO)
@@ -1444,7 +1444,7 @@ NODISCARD static InstructionWalker lowerWriteVPM(
     if(dataType.getScalarBitCount() == 64)
     {
         if(access.upperWord)
-            genericSetup.genericSetup.setWordRow(genericSetup.genericSetup.getWordRow() + 1u);
+            genericSetup.genericSetup.setWordRow(static_cast<uint8_t>(genericSetup.genericSetup.getWordRow() + 1u));
     }
     if(internalOffset == INT_ZERO)
         assign(it, VPM_OUT_SETUP_REGISTER) =

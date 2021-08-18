@@ -8,13 +8,13 @@
 #define INTRINSICS_H
 
 #include "../InstructionWalker.h"
+#include "../Locals.h"
 #include "config.h"
-
-#include <memory>
-#include <string>
 
 namespace vc4c
 {
+    class Module;
+
     namespace intrinsics
     {
         /*

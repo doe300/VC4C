@@ -279,7 +279,6 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
 
 bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, const Configuration& config)
 {
-    const int moveDepth = config.additionalOptions.moveConstantsDepth;
     bool hasChanged = false;
 
     auto& cfg = method.getCFG();
