@@ -11,9 +11,11 @@
 #include "intermediate/Helper.h"
 #include "intermediate/operators.h"
 #include "optimization/Combiner.h"
+#include "optimization/ControlFlow.cpp"
 #include "optimization/ControlFlow.h"
 #include "optimization/Eliminator.h"
 #include "optimization/Flags.h"
+#include "optimization/Vector.h"
 
 #include <cmath>
 
@@ -30,10 +32,16 @@ TestOptimizationSteps::TestOptimizationSteps()
     TEST_ADD(TestOptimizationSteps::testSimplifyArithmetics);
     TEST_ADD(TestOptimizationSteps::testCombineArithmetics);
     TEST_ADD(TestOptimizationSteps::testRewriteConstantSFU);
+    TEST_ADD(TestOptimizationSteps::testReorderBasicBlocks);
     TEST_ADD(TestOptimizationSteps::testSimplifyBranches);
+    TEST_ADD(TestOptimizationSteps::testMergeBasicBlocks);
     TEST_ADD(TestOptimizationSteps::testCombineConstantLoads);
     TEST_ADD(TestOptimizationSteps::testEliminateBitOperations);
     TEST_ADD(TestOptimizationSteps::testCombineRotations);
+    TEST_ADD(TestOptimizationSteps::testEliminateMoves);
+    TEST_ADD(TestOptimizationSteps::testRemoveFlags);
+    TEST_ADD(TestOptimizationSteps::testRemoveConditionalFlags);
+    TEST_ADD(TestOptimizationSteps::testCombineVectorElementCopies);
     TEST_ADD(TestOptimizationSteps::testLoopInvariantCodeMotion);
 }
 
@@ -1044,6 +1052,171 @@ void TestOptimizationSteps::testRewriteConstantSFU()
     testMethodsEquals(inputMethod, outputMethod);
 }
 
+void TestOptimizationSteps::testReorderBasicBlocks()
+{
+    using namespace vc4c::intermediate;
+    Configuration config{};
+    Module module{config};
+    Method inputMethod(module);
+    Method outputMethod(module);
+
+    auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.begin(), "%default").walkEnd();
+    auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.begin(), "%default").walkEnd();
+
+    // Blocks 1 (->2), 2 (->3), 3  don't get reordered
+    {
+        auto input1 = inputMethod.addNewLocal(TYPE_LABEL, "%first.1").local();
+        auto input2 = inputMethod.addNewLocal(TYPE_LABEL, "%first.2").local();
+        auto input3 = inputMethod.addNewLocal(TYPE_LABEL, "%first.3").local();
+        label(inIt, input1);
+        branch(inIt, input2);
+        label(inIt, input2);
+        branch(inIt, input3);
+        label(inIt, input3);
+
+        auto output1 = outputMethod.createLocal(TYPE_LABEL, input1->name);
+        auto output2 = outputMethod.createLocal(TYPE_LABEL, input2->name);
+        auto output3 = outputMethod.createLocal(TYPE_LABEL, input3->name);
+        label(outIt, output1);
+        branch(outIt, output2);
+        label(outIt, output2);
+        branch(outIt, output3);
+        label(outIt, output3);
+    }
+
+    // Blocks 1 (->2), 3 (->4), 2 (->3), 4 get reordered
+    {
+        auto input1 = inputMethod.addNewLocal(TYPE_LABEL, "%second.1").local();
+        auto input2 = inputMethod.addNewLocal(TYPE_LABEL, "%second.2").local();
+        auto input3 = inputMethod.addNewLocal(TYPE_LABEL, "%second.3").local();
+        auto input4 = inputMethod.addNewLocal(TYPE_LABEL, "%second.4").local();
+        label(inIt, input1);
+        branch(inIt, input2);
+        label(inIt, input3);
+        branch(inIt, input4);
+        label(inIt, input2);
+        branch(inIt, input3);
+        label(inIt, input4);
+
+        auto output1 = outputMethod.createLocal(TYPE_LABEL, input1->name);
+        auto output2 = outputMethod.createLocal(TYPE_LABEL, input2->name);
+        auto output3 = outputMethod.createLocal(TYPE_LABEL, input3->name);
+        auto output4 = outputMethod.createLocal(TYPE_LABEL, input4->name);
+        label(outIt, output1);
+        branch(outIt, output2);
+        label(outIt, output2);
+        branch(outIt, output3);
+        label(outIt, output3);
+        branch(outIt, output4);
+        label(outIt, output4);
+    }
+
+    // Blocks 1 (->2/3), 2 (->4), 4 (->3), 3 don't get reordered (if-else)
+    {
+        auto input1 = inputMethod.addNewLocal(TYPE_LABEL, "%third.1").local();
+        auto input2 = inputMethod.addNewLocal(TYPE_LABEL, "%third.2").local();
+        auto input3 = inputMethod.addNewLocal(TYPE_LABEL, "%third.3").local();
+        auto input4 = inputMethod.addNewLocal(TYPE_LABEL, "%third.4").local();
+        label(inIt, input1);
+        branch(inIt, input2, BRANCH_ALL_Z_CLEAR);
+        branch(inIt, input3, BRANCH_ANY_Z_SET);
+        label(inIt, input2);
+        branch(inIt, input4);
+        label(inIt, input4);
+        branch(inIt, input3);
+        label(inIt, input3);
+
+        auto output1 = outputMethod.createLocal(TYPE_LABEL, input1->name);
+        auto output2 = outputMethod.createLocal(TYPE_LABEL, input2->name);
+        auto output3 = outputMethod.createLocal(TYPE_LABEL, input3->name);
+        auto output4 = outputMethod.createLocal(TYPE_LABEL, input4->name);
+        label(outIt, output1);
+        branch(outIt, output2, BRANCH_ALL_Z_CLEAR);
+        branch(outIt, output3, BRANCH_ANY_Z_SET);
+        label(outIt, output2);
+        branch(outIt, output4);
+        label(outIt, output4);
+        branch(outIt, output3);
+        label(outIt, output3);
+    }
+
+    // Blocks 1 (->3 + fall-through), 2 (fall-through), 3 don't get reordered (if-then)
+    {
+        auto input1 = inputMethod.addNewLocal(TYPE_LABEL, "%fourth.1").local();
+        auto input2 = inputMethod.addNewLocal(TYPE_LABEL, "%fourth.2").local();
+        auto input3 = inputMethod.addNewLocal(TYPE_LABEL, "%fourth.3").local();
+        label(inIt, input1);
+        branch(inIt, input3, BRANCH_ANY_Z_CLEAR);
+        label(inIt, input2);
+        label(inIt, input3);
+
+        auto output1 = outputMethod.createLocal(TYPE_LABEL, input1->name);
+        auto output2 = outputMethod.createLocal(TYPE_LABEL, input2->name);
+        auto output3 = outputMethod.createLocal(TYPE_LABEL, input3->name);
+        label(outIt, output1);
+        branch(outIt, output3, BRANCH_ANY_Z_CLEAR);
+        label(outIt, output2);
+        label(outIt, output3);
+    }
+
+    // Blocks 1 (->2/3), 3 (->4), 2 (fall-through), 4 don't get reordered
+    {
+        auto input1 = inputMethod.addNewLocal(TYPE_LABEL, "%fifth.1").local();
+        auto input2 = inputMethod.addNewLocal(TYPE_LABEL, "%fifth.2").local();
+        auto input3 = inputMethod.addNewLocal(TYPE_LABEL, "%fifth.3").local();
+        auto input4 = inputMethod.addNewLocal(TYPE_LABEL, "%fifth.4").local();
+        label(inIt, input1);
+        branch(inIt, input2, BRANCH_ALL_Z_CLEAR);
+        branch(inIt, input3, BRANCH_ANY_Z_SET);
+        label(inIt, input3);
+        branch(inIt, input4);
+        label(inIt, input2);
+        label(inIt, input4);
+
+        auto output1 = outputMethod.createLocal(TYPE_LABEL, input1->name);
+        auto output2 = outputMethod.createLocal(TYPE_LABEL, input2->name);
+        auto output3 = outputMethod.createLocal(TYPE_LABEL, input3->name);
+        auto output4 = outputMethod.createLocal(TYPE_LABEL, input4->name);
+        label(outIt, output1);
+        branch(outIt, output2, BRANCH_ALL_Z_CLEAR);
+        branch(outIt, output3, BRANCH_ANY_Z_SET);
+        label(outIt, output3);
+        branch(outIt, output4);
+        label(outIt, output2);
+        label(outIt, output4);
+    }
+
+    // Blocks 1 (->2), 3 (->4), 2 (fall-through), 4 get reordered
+    {
+        auto input1 = inputMethod.addNewLocal(TYPE_LABEL, "%fifth.1").local();
+        auto input2 = inputMethod.addNewLocal(TYPE_LABEL, "%fifth.2").local();
+        auto input3 = inputMethod.addNewLocal(TYPE_LABEL, "%fifth.3").local();
+        auto input4 = inputMethod.addNewLocal(TYPE_LABEL, "%fifth.4").local();
+        label(inIt, input1);
+        branch(inIt, input2);
+        label(inIt, input3);
+        branch(inIt, input4);
+        label(inIt, input2);
+        label(inIt, input4);
+
+        auto output1 = outputMethod.createLocal(TYPE_LABEL, input1->name);
+        auto output2 = outputMethod.createLocal(TYPE_LABEL, input2->name);
+        auto output3 = outputMethod.createLocal(TYPE_LABEL, input3->name);
+        auto output4 = outputMethod.createLocal(TYPE_LABEL, input4->name);
+        label(outIt, output1);
+        branch(outIt, output2);
+        label(outIt, output2);
+        branch(outIt, output4);
+        label(outIt, output3);
+        branch(outIt, output4);
+        label(outIt, output4);
+    }
+
+    // run pass
+    reorderBasicBlocks(module, inputMethod, config);
+    testMethodsEquals(inputMethod, outputMethod);
+}
+
 void TestOptimizationSteps::testSimplifyBranches()
 {
     using namespace vc4c::intermediate;
@@ -1219,6 +1392,119 @@ void TestOptimizationSteps::testSimplifyBranches()
 
     // run pass
     simplifyBranches(module, inputMethod, config);
+    testMethodsEquals(inputMethod, outputMethod);
+}
+
+void TestOptimizationSteps::testMergeBasicBlocks()
+{
+    Configuration config{};
+    Module module{config};
+    Method inputMethod(module);
+    Method outputMethod(module);
+
+    auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.begin(), "%default").walkEnd();
+    auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.begin(), "%default").walkEnd();
+
+    // Merge simple fall-through-only blocks
+    {
+        auto tmp = assign(inIt, TYPE_INT32) = UNIFORM_REGISTER;
+        label(inIt, inputMethod.createLocal(TYPE_INT32, "%1.merged"));
+        auto tmp2 = assign(inIt, TYPE_HALF) = tmp * 2_lit;
+
+        assign(outIt, tmp) = UNIFORM_REGISTER;
+        // no corresponding output label
+        assign(outIt, tmp2) = tmp * 2_lit;
+    }
+
+    // Merge label which is a jump-target if the predecessor block is empty
+    {
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%empty_blockA").walkEnd();
+        auto targetLabel = label(inIt, "%target_blockA");
+        auto cond = assignNop(inIt) = as_unsigned{UNIFORM_REGISTER} == as_unsigned{11_val};
+        branch(inIt, targetLabel, cond.toBranchCondition());
+
+        targetLabel = label(outIt, "%target_blockA");
+        cond = assignNop(outIt) = as_unsigned{UNIFORM_REGISTER} == as_unsigned{11_val};
+        branch(outIt, targetLabel, cond.toBranchCondition());
+    }
+
+    // Don't merge label which is a jump-target if the predecessor block is not empty
+    {
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%non_empty_blockB").walkEnd();
+        auto tmp = assign(inIt, TYPE_INT8) = UNIFORM_REGISTER;
+        auto targetLabel = label(inIt, "%target_blockB");
+        assignNop(inIt) = (tmp & 5_val, SetFlag::SET_FLAGS);
+        branch(inIt, targetLabel, BRANCH_ALL_Z_CLEAR);
+
+        outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%non_empty_blockB").walkEnd();
+        assign(outIt, tmp) = UNIFORM_REGISTER;
+        targetLabel = label(outIt, "%target_blockB");
+        assignNop(outIt) = (tmp & 5_val, SetFlag::SET_FLAGS);
+        branch(outIt, targetLabel, BRANCH_ALL_Z_CLEAR);
+    }
+
+    // Merge empty block which is a jump-target with successor block
+    {
+        auto targetLabel = label(inIt, "%target_blockC");
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%other_blockC").walkEnd();
+        auto cond = assignNop(inIt) = as_unsigned{UNIFORM_REGISTER} == as_unsigned{11_val};
+        branch(inIt, targetLabel, cond.toBranchCondition());
+
+        targetLabel = label(outIt, "%target_blockC");
+        cond = assignNop(outIt) = as_unsigned{UNIFORM_REGISTER} == as_unsigned{11_val};
+        branch(outIt, targetLabel, cond.toBranchCondition());
+    }
+
+    // Merge non-empty jump-target block if successor block is fall-through-only
+    {
+        auto targetLabel = label(inIt, "%target_blockD");
+        auto tmp = assign(inIt, TYPE_INT8) = UNIFORM_REGISTER;
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%other_blockD").walkEnd();
+        assignNop(inIt) = (tmp & 5_val, SetFlag::SET_FLAGS);
+        branch(inIt, targetLabel, BRANCH_ALL_Z_CLEAR);
+
+        targetLabel = label(outIt, "%target_blockD");
+        assign(outIt, tmp) = UNIFORM_REGISTER;
+        assignNop(outIt) = (tmp & 5_val, SetFlag::SET_FLAGS);
+        branch(outIt, targetLabel, BRANCH_ALL_Z_CLEAR);
+    }
+
+    // Don't merge non-empty jump-target block if successor-block has other predecessors
+    {
+        auto targetLabel = label(inIt, "%target_blockE");
+        auto tmp = assign(inIt, TYPE_INT8) = UNIFORM_REGISTER;
+        auto otherLabel = label(inIt, "%other_blockE");
+        assignNop(inIt) = (tmp & 5_val, SetFlag::SET_FLAGS);
+        branch(inIt, targetLabel, BRANCH_ALL_Z_CLEAR);
+        branch(inIt, otherLabel, BRANCH_ANY_Z_SET);
+
+        targetLabel = label(outIt, "%target_blockE");
+        assign(outIt, tmp) = UNIFORM_REGISTER;
+        otherLabel = label(outIt, "%other_blockE");
+        assignNop(outIt) = (tmp & 5_val, SetFlag::SET_FLAGS);
+        branch(outIt, targetLabel, BRANCH_ALL_Z_CLEAR);
+        branch(outIt, otherLabel, BRANCH_ANY_Z_SET);
+    }
+
+    // Don't merge across branches
+    {
+        auto targetLabel = label(inIt, "%first_blockF");
+        auto tmp = assign(inIt, TYPE_INT8) = UNIFORM_REGISTER;
+        assignNop(inIt) = (tmp & 5_val, SetFlag::SET_FLAGS);
+        branch(inIt, targetLabel, BRANCH_ALL_Z_CLEAR);
+        inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%other_blockF").walkEnd();
+        branch(inIt, targetLabel, BRANCH_ALL_Z_CLEAR);
+
+        targetLabel = label(outIt, "%first_blockF");
+        assign(outIt, tmp) = UNIFORM_REGISTER;
+        assignNop(outIt) = (tmp & 5_val, SetFlag::SET_FLAGS);
+        branch(outIt, targetLabel, BRANCH_ALL_Z_CLEAR);
+        outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%other_blockF").walkEnd();
+        branch(outIt, targetLabel, BRANCH_ALL_Z_CLEAR);
+    }
+
+    // run pass
+    mergeAdjacentBasicBlocks(module, inputMethod, config);
     testMethodsEquals(inputMethod, outputMethod);
 }
 
@@ -1891,16 +2177,610 @@ void TestOptimizationSteps::testCombineRotations()
         // test rewrite rotation of masked load to rotated load of mask (full and quad rotation) (part 2)
         outIt.emplace(std::make_unique<LoadImmediate>(o, 0x12340000, LoadType::PER_ELEMENT_SIGNED));
         outIt.nextInBlock();
-        outIt.emplace(std::make_unique<LoadImmediate>(p, 0x34120000, LoadType::PER_ELEMENT_SIGNED))
+        outIt.emplace(std::make_unique<LoadImmediate>(p, 0x23410000, LoadType::PER_ELEMENT_SIGNED))
             .setSetFlags(SetFlag::SET_FLAGS);
         outIt.nextInBlock();
         outIt.emplace(std::make_unique<LoadImmediate>(r, 0x00001234, LoadType::PER_ELEMENT_UNSIGNED));
         outIt.nextInBlock();
-        outIt.emplace(std::make_unique<LoadImmediate>(s, 0x00002341, LoadType::PER_ELEMENT_UNSIGNED));
+        outIt.emplace(std::make_unique<LoadImmediate>(s, 0x000048D0, LoadType::PER_ELEMENT_UNSIGNED));
         outIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
         outIt.nextInBlock();
     }
 
+    testMethodsEquals(inputMethod, outputMethod);
+}
+
+void TestOptimizationSteps::testEliminateMoves()
+{
+    using namespace vc4c::intermediate;
+    Configuration config{};
+    Module module{config};
+    Method inputMethod(module);
+    Method outputMethod(module);
+
+    auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+    auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%dummy").walkEnd();
+
+    auto a = assign(inIt, TYPE_INT32, "%a") = UNIFORM_REGISTER;
+    auto b = assign(inIt, TYPE_INT32, "%b") = UNIFORM_REGISTER;
+    assign(outIt, a) = UNIFORM_REGISTER;
+    assign(outIt, b) = UNIFORM_REGISTER;
+
+    // NOTE: Since the optimization checks for single writers, we need to add the output instructions after the
+    // optimization is applied. Otherwise the write from the output method will fail that check.
+
+    auto c = inputMethod.addNewLocal(TYPE_INT32, "%c");
+    auto d = inputMethod.addNewLocal(TYPE_INT32, "%d");
+    auto e = inputMethod.addNewLocal(TYPE_INT32, "%e");
+
+    // positive tests - move is removed
+    {
+        // tests removal of move + transfer of additional instruction info (part 1)
+        assign(inIt, a) = a;
+        assign(inIt, b) = (b, SIGNAL_LOAD_COLOR);
+        assign(inIt, c) = (a + b, InstructionDecorations::UNSIGNED_OVERFLOW_IS_UB);
+        assign(inIt, d) = c;
+        assign(inIt, e) = (d - b, UNPACK_8888_32);
+        assign(inIt, Value(REG_VPM_IO, TYPE_INT32)) = e;
+    }
+
+    auto f = inputMethod.addNewLocal(TYPE_INT32, "%f");
+    auto g = inputMethod.addNewLocal(TYPE_INT32, "%g");
+    auto h = inputMethod.addNewLocal(TYPE_INT32, "%h");
+    auto i = inputMethod.addNewLocal(TYPE_INT32, "%i");
+
+    {
+        // tests removal of moves according to optimization comment (part 1)
+        assign(inIt, f) = as_signed{a} + as_signed{b};
+        assign(inIt, g) = f;
+        assign(inIt, h) = UNIFORM_REGISTER;
+        assign(inIt, i) = as_signed{g} + as_signed{h};
+    }
+
+    auto k = inputMethod.addNewLocal(TYPE_INT32, "%k");
+    auto l = inputMethod.addNewLocal(TYPE_INT32, "%l");
+    auto m = inputMethod.addNewLocal(TYPE_INT32, "%m");
+
+    // negative tests - move is not removed
+    {
+        // tests not removing moves with side-effects (part 1)
+        assign(inIt, k) = (i, SetFlag::SET_FLAGS);
+        assign(inIt, l) = (a, SIGNAL_LOAD_TMU0);
+        assign(inIt, m) = k | l;
+    }
+
+    auto n = inputMethod.addNewLocal(TYPE_INT32, "%n");
+    auto o = inputMethod.addNewLocal(TYPE_INT32, "%o");
+
+    {
+        // tests not removing move of conditionally written local (part 1)
+        assign(inIt, n) = a;
+        assign(inIt, n) = (b, COND_ZERO_CLEAR);
+        assign(inIt, o) = n;
+    }
+
+    auto p = inputMethod.addNewLocal(TYPE_INT32, "%p");
+    auto q = inputMethod.addNewLocal(TYPE_INT32, "%q");
+    auto r = inputMethod.addNewLocal(TYPE_INT32, "%r");
+    auto s = inputMethod.addNewLocal(TYPE_INT32, "%s");
+
+    {
+        // tests not removing move with (un)pack modes (part 1)
+        assign(inIt, p) = as_signed{a} - as_signed{Value(REG_X_COORDS, TYPE_INT8)};
+        assign(inIt, q) = (p, PACK_32_16A_S);
+        assign(inIt, r) = (a, UNPACK_16A_32);
+        assign(inIt, s) = as_signed{r} - as_signed{Value(REG_X_COORDS, TYPE_INT8)};
+    }
+
+    auto t = inputMethod.addNewLocal(TYPE_INT32, "%t");
+    auto u = inputMethod.addNewLocal(TYPE_INT32, "%u");
+
+    {
+        // tests not removing of vector rotations (part 1)
+        inIt.emplace(std::make_unique<VectorRotation>(t, a, SmallImmediate::fromRotationOffset(3), RotationType::FULL));
+        inIt.nextInBlock();
+        assign(inIt, u) = t;
+    }
+
+    auto v = inputMethod.addNewLocal(TYPE_INT32, "%v");
+    auto w = inputMethod.addNewLocal(TYPE_INT32, "%w");
+    auto x = inputMethod.addNewLocal(TYPE_INT32, "%x");
+    auto y = inputMethod.addNewLocal(TYPE_INT32, "%y");
+    auto z = inputMethod.addNewLocal(TYPE_INT32, "%z");
+
+    {
+        // tests not reordering reading of registers with side-effects (part 1)
+        assign(inIt, v) = UNIFORM_REGISTER;
+        assign(inIt, w) = a + UNIFORM_REGISTER;
+        assign(inIt, x) = v + w;
+        assign(inIt, y) = UNIFORM_REGISTER;
+        assign(inIt, z) = x + y;
+    }
+
+    // run pass
+    eliminateRedundantMoves(module, inputMethod, config);
+
+    {
+        // tests removal of move + transfer of additional instruction info (part 2)
+        nop(outIt, DelayType::WAIT_REGISTER, SIGNAL_LOAD_COLOR);
+        assign(outIt, c) = (a + b, InstructionDecorations::UNSIGNED_OVERFLOW_IS_UB);
+        assign(outIt, Value(REG_VPM_IO, TYPE_INT32)) = (c - b, UNPACK_8888_32);
+    }
+
+    {
+        // tests removal of moves according to optimization comment (part 2)
+        assign(outIt, f) = as_signed{a} + as_signed{b};
+        assign(outIt, i) = as_signed{f} + as_signed{UNIFORM_REGISTER};
+    }
+
+    {
+        // tests not removing moves with side-effects (part 2)
+        assign(outIt, k) = (i, SetFlag::SET_FLAGS);
+        assign(outIt, l) = (a, SIGNAL_LOAD_TMU0);
+        assign(outIt, m) = k | l;
+    }
+
+    {
+        // tests not removing move of conditionally written local (part 2)
+        assign(outIt, n) = a;
+        assign(outIt, n) = (b, COND_ZERO_CLEAR);
+        assign(outIt, o) = n;
+    }
+
+    {
+        // tests not removing move with (un)pack modes if we cannot use register-file A (part 2)
+        assign(outIt, p) = as_signed{a} - as_signed{Value(REG_X_COORDS, TYPE_INT8)};
+        assign(outIt, q) = (p, PACK_32_16A_S);
+        assign(outIt, r) = (a, UNPACK_16A_32);
+        assign(outIt, s) = as_signed{r} - as_signed{Value(REG_X_COORDS, TYPE_INT8)};
+    }
+
+    {
+        // tests not removing of vector rotations (part 1)
+        outIt.emplace(
+            std::make_unique<VectorRotation>(t, a, SmallImmediate::fromRotationOffset(3), RotationType::FULL));
+        outIt.nextInBlock();
+        assign(outIt, u) = t;
+    }
+
+    {
+        // tests not reordering reading of registers with side-effects (part 2)
+        assign(outIt, v) = UNIFORM_REGISTER;
+        assign(outIt, w) = a + UNIFORM_REGISTER;
+        assign(outIt, x) = v + w;
+        assign(outIt, z) = x + UNIFORM_REGISTER;
+    }
+
+    testMethodsEquals(inputMethod, outputMethod);
+}
+
+void TestOptimizationSteps::testRemoveFlags()
+{
+    Configuration config{};
+    Module module{config};
+
+    Method inputMethod(module);
+    Method outputMethod(module);
+
+    auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+
+    // NOTE: Need to execute the optimization pass before adding the expected instructions, since the optimization pass
+    // checks for single writer, which we violate by reusing the local across methods!
+
+    auto a = assign(inIt, TYPE_INT32, "%src") = UNIFORM_REGISTER;
+    auto b = assign(inIt, TYPE_INT32, "%src") = UNIFORM_REGISTER;
+
+    auto c = inputMethod.addNewLocal(TYPE_INT32, "%c");
+    {
+        // Remove unused flag setter instruction without side-effects (part 1)
+        auto cond = assignNop(inIt) = as_unsigned{a} == as_unsigned{1_val};
+        cond = assignNop(inIt) = as_signed{a} == as_signed{b};
+        assign(inIt, c) = (a, cond);
+    }
+
+    auto d = inputMethod.addNewLocal(TYPE_INT32, "%d");
+    {
+        // Remove flag bit from unused flag setter with side-effects (part 1)
+        assignNop(inIt) = (a ^ 1_val, SetFlag::SET_FLAGS, SIGNAL_LOAD_TMU0);
+        auto cond = assignNop(inIt) = as_signed{a} == as_signed{b};
+        assign(inIt, d) = (a, cond);
+    }
+
+    auto e = inputMethod.addNewLocal(TYPE_INT32, "%e");
+    {
+        // Remove flag bit from unused flag setter without side-effects writing a local (part 1)
+        assign(inIt, e) = (a ^ b, SetFlag::SET_FLAGS);
+        auto cond = assignNop(inIt) = as_signed{a} == as_signed{b};
+        assign(inIt, e) = (a, cond);
+    }
+
+    auto f = inputMethod.addNewLocal(TYPE_INT32, "%f");
+    auto phi1 = inputMethod.addNewLocal(TYPE_INT32, "%phi");
+    auto phi2 = inputMethod.addNewLocal(TYPE_INT32, "%phi");
+    {
+        // Make constant conditional instructions unconditional or remove them (part 1)
+        auto cond = assignNop(inIt) = as_signed{17_val} != as_signed{42_val};
+        assign(inIt, f) = (a, cond);
+        assign(inIt, f) = (b, cond.invert());
+        assign(inIt, phi1) = (a + b, cond, InstructionDecorations::PHI_NODE);
+        assign(inIt, phi2) = (a + b, cond.invert(), InstructionDecorations::PHI_NODE);
+        branch(inIt, inputMethod.begin()->getLabel()->getLabel(), cond.toBranchCondition());
+    }
+
+    auto g = inputMethod.addNewLocal(TYPE_INT32, "%g");
+    {
+        // Don't remove flags used by other flag setters (part 1)
+        auto cond = assignNop(inIt) = as_unsigned{a} == as_unsigned{1_val};
+        assignNop(inIt) = (a ^ b, SetFlag::SET_FLAGS, cond);
+        assign(inIt, g) = (b, cond);
+    }
+
+    auto h = inputMethod.addNewLocal(TYPE_INT32, "%h");
+    {
+        // Don't remove conditional instructions depending on non-constant flags (part 1)
+        assignNop(inIt) = (a + b, SetFlag::SET_FLAGS);
+        assign(inIt, h) = (a, COND_CARRY_SET);
+    }
+
+    auto i = inputMethod.addNewLocal(TYPE_INT32.toVectorType(4), "%i");
+    {
+        // Apply optimization also if not all (but enough) element flags match constantly (part 1)
+        assignNop(inIt) = (ELEMENT_NUMBER_REGISTER - 7_val, SetFlag::SET_FLAGS);
+        assign(inIt, i) = (a, COND_NEGATIVE_SET);
+    }
+
+    auto k = inputMethod.addNewLocal(TYPE_INT32.toVectorType(8), "%k");
+    {
+        // Don't optimization if not all (and not enough) element flags match constantly (part 1)
+        assignNop(inIt) = (ELEMENT_NUMBER_REGISTER - 7_val, SetFlag::SET_FLAGS);
+        assign(inIt, k) = (a, COND_NEGATIVE_SET);
+        assign(inIt, k) = (b, COND_NEGATIVE_CLEAR);
+    }
+
+    // run pass
+    removeUselessFlags(module, inputMethod, config);
+
+    auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%dummy").walkEnd();
+
+    assign(outIt, a) = UNIFORM_REGISTER;
+    assign(outIt, b) = UNIFORM_REGISTER;
+
+    {
+        // Remove unused flag setter instruction without side-effects (part 2)
+        auto cond = assignNop(outIt) = as_signed{a} == as_signed{b};
+        assign(outIt, c) = (a, cond);
+    }
+
+    {
+        // Remove flag bit from flag setter with side-effects (part 2)
+        assignNop(outIt) = (a ^ 1_val, SIGNAL_LOAD_TMU0);
+        auto cond = assignNop(outIt) = as_signed{a} == as_signed{b};
+        assign(outIt, d) = (a, cond);
+    }
+
+    {
+        // Remove flag bit from unused flag setter without side-effects writing a local (part 2)
+        assign(outIt, e) = (a ^ b);
+        auto cond = assignNop(outIt) = as_signed{a} == as_signed{b};
+        assign(outIt, e) = (a, cond);
+    }
+
+    {
+        // Make constant conditional instructions unconditional or remove them (part 2)
+        assign(outIt, f) = a;
+        assign(outIt, phi1) = (a + b, InstructionDecorations::PHI_NODE);
+        assign(outIt, phi2) = (UNDEFINED_VALUE, COND_ZERO_SET, InstructionDecorations::PHI_NODE);
+        branch(outIt, outputMethod.begin()->getLabel()->getLabel());
+    }
+
+    {
+        // Don't remove flags used by other flag setters (part 2)
+        auto cond = assignNop(outIt) = as_unsigned{a} == as_unsigned{1_val};
+        assignNop(outIt) = (a ^ b, SetFlag::SET_FLAGS, cond);
+        assign(outIt, g) = (b, cond);
+    }
+
+    {
+        // Don't remove conditional instructions depending on non-constant flags (part 2)
+        assignNop(outIt) = (a + b, SetFlag::SET_FLAGS);
+        assign(outIt, h) = (a, COND_CARRY_SET);
+    }
+
+    {
+        // Apply optimization also if not all (but enough) element flags match constantly (part 2)
+        assign(outIt, i) = a;
+    }
+
+    {
+        // Don't optimization if not all (and not enough) element flags match constantly (part 2)
+        assignNop(outIt) = (ELEMENT_NUMBER_REGISTER - 7_val, SetFlag::SET_FLAGS);
+        assign(outIt, k) = (a, COND_NEGATIVE_SET);
+        assign(outIt, k) = (b, COND_NEGATIVE_CLEAR);
+    }
+
+    testMethodsEquals(inputMethod, outputMethod);
+}
+
+void TestOptimizationSteps::testRemoveConditionalFlags()
+{
+    Configuration config{};
+    Module module{config};
+
+    Method inputMethod(module);
+    Method outputMethod(module);
+
+    auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.end(), "%dummy").walkEnd();
+
+    // NOTE: Need to execute the optimization pass before adding the expected instructions, since the optimization pass
+    // checks for single writer, which we violate by reusing the local across methods!
+
+    auto a = assign(inIt, TYPE_INT32, "%src") = UNIFORM_REGISTER;
+    auto b = assign(inIt, TYPE_INT32, "%src") = UNIFORM_REGISTER;
+
+    auto c = inputMethod.addNewLocal(TYPE_BOOL, "%c");
+    auto d = inputMethod.addNewLocal(TYPE_INT32, "%d");
+    {
+        // Remove bool flag setter (zero/non-zero) depending on other scalar flag setter, rewrite conditional
+        // instructions (part 1)
+        auto cond = assignNop(inIt) = as_signed{a} < as_signed{1_val};
+        assign(inIt, c) = (BOOL_TRUE, cond);
+        assign(inIt, c) = (BOOL_FALSE, cond.invert());
+        assignNop(inIt) = (c, SetFlag::SET_FLAGS);
+        assign(inIt, d) = (a, COND_ZERO_CLEAR);
+        assign(inIt, d) = (b, COND_ZERO_SET);
+        branch(inIt, inputMethod.begin()->getLabel()->getLabel(), BRANCH_ANY_Z_CLEAR);
+        branch(inIt, inputMethod.begin()->getLabel()->getLabel(), BRANCH_ALL_Z_SET);
+    }
+
+    // run pass
+    removeConditionalFlags(module, inputMethod, config);
+
+    auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.end(), "%dummy").walkEnd();
+
+    assign(outIt, a) = UNIFORM_REGISTER;
+    assign(outIt, b) = UNIFORM_REGISTER;
+
+    {
+        // Remove bool flag setter (zero/non-zero) depending on other scalar flag setter, rewrite conditional
+        // instructions (part 1)
+        auto cond = assignNop(outIt) = as_signed{a} < as_signed{1_val};
+        // the bool setter themselves are not removed by this optimization
+        assign(outIt, c) = (BOOL_TRUE, cond);
+        assign(outIt, c) = (BOOL_FALSE, cond.invert());
+        assign(outIt, d) = (a, cond);
+        assign(outIt, d) = (b, cond.invert());
+        branch(outIt, outputMethod.begin()->getLabel()->getLabel(), BRANCH_ANY_C_SET);
+        branch(outIt, outputMethod.begin()->getLabel()->getLabel(), BRANCH_ANY_C_CLEAR);
+    }
+
+    testMethodsEquals(inputMethod, outputMethod);
+}
+
+void TestOptimizationSteps::testCombineVectorElementCopies()
+{
+    Configuration config{};
+    Module module{config};
+    Method method(module);
+
+    Method inputMethod(module);
+    Method outputMethod(module);
+
+    auto inIt = inputMethod.createAndInsertNewBlock(inputMethod.begin(), "%default").walkEnd();
+    auto outIt = outputMethod.createAndInsertNewBlock(outputMethod.begin(), "%default").walkEnd();
+
+    // Combine element-wise full copy of vector
+    {
+        auto inSrc = assign(inIt, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%src") = UNIFORM_REGISTER;
+        auto inDest = inputMethod.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%dest");
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+        {
+            auto cond = assignNop(inIt) = selectSIMDElement(i);
+            assign(inIt, inDest) = (inSrc, cond, InstructionDecorations::ELEMENT_INSERTION);
+        }
+
+        auto outSrc = outputMethod.createLocal(inSrc.type, inSrc.local()->name)->createReference();
+        assign(outIt, outSrc) = UNIFORM_REGISTER;
+        assignNop(outIt) = (load(0_lit), SetFlag::SET_FLAGS);
+        auto outDest = outputMethod.createLocal(inDest.type, inDest.local()->name)->createReference();
+        assign(outIt, outDest) = (outSrc, COND_ZERO_SET);
+    }
+
+    // Combine element-masked full copy of vector
+    {
+        auto inSrc = assign(inIt, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%src") = UNIFORM_REGISTER;
+        auto inDest = inputMethod.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%dest");
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; i += 4)
+        {
+            std::bitset<NATIVE_VECTOR_SIZE> mask{0xFu << i};
+            auto cond = assignNop(inIt) = selectSIMDElements(mask);
+            assign(inIt, inDest) = (inSrc, cond, InstructionDecorations::ELEMENT_INSERTION);
+        }
+
+        auto outSrc = outputMethod.createLocal(inSrc.type, inSrc.local()->name)->createReference();
+        assign(outIt, outSrc) = UNIFORM_REGISTER;
+        assignNop(outIt) = (load(1_lit), SetFlag::SET_FLAGS);
+        auto outDest = outputMethod.createLocal(inDest.type, inDest.local()->name)->createReference();
+        assign(outIt, outDest) = (outSrc, COND_ZERO_CLEAR);
+    }
+
+    // Combine element-wise partial copy of vector into new vector
+    {
+        auto inSrc = assign(inIt, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%src") = UNIFORM_REGISTER;
+        auto inDest = inputMethod.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%dest");
+        for(uint8_t i = 0; i < 8; ++i)
+        {
+            auto cond = assignNop(inIt) = selectSIMDElement(i);
+            assign(inIt, inDest) = (inSrc, cond, InstructionDecorations::ELEMENT_INSERTION);
+        }
+
+        auto outSrc = outputMethod.createLocal(inSrc.type, inSrc.local()->name)->createReference();
+        assign(outIt, outSrc) = UNIFORM_REGISTER;
+        assignNop(outIt) = (load(0x0000FF00u, LoadType::PER_ELEMENT_SIGNED), SetFlag::SET_FLAGS);
+        auto outDest = outputMethod.createLocal(inDest.type, inDest.local()->name)->createReference();
+        assign(outIt, outDest) = (outSrc, COND_ZERO_SET);
+    }
+
+    // Combine element-wise partial copy of vector into existing vector
+    {
+        auto inSrc = assign(inIt, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%src") = UNIFORM_REGISTER;
+        auto inDest = assign(inIt, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%dest") = 14_val;
+        for(uint8_t i = 0; i < 7; ++i)
+        {
+            auto cond = assignNop(inIt) = selectSIMDElement(i);
+            assign(inIt, inDest) = (inSrc, cond, InstructionDecorations::ELEMENT_INSERTION);
+        }
+
+        auto outSrc = outputMethod.createLocal(inSrc.type, inSrc.local()->name)->createReference();
+        assign(outIt, outSrc) = UNIFORM_REGISTER;
+        auto outDest = outputMethod.createLocal(inDest.type, inDest.local()->name)->createReference();
+        assign(outIt, outDest) = 14_val;
+        assignNop(outIt) = (load(0x0000FF80u, LoadType::PER_ELEMENT_SIGNED), SetFlag::SET_FLAGS);
+        assign(outIt, outDest) = (outSrc, COND_ZERO_SET);
+    }
+
+    // Combine element-wise copy of vector with identical (un)pack modes
+    {
+        auto inSrc = assign(inIt, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%src") = UNIFORM_REGISTER;
+        auto inDest = inputMethod.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%dest");
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+        {
+            auto cond = assignNop(inIt) = selectSIMDElement(i);
+            assign(inIt, inDest) = (inSrc, cond, UNPACK_16A_32);
+        }
+
+        auto outSrc = outputMethod.createLocal(inSrc.type, inSrc.local()->name)->createReference();
+        assign(outIt, outSrc) = UNIFORM_REGISTER;
+        assignNop(outIt) = (load(0_lit), SetFlag::SET_FLAGS);
+        auto outDest = outputMethod.createLocal(inDest.type, inDest.local()->name)->createReference();
+        assign(outIt, outDest) = (outSrc, COND_ZERO_SET, UNPACK_16A_32);
+    }
+
+    {
+        auto inSrc = assign(inIt, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%src") = UNIFORM_REGISTER;
+        auto inDest = inputMethod.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%dest");
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+        {
+            auto cond = assignNop(inIt) = selectSIMDElement(i);
+            assign(inIt, inDest) = (inSrc, cond, PACK_32_16A);
+        }
+
+        auto outSrc = outputMethod.createLocal(inSrc.type, inSrc.local()->name)->createReference();
+        assign(outIt, outSrc) = UNIFORM_REGISTER;
+        assignNop(outIt) = (load(0_lit), SetFlag::SET_FLAGS);
+        auto outDest = outputMethod.createLocal(inDest.type, inDest.local()->name)->createReference();
+        assign(outIt, outDest) = (outSrc, COND_ZERO_SET, PACK_32_16A);
+    }
+
+    // Do not combine element-wise copy of vector with different (un)pack modes
+    {
+        auto inSrc = assign(inIt, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%src") = UNIFORM_REGISTER;
+        auto inDest = inputMethod.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%dest");
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+        {
+            auto cond = assignNop(inIt) = selectSIMDElement(i);
+            auto mode = i % 3 == 0 ? UNPACK_16A_32 : i % 3 == 1 ? UNPACK_8888_32 : UNPACK_NOP;
+            assign(inIt, inDest) = (inSrc, cond, mode);
+        }
+
+        auto outSrc = outputMethod.createLocal(inSrc.type, inSrc.local()->name)->createReference();
+        assign(outIt, outSrc) = UNIFORM_REGISTER;
+        auto outDest = outputMethod.createLocal(inDest.type, inDest.local()->name)->createReference();
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+        {
+            auto cond = assignNop(outIt) = selectSIMDElement(i);
+            auto mode = i % 3 == 0 ? UNPACK_16A_32 : i % 3 == 1 ? UNPACK_8888_32 : UNPACK_NOP;
+            assign(outIt, outDest) = (outSrc, cond, mode);
+        }
+    }
+
+    {
+        auto inSrc = assign(inIt, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%src") = UNIFORM_REGISTER;
+        auto inDest = inputMethod.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%dest");
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+        {
+            auto cond = assignNop(inIt) = selectSIMDElement(i);
+            auto mode = i % 3 == 0 ? PACK_32_16A : i % 3 == 1 ? PACK_32_8888 : PACK_NOP;
+            assign(inIt, inDest) = (inSrc, cond, mode);
+        }
+
+        auto outSrc = outputMethod.createLocal(inSrc.type, inSrc.local()->name)->createReference();
+        assign(outIt, outSrc) = UNIFORM_REGISTER;
+        auto outDest = outputMethod.createLocal(inDest.type, inDest.local()->name)->createReference();
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+        {
+            auto cond = assignNop(outIt) = selectSIMDElement(i);
+            auto mode = i % 3 == 0 ? PACK_32_16A : i % 3 == 1 ? PACK_32_8888 : PACK_NOP;
+            assign(outIt, outDest) = (outSrc, cond, mode);
+        }
+    }
+
+    // Do not combine element-wise copy of vector with different sources
+    {
+        auto inSrc0 = assign(inIt, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%src") = UNIFORM_REGISTER;
+        auto inSrc1 = assign(inIt, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%src") = UNIFORM_REGISTER;
+        auto inDest = inputMethod.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%dest");
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+        {
+            auto cond = assignNop(inIt) = selectSIMDElement(i);
+            assign(inIt, inDest) = (i % 2 ? inSrc0 : inSrc1, cond, InstructionDecorations::ELEMENT_INSERTION);
+        }
+
+        auto outSrc0 = outputMethod.createLocal(inSrc0.type, inSrc0.local()->name)->createReference();
+        assign(outIt, outSrc0) = UNIFORM_REGISTER;
+        auto outSrc1 = outputMethod.createLocal(inSrc1.type, inSrc1.local()->name)->createReference();
+        assign(outIt, outSrc1) = UNIFORM_REGISTER;
+        auto outDest = outputMethod.createLocal(inDest.type, inDest.local()->name)->createReference();
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+        {
+            auto cond = assignNop(outIt) = selectSIMDElement(i);
+            assign(outIt, outDest) = (i % 2 ? outSrc0 : outSrc1, cond, InstructionDecorations::ELEMENT_INSERTION);
+        }
+    }
+
+    // Do not combine element-wise copy of vector with different destinations
+    {
+        auto inSrc = assign(inIt, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%src") = UNIFORM_REGISTER;
+        auto inDest0 = inputMethod.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%dest");
+        auto inDest1 = inputMethod.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%dest");
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+        {
+            auto cond = assignNop(inIt) = selectSIMDElement(i);
+            assign(inIt, i % 2 ? inDest0 : inDest1) = (inSrc, cond, InstructionDecorations::ELEMENT_INSERTION);
+        }
+
+        auto outSrc = outputMethod.createLocal(inSrc.type, inSrc.local()->name)->createReference();
+        assign(outIt, outSrc) = UNIFORM_REGISTER;
+        auto outDest0 = outputMethod.createLocal(inDest0.type, inDest0.local()->name)->createReference();
+        auto outDest1 = outputMethod.createLocal(inDest1.type, inDest1.local()->name)->createReference();
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+        {
+            auto cond = assignNop(outIt) = selectSIMDElement(i);
+            assign(outIt, i % 2 ? outDest0 : outDest1) = (outSrc, cond, InstructionDecorations::ELEMENT_INSERTION);
+        }
+    }
+
+    // Do not combine element-wise copy of vector if copies have side-effects
+    {
+        auto inSrc = assign(inIt, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%src") = UNIFORM_REGISTER;
+        auto inDest = inputMethod.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%dest");
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+        {
+            auto cond = assignNop(inIt) = selectSIMDElement(i);
+            assign(inIt, inDest) = (inSrc, cond, SIGNAL_LOAD_TMU0);
+        }
+
+        auto outSrc = outputMethod.createLocal(inSrc.type, inSrc.local()->name)->createReference();
+        assign(outIt, outSrc) = UNIFORM_REGISTER;
+        auto outDest = outputMethod.createLocal(inDest.type, inDest.local()->name)->createReference();
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; ++i)
+        {
+            auto cond = assignNop(outIt) = selectSIMDElement(i);
+            assign(outIt, outDest) = (outSrc, cond, SIGNAL_LOAD_TMU0);
+        }
+    }
+
+    // run pass
+    combineVectorElementCopies(module, inputMethod, config);
     testMethodsEquals(inputMethod, outputMethod);
 }
 
@@ -1961,9 +2841,7 @@ void TestOptimizationSteps::testLoopInvariantCodeMotion()
     }
 
     // run pass
-    method.dumpInstructions();
     moveLoopInvariantCode(module, method, config);
-    method.dumpInstructions();
 
     // NOTE: We need to check the same method, since we cannot compare methods, since the loop creates unique labels
     // that we cannot reproduce identically.

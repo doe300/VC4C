@@ -1,8 +1,10 @@
 #include "Expression.h"
 
+#include "InstructionWalker.h"
 #include "Profiler.h"
 #include "analysis/DebugGraph.h"
 #include "intermediate/Helper.h"
+#include "intermediate/operators.h"
 #include "log.h"
 
 using namespace vc4c;

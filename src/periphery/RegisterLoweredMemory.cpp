@@ -60,6 +60,16 @@ static InstructionWalker insertWriteLoweredRegisterInner(
 InstructionWalker periphery::insertWriteLoweredRegister(
     Method& method, InstructionWalker it, const Value& src, const Value& addressOffset, const Value& loweredRegister)
 {
+    if(auto loweredData = Local::getLocalData<MultiRegisterData>(loweredRegister.checkLocal()))
+    {
+        auto srcData = Local::getLocalData<MultiRegisterData>(src.checkLocal());
+        auto srcLow = srcData ? srcData->lower->createReference() : src;
+        it = insertWriteLoweredRegisterInner(method, it, srcLow, addressOffset, loweredData->lower->createReference());
+        if(srcData)
+            it = insertWriteLoweredRegisterInner(
+                method, it, srcData->upper->createReference(), addressOffset, loweredData->upper->createReference());
+        return it;
+    }
     return insertWriteLoweredRegisterInner(method, it, src, addressOffset, loweredRegister);
 }
 
@@ -75,6 +85,20 @@ static InstructionWalker insertReadLoweredRegisterInner(Method& method, Instruct
 InstructionWalker periphery::insertReadLoweredRegister(
     Method& method, InstructionWalker it, const Value& dest, const Value& addressOffset, const Value& loweredRegister)
 {
+    if(auto loweredData = Local::getLocalData<MultiRegisterData>(loweredRegister.checkLocal()))
+    {
+        // FIXME this is wrong for destination < 64-bit, the upper lowered register is barely referenced! Also the
+        // interleaving of values is not handled
+        auto destData = Local::getLocalData<MultiRegisterData>(dest.checkLocal());
+        auto destLow = destData ? destData->lower->createReference() : dest;
+        auto destType = destData ? TYPE_INT32.toVectorType(dest.type.getVectorWidth()) : dest.type;
+        it = insertReadLoweredRegisterInner(
+            method, it, destLow, addressOffset, loweredData->lower->createReference(), destType);
+        if(destData)
+            it = insertReadLoweredRegisterInner(method, it, destData->upper->createReference(), addressOffset,
+                loweredData->upper->createReference(), destType);
+        return it;
+    }
     if(auto destData = Local::getLocalData<MultiRegisterData>(dest.checkLocal()))
     {
         it = insertReadLoweredRegisterInner(

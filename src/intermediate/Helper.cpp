@@ -427,15 +427,12 @@ BasicBlock& intermediate::insertLoop(
     headerIt.nextInBlock();
     BranchCond cond = BRANCH_ALWAYS;
     std::tie(headerIt, cond) = insertBranchCondition(method, headerIt, conditionValue);
-    headerIt.emplace(std::make_unique<Branch>(loopLabel.local(), cond));
-    headerIt.nextInBlock();
-    headerIt.emplace(std::make_unique<Branch>(afterLoopLabel.local(), cond.invert()));
-    headerIt.nextInBlock();
+    branch(headerIt, loopLabel.local(), cond);
+    branch(headerIt, afterLoopLabel.local(), cond.invert());
 
     // in loop content block, unconditionally jump back to header
     inLoopIt.nextInBlock();
-    inLoopIt.emplace(std::make_unique<Branch>(headerLabel.local()));
-    inLoopIt.nextInBlock();
+    branch(inLoopIt, headerLabel.local());
 
     return *inLoopIt.getBasicBlock();
 }

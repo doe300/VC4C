@@ -76,7 +76,7 @@ static bool rewriteSettingOfFlags(
                             << logging::endl);
                     branch->branchCondition = BRANCH_ALWAYS;
                     changedInstructions = true;
-                    ++condIt;
+                    condIt = conditionalInstructions.erase(condIt);
                     // TODO now we could also remove the phi-node writes
                 }
                 else if(flags.matchesCondition(cond))
@@ -88,7 +88,7 @@ static bool rewriteSettingOfFlags(
                     if(extendedInst)
                         extendedInst->setCondition(COND_ALWAYS);
                     changedInstructions = true;
-                    ++condIt;
+                    condIt = conditionalInstructions.erase(condIt);
                 }
                 else if((*condIt)->hasDecoration(intermediate::InstructionDecorations::PHI_NODE))
                 {
@@ -100,7 +100,7 @@ static bool rewriteSettingOfFlags(
                             << (*condIt)->to_string() << logging::endl);
                     condIt->reset(intermediate::createWithExtras<intermediate::MoveOperation>(
                         *(*condIt).get(), (*condIt)->getOutput().value(), UNDEFINED_VALUE));
-                    ++condIt;
+                    condIt = conditionalInstructions.erase(condIt);
                 }
                 else
                 {
@@ -124,10 +124,11 @@ static bool rewriteSettingOfFlags(
     else if(allFlags && numIdenticalFlags > 0)
     {
         ElementFlags flags = (*allFlags)[0];
+        auto condIt = conditionalInstructions.begin();
         bool changedInstructions = false;
-        for(auto& cond : conditionalInstructions)
+        while(condIt != conditionalInstructions.end())
         {
-            auto extendedInst = cond.get<intermediate::ExtendedInstruction>();
+            auto extendedInst = condIt->get<intermediate::ExtendedInstruction>();
             if(extendedInst && flags.isFlagDefined(extendedInst->getCondition()) && extendedInst->isSimpleMove())
             {
                 auto moveSource = extendedInst->getMoveSource();
@@ -145,11 +146,14 @@ static bool rewriteSettingOfFlags(
                     // the input and output types with compile-time constant condition
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Making instruction with constant condition covering all used elements unconditional: "
-                            << cond->to_string() << logging::endl);
+                            << (*condIt)->to_string() << logging::endl);
                     extendedInst->setCondition(COND_ALWAYS);
+                    condIt = conditionalInstructions.erase(condIt);
                     changedInstructions = true;
+                    continue;
                 }
             }
+            ++condIt;
         }
         if(conditionalInstructions.empty())
             // to maybe remove the flag

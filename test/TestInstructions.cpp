@@ -1115,7 +1115,10 @@ void TestInstructions::testOpCodeRanges()
             {
                 TEST_ASSERT_EQUALS(RANGE_UINT, OP_AND(intRange0, intRange1))
             }
-            TEST_ASSERT_EQUALS(ValueRange(0.0, 32.0), OP_CLZ(intRange0, emptyRange))
+            if(intRange0.getSingletonValue() == 0.0)
+                TEST_ASSERT_EQUALS(ValueRange(32.0), OP_CLZ(intRange0, emptyRange))
+            else
+                TEST_ASSERT_EQUALS(ValueRange(0.0, 32.0), OP_CLZ(intRange0, emptyRange))
             if(innerInt0.minValue >= 0 && innerInt1.minValue >= 0 && innerInt0.maxValue < 0xFFFFFF &&
                 innerInt1.maxValue < 0xFFFFFF)
             {
@@ -1125,6 +1128,10 @@ void TestInstructions::testOpCodeRanges()
                                                (0xFFFFFFu & static_cast<uint64_t>(b)));
                                        }),
                     OP_MUL24(intRange0, intRange1))
+            }
+            else if(innerInt0.getSingletonValue() == 0.0 || innerInt1.getSingletonValue() == 0.0)
+            {
+                TEST_ASSERT_EQUALS(ValueRange(0.0), OP_MUL24(intRange0, intRange1))
             }
             else
             {

@@ -1418,6 +1418,20 @@ analysis::ValueRange OpCode::operator()(
 {
     using namespace analysis;
 
+    if(firstRange.getSingletonValue() && (numOperands == 1 || secondRange.getSingletonValue()))
+    {
+        // if we can precalculate the single result, we also know the single result range
+        auto firstSingleton = firstRange.getSingletonValue().value();
+        auto firstLiteral =
+            acceptsFloat ? Literal(static_cast<float>(firstSingleton)) : Literal(static_cast<int32_t>(firstSingleton));
+        auto secondLiteral = UNDEFINED_LITERAL;
+        if(auto secondSingleton = secondRange.getSingletonValue())
+            secondLiteral = acceptsFloat ? Literal(static_cast<float>(*secondSingleton)) :
+                                           Literal(static_cast<int32_t>(*secondSingleton));
+        if(auto result = calcLiteral(*this, firstLiteral, secondLiteral).first)
+            return ValueRange(*result, returnsFloat ? TYPE_FLOAT : TYPE_INT32);
+    }
+
     switch(opAdd)
     {
     case OP_FADD.opAdd:
@@ -1451,7 +1465,7 @@ analysis::ValueRange OpCode::operator()(
     case OP_ITOF.opAdd:
         if(!firstRange)
             return RANGE_FLOAT;
-        return firstRange;
+        return RANGE_FLOAT & firstRange;
     case OP_ADD.opAdd:
         if(!firstRange || !secondRange)
             return RANGE_INT;
@@ -1508,11 +1522,11 @@ analysis::ValueRange OpCode::operator()(
     case OP_MIN.opAdd:
         if(!firstRange || !secondRange)
             return RANGE_INT;
-        return min(firstRange, secondRange);
+        return RANGE_INT & min(firstRange, secondRange);
     case OP_MAX.opAdd:
         if(!firstRange || !secondRange)
             return RANGE_INT;
-        return max(firstRange, secondRange);
+        return RANGE_INT & max(firstRange, secondRange);
     case OP_AND.opAdd:
         if(firstRange.isUnsigned() && secondRange.isUnsigned())
             // [a, b] & [c, d] -> [0, min(b, d)]

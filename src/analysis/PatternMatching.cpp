@@ -3,6 +3,7 @@
 
 #include "../Expression.h"
 #include "../Profiler.h"
+#include "../intermediate/operators.h"
 
 #include <unordered_map>
 

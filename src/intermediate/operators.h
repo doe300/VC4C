@@ -678,6 +678,47 @@ namespace vc4c
             it.nextInBlock();
         }
 
+        /**
+         * Inserts an unconditional branch to a given label
+         *
+         * NOTE: The InstructionWalker is automatically incremented
+         */
+        inline void branch(InstructionWalker& it, const Local* target)
+        {
+            it.emplace(std::make_unique<intermediate::Branch>(target));
+            it.nextInBlock();
+        }
+
+        /**
+         * Inserts an conditional branch to a given label
+         *
+         * NOTE: The InstructionWalker is automatically incremented
+         */
+        inline void branch(InstructionWalker& it, const Local* target, BranchCond condition)
+        {
+            it.emplace(std::make_unique<intermediate::Branch>(target, condition));
+            it.nextInBlock();
+        }
+
+        /**
+         * Inserts a new basic block with the given label
+         *
+         * NOTE: The InstructionWalker is set to the position one after the inserted label
+         */
+        inline void label(InstructionWalker& it, const Local* label)
+        {
+            it = it.getBasicBlock()->getMethod().emplaceLabel(it, std::make_unique<intermediate::BranchLabel>(*label));
+            it.nextInBlock();
+        }
+
+        NODISCARD inline const Local* label(InstructionWalker& it, const std::string& name)
+        {
+            auto label = it.getBasicBlock()->getMethod().createLocal(TYPE_LABEL, name);
+            it = it.getBasicBlock()->getMethod().emplaceLabel(it, std::make_unique<intermediate::BranchLabel>(*label));
+            it.nextInBlock();
+            return label;
+        }
+
         template <typename T>
         NODISCARD inline ComparisonWrapper operator==(as_type<T>&& a, as_type<T>&& b)
         {

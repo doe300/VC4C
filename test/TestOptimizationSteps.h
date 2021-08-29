@@ -25,12 +25,16 @@ public:
     void testCombineArithmetics();
     void testRewriteConstantSFU();
 
+    void testReorderBasicBlocks();
     void testSimplifyBranches();
+    void testMergeBasicBlocks();
     void testCombineConstantLoads();
     void testEliminateBitOperations();
     void testCombineRotations();
     void testEliminateMoves();
-    void testEliminateDeadCode();
+    void testRemoveFlags();
+    void testRemoveConditionalFlags();
+    void testCombineVectorElementCopies();
     void testLoopInvariantCodeMotion();
 
 private:

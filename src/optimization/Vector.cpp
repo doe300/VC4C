@@ -1575,6 +1575,8 @@ struct VectorElementCopy
     ConditionCode copyCondition;
     Value source;
     const Local* destination;
+    Unpack unpackMode;
+    Pack packMode;
 };
 
 static Optional<std::bitset<NATIVE_VECTOR_SIZE>> toFlagsSetter(const VectorFlags& flags, ConditionCode cond)
@@ -1617,25 +1619,36 @@ bool optimizations::combineVectorElementCopies(const Module& module, Method& met
 
         for(auto it = block.walk(); !it.isEndOfBlock(); it.nextInBlock())
         {
-            if(it.has() && it->checkOutputLocal() && it->isSimpleMove() && it->hasConditionalExecution())
+            if(it.has() && it->checkOutputLocal() && !it->hasSideEffects() && it->hasConditionalExecution())
             {
                 auto flagsSetter = block.findLastSettingOfFlags(it);
                 auto staticFlags = flagsSetter ?
                     StaticFlagsAnalysis::analyzeStaticFlags(flagsSetter->get(), *flagsSetter) :
                     Optional<VectorFlags>{};
-                auto cond = it.get<ExtendedInstruction>()->getCondition();
+                auto unpackMode = UNPACK_NOP;
+                auto packMode = PACK_NOP;
+                auto cond = COND_ALWAYS;
+                if(auto extended = it.get<ExtendedInstruction>())
+                {
+                    cond = extended->getCondition();
+                    packMode = extended->getPackMode();
+                }
+                if(auto unpacking = it.get<UnpackingInstruction>())
+                    unpackMode = unpacking->getUnpackMode();
 
                 Optional<std::bitset<NATIVE_VECTOR_SIZE>> staticMask;
                 if(flagsSetter && (*flagsSetter)->writesRegister(REG_NOP) && staticFlags &&
                     (staticMask = toFlagsSetter(*staticFlags, cond)))
                 {
                     if(previousCopy && it->getMoveSource() == previousCopy->source &&
-                        it->checkOutputLocal() == previousCopy->destination && cond == previousCopy->copyCondition)
+                        it->checkOutputLocal() == previousCopy->destination && cond == previousCopy->copyCondition &&
+                        previousCopy->unpackMode == unpackMode && previousCopy->packMode == packMode)
                     {
                         CPPLOG_LAZY(logging::Level::DEBUG,
                             log << "Combining element-wise copies of elements "
                                 << previousCopy->staticElementMask.to_string() << " and " << staticMask.to_string()
                                 << " from and to the same values: " << it->to_string() << logging::endl);
+                        it->decoration = remove_flag(it->decoration, InstructionDecorations::ELEMENT_INSERTION);
                         auto elementMask = toVectorMask(previousCopy->staticElementMask | *staticMask, cond);
                         if(auto lit = elementMask.getAllSame())
                             flagsSetter->reset(
@@ -1651,9 +1664,9 @@ bool optimizations::combineVectorElementCopies(const Module& module, Method& met
                         previousCopy->copyInstruction.erase();
                         previousCopy->copyInstruction = it;
                     }
-                    else
-                        previousCopy = VectorElementCopy{
-                            *flagsSetter, *staticMask, it, cond, it->getMoveSource().value(), it->checkOutputLocal()};
+                    else if(auto src = it->getMoveSource())
+                        previousCopy = VectorElementCopy{*flagsSetter, *staticMask, it, cond, src.value(),
+                            it->checkOutputLocal(), unpackMode, packMode};
 
                     continue;
                 }

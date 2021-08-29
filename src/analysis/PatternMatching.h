@@ -4,7 +4,6 @@
 #include "../Values.h"
 #include "../Variant.h"
 #include "../asm/OpCodes.h"
-#include "../intermediate/operators.h"
 #include "../performance.h"
 
 #include <functional>
@@ -13,6 +12,11 @@
 namespace vc4c
 {
     struct Expression;
+
+    namespace operators
+    {
+        struct OperationWrapper;
+    } // namespace operators
 
     namespace pattern
     {

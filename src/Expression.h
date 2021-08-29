@@ -9,7 +9,6 @@
 #include "Values.h"
 #include "asm/OpCodes.h"
 #include "intermediate/IntermediateInstruction.h"
-#include "intermediate/operators.h"
 #include "performance.h"
 
 #include <memory>
@@ -19,6 +18,7 @@
 namespace vc4c
 {
     struct Expression;
+    class InstructionWalker;
 
     /*
      * Maps the available locals and the available expression writing into the given local for a given point in
@@ -242,6 +242,8 @@ namespace vc4c
     // Extends the operator syntax to create expressions from it
     namespace operators
     {
+        struct OperationWrapper;
+
         struct ExpressionWrapper
         {
             NODISCARD std::shared_ptr<Expression> operator=(OperationWrapper&& op) &&;
