@@ -30,7 +30,10 @@ using namespace vc4c::intermediate;
 using namespace vc4c::intrinsics;
 using namespace vc4c::operators;
 
-// TODO need to add sign extension to some more intrinsics?
+const RoundingMarker intrinsics::ROUND_TO_NEAREST_EVEN{TYPE_INT8, "rte", FloatRoundingMode::RINT};
+const RoundingMarker intrinsics::ROUND_TO_POSITIVE_INFINITY{TYPE_INT8, "rtp", FloatRoundingMode::CEIL};
+const RoundingMarker intrinsics::ROUND_TO_ZERO{TYPE_INT8, "rtz", FloatRoundingMode::TRUNC};
+const RoundingMarker intrinsics::ROUND_TO_NEGATIVE_INFINITY{TYPE_INT8, "rtn", FloatRoundingMode::FLOOR};
 
 // The function to apply for pre-calculation
 using UnaryInstruction = std::function<Optional<Value>(const Value&)>;
@@ -1300,6 +1303,94 @@ static bool intrinsifyArithmetic(Method& method, InstructionWalker it, const Mat
     return false;
 }
 
+static bool intrinsifyHalfFunction(Method& method, InstructionWalker it)
+{
+    MethodCall* callSite = it.get<MethodCall>();
+    if(!callSite)
+        return false;
+    if(callSite->methodName.find("vload_half") == 0 || callSite->methodName.find("vloada_half") == 0)
+    {
+        // The only difference between vload_half and vloada_half is that the pointer passed to vloada_half needs to be
+        // aligned to the halfN vector, whereas for vload_half an alignment to the scalar half type is enough.
+        // Exception here is for 3-element vector, where the address for vload_half3 is calculated as p + (offset * 3)
+        // while for vloada_half it is calculated as p + (offset * 4)!
+
+        // Arguments: <offset>, <address>, <vector-width>
+        auto& offset = callSite->assertArgument(0);
+        auto& address = callSite->assertArgument(1);
+        auto vectorWidth = callSite->getArgument(2).value_or(INT_ONE);
+        // Load half and unpack to float
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying '" << callSite->methodName << "' with memory load and unpack" << logging::endl);
+
+        auto numElements = static_cast<uint8_t>(vectorWidth.getLiteralValue().value().unsignedInt());
+        bool needsVector3Alignment = numElements == 3 && callSite->methodName.find("vloada_half") != 0;
+
+        // convert half* to halfN* for proper offset calculation
+        auto halfPointerType =
+            method.createPointerType(TYPE_HALF.toVectorType(numElements), address.type.getPointerType()->addressSpace);
+        auto realInput = assign(it, halfPointerType) = address;
+        const_cast<Local*>(realInput.local())->set(ReferenceData(*address.local()->getBase(true), ANY_ELEMENT));
+
+        auto element = method.addNewLocal(halfPointerType);
+        // calculate offset in vectors
+        it = intermediate::insertCalculateIndices(
+            it, method, realInput, element, std::vector<Value>{offset}, true, !needsVector3Alignment);
+        auto tmp = method.addNewLocal(TYPE_HALF.toVectorType(numElements));
+        // insert actual load
+        it.emplace(std::make_unique<intermediate::MemoryInstruction>(
+            intermediate::MemoryOperation::READ, Value(tmp), std::move(element)));
+        it.nextInBlock();
+        // unpack to float
+        it = insertFloatingPointConversion(it, method, tmp, *callSite->getOutput());
+        it.erase();
+        return true;
+    }
+
+    if(callSite->methodName.find("vstore_half") == 0 || callSite->methodName.find("vstorea_half") == 0)
+    {
+        // The only difference between vstore_half and vstorea_half is that the pointer passed to vstorea_half needs to
+        // be aligned to the halfN vector, whereas for vstore_half an alignment to the scalar half type is enough.
+        // Exception here is for 3-element vector, where the address for vstore_half3 is calculated as p + (offset * 3)
+        // while for vstorea_half it is calculated as p + (offset * 4)!
+
+        // Arguments: <data>, <offset>, <address>, <vector-width> [,<rounding mode>]
+        auto& data = callSite->assertArgument(0);
+        auto& offset = callSite->assertArgument(1);
+        auto& address = callSite->assertArgument(2);
+        auto vectorWidth = callSite->getArgument(3).value_or(INT_ZERO);
+        FloatRoundingMode roundingMode = FloatRoundingMode::TRUNC;
+        if(auto roundingMarker = dynamic_cast<const RoundingMarker*>(callSite->getArgument(4) & &Value::checkLocal))
+            roundingMode = roundingMarker->getValue();
+        // Pack to half and store
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying '" << callSite->methodName << "' with pack and memory store" << logging::endl);
+
+        auto numElements = static_cast<uint8_t>(vectorWidth.getLiteralValue().value().unsignedInt());
+        bool needsVector3Alignment = numElements == 3 && callSite->methodName.find("vstorea_half") != 0;
+
+        // pack to half
+        auto tmp = method.addNewLocal(TYPE_HALF.toVectorType(numElements));
+        it = insertFloatingPointConversion(it, method, data, tmp, roundingMode);
+
+        // convert half* to halfN* for proper offset calculation
+        auto halfPointerType =
+            method.createPointerType(TYPE_HALF.toVectorType(numElements), address.type.getPointerType()->addressSpace);
+        auto realOutput = assign(it, halfPointerType) = address;
+        const_cast<Local*>(realOutput.local())->set(ReferenceData(*address.local()->getBase(true), ANY_ELEMENT));
+
+        auto element = method.addNewLocal(halfPointerType);
+        // calculate offset in vectors
+        it = intermediate::insertCalculateIndices(
+            it, method, realOutput, element, std::vector<Value>{offset}, true, !needsVector3Alignment);
+        // insert actual store
+        it.reset(createWithExtras<intermediate::MemoryInstruction>(
+            *callSite, intermediate::MemoryOperation::WRITE, std::move(element), std::move(tmp)));
+        return true;
+    }
+    return false;
+}
+
 void intrinsics::intrinsify(Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     if(!it.get<IntrinsicOperation>() && !it.get<MethodCall>())
@@ -1320,5 +1411,7 @@ void intrinsics::intrinsify(Module& module, Method& method, InstructionWalker it
     if(intrinsifyArithmetic(method, it, config.mathType))
         return;
     if(intrinsifyImageFunction(it, method))
+        return;
+    if(intrinsifyHalfFunction(method, it))
         return;
 }

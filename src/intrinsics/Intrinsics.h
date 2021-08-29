@@ -13,10 +13,21 @@
 
 namespace vc4c
 {
+    namespace intermediate
+    {
+        enum class FloatRoundingMode : uint8_t;
+    } // namespace intermediate
     class Module;
 
     namespace intrinsics
     {
+        using RoundingMarker = MarkerLocal<intermediate::FloatRoundingMode>;
+
+        extern const RoundingMarker ROUND_TO_NEAREST_EVEN;
+        extern const RoundingMarker ROUND_TO_POSITIVE_INFINITY;
+        extern const RoundingMarker ROUND_TO_ZERO;
+        extern const RoundingMarker ROUND_TO_NEGATIVE_INFINITY;
+
         /*
          * Replaces calls to intrinsic function with their implementation.
          *

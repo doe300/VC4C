@@ -11,6 +11,7 @@
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/TypeConversions.h"
 #include "../intermediate/VectorHelper.h"
+#include "../intrinsics/Intrinsics.h"
 #include "config.h"
 #include "log.h"
 
@@ -43,6 +44,19 @@ CallSite::CallSite(Value&& dest, const Method& method, std::vector<Value>&& args
             std::string("Got ") + (std::to_string(args.size()) + ", expected ") +
                 std::to_string(method.parameters.size()));
     }
+}
+
+static const Local* toRoundingMarker(const std::string& functionName)
+{
+    if(functionName.find("_rte") != std::string::npos)
+        return &intrinsics::ROUND_TO_NEAREST_EVEN;
+    if(functionName.find("_rtz") != std::string::npos)
+        return &intrinsics::ROUND_TO_ZERO;
+    if(functionName.find("_rtp") != std::string::npos)
+        return &intrinsics::ROUND_TO_POSITIVE_INFINITY;
+    if(functionName.find("_rtn") != std::string::npos)
+        return &intrinsics::ROUND_TO_NEGATIVE_INFINITY;
+    return nullptr;
 }
 
 bool CallSite::mapInstruction(Method& method)
@@ -329,6 +343,24 @@ bool CallSite::mapInstruction(Method& method)
             static_cast<intermediate::MemoryScope>(arguments.at(0).getLiteralValue()->unsignedInt()),
             intermediate::MemorySemantics::ACQUIRE_RELEASE));
         return true;
+    }
+    if(methodName.find("vload_half") == 0 || methodName.find("vloada_half") == 0)
+    {
+        // Extract the number of vector elements from the function name and add as last parameter
+        std::string baseName = methodName.find("vloada_half") == 0 ? "vloada_half" : "vload_half";
+        auto numElements = static_cast<uint8_t>(std::strtoul(methodName.data() + baseName.size(), nullptr, 10));
+        numElements = numElements == 0 ? 1 : numElements;
+        arguments.emplace_back(Value(Literal(numElements), TYPE_INT8));
+    }
+    if(methodName.find("vstore_half") == 0 || methodName.find("vstorea_half") == 0)
+    {
+        // Extract the number of vector elements from the function name and add as last parameter
+        std::string baseName = methodName.find("vstorea_half") == 0 ? "vstorea_half" : "vstore_half";
+        auto numElements = static_cast<uint8_t>(std::strtoul(methodName.data() + baseName.size(), nullptr, 10));
+        numElements = numElements == 0 ? 1 : numElements;
+        arguments.emplace_back(Value(Literal(numElements), TYPE_INT8));
+        if(auto roundingMarker = toRoundingMarker(methodName))
+            arguments.emplace_back(roundingMarker->createReference());
     }
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Generating immediate call to: " << dest.to_string() << " = " << methodName << " ("

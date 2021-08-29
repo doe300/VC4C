@@ -16,8 +16,6 @@ __kernel void test2(__global CAT(TYPE,2)* out, const __global TYPE* in) {
   out[gid] = vload2(gid, in);
 }
 
-#define CONCAT(a,b) a ## b
-#define CAT(a,b) CONCAT(a,b)
 __kernel void test3(__global TYPE* out, const __global TYPE* in) {
   size_t gid = get_global_id(0);
   vstore3(vload3(gid, in), gid, out);
@@ -41,6 +39,124 @@ __kernel void test16(__global CAT(TYPE,16)* out, const __global TYPE* in) {
 __kernel void test3_uneven(__global CAT(TYPE,3)* out, const __global TYPE* in) {
   size_t gid = get_global_id(0);
   out[gid] = vload3(gid, in);
+}
+)";
+
+static const std::string VECTOR_LOAD_HALF_FUNCTION = R"(
+__kernel void test(__global float* out, const __global half* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = vload_half(gid, in);
+}
+
+__kernel void test_aligned(__global float* out, const __global half* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = vloada_half(gid, in);
+}
+
+__kernel void test2(__global float2* out, const __global half* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = vload_half2(gid, in);
+}
+
+__kernel void test_aligned2(__global float2* out, const __global half* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = vloada_half2(gid, in);
+}
+
+__kernel void test3(__global float* out, const __global half* in) {
+  size_t gid = get_global_id(0);
+  vstore3(vload_half3(gid, in), gid, out);
+}
+
+__kernel void test_aligned3(__global float4* out, const __global half* in) {
+  size_t gid = get_global_id(0);
+  // "vloada_half3 reads a half3 from address (p + (offset * 4)) and returns a float3.
+  //  The address computed as (p + (offset * 4)) must be aligned to sizeof (half) * 4 bytes."
+  // => read 4th value and treat output as float4
+  float4 tmp;
+  tmp.xyz = vloada_half3(gid, in);
+  tmp.w = vloada_half(4 * gid + 3, in);
+  out[gid] = tmp;
+}
+
+__kernel void test4(__global float4* out, const __global half* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = vload_half4(gid, in);
+}
+
+__kernel void test_aligned4(__global float4* out, const __global half* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = vloada_half4(gid, in);
+}
+
+__kernel void test8(__global float8* out, const __global half* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = vload_half8(gid, in);
+}
+
+__kernel void test_aligned8(__global float8* out, const __global half* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = vloada_half8(gid, in);
+}
+
+__kernel void test16(__global float16* out, const __global half* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = vload_half16(gid, in);
+}
+
+__kernel void test_aligned16(__global float16* out, const __global half* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = vloada_half16(gid, in);
+}
+
+// Adapted from	OpenCL-CTS vload_half tests
+__kernel void test_vload_private(const __global half* in, __global float* out, __global float2* out2, __global float* out3, __global float4* out4, __global float8* out8, __global float16* out16)
+{
+    // should be lowered to register
+    __private int data[16];
+    __private half* hdata_in = (__private half*) data;
+    __global int* i_in = (__global int*) in;
+    size_t i = get_global_id(0);
+    for(int k = 0; k < 8; k++)
+        data[k] = i_in[i + k];
+
+    // test out	the different vload versions
+    for(int k = 0; k < 16; ++k)
+        out[k] = vload_half(k, hdata_in);
+    for(int k = 0; k < 8; ++k)
+        out2[k] = vload_half2(k, hdata_in);
+    for(int k = 0; k < 5; ++k)
+        vstore3(vload_half3(k, hdata_in), k, out3);
+    for(int k = 0; k < 4; ++k)
+        out4[k] = vload_half4(k, hdata_in);
+    for(int k = 0; k < 2; ++k)
+        out8[k] = vload_half8(k, hdata_in);
+    *out16 = vload_half16(0, hdata_in);
+}
+
+// Adapted from	OpenCL-CTS vload_half tests
+__kernel void test_vloada_private(const __global half* in, __global float* out, __global float2* out2, __global float* out3, __global float4* out4, __global float8* out8, __global float16* out16)
+{
+    // should be lowered to register
+    __private int data[16];
+    __private half* hdata_in = (__private half*) data;
+    __global int* i_in = (__global int*) in;
+    size_t i = get_global_id(0);
+    for(int k = 0; k < 8; k++)
+        data[k] = i_in[i + k];
+
+    // test out	the different vloada versions
+    for(int k = 0; k < 16; ++k)
+        out[k] = vloada_half(k, hdata_in);
+    for(int k = 0; k < 8; ++k)
+        out2[k] = vloada_half2(k, hdata_in);
+    for(int k = 0; k < 4; ++k)
+        vstore3(vloada_half3(k, hdata_in), k, out3);
+    for(int k = 0; k < 4; ++k)
+        out4[k] = vloada_half4(k, hdata_in);
+    for(int k = 0; k < 2; ++k)
+        out8[k] = vloada_half8(k, hdata_in);
+    *out16 = vload_half16(0, hdata_in);
 }
 )";
 
@@ -75,6 +191,70 @@ __kernel void test16(__global TYPE* out, const __global CAT(TYPE,16)* in) {
 __kernel void test3_uneven(__global TYPE* out, const __global CAT(TYPE,3)* in) {
   size_t gid = get_global_id(0);
   vstore3(in[gid], gid, out);
+}
+)";
+
+static const std::string VECTOR_STORE_HALF_FUNCTION = R"(
+#define CONCAT(a,b) a ## b
+#define CAT(a,b) CONCAT(a,b)
+__kernel void test(__global half* out, const __global float* in) {
+  size_t gid = get_global_id(0);
+  CAT(vstore_half,ROUNDING)(in[gid], gid, out);
+}
+
+__kernel void test_aligned(__global half* out, const __global float* in) {
+  size_t gid = get_global_id(0);
+  CAT(vstorea_half,ROUNDING)(in[gid], gid, out);
+}
+
+__kernel void test2(__global half* out, const __global float2* in) {
+  size_t gid = get_global_id(0);
+  CAT(vstore_half2,ROUNDING)(in[gid], gid, out);
+}
+
+__kernel void test_aligned2(__global half* out, const __global float2* in) {
+  size_t gid = get_global_id(0);
+  CAT(vstorea_half2,ROUNDING)(in[gid], gid, out);
+}
+
+__kernel void test3(__global half* out, const __global float* in) {
+  size_t gid = get_global_id(0);
+  CAT(vstore_half3,ROUNDING)(vload3(gid, in), gid, out);
+}
+
+__kernel void test_aligned3(__global half* out, const __global float* in) {
+  size_t gid = get_global_id(0);
+  CAT(vstorea_half3,ROUNDING)(vload3(gid, in), gid, out);
+}
+
+__kernel void test4(__global half* out, const __global float4* in) {
+  size_t gid = get_global_id(0);
+  CAT(vstore_half4,ROUNDING)(in[gid], gid, out);
+}
+
+__kernel void test_aligned4(__global half* out, const __global float4* in) {
+  size_t gid = get_global_id(0);
+  CAT(vstorea_half4,ROUNDING)(in[gid], gid, out);
+}
+
+__kernel void test8(__global half* out, const __global float8* in) {
+  size_t gid = get_global_id(0);
+  CAT(vstore_half8,ROUNDING)(in[gid], gid, out);
+}
+
+__kernel void test_aligned8(__global half* out, const __global float8* in) {
+  size_t gid = get_global_id(0);
+  CAT(vstorea_half8,ROUNDING)(in[gid], gid, out);
+}
+
+__kernel void test16(__global half* out, const __global float16* in) {
+  size_t gid = get_global_id(0);
+  CAT(vstore_half16,ROUNDING)(in[gid], gid, out);
+}
+
+__kernel void test_aligned16(__global half* out, const __global float16* in) {
+  size_t gid = get_global_id(0);
+  CAT(vstorea_half16,ROUNDING)(in[gid], gid, out);
 }
 )";
 
@@ -308,6 +488,322 @@ static void registerTypeTests(const std::string& typeName)
         })}});
 }
 
+template <typename Mode>
+static constexpr uint16_t roundFloatToHalf(uint32_t floatBits)
+{
+    constexpr auto EXPONENT = 0x7F800000u;
+    constexpr auto MANTISSA = 0x007FFFFFu;
+    bool isNegative = floatBits >> 31u;
+    if((floatBits & 0x7FFFFFFFu) == 0)
+        // +/- 0.0
+        return static_cast<uint16_t>(floatBits >> 16u);
+    if((floatBits & EXPONENT) == 0)
+        // denormal value -> zero or smallest denormal value
+        return static_cast<uint16_t>((isNegative ? 0x8000 : 0) | Mode::round(isNegative, 0, floatBits & MANTISSA, 23u));
+    if((floatBits & EXPONENT) == EXPONENT)
+    {
+        if((floatBits & MANTISSA) == 0)
+            return isNegative ? 0xFC00u : 0x7C00u;
+        // all NaNs are created equal
+        return isNegative ? 0xFE00u : 0x7E00u;
+    }
+    auto exponent = static_cast<int32_t>((floatBits & EXPONENT) >> 23u) - 127;
+    auto mantissa = floatBits & MANTISSA;
+    if(exponent > 15)
+        return isNegative ? Mode::UNDERFLOW_VALUE : Mode::OVERFLOW_VALUE;
+    if(exponent > -14)
+    {
+        // "normal" value
+        auto halfExponent = static_cast<uint32_t>(exponent + 15) << 10u;
+        auto halfMantissa = static_cast<uint16_t>(mantissa >> 13u);
+        halfMantissa = Mode::round(isNegative, halfMantissa, floatBits & 0x1FFFu, 13u);
+        return static_cast<uint16_t>((isNegative ? 0x8000u : 0u) | halfExponent | halfMantissa);
+    }
+    // denormal value
+    // e.g. exponent of -17 -> shift of 13 + 3
+    auto exponentOffset = static_cast<uint32_t>(-exponent - 14);
+    auto mantissaOffset = std::min(31u, 13u /* normal difference between float and half mantissa */ + exponentOffset);
+    auto halfMantissa = mantissa >> mantissaOffset;
+    // add implicit float high-bit to explicit half high-bit
+    halfMantissa |= 1u << (10u - exponentOffset);
+    halfMantissa = Mode::round(
+        isNegative, static_cast<uint16_t>(halfMantissa), mantissa & ((1u << mantissaOffset) - 1u), mantissaOffset);
+    return static_cast<uint16_t>((isNegative ? 0x8000u : 0u) | halfMantissa);
+}
+
+struct RoundToZero
+{
+    static constexpr uint16_t OVERFLOW_VALUE = 0x7BFFu;
+    static constexpr uint16_t UNDERFLOW_VALUE = 0xFBFFu;
+    static constexpr uint16_t round(
+        bool isNegative, uint16_t halfMantissa, uint32_t mantissaRemainder, uint32_t remainderBits)
+    {
+        return halfMantissa;
+    }
+};
+
+struct RoundToEven
+{
+    static constexpr uint16_t OVERFLOW_VALUE = 0x7C00u;
+    static constexpr uint16_t UNDERFLOW_VALUE = 0xFC00u;
+    static constexpr uint16_t round(
+        bool isNegative, uint16_t halfMantissa, uint32_t mantissaRemainder, uint32_t remainderBits)
+    {
+        if((mantissaRemainder & (1u << (remainderBits - 1u))) != 0)
+        {
+            bool isOdd = halfMantissa & 1u;
+            // if the two highest bits are set, the next upper value is closer too
+            // TODO is this check correct/exact enough?? E.g. what about 0b101111... ??
+            bool nextIsCloser = mantissaRemainder & (1u << (remainderBits - 2u));
+            return (isOdd || nextIsCloser) ? (halfMantissa + 1u) : halfMantissa;
+        }
+        return halfMantissa;
+    }
+};
+
+struct RoundToPositiveInfinity
+{
+    static constexpr uint16_t OVERFLOW_VALUE = 0x7C00u;
+    static constexpr uint16_t UNDERFLOW_VALUE = 0xFBFFu;
+    static constexpr uint16_t round(
+        bool isNegative, uint16_t halfMantissa, uint32_t mantissaRemainder, uint32_t remainderBits)
+    {
+        return (!isNegative && mantissaRemainder != 0) ? halfMantissa + 1u : halfMantissa;
+    }
+};
+
+struct RoundToNegativeInfinity
+{
+    static constexpr uint16_t OVERFLOW_VALUE = 0x7BFFu;
+    static constexpr uint16_t UNDERFLOW_VALUE = 0xFC00u;
+    static constexpr uint16_t round(
+        bool isNegative, uint16_t halfMantissa, uint32_t mantissaRemainder, uint32_t remainderBits)
+    {
+        return (isNegative && mantissaRemainder != 0) ? halfMantissa + 1u : halfMantissa;
+    }
+};
+
+static constexpr std::initializer_list<uint32_t> floatOutputValues = {
+    0x00000000u, // 0.0
+    0x80000000u, // -0.0
+    0x3F800000u, // 1.0
+    0xBF800000u, // -1.0
+    0x7F800000u, // Inf
+    0xFF800000u, // -Inf
+    0x7FC00000u, // NaN
+    0xFFC00000u, // -NaN
+    0x477FE000u, // HALF_MAX
+    0xC77FE000u, // HALF_MIN
+    0x38800000u, // min normal half
+    0xB8800000u, // -min normal half
+    0x33800000u, // min denormal half
+    0xB3800000u, // -min denormal half
+    0x387FC000u, // max denormal half
+    0xB87FC000u, // -max denormal half
+};
+
+static constexpr std::initializer_list<uint16_t> halfInputValues = {
+    0x0000, // 0.0
+    0x8000, // -0.0
+    0x3C00, // 1.0
+    0xBC00, // -1.0
+    0x7C00, // Inf
+    0xFC00, // -Inf
+    0x7E00, // NaN
+    0xFE00, // -NaN
+    0x7BFF, // HALF_MAX
+    0xFBFF, // HALF_MIN
+    0x0400, // min normal half
+    0x8400, // -min normal half
+    0x0001, // min denormal half
+    0x8001, // -min denormal half
+    0x03FF, // max denormal half
+    0x83FF, // -max denormal half
+};
+
+template <uint16_t (*func)(uint32_t)>
+static constexpr bool checkLosslessConversion()
+{
+    static_assert(func(floatOutputValues.begin()[0]) == halfInputValues.begin()[0], "");
+    static_assert(func(floatOutputValues.begin()[1]) == halfInputValues.begin()[1], "");
+    static_assert(func(floatOutputValues.begin()[2]) == halfInputValues.begin()[2], "");
+    static_assert(func(floatOutputValues.begin()[3]) == halfInputValues.begin()[3], "");
+    static_assert(func(floatOutputValues.begin()[4]) == halfInputValues.begin()[4], "");
+    static_assert(func(floatOutputValues.begin()[5]) == halfInputValues.begin()[5], "");
+    static_assert(func(floatOutputValues.begin()[6]) == halfInputValues.begin()[6], "");
+    static_assert(func(floatOutputValues.begin()[7]) == halfInputValues.begin()[7], "");
+    static_assert(func(floatOutputValues.begin()[8]) == halfInputValues.begin()[8], "");
+    static_assert(func(floatOutputValues.begin()[9]) == halfInputValues.begin()[9], "");
+    static_assert(func(floatOutputValues.begin()[10]) == halfInputValues.begin()[10], "");
+    static_assert(func(floatOutputValues.begin()[11]) == halfInputValues.begin()[11], "");
+    static_assert(func(floatOutputValues.begin()[12]) == halfInputValues.begin()[12], "");
+    static_assert(func(floatOutputValues.begin()[13]) == halfInputValues.begin()[13], "");
+    static_assert(func(floatOutputValues.begin()[14]) == halfInputValues.begin()[14], "");
+    static_assert(func(floatOutputValues.begin()[15]) == halfInputValues.begin()[15], "");
+
+    return true;
+}
+
+static_assert(checkLosslessConversion<roundFloatToHalf<RoundToZero>>(), "");
+static_assert(roundFloatToHalf<RoundToZero>(0x40061000) == 0x4030u, "");
+static_assert(roundFloatToHalf<RoundToZero>(0xC0021000) == 0xC010u, "");
+static_assert(roundFloatToHalf<RoundToZero>(0xC0060001) == 0xC030u, "");
+static_assert(roundFloatToHalf<RoundToZero>(0x3E99999A) == 0x34CCu, "");
+static_assert(roundFloatToHalf<RoundToZero>(0x387FFF80) == 0x03FFu, "");
+static_assert(roundFloatToHalf<RoundToZero>(0xB87FFF80) == 0x83FFu, "");
+static_assert(roundFloatToHalf<RoundToZero>(0x4D7FE000) == 0x7BFFu, "");
+static_assert(roundFloatToHalf<RoundToZero>(0xCD7FE000) == 0xFBFFu, "");
+static_assert(roundFloatToHalf<RoundToZero>(0x00400000) == 0x0000u, "");
+static_assert(roundFloatToHalf<RoundToZero>(0x80400000) == 0x8000u, "");
+static_assert(roundFloatToHalf<RoundToZero>(0x37AAAAAA) == 0x0155u, "");
+static_assert(roundFloatToHalf<RoundToZero>(0xB7AAAAAA) == 0x8155u, "");
+
+static_assert(checkLosslessConversion<roundFloatToHalf<RoundToEven>>(), "");
+static_assert(roundFloatToHalf<RoundToEven>(0x40061000) == 0x4030u, "");
+static_assert(roundFloatToHalf<RoundToEven>(0xC0021000) == 0xC010u, "");
+static_assert(roundFloatToHalf<RoundToEven>(0xC0060001) == 0xC030u, "");
+static_assert(roundFloatToHalf<RoundToEven>(0x3E99999A) == 0x34CDu, "");
+static_assert(roundFloatToHalf<RoundToEven>(0x387FFF80) == 0x0400u, "");
+static_assert(roundFloatToHalf<RoundToEven>(0xB87FFF80) == 0x8400u, "");
+static_assert(roundFloatToHalf<RoundToEven>(0x4D7FE000) == 0x7C00u, "");
+static_assert(roundFloatToHalf<RoundToEven>(0xCD7FE000) == 0xFC00u, "");
+static_assert(roundFloatToHalf<RoundToEven>(0x00400000) == 0x0000u, "");
+static_assert(roundFloatToHalf<RoundToEven>(0x80400000) == 0x8000u, "");
+static_assert(roundFloatToHalf<RoundToEven>(0x37AAAAAA) == 0x0155u, "");
+static_assert(roundFloatToHalf<RoundToEven>(0xB7AAAAAA) == 0x8155u, "");
+
+static_assert(checkLosslessConversion<roundFloatToHalf<RoundToPositiveInfinity>>(), "");
+static_assert(roundFloatToHalf<RoundToPositiveInfinity>(0x40061000) == 0x4031u, "");
+static_assert(roundFloatToHalf<RoundToPositiveInfinity>(0xC0021000) == 0xC010u, "");
+static_assert(roundFloatToHalf<RoundToPositiveInfinity>(0xC0060001) == 0xC030u, "");
+static_assert(roundFloatToHalf<RoundToPositiveInfinity>(0x3E99999A) == 0x34CDu, "");
+static_assert(roundFloatToHalf<RoundToPositiveInfinity>(0x387FFF80) == 0x0400u, "");
+static_assert(roundFloatToHalf<RoundToPositiveInfinity>(0xB87FFF80) == 0x83FFu, "");
+static_assert(roundFloatToHalf<RoundToPositiveInfinity>(0x4D7FE000) == 0x7C00u, "");
+static_assert(roundFloatToHalf<RoundToPositiveInfinity>(0xCD7FE000) == 0xFBFFu, "");
+static_assert(roundFloatToHalf<RoundToPositiveInfinity>(0x00400000) == 0x0001u, "");
+static_assert(roundFloatToHalf<RoundToPositiveInfinity>(0x80400000) == 0x8000u, "");
+static_assert(roundFloatToHalf<RoundToPositiveInfinity>(0x37AAAAAA) == 0x0156u, "");
+static_assert(roundFloatToHalf<RoundToPositiveInfinity>(0xB7AAAAAA) == 0x8155u, "");
+
+static_assert(checkLosslessConversion<roundFloatToHalf<RoundToNegativeInfinity>>(), "");
+static_assert(roundFloatToHalf<RoundToNegativeInfinity>(0x40061000) == 0x4030u, "");
+static_assert(roundFloatToHalf<RoundToNegativeInfinity>(0xC0021000) == 0xC011u, "");
+static_assert(roundFloatToHalf<RoundToNegativeInfinity>(0xC0060001) == 0xC031u, "");
+static_assert(roundFloatToHalf<RoundToNegativeInfinity>(0x3E99999A) == 0x34CCu, "");
+static_assert(roundFloatToHalf<RoundToNegativeInfinity>(0x387FFF80) == 0x03FFu, "");
+static_assert(roundFloatToHalf<RoundToNegativeInfinity>(0xB87FFF80) == 0x8400u, "");
+static_assert(roundFloatToHalf<RoundToNegativeInfinity>(0x4D7FE000) == 0x7BFFu, "");
+static_assert(roundFloatToHalf<RoundToNegativeInfinity>(0xCD7FE000) == 0xFC00u, "");
+static_assert(roundFloatToHalf<RoundToNegativeInfinity>(0x00400000) == 0x0000u, "");
+static_assert(roundFloatToHalf<RoundToNegativeInfinity>(0x80400000) == 0x8001u, "");
+static_assert(roundFloatToHalf<RoundToNegativeInfinity>(0x37AAAAAA) == 0x0155u, "");
+static_assert(roundFloatToHalf<RoundToNegativeInfinity>(0xB7AAAAAA) == 0x8156u, "");
+
+static void registerHalfTests()
+{
+    using namespace test_data;
+
+    // NOTE: Correct mapping including rounding can be calculated via <CL/cl_half> and cl_half_from_float(...) function
+    const std::vector<uint32_t> additonalFloatValues = {
+        0x40061000, // half 0x4030/0x4031 (some in-range values which require rounding)
+        0xC0061000, // half 0xC030/0xC031
+        0x40021000, // half 0x4010/0x4011
+        0xC0021000, // half 0xC010/0xC011
+        0x3E99999A, // half 0x34CC/0x34CD
+        0xBE99999A, // half 0xB4CC/0xB4CD
+        0x37AAAAAA, // half 0x0155/0x0156 (in denormal range)
+        0xB7AAAAAA, // half 0x8155/0x8156
+        0x387FFF80, // half 0x0400/0x03FF (border between normal and denormal)
+        0xB87FFF80, // half 0x8400/0x83FF
+        0x47FFE000, // half 0x7C00/0x7BFF (border between normal and Inf)
+        0xC7FFE000, // half 0xFC00/0xFBFF
+        0x4D7FE000, // half 0x7C00/0x7BFF (way outside of half range)
+        0xCD7FE000, // half 0xFC00/0xFBFF
+        0x00400000, // half 0x0000 (float denormal)
+        0x80400000, // half 0x8000
+    };
+    std::vector<uint32_t> floatInputValues;
+    floatInputValues.reserve(floatOutputValues.size() + additonalFloatValues.size());
+    floatInputValues.insert(floatInputValues.end(), floatOutputValues.begin(), floatOutputValues.end());
+    floatInputValues.insert(floatInputValues.end(), additonalFloatValues.begin(), additonalFloatValues.end());
+
+    auto flags = DataFilter::TYPE_HANDLING | DataFilter::TYPE_CONVERSIONS;
+    for(auto vectorSize : {1u, 2u, 3u, 4u, 8u, 16u})
+    {
+        auto n = vectorSize == 1u ? "" : std::to_string(vectorSize);
+
+        registerTest(TestData{"vload_half" + n, flags, &VECTOR_LOAD_HALF_FUNCTION, "", "test" + n,
+            {toBufferParameter(std::vector<uint32_t>(halfInputValues.size(), 0x42)),
+                toBufferParameter(std::vector<uint16_t>{halfInputValues})},
+            calculateDimensions(halfInputValues.size(), vectorSize),
+            {checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(0, std::vector<uint32_t>{floatOutputValues})}});
+
+        registerTest(TestData{"vloada_half" + n, flags, &VECTOR_LOAD_HALF_FUNCTION, "", "test_aligned" + n,
+            {toBufferParameter(std::vector<uint32_t>(halfInputValues.size(), 0x42)),
+                toBufferParameter(std::vector<uint16_t>{halfInputValues})},
+            calculateDimensions(halfInputValues.size(), vectorSize == 3 ? 4 : vectorSize),
+            {checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(0, std::vector<uint32_t>{floatOutputValues})}});
+
+        for(auto roundingMode : std::vector<std::pair<std::string, uint16_t (*)(uint32_t)>>{
+                {"" /* default rounding mode which is CL_FP_ROUND_TO_ZERO */, roundFloatToHalf<RoundToZero>},
+                {"_rte", roundFloatToHalf<RoundToEven>},
+                {"_rtp", roundFloatToHalf<RoundToPositiveInfinity>},
+                {"_rtz", roundFloatToHalf<RoundToZero>},
+                {"_rtn", roundFloatToHalf<RoundToNegativeInfinity>},
+            })
+        {
+            registerTest(TestData{"vstore_half" + n + roundingMode.first, flags, &VECTOR_STORE_HALF_FUNCTION,
+                "-DROUNDING=" + roundingMode.first, "test" + n,
+                {toBufferParameter(std::vector<uint16_t>(floatInputValues.size(), 0x42)),
+                    toBufferParameter(std::vector<uint32_t>{floatInputValues})},
+                calculateDimensions(floatInputValues.size(), vectorSize),
+                {checkParameterEquals<uint16_t, HexPrinter<uint16_t>>(
+                    0, transform<uint16_t>(floatInputValues, roundingMode.second))}});
+        }
+    }
+
+    std::vector<uint32_t> vector3Result = floatOutputValues;
+    // for vload_half3 we align to 3 elements, so we may not read all values
+    while(vector3Result.size() % 3)
+        vector3Result.pop_back();
+
+    registerTest(TestData{"vload_half_private", flags, &VECTOR_LOAD_HALF_FUNCTION, "", "test_vload_private",
+        {toBufferParameter(std::vector<uint16_t>{halfInputValues}), toBufferParameter(std::vector<uint32_t>(16, 0x42)),
+            toBufferParameter(std::vector<uint32_t>(16, 0x42)), toBufferParameter(std::vector<uint32_t>(16, 0x42)),
+            toBufferParameter(std::vector<uint32_t>(16, 0x42)), toBufferParameter(std::vector<uint32_t>(16, 0x42)),
+            toBufferParameter(std::vector<uint32_t>(16, 0x42))},
+        calculateDimensions(halfInputValues.size(), 16),
+        {checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(1, std::vector<uint32_t>{floatOutputValues}),
+            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(2, std::vector<uint32_t>{floatOutputValues}),
+            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(3, std::move(vector3Result)),
+            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(4, std::vector<uint32_t>{floatOutputValues}),
+            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(5, std::vector<uint32_t>{floatOutputValues}),
+            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(6, std::vector<uint32_t>{floatOutputValues})}});
+
+    // vloada_half aligns to 4-elements, but only reads/writes 3 elements, so we do not convert every 4th value, but
+    // write compacted
+    vector3Result = floatOutputValues;
+    for(std::size_t i = vector3Result.size(); i > 0; --i)
+    {
+        if(i % 4 == 3)
+            vector3Result.erase(vector3Result.begin() + static_cast<ssize_t>(i));
+    }
+
+    registerTest(TestData{"vloada_half_private", flags, &VECTOR_LOAD_HALF_FUNCTION, "", "test_vloada_private",
+        {toBufferParameter(std::vector<uint16_t>{halfInputValues}), toBufferParameter(std::vector<uint32_t>(16, 0x42)),
+            toBufferParameter(std::vector<uint32_t>(16, 0x42)), toBufferParameter(std::vector<uint32_t>(16, 0x42)),
+            toBufferParameter(std::vector<uint32_t>(16, 0x42)), toBufferParameter(std::vector<uint32_t>(16, 0x42)),
+            toBufferParameter(std::vector<uint32_t>(16, 0x42))},
+        calculateDimensions(halfInputValues.size(), 16),
+        {checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(1, std::vector<uint32_t>{floatOutputValues}),
+            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(2, std::vector<uint32_t>{floatOutputValues}),
+            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(3, std::move(vector3Result)),
+            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(4, std::vector<uint32_t>{floatOutputValues}),
+            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(5, std::vector<uint32_t>{floatOutputValues}),
+            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(6, std::vector<uint32_t>{floatOutputValues})}});
+}
+
 template <typename T, std::size_t N>
 std::string to_string(const std::array<T, N>& vec, unsigned numElements)
 {
@@ -331,6 +827,7 @@ void test_data::registerVectorTests()
     registerTypeTests<uint32_t>("uint");
     registerTypeTests<uint16_t>("ushort");
     registerTypeTests<uint8_t>("uchar");
+    registerHalfTests();
 
     for(const auto& pair : assemblySources)
     {

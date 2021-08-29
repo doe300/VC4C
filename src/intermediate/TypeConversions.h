@@ -31,12 +31,24 @@ namespace vc4c
             UNSIGNED_TO_SIGNED
         };
 
+        enum class FloatRoundingMode : uint8_t
+        {
+            // round towards nearest even
+            RINT,
+            // round towards positive infinity
+            CEIL,
+            // round towards negative infinity
+            FLOOR,
+            // round towards zero (this is the default as defined by CL_FP_ROUND_TO_ZERO in our VC4CL device)
+            TRUNC
+        };
+
         NODISCARD InstructionWalker insertSaturation(
             InstructionWalker it, Method& method, const Value& src, const Value& dest, ConversionType type);
         NODISCARD InstructionWalker insertTruncate(
             InstructionWalker it, Method& method, const Value& src, const Value& dest);
-        NODISCARD InstructionWalker insertFloatingPointConversion(
-            InstructionWalker it, Method& method, const Value& src, const Value& dest);
+        NODISCARD InstructionWalker insertFloatingPointConversion(InstructionWalker it, Method& method,
+            const Value& src, const Value& dest, FloatRoundingMode roundingMode = FloatRoundingMode::TRUNC);
         NODISCARD InstructionWalker insertFloatToIntegerSaturation(InstructionWalker it, Method& method,
             const Value& src, const Value& dest, int32_t minInt = std::numeric_limits<int32_t>::min(),
             uint32_t maxInt = std::numeric_limits<int32_t>::max());

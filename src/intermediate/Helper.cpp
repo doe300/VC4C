@@ -130,7 +130,7 @@ InstructionWalker intermediate::insertRestoreSign(
 }
 
 InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Method& method, const Value& container,
-    const Value& dest, const std::vector<Value>& indices, const bool firstIndexIsElement)
+    const Value& dest, const std::vector<Value>& indices, const bool firstIndexIsElement, bool alignVector3AsVector4)
 {
     // handle multi-level indices
     Value offset = INT_ZERO;
@@ -142,17 +142,17 @@ InstructionWalker intermediate::insertCalculateIndices(InstructionWalker it, Met
         {
             // index is index in pointer/array
             //-> add offset of element at given index to global offset
+            unsigned subElementWidth = subContainerType.getElementType().getInMemoryWidth();
+            if(!alignVector3AsVector4 && subContainerType.getElementType().isSimpleType())
+                subElementWidth = subContainerType.getElementType().getLogicalWidth();
+
             if(auto lit = index.getLiteralValue())
-            {
-                subOffset = Value(Literal(lit->signedInt() *
-                                      static_cast<int32_t>(subContainerType.getElementType().getInMemoryWidth())),
-                    TYPE_INT32);
-            }
+                subOffset = Value(Literal(lit->signedInt() * static_cast<int32_t>(subElementWidth)), TYPE_INT32);
             else
             {
                 subOffset = method.addNewLocal(TYPE_INT32, "%index_offset");
-                it.emplace(std::make_unique<intermediate::IntrinsicOperation>("mul", Value(subOffset), Value(index),
-                               Value(Literal(subContainerType.getElementType().getInMemoryWidth()), TYPE_INT32)))
+                it.emplace(std::make_unique<intermediate::IntrinsicOperation>(
+                               "mul", Value(subOffset), Value(index), Value(Literal(subElementWidth), TYPE_INT32)))
                     .addDecorations(InstructionDecorations::SIGNED_OVERFLOW_IS_UB);
                 it.nextInBlock();
             }

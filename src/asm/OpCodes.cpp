@@ -206,9 +206,19 @@ static Literal unpackLiteral(Unpack mode, Literal literal, bool isFloatOperation
     case UNPACK_16A_32:
     {
         // signed conversion -> truncate to unsigned short, bit-cast to signed short and sign-extend
-        uint16_t lowWord = static_cast<uint16_t>(literal.unsignedInt());
+        uint16_t lowWord = static_cast<uint16_t>(literal.unsignedInt() & 0xFFFF);
         if(isFloatOperation)
+        {
+            if((lowWord & 0x7FFFu) != 0 && (lowWord & 0x7C00) == 0)
+            {
+                // subnormal values are converted wrong in VideoCore IV GPU, only the mantissa is shifted and the sign
+                // is kept, no exponent fix-up is performed
+                uint32_t tmp = lowWord & 0x8000u ? 0x80000000u : 0u;
+                tmp |= (lowWord & 0x3FFu) << 13;
+                return Literal(bit_cast<uint32_t, float>(tmp));
+            }
             return Literal(static_cast<float>(half_t(lowWord)));
+        }
         int16_t lowWordSigned = bit_cast<uint16_t, int16_t>(lowWord);
         return Literal(static_cast<int32_t>(lowWordSigned));
     }
@@ -217,7 +227,17 @@ static Literal unpackLiteral(Unpack mode, Literal literal, bool isFloatOperation
         // signed conversion -> truncate to unsigned short, bit-cast to signed short and sign-extend
         uint16_t highWord = static_cast<uint16_t>(literal.unsignedInt() >> 16);
         if(isFloatOperation)
+        {
+            if((highWord & 0x7FFFu) != 0 && (highWord & 0x7C00) == 0)
+            {
+                // subnormal values are converted wrong in VideoCore IV GPU, only the mantissa is shifted and the sign
+                // is kept, no exponent fix-up is performed
+                uint32_t tmp = highWord & 0x8000u ? 0x80000000u : 0u;
+                tmp |= (highWord & 0x3FFu) << 13;
+                return Literal(bit_cast<uint32_t, float>(tmp));
+            }
             return Literal(static_cast<float>(half_t(highWord)));
+        }
         int16_t highWordSigned = bit_cast<uint16_t, int16_t>(highWord);
         return Literal(static_cast<int32_t>(highWordSigned));
     }
@@ -507,7 +527,24 @@ Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const Ele
         return literal;
     case PACK_32_16A:
         if(isFloatOperation)
-            return Literal(static_cast<uint16_t>(half_t(literal.real())));
+        {
+            /*
+             * Tests have shown following behavior:
+             * 1) +/- 0 -> +0
+             * 2) +/- NaN -> +/- Inf
+             * 3) any half denormal -> +0
+             * 4) any out-of-range -> +/- Inf (already handled by half_t)
+             * 5) rounds away from zero (already handled by half_t)
+             */
+            half_t halfValue(literal.real());
+            if(halfValue.isZero())
+                return Literal(0);
+            if(halfValue.isNaN() || halfValue.isInf())
+                return Literal((std::signbit(literal.real()) ? 0x8000 : 0) | static_cast<uint16_t>(HALF_INF));
+            if(halfValue.isSubnormal())
+                return Literal(0);
+            return Literal(static_cast<uint16_t>(halfValue));
+        }
         if(flags.overflow == FlagStatus::SET &&
             (literal.unsignedInt() == 0x7FFFFFFFu || literal.unsignedInt() == 0x80000000u))
             // Tests have shown that for 32-bit overflow, the values 0x7FFFFFFF and 0x80000000 get truncated to 0x7FFF
@@ -517,14 +554,23 @@ Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const Ele
     case PACK_32_16A_S:
         if(isFloatOperation)
             // TODO no saturation?
-            return Literal(static_cast<uint16_t>(half_t(literal.real())));
+            return packLiteral(PACK_32_16A, literal, true, flags);
         if(flags.overflow == FlagStatus::SET)
             // On full 32-bit integer overflow, the return value is sometimes zero!
             return Literal(0u);
         return Literal(saturate<int16_t>(literal.signedInt()) & 0xFFFF);
     case PACK_32_16B:
         if(isFloatOperation)
-            return Literal(static_cast<uint16_t>(half_t(literal.real())) << 16);
+        {
+            half_t halfValue(literal.real());
+            if(halfValue.isZero())
+                return Literal(0);
+            if(halfValue.isNaN() || halfValue.isInf())
+                return Literal(((std::signbit(literal.real()) ? 0x8000 : 0) | static_cast<uint16_t>(HALF_INF)) << 16u);
+            if(halfValue.isSubnormal())
+                return Literal(0);
+            return Literal(static_cast<uint32_t>(static_cast<uint16_t>(halfValue)) << 16u);
+        }
         if(flags.overflow == FlagStatus::SET &&
             (literal.unsignedInt() == 0x7FFFFFFFu || literal.unsignedInt() == 0x80000000u))
             // Tests have shown that for 32-bit overflow, the values 0x7FFFFFFF and 0x80000000 get truncated to 0x7FFF
@@ -534,7 +580,7 @@ Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const Ele
     case PACK_32_16B_S:
         if(isFloatOperation)
             // TODO no saturation?
-            return Literal(static_cast<uint16_t>(half_t(literal.real())) << 16);
+            return packLiteral(PACK_32_16B, literal, true, flags);
         if(flags.overflow == FlagStatus::SET)
             // On full 32-bit integer overflow, the return value is sometimes zero!
             return Literal(0u);

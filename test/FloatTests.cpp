@@ -435,7 +435,6 @@ void test_data::registerOpenCLGeometricFunctionTests()
         calculateDimensions(smallRandomData0.size(), 2),
         {checkParameter<CompareULP<5>>(0, transform<float, 2>(smallRandomData0, normalize<2>))}});
 
-    // TODO result mismatch (ULP) on hardware
     registerTest(TestData{"normalize3", DataFilter::FLOAT_ARITHMETIC, &UNARY_GROUPED_FUNCTION,
         "-DOUT=float3 -DIN=float3 -DFUNC=normalize -DTRIPLE=3 -DTYPE=float", "test",
         {toBufferParameter(std::vector<float>(smallRandomData0.size(), 42.0f)),

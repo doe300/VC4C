@@ -298,12 +298,32 @@ namespace test_data
     }
 
     template <typename T>
+    struct DefaultPrinter
+    {
+        static std::string print(T val)
+        {
+            return std::to_string(makePrintable(val));
+        }
+    };
+
+    template <typename T>
+    struct HexPrinter
+    {
+        static std::string print(T val)
+        {
+            std::ostringstream ss;
+            ss << "0x" << std::setfill('0') << std::setw(sizeof(T) * 2) << std::hex << val;
+            return ss.str();
+        }
+    };
+
+    template <typename T, typename Printer = DefaultPrinter<T>>
     Result checkScalarEquals(T expected, T actual, std::string&& additionalInfo = "")
     {
         if(expected != actual)
             return Result{false,
-                "Validation error: Got " + std::to_string(makePrintable(actual)) + ", expected " +
-                    std::to_string(makePrintable(expected)) + std::move(additionalInfo)};
+                "Validation error: Got " + Printer::print(actual) + ", expected " + Printer::print(expected) +
+                    std::move(additionalInfo)};
         return RESULT_OK;
     }
 
@@ -355,7 +375,7 @@ namespace test_data
         return RESULT_OK;
     }
 
-    template <typename T, typename Func>
+    template <typename T, typename Func, typename Printer = DefaultPrinter<T>>
     ResultVerification checkParameterMatches(
         std::size_t index, std::size_t numValues, Func&& func, const std::string& expectedMessage)
     {
@@ -372,7 +392,7 @@ namespace test_data
                 {
                     if(!actualValues.empty())
                         actualValues.append(", ");
-                    actualValues.append(std::to_string(makePrintable(resultData[i])));
+                    actualValues.append(Printer::print(resultData[i]));
                     if(!wrongIndices.empty())
                         wrongIndices.append(", ");
                     wrongIndices.append(std::to_string(i));
@@ -494,7 +514,7 @@ namespace test_data
         std::size_t ULP;
     };
 
-    template <typename Comparison, typename T = typename Comparison::type>
+    template <typename Comparison, typename T = typename Comparison::type, typename Printer = DefaultPrinter<T>>
     ResultVerification checkParameter(std::size_t index, std::vector<T>&& expected, Comparison comp = {})
     {
         return [index, expected{std::move(expected)}, comp{std::move(comp)}](TestRunner& runner) -> Result {
@@ -521,8 +541,8 @@ namespace test_data
                         actualValues << ", ";
                     }
                     noError = false;
-                    expectedValues << makePrintable(expected[i]);
-                    actualValues << makePrintable(resultData[i]);
+                    expectedValues << Printer::print(expected[i]);
+                    actualValues << Printer::print(resultData[i]);
                     if(!result.error.empty())
                         actualValues << " (" << result.error << ')';
                     wrongIndices << i;
@@ -546,10 +566,10 @@ namespace test_data
         };
     }
 
-    template <typename T>
+    template <typename T, typename Printer = DefaultPrinter<T>>
     ResultVerification checkParameterEquals(std::size_t index, std::vector<T>&& expected)
     {
-        return checkParameter<CompareEquals<T>>(index, std::move(expected));
+        return checkParameter<CompareEquals<T>, typename CompareEquals<T>::type, Printer>(index, std::move(expected));
     }
 
     template <typename T, typename Func = std::function<Result(const std::vector<T>&)>>

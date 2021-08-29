@@ -536,18 +536,201 @@ InstructionWalker intermediate::insertTruncate(
     return it;
 }
 
+static InstructionWalker insertFloatToHalfRounding(FloatRoundingMode roundingMode, InstructionWalker it,
+    Value& positiveOverflowValue, Value& negativeOverflowValue, const Value& floatExponent, const Value& floatMantissa,
+    const Value& signBit, Value& normalResult, Value& denormalResult)
+{
+    switch(roundingMode)
+    {
+    case FloatRoundingMode::RINT:
+    {
+        // overflow handling
+        positiveOverflowValue = 0x7C00_val;
+        negativeOverflowValue = 0xFC00_val;
+        // rounding handling (pack mode rounds away from zero)
+        // rint only rounds up if the low bits are > the half (2^12) or exactly the half and the LSB is set (odd)
+        // => revert rounding away from zero for low bits <= half (but not zero)
+        auto lowBits = assign(it) = (floatMantissa & 0x1FFF_val, SetFlag::SET_FLAGS);
+        auto offset = assign(it) = 1_val;
+        assign(it, offset) = (0_val, COND_ZERO_SET);
+        auto roundDown = assignNop(it) = as_signed{lowBits} <= as_signed{0x1000_val};
+        assign(it, normalResult) = (as_signed{normalResult} - as_signed{offset}, roundDown);
+        // round denormal values away from zero if low shifted off mantissa bits are > the half or exactly the half
+        // and the LSB is set (odd)
+        // we need to check the lowest -(13 + exponent - 112 (float bias - half bias)) bits, so shift the others out
+        // of the word: 9 (sign + mantissa) + 10 (retained mantissa) - (113 - exponent)
+        auto shiftOffset = assign(it) = as_signed{floatExponent} - as_signed{94_val};
+        auto cutoff = assign(it) = (floatMantissa << shiftOffset);
+        auto denormalOffset = assign(it) = as_unsigned{cutoff} >> 31_val;
+        // check mantissa is odd
+        assignNop(it) = (denormalResult & 1_val, SetFlag::SET_FLAGS);
+        assign(it, denormalResult) = (as_signed{denormalResult} + as_signed{denormalOffset}, COND_ZERO_CLEAR);
+        assign(it, denormalOffset) = (0_val, COND_ZERO_CLEAR); // to make sure the offset is not applied twice
+        // check cut-off is more than half-way towards to the next value
+        assignNop(it) = (cutoff << 1_val, SetFlag::SET_FLAGS);
+        assign(it, denormalResult) = (as_signed{denormalResult} + as_signed{denormalOffset}, COND_ZERO_CLEAR);
+        break;
+    }
+    case FloatRoundingMode::TRUNC:
+        // overflow handling
+        positiveOverflowValue = 0x7BFF_val;
+        negativeOverflowValue = 0xFBFF_val;
+        // rounding handling (pack mode rounds away from zero)
+        // if we have a bit in the lower part set, the pack mode did round away from zero, so revert this
+        assignNop(it) = (floatMantissa & 0x1FFF_val, SetFlag::SET_FLAGS);
+        assign(it, normalResult) = (as_signed{normalResult} - as_signed{1_val}, COND_ZERO_CLEAR);
+        // denormal values are already truncated to zero in our custom code
+        break;
+    case FloatRoundingMode::CEIL:
+    {
+        // overflow handling
+        positiveOverflowValue = 0x7C00_val;
+        negativeOverflowValue = 0xFBFF_val;
+        // rounding handling (pack mode rounds away from zero)
+        // => revert rounding if the sign bit is set (and we did actually round == low bits are not zero)
+        auto offset = assign(it) = as_unsigned{signBit} >> 15_val;
+        assignNop(it) = (floatMantissa & 0x1FFF_val, SetFlag::SET_FLAGS);
+        assign(it, normalResult) = (as_signed{normalResult} - as_signed{offset}, COND_ZERO_CLEAR);
+        // for denormal values, round for positive value and shifted off mantissa bits not zero
+        auto denormalOffset = assign(it) = offset ^ 1_val;
+        // we need to check the lowest -(13 + exponent - 112 (float bias - half bias)) bits, so shift the others out
+        // of the word: 9 (sign + mantissa) + 10 (retained mantissa) - (113 - exponent)
+        auto shiftOffset = assign(it) = as_signed{floatExponent} - as_signed{94_val};
+        assignNop(it) = (floatMantissa << shiftOffset, SetFlag::SET_FLAGS);
+        assign(it, denormalResult) = (as_signed{denormalResult} + as_signed{denormalOffset}, COND_ZERO_CLEAR);
+        break;
+    }
+    case FloatRoundingMode::FLOOR:
+    {
+        // overflow handling
+        positiveOverflowValue = 0x7BFF_val;
+        negativeOverflowValue = 0xFC00_val;
+        // rounding handling (pack mode rounds away from zero)
+        // => revert rounding if the sign bit is clear (and we did actually round == low bits are not zero)
+        assignNop(it) = (floatMantissa & 0x1FFF_val, SetFlag::SET_FLAGS);
+        auto denormalOffset = assign(it) = as_unsigned{signBit} >> 15_val;
+        auto offset = assign(it) = denormalOffset ^ 1_val;
+        assign(it, normalResult) = (as_signed{normalResult} - as_signed{offset}, COND_ZERO_CLEAR);
+        // for denormal values, round for negative value and shifted off mantissa bits not zero
+        // we need to check the lowest -(13 + exponent - 112 (float bias - half bias)) bits, so shift the others out
+        // of the word: 9 (sign + mantissa) + 10 (retained mantissa) - (113 - exponent)
+        auto shiftOffset = assign(it) = as_signed{floatExponent} - as_signed{94_val};
+        assignNop(it) = (floatMantissa << shiftOffset, SetFlag::SET_FLAGS);
+        assign(it, denormalResult) = (as_signed{denormalResult} + as_signed{denormalOffset}, COND_ZERO_CLEAR);
+        break;
+    }
+    }
+    return it;
+}
+
 InstructionWalker intermediate::insertFloatingPointConversion(
-    InstructionWalker it, Method& method, const Value& src, const Value& dest)
+    InstructionWalker it, Method& method, const Value& src, const Value& dest, FloatRoundingMode roundingMode)
 {
     if(src.type.getScalarBitCount() == dest.type.getScalarBitCount())
         assign(it, dest) = src;
     else if(src.type.getScalarBitCount() == 16 && dest.type.getScalarBitCount() == 32)
-        assign(it, dest) = (as_float{src} * as_float{OP_FMUL.getRightIdentity().value()}, UNPACK_HALF_TO_FLOAT);
+    {
+        /*
+         * The half -> float unpack mode does not handle denormal values correctly, so we need to manually convert them:
+         *
+         * 1. mask off sign-bit, count leading zeroes of mantissa
+         * 2. set exponent to 127 - 15 - leading zeroes of mantissa
+         * 3. left-align mantissa and convert explicit high-bit to implicit bit
+         *    unpack mode already shifts mantissa 13 to left (23 bit float mantissa - 10 bit half mantissa)
+         * 4. assemble denormal value
+         * 5. decide on whether to use denormal or default/normal value
+         */
+        auto UNSIGNED = InstructionDecorations::UNSIGNED_RESULT;
+        auto normalResult = assign(it, dest.type, "%normal_result") =
+            (max(as_float{src}, as_float{src}), UNPACK_HALF_TO_FLOAT);
+
+        auto unsignedResult = assign(it) = (normalResult & 0x7FFFFFFF_val, UNSIGNED);
+        auto leadingZeroes = assign(it) = clz(unsignedResult);
+        // leading zeroes in mantissa = clz(32-bit value) - 9 (sign + exponent)
+        auto leadingZeroesPlusOne = assign(it, leadingZeroes.type) = leadingZeroes - 8_val;
+        // exponent = 127 - 15 - (clz - 9) = 112 - (clz - 9) = 113 - (clz - 8)
+        auto denormalExponent = assign(it, "denormal_exponent") = (113_val - leadingZeroesPlusOne, UNSIGNED);
+        // mantissa = mantissa << leading zeroes in mantissa + 1 (implicit high-bit)
+        auto denormalMantissa = assign(it) = (unsignedResult << leadingZeroesPlusOne, UNSIGNED);
+        denormalMantissa = assign(it, "%denormal_mantissa") = (denormalMantissa & 0x7FFFFF_val, UNSIGNED);
+
+        auto denormalResult = assign(it, dest.type, "%denormal_result") = normalResult & 0x80000000_val;
+        auto cond = assignNop(it) = as_unsigned{unsignedResult} != as_unsigned{0_val};
+        denormalExponent = assign(it) = denormalExponent << 23_val;
+        assign(it, denormalResult) = (denormalResult | denormalExponent, cond);
+        assign(it, denormalResult) = (denormalResult | denormalMantissa, cond);
+        assign(it, dest) = normalResult;
+        cond = assignNop(it) = as_signed{leadingZeroesPlusOne} >= as_signed{1_val};
+        assign(it, dest) = (denormalResult, cond);
+    }
     else if(src.type.getScalarBitCount() == 32 && dest.type.getScalarBitCount() == 16)
-        assign(it, dest) = (as_float{src} * as_float{OP_FMUL.getRightIdentity().value()}, PACK_FLOAT_TO_HALF_TRUNCATE);
+    {
+        auto normalResult = assign(it, dest.type, "%normal_result") =
+            (max(as_float{src}, as_float{src}), PACK_FLOAT_TO_HALF_TRUNCATE);
+        /*
+         * The float -> half pack mode does not handle some cases correctly, so we need to fix them up. Namely the
+         * VideoCore IV GPU has following deviating behavior:
+         *
+         * - All (half) denormal values and -0 are flushed to +0
+         *   -> distinguish them (+ rounding)
+         * - +/- NaN is converted to +/- Inf
+         *   -> distinguish them
+         * - any out-of-range value is converted to +/- Inf
+         *   -> convert to HALF_MAX/-HALF_MAX depending on rounding mode
+         * - rounding is always done away from zero
+         *   -> fix-up depending on rounding mode
+         *
+         * => Need to manually apply changes if:
+         * - Output is +0 and input is not +0
+         * - Output is +/- Inf and input is not +/- Inf
+         * - Any of the lower 13 input bits are set (depending on rounding mode)
+         */
+        auto vectorWidth = dest.type.getVectorWidth();
+        auto UNSIGNED = InstructionDecorations::UNSIGNED_RESULT;
+        auto unsignedBits = assign(it) = (src & 0x7FFFFFFF_val, UNSIGNED);
+        auto floatExponent = assign(it, "%float_exponent") = (as_unsigned{unsignedBits} >> 23_val, UNSIGNED);
+        auto signBit = assign(it) = src & 0x80000000_val;
+        signBit = assign(it, TYPE_INT16.toVectorType(vectorWidth)) = as_unsigned{signBit} >> 16_val;
+        auto floatMantissa = assign(it, "%float_mantissa") = (unsignedBits & 0x007FFFFF_val, SetFlag::SET_FLAGS);
+
+        // handling of +/-Inf and +/- NaN
+        auto realInfResult = assign(it, dest.type, "%inf_nan_result") = signBit | 0x7C00_val;
+        // all NaNs are equal, so it does not matter which code we return
+        assign(it, realInfResult) = (realInfResult | 0x200_val, COND_ZERO_CLEAR);
+
+        // handling of +/- 0 and (half) denormal value
+        auto denormalResult = assign(it, dest.type) = signBit;
+        // make implicit leading 1 in mantissa explicit for normal -> denormal values
+        auto denormalMantissa = assign(it) = floatMantissa | 0x800000_val;
+        // shift the mantissa by 14 (normal mantissa length difference + implicit/explicit leading bit) - (exponent -
+        // 127 (float bias) + 15(half bias))
+        auto shiftOffset = assign(it) = as_signed{126_val} - as_signed{floatExponent};
+        denormalMantissa = assign(it, dest.type, "denormal_mantissa") =
+            (as_unsigned{denormalMantissa} >> shiftOffset, SetFlag::SET_FLAGS);
+        denormalResult = assign(it, dest.type, "%denormal_result") = denormalResult | denormalMantissa;
+
+        // apply rounding and provide out-of-bounds values
+        auto positiveOverflowValue = UNDEFINED_VALUE;
+        auto negativeOverflowValue = UNDEFINED_VALUE;
+        it = insertFloatToHalfRounding(roundingMode, it, positiveOverflowValue, negativeOverflowValue, floatExponent,
+            floatMantissa, signBit, normalResult, denormalResult);
+
+        // handling of |finite value| > HALF_MAX
+        auto isSigned = assignNop(it) = as_unsigned{signBit} != as_unsigned{0_val};
+        auto realOverflowResult = assign(it, dest.type, "%overflow_result") = positiveOverflowValue;
+        assign(it, realOverflowResult) = (negativeOverflowValue, isSigned);
+
+        assign(it, dest) = normalResult;
+        // any float exponent <= 112 (127 float bias - 15 half bias) is a denormal (or zero) half value
+        auto isDenormalOrZero = assignNop(it) = as_signed{floatExponent} <= as_signed{112_val};
+        assign(it, dest) = (denormalResult, isDenormalOrZero);
+        auto isOverflow = assignNop(it) = as_signed{floatExponent} > as_signed{142_val};
+        assign(it, dest) = (realOverflowResult, isOverflow);
+        // this overwrites the isOverflow check, so it has to come afterwards
+        auto isInfNaN = assignNop(it) = as_unsigned{floatExponent} == as_unsigned{0xFF_val};
+        assign(it, dest) = (realInfResult, isInfNaN);
+    }
     else
-        // XXX conversion from/to double would not be that hard (extract exponent, deduct bias, add new bias, extract
-        // mantissa, shift), but we cannot store the resulting 64-bit value...
         throw CompilationError(CompilationStep::GENERAL, "Unsupported floating-point conversion",
             src.to_string() + " to " + dest.to_string());
     return it;

@@ -31,7 +31,8 @@ namespace vc4c
             InstructionWalker it, Method& method, const Value& src, Value& dest, const Value& sign);
 
         NODISCARD InstructionWalker insertCalculateIndices(InstructionWalker it, Method& method, const Value& container,
-            const Value& dest, const std::vector<Value>& indices, bool firstIndexIsElement = false);
+            const Value& dest, const std::vector<Value>& indices, bool firstIndexIsElement = false,
+            bool alignVector3AsVector4 = true);
 
         NODISCARD InstructionWalker insertByteSwap(
             InstructionWalker it, Method& method, const Value& src, const Value& dest);

@@ -771,10 +771,9 @@ void TestInstructions::testHalfFloat()
             TEST_ASSERT(std::isnan(static_cast<float>(h)))
         else
         {
-            TEST_ASSERT_EQUALS(static_cast<float>(h),
-                UNPACK_16A_32(Value(Literal(static_cast<uint32_t>(i)), TYPE_HALF))->getLiteralValue()->real())
             TEST_ASSERT_EQUALS(
-                i, PACK_32_16A(Value(Literal(static_cast<float>(h)), TYPE_FLOAT), {})->getLiteralValue()->unsignedInt())
+                static_cast<uint16_t>(i), static_cast<uint16_t>(static_cast<half_t>(static_cast<float>(h))));
+            // XXX cannot run (un)pack round-trip test due to flush-to-zero and rounding
         }
     }
 }

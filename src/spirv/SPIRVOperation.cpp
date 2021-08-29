@@ -10,9 +10,12 @@
 #include "../intermediate/TypeConversions.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intrinsics/Images.h"
+#include "../intrinsics/Intrinsics.h"
 #include "../intrinsics/Operators.h"
 #include "SPIRVBuiltins.h"
 #include "log.h"
+
+#include "spirv/unified1/spirv.hpp11"
 
 #include <algorithm>
 #include <cstdbool>
@@ -274,6 +277,24 @@ SPIRVCallSite::SPIRVCallSite(SPIRVMethod& method, const std::string& methodName,
 {
 }
 
+static const Local& toRoundingMarker(spv::FPRoundingMode mode)
+{
+    switch(mode)
+    {
+    case spv::FPRoundingMode::RTE:
+        return intrinsics::ROUND_TO_NEAREST_EVEN;
+    case spv::FPRoundingMode::RTN:
+        return intrinsics::ROUND_TO_NEGATIVE_INFINITY;
+    case spv::FPRoundingMode::RTP:
+        return intrinsics::ROUND_TO_POSITIVE_INFINITY;
+    case spv::FPRoundingMode::RTZ:
+        return intrinsics::ROUND_TO_ZERO;
+    default:
+        throw CompilationError(CompilationStep::LLVM_2_IR, "Unsupported SPIR-V float rounding mode",
+            std::to_string(static_cast<unsigned>(mode)));
+    }
+}
+
 void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constants, LocalTypeMapping& localTypes,
     MethodMapping& methods, LocalMapping& localMapping)
 {
@@ -288,6 +309,10 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
         // For the OpenCL C functions  "vloadn", "vload_halfn" and "vloada_halfn" the 3rd argument is the vector width
         // as literal number and therefore has no type, so we can't map it to any Value
         numArgsToConvert = 2;
+    if(calledFunction.find("vstore") == 0 && calledFunction.find("_half") != std::string::npos && arguments.size() == 4)
+        // For the OpenCL C functions "vstore_half_r", "vstore_halfn_r" and "vstorea_half_r" the 4th argument is the
+        // floating point rounding mode as literal constant and therefore has no type
+        numArgsToConvert = 3;
     for(std::size_t i = 0; i < numArgsToConvert; ++i)
     {
         args.emplace_back(getValue(arguments[i], *method.method, types, constants, localTypes, localMapping));
@@ -300,6 +325,18 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
         // the last parameter is the vector width, write it into the name
         auto num = arguments.back();
         calledFunction = "vload" + std::to_string(num);
+    }
+    else if(calledFunction == "vload_half")
+    {
+        // append the vector width (1) as last parameter
+        args.emplace_back(INT_ONE);
+    }
+    else if(calledFunction == "vload_halfn" || calledFunction == "vloada_halfn")
+    {
+        // the last parameter is the vector width, but as literal, not as an ID, so replace the wrong resolved value
+        auto num = arguments.back();
+        args.emplace_back(Value(Literal(num), TYPE_INT8));
+        calledFunction = calledFunction.substr(0, calledFunction.find('n'));
     }
     else if(calledFunction == "vstoren")
     {
@@ -322,6 +359,7 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
             return;
         }
         calledFunction = "vstore" + std::to_string(num);
+        dest = UNDEFINED_VALUE;
     }
     else if(calledFunction.find("mem_fence") == 0 || calledFunction.find("read_mem_fence") == 0 ||
         calledFunction.find("write_mem_fence") == 0)
@@ -338,6 +376,39 @@ void SPIRVCallSite::mapInstruction(TypeMapping& types, ConstantMapping& constant
             static_cast<intermediate::MemoryScope>(args.at(0).getLiteralValue()->unsignedInt()),
             intermediate::MemorySemantics::ACQUIRE_RELEASE));
         return;
+    }
+    else if(calledFunction == "vstore_half")
+    {
+        // append the vector width (1) as last parameter
+        args.emplace_back(INT_ONE);
+        dest = UNDEFINED_VALUE;
+    }
+    else if(calledFunction == "vstore_halfn" || calledFunction == "vstorea_halfn")
+    {
+        // the vector width is not explicitly given, so extract it from the argument types
+        // arguments are: <value>, <index>, <address>
+        // convert to: <value>, <index>, <address>, <width>
+        auto num = args.front().type.getVectorWidth();
+        args.emplace_back(Value(Literal(num), TYPE_INT8));
+        calledFunction = calledFunction.substr(0, calledFunction.find('n'));
+        dest = UNDEFINED_VALUE;
+    }
+    else if(calledFunction == "vstore_half_round")
+    {
+        // append the vector width (1) as last parameter
+        args.emplace_back(INT_ONE);
+        args.emplace_back(toRoundingMarker(static_cast<spv::FPRoundingMode>(arguments.back())).createReference());
+        dest = UNDEFINED_VALUE;
+    }
+    else if(calledFunction == "vstore_halfn_round" || calledFunction == "vstorea_halfn_round")
+    {
+        // the vector width is not explicitly given, so extract it from the argument types
+        // arguments are: <value>, <index>, <address>, <rounding mode>
+        // convert to: <value>, <index>, <address>, <width>
+        auto num = args.front().type.getVectorWidth();
+        args.emplace_back(Value(Literal(num), TYPE_INT8));
+        calledFunction.erase(calledFunction.find('n'));
+        args.emplace_back(toRoundingMarker(static_cast<spv::FPRoundingMode>(arguments.back())).createReference());
     }
     if(dest.isUndefined())
     {
@@ -744,7 +815,7 @@ void SPIRVCopy::mapInstruction(TypeMapping& types, ConstantMapping& constants, L
         dest = toNewLocal(*method.method, id, typeID, types, localTypes, localMapping);
     if(auto builtin = dynamic_cast<SPIRVBuiltin*>(source.checkLocal()))
     {
-        // this is a "load" from a built-in variable -> convert to move which will then be handled by
+        // this is a "load" from a built-in variable -> convert to intrinsic function which will then be handled by
         // SPIRVBuiltins#lowerBuiltins
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Generating reading of " << builtin->to_string() << " into " << dest.to_string() << logging::endl);

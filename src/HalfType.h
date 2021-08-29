@@ -9,6 +9,7 @@
 
 #include <cinttypes>
 #include <limits>
+#include <type_traits>
 
 namespace vc4c
 {
@@ -20,26 +21,27 @@ namespace vc4c
      */
     struct Binary16
     {
-        uint16_t sign : 1;
-        uint16_t exponent : 5;
         uint16_t fraction : 10;
+        uint16_t exponent : 5;
+        uint16_t sign : 1;
 
         constexpr explicit Binary16(uint16_t val = 0) :
-            sign(static_cast<uint16_t>(val >> 15u)), exponent(static_cast<uint16_t>((val & 0x7C00u) >> 10u)),
-            fraction(static_cast<uint16_t>(val & 0x3FFu))
+            fraction(static_cast<uint16_t>(val & 0x3FFu)), exponent(static_cast<uint16_t>((val & 0x7C00u) >> 10u)),
+            sign(static_cast<uint16_t>(val >> 15u))
         {
         }
 
         constexpr explicit Binary16(uint16_t sign, uint16_t exp, uint16_t mantissa) :
-            sign(sign), exponent(exp), fraction(mantissa)
+            fraction(mantissa), exponent(exp), sign(sign)
         {
         }
 
         Binary16(float val);
+        Binary16(double val) : Binary16(static_cast<float>(val)) {}
 
         operator float() const;
 
-        inline constexpr operator uint16_t() const
+        explicit inline constexpr operator uint16_t() const
         {
             return static_cast<uint16_t>((sign << 15u) | (exponent << 10u) | (fraction));
         }
@@ -149,6 +151,11 @@ namespace std
         static constexpr bool traps = false;
         static constexpr bool tinyness_before = false;                                        // XXX ??
         static constexpr float_round_style round_style = float_round_style::round_to_nearest; // XXX ??
+    };
+
+    template <>
+    struct is_floating_point<vc4c::half_t> : public std::true_type
+    {
     };
 } // namespace std
 

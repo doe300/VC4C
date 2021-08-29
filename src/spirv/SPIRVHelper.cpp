@@ -331,6 +331,24 @@ std::string spirv::getOpenCLMethodName(const uint32_t instructionID)
         return "vloadn";
     case OpenCLLIB::Entrypoints::Vstoren:
         return "vstoren";
+    case OpenCLLIB::Entrypoints::Vload_half:
+        return "vload_half";
+    case OpenCLLIB::Entrypoints::Vload_halfn:
+        return "vload_halfn";
+    case OpenCLLIB::Entrypoints::Vloada_halfn:
+        return "vloada_halfn";
+    case OpenCLLIB::Entrypoints::Vstore_half:
+        return "vstore_half";
+    case OpenCLLIB::Entrypoints::Vstore_halfn:
+        return "vstore_halfn";
+    case OpenCLLIB::Entrypoints::Vstorea_halfn:
+        return "vstorea_halfn";
+    case OpenCLLIB::Entrypoints::Vstore_half_r:
+        return "vstore_half_round";
+    case OpenCLLIB::Entrypoints::Vstore_halfn_r:
+        return "vstore_halfn_round";
+    case OpenCLLIB::Entrypoints::Vstorea_halfn_r:
+        return "vstorea_halfn_round";
     default:
         throw CompilationError(
             CompilationStep::PARSER, "Unsupported OpenCL standard-function", std::to_string(instructionID));
