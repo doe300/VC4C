@@ -16,6 +16,7 @@
 #include "log.h"
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <sstream>
 
