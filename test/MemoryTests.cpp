@@ -288,10 +288,11 @@ static void registerPrivateAliasingTests(const std::string& typeName)
         };
         if(accessType.second <= sizeof(T) * 4)
         {
+            auto vector3Size = vector3Result.size();
             loadChecks.push_back(checkParameterEquals(3, std::move(vector3Result)));
             storeStridedChecks.push_back(checkParameterEquals(3,
                 maskOffOddEntries<T, 3>(
-                    std::vector<T>(data.begin(), data.begin() + vector3Result.size()), accessType.second, T{0x42})));
+                    std::vector<T>(data.begin(), data.begin() + vector3Size), accessType.second, T{0x42})));
             loadChecks.push_back(checkParameterEquals(4, std::vector<T>{result}));
             storeStridedChecks.push_back(
                 checkParameterEquals(4, maskOffOddEntries<T, 4>(data, accessType.second, T{0x42})));
@@ -312,31 +313,32 @@ static void registerPrivateAliasingTests(const std::string& typeName)
 
         auto storeChecks = loadChecks;
 
-        registerTest(
-            TestData{"vload_alias_private_register_" + typeName + "_to_" + accessType.first, DataFilter::MEMORY_ACCESS,
-                &LOAD_PRIVATE_REGISTER_ALIAS, "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first, "test",
-                {toBufferParameter(std::vector<T>{data}), toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                    toBufferParameter(std::vector<T>(data.size(), 0x42))},
-                toDimensions(1), std::move(loadChecks)});
+        // XXX has compilation errors in llvm-spirv (on CI, newer local version compiles them correctly)
+        auto flags = DataFilter::MEMORY_ACCESS | DataFilter::SPIRV_DISABLED;
 
-        registerTest(
-            TestData{"vstore_alias_private_register_" + accessType.first + "_to_" + typeName, DataFilter::MEMORY_ACCESS,
-                &STORE_PRIVATE_REGISTER_ALIAS, "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first, "test",
-                {toBufferParameter(std::vector<T>{data}), toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                    toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                    toBufferParameter(std::vector<T>(data.size(), 0x42))},
-                toDimensions(1), std::move(storeChecks)});
+        registerTest(TestData{"vload_alias_private_register_" + typeName + "_to_" + accessType.first, flags,
+            &LOAD_PRIVATE_REGISTER_ALIAS, "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first, "test",
+            {toBufferParameter(std::vector<T>{data}), toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42))},
+            toDimensions(1), std::move(loadChecks)});
 
-        registerTest(TestData{"vstore_alias_private_register_strided_" + accessType.first + "_to_" + typeName,
-            DataFilter::MEMORY_ACCESS, &STORE_PRIVATE_REGISTER_ALIAS_STRIDED,
-            "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first, "test",
+        registerTest(TestData{"vstore_alias_private_register_" + accessType.first + "_to_" + typeName, flags,
+            &STORE_PRIVATE_REGISTER_ALIAS, "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first, "test",
+            {toBufferParameter(std::vector<T>{data}), toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42)),
+                toBufferParameter(std::vector<T>(data.size(), 0x42))},
+            toDimensions(1), std::move(storeChecks)});
+
+        // TODO fails for most 3-element vectors
+        registerTest(TestData{"vstore_alias_private_register_strided_" + accessType.first + "_to_" + typeName, flags,
+            &STORE_PRIVATE_REGISTER_ALIAS_STRIDED, "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first, "test",
             {toBufferParameter(std::vector<T>{data}), toBufferParameter(std::vector<T>(data.size(), 0x42)),
                 toBufferParameter(std::vector<T>(data.size(), 0x42)),
                 toBufferParameter(std::vector<T>(data.size(), 0x42)),
@@ -587,7 +589,7 @@ void test_data::registerMemoryTests()
         {toBufferParameter(std::vector<int64_t>(16)), toBufferParameter(toRange<int64_t>(-6, 10))}, toDimensions(1),
         {checkParameterEquals(0, toStorageTestResult(toRange<int64_t>(-6, 10)))}});
 
-    // TODO result mismatch on actual hardware
+    // TODO result mismatch on actual hardware, all other values are wrong too
     // Got 0x0000'0011'0000'000F instead of 0xF for first element, also is off by +17 for remainder elements
     // (independent of initial values of buffers)
     // TODO code generated on RPi and host is mostly identical -> buffer/parameter or code + emulator error

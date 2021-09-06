@@ -1301,7 +1301,7 @@ Value BitcodeReader::precalculateConstantExpression(
         expr->getOpcode() == llvm::Instruction::CastOps::ZExt)
     {
         // int <-> pointer cast is a zext (+ type conversion)
-        const Value src = toConstant(module, expr->getOperand(0), method, instructions);
+        Value src = toConstant(module, expr->getOperand(0), method, instructions);
         const DataType destType = toDataType(module, expr->getType());
         // if the bit-widths of the source and destination are the the same width, simply return the source
         // otherwise, simply truncate or zero-extend
@@ -1319,6 +1319,15 @@ Value BitcodeReader::precalculateConstantExpression(
                 dest.type = TYPE_INT32.toVectorType(dest.type.getVectorWidth());
                 FALL_THROUGH
             case 32:
+                if(expr->getOpcode() == llvm::Instruction::CastOps::PtrToInt && method && instructions)
+                {
+                    // if we have a current method, insert a bit-cast unconditionally  for every pointer-to-int
+                    // conversion. This is e.g. required to store the address to a local buffer in a memory region
+                    // (since we can't store the local buffer directly, only registers, so we need to copy the address
+                    // to a pointer value)
+                    dest = method->addNewLocal(destType);
+                    instructions->emplace_back(std::make_unique<Copy>(Value(dest), std::move(src), false, false, true));
+                }
                 return dest;
             case 16:
                 return PACK_INT_TO_SHORT_TRUNCATE(dest, {}).value();
