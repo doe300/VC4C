@@ -288,7 +288,7 @@ static void removeSplatDecoration(IntermediateInstruction* inst, Optional<Instru
             throw CompilationError(CompilationStep::OPTIMIZER,
                 "Cannot remove splat decoration from TMU read without knowing its position");
         auto reader = tmuCache->getCacheReader();
-        auto readerIt = it->getBasicBlock()->findWalkerForInstruction(reader, it->getBasicBlock()->walkEnd());
+        auto readerIt = it->getBasicBlock()->findWalkerForInstruction(reader);
         if(!readerIt || readerIt->isEndOfBlock())
             throw CompilationError(CompilationStep::OPTIMIZER,
                 "Failed to find TMU value read for no longer identical TMU address write", inst->to_string());
@@ -511,8 +511,7 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
  */
 static Optional<InstructionWalker> findWalker(const CFGNode* node, const intermediate::IntermediateInstruction* inst)
 {
-    return node != nullptr ? node->key->findWalkerForInstruction(inst, node->key->walkEnd()) :
-                             Optional<InstructionWalker>{};
+    return node != nullptr ? node->key->findWalkerForInstruction(inst) : Optional<InstructionWalker>{};
 }
 
 static void fixInitialValueAndStep(Method& method, ControlFlowLoop& loop, InductionVariable& inductionVariable,
@@ -974,7 +973,7 @@ static std::size_t vectorize(ControlFlowLoop& loop, const Local* startLocal, Met
 
                 Optional<InstructionWalker> it;
                 if(auto succ = loop.findSuccessor())
-                    it = succ->key->findWalkerForInstruction(inst, succ->key->walkEnd());
+                    it = succ->key->findWalkerForInstruction(inst);
                 if(it)
                 {
                     // insert folding or argument, heed original vector width
@@ -1087,7 +1086,7 @@ static Optional<AccumulationInfo> determineAccumulation(const Local* loc, const 
             if(!loopIt && !user.first->hasConditionalExecution())
                 initialWrite = user.first;
             else if(!loopIt && user.first->hasDecoration(InstructionDecorations::PHI_NODE) && predecessor &&
-                predecessor->key->findWalkerForInstruction(user.first, predecessor->key->walkEnd()))
+                predecessor->key->findWalkerForInstruction(user.first))
                 // initial write where the conditionality of the phi-node could not be removed, e.g. for dynamical loop
                 // iteration bounds
                 initialWrite = user.first;

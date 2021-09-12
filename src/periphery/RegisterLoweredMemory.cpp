@@ -48,10 +48,10 @@ Value RegisterCacheEntry::precalculateOffset() const
     return byteOffset;
 }
 
-static InstructionWalker insertWriteLoweredRegisterInner(
-    Method& method, InstructionWalker it, const Value& src, const Value& addressOffset, const Value& loweredRegister)
+static InstructionWalker insertWriteLoweredRegisterInner(Method& method, InstructionWalker it, const Value& src,
+    const Value& addressOffset, const Value& loweredRegister, DataType srcType)
 {
-    auto entry = std::make_shared<RegisterCacheEntry>(loweredRegister, addressOffset, src.type);
+    auto entry = std::make_shared<RegisterCacheEntry>(loweredRegister, addressOffset, srcType);
     it.emplace(std::make_unique<intermediate::CacheAccessInstruction>(MemoryOperation::WRITE, src, entry));
     it.nextInBlock();
     return it;
@@ -60,17 +60,15 @@ static InstructionWalker insertWriteLoweredRegisterInner(
 InstructionWalker periphery::insertWriteLoweredRegister(
     Method& method, InstructionWalker it, const Value& src, const Value& addressOffset, const Value& loweredRegister)
 {
-    if(auto loweredData = Local::getLocalData<MultiRegisterData>(loweredRegister.checkLocal()))
+    if(auto srcData = Local::getLocalData<MultiRegisterData>(src.checkLocal()))
     {
-        auto srcData = Local::getLocalData<MultiRegisterData>(src.checkLocal());
-        auto srcLow = srcData ? srcData->lower->createReference() : src;
-        it = insertWriteLoweredRegisterInner(method, it, srcLow, addressOffset, loweredData->lower->createReference());
-        if(srcData)
-            it = insertWriteLoweredRegisterInner(
-                method, it, srcData->upper->createReference(), addressOffset, loweredData->upper->createReference());
-        return it;
+        it = insertWriteLoweredRegisterInner(
+            method, it, srcData->lower->createReference(), addressOffset, loweredRegister, src.type);
+        auto highAddressOffset = assign(it, addressOffset.type) = addressOffset + 4_val;
+        return insertWriteLoweredRegisterInner(
+            method, it, srcData->upper->createReference(), highAddressOffset, loweredRegister, src.type);
     }
-    return insertWriteLoweredRegisterInner(method, it, src, addressOffset, loweredRegister);
+    return insertWriteLoweredRegisterInner(method, it, src, addressOffset, loweredRegister, src.type);
 }
 
 static InstructionWalker insertReadLoweredRegisterInner(Method& method, InstructionWalker it, const Value& dest,
@@ -85,20 +83,6 @@ static InstructionWalker insertReadLoweredRegisterInner(Method& method, Instruct
 InstructionWalker periphery::insertReadLoweredRegister(
     Method& method, InstructionWalker it, const Value& dest, const Value& addressOffset, const Value& loweredRegister)
 {
-    if(auto loweredData = Local::getLocalData<MultiRegisterData>(loweredRegister.checkLocal()))
-    {
-        // FIXME this is wrong for destination < 64-bit, the upper lowered register is barely referenced! Also the
-        // interleaving of values is not handled
-        auto destData = Local::getLocalData<MultiRegisterData>(dest.checkLocal());
-        auto destLow = destData ? destData->lower->createReference() : dest;
-        auto destType = destData ? TYPE_INT32.toVectorType(dest.type.getVectorWidth()) : dest.type;
-        it = insertReadLoweredRegisterInner(
-            method, it, destLow, addressOffset, loweredData->lower->createReference(), destType);
-        if(destData)
-            it = insertReadLoweredRegisterInner(method, it, destData->upper->createReference(), addressOffset,
-                loweredData->upper->createReference(), destType);
-        return it;
-    }
     if(auto destData = Local::getLocalData<MultiRegisterData>(dest.checkLocal()))
     {
         it = insertReadLoweredRegisterInner(
@@ -110,9 +94,10 @@ InstructionWalker periphery::insertReadLoweredRegister(
     return insertReadLoweredRegisterInner(method, it, dest, addressOffset, loweredRegister, dest.type);
 }
 
-static NODISCARD InstructionWalker insertByteToElementAndSubOffset(
-    InstructionWalker it, Value& outElementOffset, Value& outSubOffset, const RegisterCacheEntry& entry)
+static NODISCARD InstructionWalker insertByteToElementAndSubOffsetAndSelectedPart(InstructionWalker it,
+    Value& outElementOffset, Value& outSubOffset, Value& outSelectedPart, const RegisterCacheEntry& entry)
 {
+    outSelectedPart = entry.loweredRegister;
     unsigned elementTypeSize = 0;
     auto containerType = entry.loweredRegister.type;
     if(containerType.isSimpleType() || containerType.getArrayType())
@@ -127,6 +112,33 @@ static NODISCARD InstructionWalker insertByteToElementAndSubOffset(
     auto byteOffset = entry.precalculateOffset();
     outElementOffset = assign(it, TYPE_INT8, "%element_offset") = byteOffset / Literal(elementTypeSize);
     outSubOffset = assign(it, TYPE_INT8, "%sub_offset") = byteOffset % Literal(elementTypeSize);
+    if(auto multiParts = Local::getLocalData<MultiRegisterData>(entry.loweredRegister.checkLocal()))
+    {
+        /*
+         * Byte offset in 64-bit 2 register) container:
+         *
+         * - byte-offset 0 -> lower part, element 0, sub-element 0
+         * - byte-offset 4 -> upper part, element 0, sub-element 0
+         * - byte-offset 7 -> upper part, element 0, sub-element 3
+         * - byte-offset 9 -> lower part, element 1, sub-element 1
+         * - byte offset 13 -> upper part, element 2, sub-element 1
+         *
+         * => byte-offset / 4 % 2 ? lower part : upper part
+         * => byte-offset / 8 -> element
+         * => byte-offset % 4 -> sub-element offset
+         */
+        if(auto constantOffset = byteOffset.getLiteralValue())
+        {
+            outSelectedPart =
+                ((constantOffset->unsignedInt() / 4) % 2 ? multiParts->upper : multiParts->lower)->createReference();
+            outElementOffset = Value(Literal(constantOffset->unsignedInt() / 8), TYPE_INT8);
+            outSubOffset = Value(Literal(constantOffset->unsignedInt() % 4), TYPE_INT8);
+        }
+        else
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "General calculation of multi-register container access parts is not yet implemented");
+        // TODO the part returned here is only for the element (part of the first) access!
+    }
     return it;
 }
 
@@ -157,13 +169,14 @@ static NODISCARD InstructionWalker lowerRegisterRead(Method& method, Instruction
 {
     auto elementOffset = UNDEFINED_VALUE;
     auto subOffset = UNDEFINED_VALUE;
-    it = insertByteToElementAndSubOffset(it, elementOffset, subOffset, entry);
+    auto selectedPart = UNDEFINED_VALUE;
+    it = insertByteToElementAndSubOffsetAndSelectedPart(it, elementOffset, subOffset, selectedPart, entry);
 
     const auto& dest = readInstruction.getData();
     auto containerType = entry.loweredRegister.type;
     if(entry.valueType.getScalarBitCount() == containerType.getScalarBitCount())
         // simple vector extraction
-        it = insertVectorExtraction(it, method, entry.loweredRegister, elementOffset, dest);
+        it = insertVectorExtraction(it, method, selectedPart, elementOffset, dest);
     else if(entry.valueType.getScalarBitCount() < containerType.getScalarBitCount() && subOffset == 0_val)
     {
         // no in-element sub-offset, so insert simple vector extraction and bit-cast
@@ -240,7 +253,8 @@ static NODISCARD InstructionWalker lowerRegisterWrite(Method& method, Instructio
 {
     auto elementOffset = UNDEFINED_VALUE;
     auto subOffset = UNDEFINED_VALUE;
-    it = insertByteToElementAndSubOffset(it, elementOffset, subOffset, entry);
+    auto selectedPart = UNDEFINED_VALUE;
+    it = insertByteToElementAndSubOffsetAndSelectedPart(it, elementOffset, subOffset, selectedPart, entry);
 
     auto src = writeInstruction.getData();
     // restore original type, to e.g. for insertion of zero not insert "i8 0", but "i32 0"
@@ -249,7 +263,11 @@ static NODISCARD InstructionWalker lowerRegisterWrite(Method& method, Instructio
     auto containerType = entry.loweredRegister.type;
     if(entry.valueType.getScalarBitCount() == containerType.getScalarBitCount())
         // simple vector insertion
-        it = insertVectorInsertion(it, method, entry.loweredRegister, elementOffset, src);
+        it = insertVectorInsertion(it, method, selectedPart, elementOffset, src);
+    else if(entry.valueType.isScalarType() && entry.valueType.getScalarBitCount() == 32 &&
+        containerType.getScalarBitCount() > 32)
+        // simple insertion of a whole single lower/upper element
+        it = insertVectorInsertion(it, method, selectedPart, elementOffset, src);
     else if(entry.valueType.getScalarBitCount() < containerType.getScalarBitCount() && subOffset == 0_val)
     {
         // no in-element sub-offset, so insert bit-cast and simple vector insertion
@@ -333,8 +351,16 @@ static NODISCARD InstructionWalker lowerRegisterWrite(Method& method, Instructio
             ((entry.valueType.getLogicalWidth()) % containerType.getElementType().getLogicalWidth()) * 8u;
         maxPossibleBits = maxPossibleBits == 0 ? 32u : maxPossibleBits;
         auto tmpOffset = assign(it, TYPE_INT8) = shiftOffset + Value(Literal(maxPossibleBits), TYPE_INT8);
+        // if the offset becomes negative (e.g. for writing char3 at 3 byte offset into an int-vector, giving 32 - 48 =
+        // -16), the handling of SHR (i.e. just taking the lower 5 bits, giving -16 ^ 31 = 16) still gives the correct
         tmpOffset = assign(it, TYPE_INT8) =
             (Value(Literal(containerType.getScalarBitCount()), TYPE_INT8) - tmpOffset, SetFlag::SET_FLAGS);
+        // if the byte-offset + the number of bytes written exceeds the container type-size, we need to adapt the last
+        // element mask to not fully omit the last element. E.g.
+        // - writing char3 into int-vector at byte-offset 2 gives a mask of 0xFFFFFFFF >> -8 = 0xFF
+        // - writing char3 into int-vector at byte-offset 3 gives a mask of 0xFFFFFFFF >> -16 = 0xFFFF
+        specialMask = assign(it, TYPE_INT32) = specialMask;
+        assign(it, specialMask) = (Value(Literal(containerType.getScalarWidthMask()), TYPE_INT32), COND_NEGATIVE_SET);
         auto lastElementMask = assign(it, TYPE_INT32) = as_unsigned{specialMask} >> tmpOffset;
         assign(it, lastElementMask) = (INT_ZERO, COND_ZERO_SET);
         auto lastElementCond = assignNop(it) =

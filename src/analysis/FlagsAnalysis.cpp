@@ -34,7 +34,7 @@ static Optional<VectorFlags> getConditionalFlags(const Local* loc, InstructionWa
     FastAccessList<ConditionCode> sourceConditions;
     for(auto writer : writers)
     {
-        if(auto writerIt = it.getBasicBlock()->findWalkerForInstruction(writer, it))
+        if(auto writerIt = it.getBasicBlock()->findWalkerForInstruction(writer, it.getBasicBlock()->walk(), it))
         {
             if(writer->hasConditionalExecution())
                 sourceConditions.emplace_back(
@@ -68,7 +68,9 @@ static Optional<VectorFlags> getConditionalFlags(const Local* loc, InstructionWa
 static InstructionWalker getInstructionWalker(const intermediate::IntermediateInstruction* inst, InstructionWalker it)
 {
     if(it.getBasicBlock())
-        return it.getBasicBlock()->findWalkerForInstruction(inst, it).value_or(InstructionWalker{});
+        return it.getBasicBlock()
+            ->findWalkerForInstruction(inst, it.getBasicBlock()->walk(), it)
+            .value_or(InstructionWalker{});
     return it;
 }
 
@@ -556,7 +558,7 @@ static ComparisonInfo mergeComparisons(ComparisonInfo&& info,
         auto pair = findTrueSetter(info.leftOperand.local());
         if(pair.first && pair.second != COND_NEVER)
         {
-            if(auto tmpIt = block.findWalkerForInstruction(pair.first, block.walkEnd()))
+            if(auto tmpIt = block.findWalkerForInstruction(pair.first))
                 previousFlagSetter = block.findLastSettingOfFlags(*tmpIt);
             if(previousFlagSetter)
                 trueCond = pair.second;
@@ -567,7 +569,7 @@ static ComparisonInfo mergeComparisons(ComparisonInfo&& info,
         auto pair = findTrueSetter(info.rightOperand.local());
         if(pair.first && pair.second != COND_NEVER)
         {
-            if(auto tmpIt = block.findWalkerForInstruction(pair.first, block.walkEnd()))
+            if(auto tmpIt = block.findWalkerForInstruction(pair.first))
                 previousFlagSetter = block.findLastSettingOfFlags(*tmpIt);
             if(previousFlagSetter)
                 trueCond = pair.second;
@@ -625,8 +627,7 @@ Optional<analysis::ComparisonInfo> analysis::getComparison(
     // TODO add floating point and long comparisons??
 
     Optional<InstructionWalker> matchingFlagSetterIt;
-    if(auto it = searchStart.getBasicBlock()->findWalkerForInstruction(
-           conditionalInstruction, searchStart.getBasicBlock()->walkEnd()))
+    if(auto it = searchStart.getBasicBlock()->findWalkerForInstruction(conditionalInstruction))
         matchingFlagSetterIt = searchStart.getBasicBlock()->findLastSettingOfFlags(*it);
 
     if(!matchingFlagSetterIt)

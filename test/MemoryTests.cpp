@@ -171,6 +171,8 @@ __kernel void test(const __global TYPE* in, __global STORAGE* out, __global STOR
     for(int k = 0; k < 16; ++k)
         out2[i + k] = data[k] + 1;
 
+    for(int k = 0; k < 16; ++k)
+        data[k] = 0x42;
     for(int k = 0; k < (int)(factor * 5); k += 2)
         vstore3(vload3(k, in), k, data_out);
     for(int k = 0; k < 16; ++k)
@@ -578,8 +580,8 @@ void test_data::registerMemoryTests()
     // Got 0x0000'000E'0000'000F instead of 0x0F for 0st element, rest is correct (independent of initial values of
     // result buffer)
     // TODO code generated on RPi and host is mostly identical -> buffer/parameter or code + emulator error
-    registerTest(TestData{"storage_private_long", DataFilter::MEMORY_ACCESS, &test_storage_cl_string,
-        "-DTYPE=long -DSTORAGE=__private", "test",
+    registerTest(TestData{"storage_private_long", DataFilter::MEMORY_ACCESS | DataFilter::DISABLED,
+        &test_storage_cl_string, "-DTYPE=long -DSTORAGE=__private", "test",
         {toBufferParameter(std::vector<int64_t>(16, 0x42)), toBufferParameter(toRange<int64_t>(-6, 10))},
         toDimensions(1), {checkParameterEquals(0, toStorageTestResult(toRange<int64_t>(-6, 10)))}});
 

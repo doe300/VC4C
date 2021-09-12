@@ -448,7 +448,7 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping, I
         if(isMemoryOnlyRead(local))
         {
             // global buffer
-            if(getConstantElementValue(memInstr->getSource()))
+            if(getConstantElementValue(memInstr->getSource()) && memInstr->getNumEntries().hasLiteral(1_lit))
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Constant element of constant buffer '" << local->to_string()
@@ -1140,9 +1140,9 @@ static MemoryInfo canLowerToRegisterReadOnly(Method& method, const Local* baseAd
     // c) the global is a constant where all accesses are direct accesses (i.e. not via a conditional address write) and
     // have constant indices and therefore all accessed elements can be determined at compile time
     if(std::all_of(access.accessInstructions.begin(), access.accessInstructions.end(), [&](const auto& entry) -> bool {
-           return baseAddr == entry.second &&
-               getConstantElementValue(entry.first.template get<const intermediate::MemoryInstruction>()->getSource())
-                   .has_value();
+           auto memInstr = entry.first.template get<const intermediate::MemoryInstruction>();
+           return memInstr && baseAddr == entry.second && memInstr->getNumEntries().hasLiteral(1_lit) &&
+               getConstantElementValue(memInstr->getSource()).has_value();
        }))
         return MemoryInfo{baseAddr, MemoryAccessType::QPU_REGISTER_READONLY};
 

@@ -140,7 +140,9 @@ namespace vc4c
          * Returns the InstructionWalker for the given instruction, if any
          */
         Optional<InstructionWalker> findWalkerForInstruction(
-            const intermediate::IntermediateInstruction* instr, InstructionWalker start) const;
+            const intermediate::IntermediateInstruction* instr, InstructionWalker start, InstructionWalker end) const;
+        Optional<InstructionWalker> findWalkerForInstruction(const intermediate::IntermediateInstruction* instr);
+        Optional<ConstInstructionWalker> findWalkerForInstruction(const intermediate::IntermediateInstruction* instr) const;
         /*
          * Returns the InstructionWalker for the last (as in prior to the given instruction) instruction setting flags
          * within this basic block

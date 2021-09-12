@@ -646,12 +646,13 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 !(*move->getOutput()->local()->getUsers(LocalUse::Type::READER).begin())->readsLiteral();
 
             auto sourceWriter = (move->getSource().getSingleWriter() != nullptr) ?
-                it.getBasicBlock()->findWalkerForInstruction(move->getSource().getSingleWriter(), it) :
+                it.getBasicBlock()->findWalkerForInstruction(
+                    move->getSource().getSingleWriter(), it.getBasicBlock()->walk(), it) :
                 Optional<InstructionWalker>{};
             auto destinationReader =
                 (move->checkOutputLocal() && move->getOutput()->local()->countUsers(LocalUse::Type::READER) == 1) ?
                 it.getBasicBlock()->findWalkerForInstruction(
-                    *move->getOutput()->local()->getUsers(LocalUse::Type::READER).begin(),
+                    *move->getOutput()->local()->getUsers(LocalUse::Type::READER).begin(), it,
                     it.getBasicBlock()->walkEnd()) :
                 Optional<InstructionWalker>{};
             if(move->getSource() == move->getOutput().value() &&

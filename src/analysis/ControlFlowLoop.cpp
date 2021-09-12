@@ -287,7 +287,7 @@ Optional<InstructionWalker> ControlFlowLoop::findInLoop(const intermediate::Inte
 {
     for(const CFGNode* node : *this)
     {
-        if(auto it = node->key->findWalkerForInstruction(inst, node->key->walkEnd()))
+        if(auto it = node->key->findWalkerForInstruction(inst))
             return it;
     }
     return {};

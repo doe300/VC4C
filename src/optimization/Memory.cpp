@@ -752,7 +752,7 @@ NODISCARD static InstructionWalker findGroupOfTMUAccess(InstructionWalker it, TM
             {
                 auto cacheReadInst = tmuCacheEntry->getCacheReader();
                 auto cacheReadIt = cacheReadInst ?
-                    it.getBasicBlock()->findWalkerForInstruction(cacheReadInst, it.getBasicBlock()->walkEnd()) :
+                    it.getBasicBlock()->findWalkerForInstruction(cacheReadInst, it, it.getBasicBlock()->walkEnd()) :
                     Optional<InstructionWalker>{};
                 if(!cacheReadIt)
                     // this load does not have exactly 1 cache read (or we could not find it), so skip
@@ -1530,8 +1530,8 @@ NODISCARD static bool prefetchTMULoadsInLoop(analysis::ControlFlowLoop& loop, Me
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Prefetching TMU RAM load in loop '" << loop.to_string(false) << "': " << load.first->to_string()
                 << logging::endl);
-        auto initialPrefetchIt = preheader->key->findWalkerForInstruction(
-            load.second.inductionVariable.initialAssignment, preheader->key->walkEnd());
+        auto initialPrefetchIt =
+            preheader->key->findWalkerForInstruction(load.second.inductionVariable.initialAssignment);
         auto successivePrefetchIt = repeatEdge->data.getPredecessor(tail->key);
         if(!initialPrefetchIt)
             continue;

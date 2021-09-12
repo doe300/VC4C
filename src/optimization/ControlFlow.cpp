@@ -1032,7 +1032,7 @@ NODISCARD static bool moveGroupIdInitializers(Method& method, BasicBlock& defaul
         if(auto writer = loc->getSingleWriter())
         {
             groupIdsOnlyRead = false;
-            if(auto it = defaultBlock.findWalkerForInstruction(writer, defaultBlock.walkEnd()))
+            if(auto it = defaultBlock.findWalkerForInstruction(writer))
                 it->erase();
         }
         assign(insertIt, loc->createReference()) = (INT_ZERO, InstructionDecorations::IDENTICAL_ELEMENTS,

@@ -256,18 +256,49 @@ bool BasicBlock::fallsThroughToNextBlock(bool useCFGIfAvailable) const
 }
 
 Optional<InstructionWalker> BasicBlock::findWalkerForInstruction(
-    const intermediate::IntermediateInstruction* instr, InstructionWalker start) const
+    const intermediate::IntermediateInstruction* instr, InstructionWalker start, InstructionWalker end) const
 {
-    if(start.isEndOfBlock() && !instructions.empty())
-        start.previousInBlock();
+    if(start.isEndOfBlock() || instructions.empty())
+        return {};
 
-    while(!start.isStartOfBlock())
+    while(!start.isEndOfBlock() && start != end)
     {
         if(start.get() == instr)
         {
             return start;
         }
-        start.previousInBlock();
+        start.nextInBlock();
+    }
+    return {};
+}
+
+Optional<InstructionWalker> BasicBlock::findWalkerForInstruction(const intermediate::IntermediateInstruction* instr)
+{
+    if(instructions.empty())
+        return {};
+
+    for(auto it = begin(); it != end(); ++it)
+    {
+        if(it->get() == instr)
+        {
+            return InstructionWalker(this, it);
+        }
+    }
+    return {};
+}
+
+Optional<ConstInstructionWalker> BasicBlock::findWalkerForInstruction(
+    const intermediate::IntermediateInstruction* instr) const
+{
+    if(instructions.empty())
+        return {};
+
+    for(auto it = begin(); it != end(); ++it)
+    {
+        if(it->get() == instr)
+        {
+            return ConstInstructionWalker(this, it);
+        }
     }
     return {};
 }

@@ -178,7 +178,8 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
                     throw CompilationError(CompilationStep::NORMALIZER,
                         "Failed to find code-address writer for dynamic branch to target '" + label->to_string() + ":",
                         branch->to_string());
-                auto writerIt = blockIt.getBasicBlock()->findWalkerForInstruction(associatedWriter, blockIt);
+                auto writerIt = blockIt.getBasicBlock()->findWalkerForInstruction(
+                    associatedWriter, blockIt.getBasicBlock()->walk(), blockIt);
                 if(!writerIt)
                     throw CompilationError(CompilationStep::NORMALIZER,
                         "Failed to find instruction walker for code-address write", associatedWriter->to_string());

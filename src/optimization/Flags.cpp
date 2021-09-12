@@ -345,8 +345,9 @@ static bool checkAllInputElementsAreSame(const Value& input, InstructionWalker i
     if(!allElementsSame && stepsRemaining > 0 && input.checkLocal())
     {
         allElementsSame = input.local()->allUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) -> bool {
-            return checkAllResultElementsAreSame(
-                *writer, it.getBasicBlock()->findWalkerForInstruction(writer, it), stepsRemaining - 1);
+            return checkAllResultElementsAreSame(*writer,
+                it.getBasicBlock()->findWalkerForInstruction(writer, it.getBasicBlock()->walk(), it),
+                stepsRemaining - 1);
         });
     }
     return allElementsSame;
@@ -494,7 +495,7 @@ static Optional<ConditionCode> getConditionalBooleanWrites(const Value& val, Ins
     std::vector<InstructionWalker> writerWalkers;
     for(auto writer : writers)
     {
-        if(auto writerIt = it.getBasicBlock()->findWalkerForInstruction(writer, it))
+        if(auto writerIt = it.getBasicBlock()->findWalkerForInstruction(writer, it.getBasicBlock()->walk(), it))
             writerWalkers.emplace_back(*writerIt);
         else
             return {};

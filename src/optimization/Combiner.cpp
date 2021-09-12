@@ -1060,6 +1060,47 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                 continue;
             }
 
+            auto readers = rot->checkOutputLocal() ? rot->checkOutputLocal()->getUsers(LocalUse::Type::READER) :
+                                                     FastSet<const LocalUser*>{};
+            if(rot->getOffset() != VECTOR_ROTATE_R5 && !rot->hasSideEffects() && !rot->hasConditionalExecution() &&
+                !rot->hasPackMode() && !rot->hasUnpackMode() && readers.size() == 1 &&
+                !(*readers.begin())->hasSideEffects() && !(*readers.begin())->hasConditionalExecution() &&
+                !(*readers.begin())->hasUnpackMode() && !(*readers.begin())->hasPackMode())
+            {
+                auto reader = *readers.begin();
+                auto otherOperand = reader->findOtherArgument(rot->getOutput().value());
+                auto readerIt = block.findWalkerForInstruction(reader, it, block.walkEnd());
+                if(readerIt && otherOperand && otherOperand->isAllSame())
+                {
+                    // The output of the rotation (with constant offset) is only read by an operation without
+                    // side-effects and where all vector-elements have the same value. Reorder the two instructions by
+                    // moving the vector rotation behind the consuming operation and switching the intermediate local.
+                    // This allows us to
+                    // a) combine patterns like: rotate -> operation -> rotate to: operation -> rotate
+                    // b) optimize further by merging identical operations on the elements of the original input
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Reordering vector rotation and its single consumer: " << rot->to_string() << " and "
+                            << reader->to_string() << logging::endl);
+
+                    auto initialIn = rot->getSource();
+                    auto tmpValue = rot->getOutput().value();
+                    if(tmpValue.type.isSimpleType())
+                        tmpValue.type = tmpValue.type.toVectorType(initialIn.type.getVectorWidth());
+                    else if(tmpValue.type.getPointerType())
+                        tmpValue.type = TYPE_INT32.toVectorType(initialIn.type.getVectorWidth());
+                    auto finalOut = reader->getOutput().value();
+                    (*readerIt)->replaceValue(tmpValue, initialIn, LocalUse::Type::READER);
+                    (*readerIt)->setOutput(tmpValue);
+                    rot->setSource(std::move(tmpValue));
+                    rot->setOutput(finalOut);
+
+                    auto tmp = it.release();
+                    readerIt->nextInBlock().emplace(std::move(tmp));
+                    it.erase();
+                    continue;
+                }
+            }
+
             if(rot->getOffset() == VECTOR_ROTATE_R5)
             {
                 // check whether we rotate by r5 which is set to a constant value (e.g. when rewritten by some
@@ -1176,7 +1217,8 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                             (rot->type == firstRot->type || rot->type == RotationType::ANY ||
                                 firstRot->type == RotationType::ANY))
                         {
-                            auto firstIt = it.getBasicBlock()->findWalkerForInstruction(firstRot, it);
+                            auto firstIt =
+                                it.getBasicBlock()->findWalkerForInstruction(firstRot, it.getBasicBlock()->walk(), it);
                             if(firstIt)
                             {
                                 hasChanged = true;
@@ -1335,7 +1377,7 @@ InstructionWalker optimizations::combineArithmeticOperations(
             // anything here
         }
     }
-    auto lastIt = it.getBasicBlock()->findWalkerForInstruction(singleWriter, it);
+    auto lastIt = it.getBasicBlock()->findWalkerForInstruction(singleWriter, it.getBasicBlock()->walk(), it);
     if(lastIt)
     {
         lastIt->reset(
