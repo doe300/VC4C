@@ -231,13 +231,15 @@ void precompilation::compileOpenCLWithPCH(OpenCLSource&& source, const std::stri
 static std::string cleanOptions(std::string userOptions)
 {
     const std::string includeFlag = "-I ";
-    auto pos = userOptions.find(includeFlag);
-    if(pos != std::string::npos)
+    std::string::size_type pos;
+    while((pos = userOptions.find(includeFlag)) != std::string::npos)
     {
         // remove the -I and the actual include path while heeding quotes
         auto endPos = pos + includeFlag.size();
-        if(userOptions[endPos] == '"' || userOptions[endPos] == '\'')
-            endPos = userOptions.find('"', endPos + 1);
+        if(userOptions[endPos] == '"')
+            endPos = userOptions.find('"', endPos + 1) + 1;
+        else if(userOptions[endPos] == '\'')
+            endPos = userOptions.find('\'', endPos + 1) + 1;
         else
             endPos = userOptions.find(' ', endPos + 1);
         userOptions.erase(pos, endPos - pos);
@@ -249,15 +251,24 @@ static std::string cleanOptions(std::string userOptions)
      * All macros used by clang's opencl-c.h have at least a single underscore, although the header defines
      * macros without one (e.g. NAN, INFINITY).
      */
-    pos = 0;
-    while((pos = userOptions.find("-D", pos)) != std::string::npos)
+    for(auto keyword : {"-D", "-U"})
     {
-        auto endPos = userOptions.find(' ', pos);
-        auto macro = userOptions.substr(pos, endPos - pos);
-        if(macro.find('_') == std::string::npos)
-            userOptions.erase(pos, macro.size() + 1);
-        else
-            pos = endPos;
+        pos = 0;
+        while((pos = userOptions.find(keyword, pos)) != std::string::npos)
+        {
+            auto endPos = userOptions.find(' ', pos);
+            auto macro = userOptions.substr(pos, endPos - pos);
+            if(macro == keyword)
+            {
+                // clang allows spaces between '-D'/'-U' and the actual macro, e.g. "-D TYPE=long", so heed them!
+                endPos = userOptions.find(' ', endPos + 1);
+                macro = userOptions.substr(pos, endPos - pos);
+            }
+            if(macro.find('_') == std::string::npos)
+                userOptions.erase(pos, macro.size() + 1);
+            else
+                pos = endPos;
+        }
     }
 
     // trim leading and trailing zeroes

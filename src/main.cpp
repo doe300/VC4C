@@ -194,7 +194,12 @@ int main(int argc, char** argv)
     for(int i = 1; i < argc; ++i)
     {
         // treat an argument, which first character isnt "-", as an input file
-        if(argv[i][0] != '-')
+        if(strcmp(argv[i - 1], "-D") == 0 || strcmp(argv[i - 1], "-U") == 0 || strcmp(argv[i - 1], "-I") == 0)
+        {
+            // ... with exception if they are preceded by an '-D', '-U' or '-I', then forward them to the front-end
+            options.append(argv[i]).append(" ");
+        }
+        else if(argv[i][0] != '-')
         {
             inputFiles.emplace_back(argv[i]);
         }
