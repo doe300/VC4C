@@ -15,6 +15,7 @@
 
 using namespace vc4c::spirv;
 
+#include <algorithm>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -246,8 +247,15 @@ void TestFrontends::testKernelAttributes()
     extractBinary(res.first, module, globals, instructions);
 
     TEST_ASSERT(!module.kernels.empty())
-    TEST_ASSERT_EQUALS(2, module.kernels[0].workGroupSize[0])
-    TEST_ASSERT_EQUALS(2, module.kernels[0].workGroupSize[1])
-    TEST_ASSERT_EQUALS(3, module.kernels[0].workGroupSize[2])
-    TEST_ASSERT_EQUALS(0, module.kernels[0].workItemMergeFactor)
+    const auto& kernel = module.kernels[0];
+    TEST_ASSERT_EQUALS(2, kernel.workGroupSize[0])
+    TEST_ASSERT_EQUALS(2, kernel.workGroupSize[1])
+    TEST_ASSERT_EQUALS(3, kernel.workGroupSize[2])
+    TEST_ASSERT_EQUALS(0, kernel.workItemMergeFactor)
+    TEST_ASSERT(std::any_of(kernel.metaData.begin(), kernel.metaData.end(),
+        [](const MetaData& meta) { return meta.to_string(false) == "vec_type_hint(int4)"; }))
+    TEST_ASSERT(std::any_of(kernel.metaData.begin(), kernel.metaData.end(),
+        [](const MetaData& meta) { return meta.to_string(false) == "work_group_size_hint(2, 2, 3)"; }))
+    TEST_ASSERT(std::any_of(kernel.metaData.begin(), kernel.metaData.end(),
+        [](const MetaData& meta) { return meta.to_string(false) == "reqd_work_group_size(2, 2, 3)"; }))
 }

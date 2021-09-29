@@ -134,8 +134,7 @@ BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : cont
             std::to_string(static_cast<unsigned>(sourceType)));
 }
 
-static void extractKernelMetadata(
-    Method& kernel, const llvm::Function& func, const llvm::Module& llvmModule, const llvm::LLVMContext& context)
+void BitcodeReader::extractKernelMetadata(Module& module, Method& kernel, const llvm::Function& func)
 {
     if(auto metadata = func.getMetadata("kernel_arg_addr_space"))
     {
@@ -239,14 +238,17 @@ static void extractKernelMetadata(
     if(auto metadata = func.getMetadata("reqd_work_group_size"))
     {
         // compile time work-group size, e.g. "!2 = !{i32 1, i32 1, i32 1}"
+        std::array<uint32_t, 3> sizes{};
         for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
         {
             const llvm::Metadata* operand = metadata->getOperand(i).get();
             if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
             {
                 const llvm::ConstantAsMetadata* constant = llvm::cast<const llvm::ConstantAsMetadata>(operand);
-                kernel.metaData.workGroupSizes.at(i) =
+                auto value =
                     static_cast<uint32_t>(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getZExtValue());
+                kernel.metaData.workGroupSizes.at(i) = value;
+                sizes.at(i) = static_cast<uint32_t>(value);
             }
             else
             {
@@ -255,24 +257,51 @@ static void extractKernelMetadata(
                     CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
             }
         }
+        kernel.metaData.entries.emplace_back();
+        kernel.metaData.entries.back().setValue<MetaData::Type::KERNEL_WORK_GROUP_SIZE>(sizes);
     }
     if(auto metadata = func.getMetadata("work_group_size_hint"))
     {
         // compile time work-group size hint, e.g. "!2 = !{i32 1, i32 1, i32 1}"
+        std::array<uint32_t, 3> sizes{};
         for(unsigned i = 0; i < metadata->getNumOperands(); ++i)
         {
             const llvm::Metadata* operand = metadata->getOperand(i).get();
             if(operand->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
             {
                 const llvm::ConstantAsMetadata* constant = llvm::cast<const llvm::ConstantAsMetadata>(operand);
-                kernel.metaData.workGroupSizeHints.at(i) =
+                auto value =
                     static_cast<uint32_t>(llvm::cast<const llvm::ConstantInt>(constant->getValue())->getZExtValue());
+                kernel.metaData.workGroupSizeHints.at(i) = value;
+                sizes.at(i) = static_cast<uint32_t>(value);
             }
             else
             {
                 dumpLLVM(operand);
                 throw CompilationError(
                     CompilationStep::PARSER, "Unhandled meta-data kind", std::to_string(operand->getMetadataID()));
+            }
+        }
+        kernel.metaData.entries.emplace_back();
+        kernel.metaData.entries.back().setValue<MetaData::Type::KERNEL_WORK_GROUP_SIZE_HINT>(sizes);
+    }
+    if(auto metadata = func.getMetadata("vec_type_hint"))
+    {
+        // auto vectorization type hint, e.g. "!4 = !{<4 x i32> undef, i32 1}"
+        // where the first type is the vector type and the second flag determines the signedness
+        if(metadata->getNumOperands() == 2)
+        {
+            const auto* type = metadata->getOperand(0).get();
+            const auto* signedness = metadata->getOperand(1).get();
+            if(type->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind &&
+                signedness->getMetadataID() == llvm::Metadata::ConstantAsMetadataKind)
+            {
+                auto* typeConstant = llvm::cast<const llvm::ConstantAsMetadata>(type);
+                auto* signednessConstant = llvm::cast<const llvm::ConstantAsMetadata>(signedness);
+                bool isSigned = !signednessConstant->getValue()->isZeroValue();
+                auto typeName = toDataType(module, typeConstant->getType()).getTypeName(isSigned, !isSigned);
+                kernel.metaData.entries.emplace_back();
+                kernel.metaData.entries.back().setValue<MetaData::Type::KERNEL_VECTOR_TYPE_HINT>(typeName);
             }
         }
     }
@@ -293,7 +322,7 @@ void BitcodeReader::parse(Module& module)
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Found SPIR kernel-function: " << static_cast<std::string>(func.getName()) << logging::endl);
             Method& kernelFunc = parseFunction(module, func);
-            extractKernelMetadata(kernelFunc, func, *llvmModule, context);
+            extractKernelMetadata(module, kernelFunc, func);
             kernelFunc.flags = add_flag(kernelFunc.flags, MethodFlags::KERNEL);
         }
     }

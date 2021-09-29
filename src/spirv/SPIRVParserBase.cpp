@@ -116,11 +116,44 @@ void SPIRVParserBase::parse(Module& module)
             switch(meta.first)
             {
             case MetaDataType::WORK_GROUP_SIZES:
+            {
                 method.metaData.workGroupSizes = meta.second;
+                MetaData entry{};
+                entry.setValue<MetaData::Type::KERNEL_WORK_GROUP_SIZE>(meta.second);
+                method.metaData.entries.push_back(std::move(entry));
                 break;
+            }
             case MetaDataType::WORK_GROUP_SIZES_HINT:
+            {
                 method.metaData.workGroupSizeHints = meta.second;
+                MetaData entry{};
+                entry.setValue<MetaData::Type::KERNEL_WORK_GROUP_SIZE_HINT>(meta.second);
+                method.metaData.entries.push_back(std::move(entry));
                 break;
+            }
+            case MetaDataType::VECTOR_TYPE_HINT:
+            {
+                method.metaData.workGroupSizeHints = meta.second;
+                MetaData entry{};
+                auto numElements = meta.second[0];
+                auto typeId = meta.second[1];
+                /*
+                 * These are the legal data type values:
+                 * 0 represents an 8-bit integer value.
+                 * 1 represents a 16-bit integer value.
+                 * 2 represents a 32-bit integer value.
+                 * 3 represents a 64-bit integer value.
+                 * 4 represents a 16-bit float value.
+                 * 5 represents a 32-bit float value.
+                 * 6 represents a 64-bit float value.
+                 */
+                // TODO signedness?
+                const std::vector<std::string> types = {"char", "short", "int", "long", "half", "float", "double"};
+                entry.setValue<MetaData::Type::KERNEL_VECTOR_TYPE_HINT>(
+                    types.at(typeId) + (numElements > 1 ? std::to_string(numElements) : ""));
+                method.metaData.entries.push_back(std::move(entry));
+                break;
+            }
             default:
                 throw CompilationError(CompilationStep::PARSER, "Unhandled meta-data type",
                     std::to_string(static_cast<uint32_t>(meta.first)));
@@ -513,10 +546,8 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
              * number of components of the vector. The 16 low-order bits of Vector Type operand specify the data type of
              * the vector."
              */
-            CPPLOG_LAZY(logging::Level::INFO,
-                log << "Vector type hint is currently not supported: "
-                    << static_cast<uint16_t>(parsed_instruction.getWord(3) >> 16) << " x "
-                    << toScalarType(static_cast<uint16_t>(parsed_instruction.getWord(3) & 0xFFFF)) << logging::endl);
+            metadataMappings[parsed_instruction.getWord(1)][MetaDataType::VECTOR_TYPE_HINT] = {
+                parsed_instruction.getWord(3) >> 16, parsed_instruction.getWord(3) & 0xFFFF, 0};
         else if(executionMode != spv::ExecutionMode::ContractionOff)
             throw CompilationError(CompilationStep::PARSER, "Invalid execution mode");
         return ParseResultCode::SUCCESS;

@@ -71,6 +71,8 @@ namespace vc4c
                 Module& module, const llvm::ConstantExpr* expr, Method* method, LLVMInstructionList* instructions);
 
             CompoundConstant toConstantGlobal(Module& module, const llvm::Value* val);
+
+            void extractKernelMetadata(Module& module, Method& kernel, const llvm::Function& func);
         };
 #endif
 

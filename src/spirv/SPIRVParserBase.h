@@ -68,7 +68,8 @@ namespace vc4c
             enum class MetaDataType : unsigned char
             {
                 WORK_GROUP_SIZES,
-                WORK_GROUP_SIZES_HINT
+                WORK_GROUP_SIZES_HINT,
+                VECTOR_TYPE_HINT
             };
 
             // whether the input is SPIR-V text representation

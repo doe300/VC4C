@@ -210,6 +210,7 @@ KernelHeader qpu_asm::createKernelHeader(
     kernel.workGroupSize.fill(0);
     kernel.workItemMergeFactor = method.metaData.mergedWorkItemsFactor;
     kernel.uniformsUsed = method.metaData.uniformsUsed;
+    kernel.metaData = method.metaData.entries;
     {
         for(std::size_t i = 0; i < method.metaData.workGroupSizes.size(); ++i)
             kernel.workGroupSize[i] = static_cast<uint16_t>(method.metaData.workGroupSizes[i]);

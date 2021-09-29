@@ -12,7 +12,7 @@
 
 #include <algorithm>
 #include <array>
-#include <bitset>
+#include <functional>
 #include <numeric>
 
 namespace vc4c
@@ -38,6 +38,10 @@ namespace vc4c
          * The factor with which the work-items are merged, e.g. 16 if 16 work-items are merged into one QPU execution.
          */
         uint8_t mergedWorkItemsFactor;
+        /**
+         * The meta data strings to be stored in the module and used by the run-time for CL_KERNEL_ATTRIBUTES queries.
+         */
+        std::vector<MetaData> entries;
 
         KernelMetaData() : uniformsUsed(), workGroupSizes(), workGroupSizeHints(), mergedWorkItemsFactor(0)
         {
