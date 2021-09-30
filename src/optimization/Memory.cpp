@@ -1386,7 +1386,7 @@ struct TMULoadOffset
 };
 
 static FastMap<InstructionWalker, TMULoadOffset> findTMULoadsInLoop(
-    analysis::ControlFlowLoop& loop, Method& method, const analysis::DataDependencyGraph& dependencyGraph)
+    const analysis::ControlFlowLoop& loop, Method& method, const analysis::DataDependencyGraph& dependencyGraph)
 {
     std::array<FastMap<InstructionWalker, TMULoadOffset>, 2> relevantTMULoads{};
     std::array<unsigned, 2> numTMULoads{};
@@ -1510,7 +1510,7 @@ static Value calculateAddress(InstructionWalker& it, const analysis::InductionVa
     return assign(it, addressType, "%prefetch_tmu_address") = (baseLocal->createReference() + tmpOffset);
 }
 
-NODISCARD static bool prefetchTMULoadsInLoop(analysis::ControlFlowLoop& loop, Method& method,
+NODISCARD static bool prefetchTMULoadsInLoop(const analysis::ControlFlowLoop& loop, Method& method,
     const analysis::DataDependencyGraph& dependencyGraph, const analysis::DominatorTree& dominators)
 {
     auto preheader = loop.findPreheader(dominators);
@@ -1663,8 +1663,8 @@ bool optimizations::prefetchTMULoads(const Module& module, Method& method, const
     // 5. insert dropping of pre-loaded value after loop
 
     auto& cfg = method.getCFG();
-    auto dominatorTree = analysis::DominatorTree::createDominatorTree(cfg);
-    auto loops = cfg.findLoops(false, true, dominatorTree.get());
+    auto dominatorTree = cfg.getDominatorTree();
+    auto loops = cfg.findLoops(false, true);
     auto dependencyGraph = analysis::DataDependencyGraph::createDependencyGraph(method);
 
     bool movedLoads = false;

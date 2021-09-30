@@ -105,8 +105,12 @@ namespace vc4c
              * @param recursively if set to false, only the inner most loops will be returned, otherwise all loops will
              * be returned
              */
-            FastAccessList<ControlFlowLoop> findLoops(bool recursively, bool skipWorkGroupLoops = true,
-                const analysis::DominatorTree* dominatorTree = nullptr);
+            FastAccessList<ControlFlowLoop> findLoops(bool recursively, bool skipWorkGroupLoops = true);
+
+            /*
+             * Gets and creates if necessary the current dominator tree for this CFG
+             */
+            std::shared_ptr<DominatorTree> getDominatorTree();
 
             /*
              * Dump this graph as dot file
@@ -141,6 +145,12 @@ namespace vc4c
 
         private:
             explicit ControlFlowGraph(std::size_t numBlocks) : Graph(numBlocks) {}
+
+            // caches for associated analysis structures
+            std::unique_ptr<FastAccessList<ControlFlowLoop>> loops;
+            std::shared_ptr<DominatorTree> dominatorTree;
+
+            void findAllLoops();
 
             friend class Method;
         };

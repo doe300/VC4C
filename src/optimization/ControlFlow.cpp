@@ -286,8 +286,8 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
         return false;
 
     // 2. Find loops
-    auto dominatorTree = analysis::DominatorTree::createDominatorTree(cfg);
-    auto loops = cfg.findLoops(true, true, dominatorTree.get());
+    auto dominatorTree = cfg.getDominatorTree();
+    auto loops = cfg.findLoops(true, true);
 
     // 3. Generate inclusion relation of loops as trees
     auto inclusionTree = createLoopInclusionTree(loops);

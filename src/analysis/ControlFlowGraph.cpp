@@ -173,19 +173,49 @@ static bool walkThroughDominatorSet(const CFGNode* currentNode, const FastSet<co
     return anySuccessorInLoop;
 }
 
-FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(
-    bool recursively, bool skipWorkGroupLoops, const analysis::DominatorTree* dominatorTree)
+FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(bool recursively, bool skipWorkGroupLoops)
 {
-    PROFILE_SCOPE(findLoops);
-    FastAccessList<ControlFlowLoop> loops;
+    if(!loops)
+        findAllLoops();
 
-    auto dominators = dominatorTree;
-    std::unique_ptr<analysis::DominatorTree> tmpTree;
-    if(!dominatorTree)
+    FastAccessList<ControlFlowLoop> result;
+    result.reserve(loops->size());
+    for(auto& loop : *loops)
     {
-        tmpTree = analysis::DominatorTree::createDominatorTree(*this);
-        dominators = tmpTree.get();
+        if(skipWorkGroupLoops && loop.isWorkGroupLoop())
+            continue;
+
+        // we copy on purpose to allow modifying of the CFG while having the list of previous loops
+        result.emplace_back(loop);
     }
+
+    if(!recursively)
+    {
+        // remove all outer loops
+        for(auto it = result.begin(); it != result.end();)
+        {
+            bool includesLoop = false;
+            for(auto& loop : *loops)
+            {
+                if(&loop != &*it && it->includes(loop))
+                {
+                    includesLoop = true;
+                    break;
+                }
+            }
+            if(includesLoop)
+                it = result.erase(it);
+            else
+                ++it;
+        }
+    }
+    return result;
+}
+
+void ControlFlowGraph::findAllLoops()
+{
+    loops = std::make_unique<FastAccessList<ControlFlowLoop>>();
+    auto dominators = getDominatorTree();
 
     /*
      * Determine loops according to:
@@ -202,6 +232,7 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(
      * https://www.cs.colostate.edu/~mstrout/CS553Fall09/Slides/lecture12-control.ppt.pdf#page=6
      */
 
+    PROFILE_SCOPE(findAllLoops);
     // For every CFG node, collect the set of all CFG nodes dominated by that node by walking up the dominator tree and
     // adding every node to the dominated-by set for everyone of its dominators.
     FastMap<const DominatorTreeNode*, FastSet<const CFGNode*>> dominatorSets;
@@ -226,9 +257,6 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(
         // to the header (the node executing the repeat).
         FastMap<const CFGNode*, ControlFlowLoop> tailsToLoops;
         entry.first->key->forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge& edge) -> bool {
-            if(skipWorkGroupLoops && edge.data.isWorkGroupLoop)
-                // skip this possible back edge
-                return true;
             if(entry.second.find(&predecessor) != entry.second.end())
             {
                 auto it = tailsToLoops.emplace(&predecessor, &edge).first;
@@ -253,54 +281,35 @@ FastAccessList<ControlFlowLoop> ControlFlowGraph::findLoops(
             // being added to this (inner) loop
             loop.second.emplace(entry.first->key);
             // add loop to the result
-            loops.emplace_back(std::move(loop.second));
+            loops->emplace_back(std::move(loop.second));
         }
 
         // here handle single-block loops specially, since we do not need to walk through the whole dominator set if we
         // know there is only 1 block in the loop
         entry.first->key->forAllIncomingEdges([&](const CFGNode& predecessor, const CFGEdge& edge) -> bool {
-            if(skipWorkGroupLoops && edge.data.isWorkGroupLoop)
-                // skip this possible back edge
-                return true;
             if(&predecessor == entry.first->key)
             {
                 ControlFlowLoop loop(&edge);
                 loop.emplace(&predecessor);
-                loops.emplace_back(std::move(loop));
+                loops->emplace_back(std::move(loop));
             }
             return true;
         });
     }
 
-    if(!recursively)
-    {
-        // remove all outer loops
-        for(auto it = loops.begin(); it != loops.end();)
-        {
-            bool includesLoop = false;
-            for(auto& loop : loops)
-            {
-                if(&loop != &*it && it->includes(loop))
-                {
-                    includesLoop = true;
-                    break;
-                }
-            }
-            if(includesLoop)
-                it = loops.erase(it);
-            else
-                ++it;
-        }
-    }
-
     LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
-        for(const auto& loop : loops)
+        for(const auto& loop : *loops)
             logging::debug() << "Found a control-flow loop: " << loop.to_string() << logging::endl;
     });
     LCOV_EXCL_STOP
+}
 
-    return loops;
+std::shared_ptr<DominatorTree> ControlFlowGraph::getDominatorTree()
+{
+    if(!dominatorTree)
+        dominatorTree = DominatorTree::createDominatorTree(*this);
+    return dominatorTree;
 }
 
 LCOV_EXCL_START
@@ -449,6 +458,10 @@ void ControlFlowGraph::updateOnBlockInsertion(Method& method, BasicBlock& newBlo
         auto& edge = node.getOrCreateEdge(&nextNode, CFGRelation{}).addInput(node);
         edge.data.predecessors.emplace(node.key, Optional<InstructionWalker>{});
     }
+
+    // clear cached dominator tree and loops
+    dominatorTree.reset();
+    loops.reset();
 }
 
 void ControlFlowGraph::updateOnBlockRemoval(Method& method, BasicBlock& oldBlock)
@@ -495,6 +508,10 @@ void ControlFlowGraph::updateOnBlockRemoval(Method& method, BasicBlock& oldBlock
         }
     }
     eraseNode(&oldBlock);
+
+    // clear cached dominator tree and loops
+    dominatorTree.reset();
+    loops.reset();
 }
 
 void ControlFlowGraph::updateOnBranchInsertion(Method& method, InstructionWalker it)
@@ -549,6 +566,10 @@ void ControlFlowGraph::updateOnBranchInsertion(Method& method, InstructionWalker
 
     // update back edges
     updateBackEdges(*this, &getStartOfControlFlow());
+
+    // clear cached dominator tree and loops
+    dominatorTree.reset();
+    loops.reset();
 }
 
 void ControlFlowGraph::updateOnBranchRemoval(
@@ -598,6 +619,10 @@ void ControlFlowGraph::updateOnBranchRemoval(
             edge.data.predecessors.emplace(node.key, Optional<InstructionWalker>{});
         }
     }
+
+    // clear cached dominator tree and loops
+    dominatorTree.reset();
+    loops.reset();
 }
 
 std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
