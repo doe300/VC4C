@@ -12,6 +12,7 @@
 #include "../Profiler.h"
 #include "../SIMDVector.h"
 #include "../asm/OpCodes.h"
+#include "ControlFlowGraph.h"
 
 #include "log.h"
 
@@ -378,7 +379,9 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
     // loading of immediates/literals
     else if(auto lit = (constant & &Value::getLiteralValue))
     {
-        extendBoundaries(*lit, constant->type.isFloatingType());
+        // immediate values are always signed
+        extendBoundaries(
+            *lit, constant->type.isFloatingType(), constant->checkImmediate(), constant->isUnsignedInteger());
     }
     else if(auto vec = constant & &Value::checkVector)
     {
@@ -427,8 +430,7 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
         extendBoundaries(getValueRange(*it, method, ValueRanges{ranges, {}}));
 }
 
-void ValueRange::updateRecursively(const Local* currentLocal, const Method* method,
-    FastMap<const Local*, ValueRange>& ranges,
+void ValueRange::updateRecursively(const Local* currentLocal, Method* method, FastMap<const Local*, ValueRange>& ranges,
     FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
     FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet)
 {
@@ -496,6 +498,7 @@ void ValueRange::updateRecursively(const Local* currentLocal, const Method* meth
         if(auto expr = Expression::createRecursiveExpression(*write))
         {
             FastSet<Value> limits;
+            Optional<ValueRange> fixedExpressionRange{};
             if((expr->arg0.checkLocal() && expr->arg0.checkLocal() != currentLocal) ||
                 (expr->arg1.checkLocal() && expr->arg1.checkLocal() != currentLocal))
             {
@@ -529,19 +532,51 @@ void ValueRange::updateRecursively(const Local* currentLocal, const Method* meth
                     }
                 }
 
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Using input '" << otherLocal->to_string() << "' with"
-                        << (isPartialRange ? " partial " : " ") << "range '" << otherRange.to_string()
-                        << "' for calculating convergence limit of: " << expr->to_string() << logging::endl);
+                if(method && expr->hasConstantOperand())
+                {
+                    // the induction variables of the work-group loops have no constant upper bound, so we do not need
+                    // to check them at all
+                    for(auto& loop : method->getCFG().findLoops(true, true))
+                    {
+                        if(loop.findInLoop(write))
+                        {
+                            auto inductionVariable = loop.checkInductionVariable(otherLocal, true);
+                            if(auto range = inductionVariable & &InductionVariable::getRange)
+                            {
+                                if(expr->arg0.isConstant())
+                                    fixedExpressionRange =
+                                        expr->code(getValueRange(expr->arg0.checkValue().value()), *range);
+                                else if(expr->arg1.isConstant())
+                                    fixedExpressionRange =
+                                        expr->code(*range, getValueRange(expr->arg1.checkValue().value()));
+                                CPPLOG_LAZY(logging::Level::DEBUG,
+                                    log << "Using known range '" << range.to_string() << "' of induction variable '"
+                                        << otherLocal->to_string() << "' to calculate limits of '" << expr->to_string()
+                                        << "' to: " << fixedExpressionRange.to_string() << logging::endl);
+                                // XXX Even if we cannot calculate any meaningful range, no local is induction variable
+                                // of multiple loops, are they? So we can abort immediately
+                                break;
+                            }
+                        }
+                    }
+                }
 
-                limits.emplace(expr->getConvergenceLimit(
-                                       otherRange.getLowerLimit(expr->code.acceptsFloat ? TYPE_FLOAT : TYPE_INT32) &
-                                       &Value::getLiteralValue)
-                                   .value_or(UNDEFINED_VALUE));
-                limits.emplace(expr->getConvergenceLimit(
-                                       otherRange.getUpperLimit(expr->code.acceptsFloat ? TYPE_FLOAT : TYPE_INT32) &
-                                       &Value::getLiteralValue)
-                                   .value_or(UNDEFINED_VALUE));
+                if(!fixedExpressionRange)
+                {
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Using input '" << otherLocal->to_string() << "' with"
+                            << (isPartialRange ? " partial " : " ") << "range '" << otherRange.to_string()
+                            << "' for calculating convergence limit of: " << expr->to_string() << logging::endl);
+
+                    limits.emplace(expr->getConvergenceLimit(
+                                           otherRange.getLowerLimit(expr->code.acceptsFloat ? TYPE_FLOAT : TYPE_INT32) &
+                                           &Value::getLiteralValue)
+                                       .value_or(UNDEFINED_VALUE));
+                    limits.emplace(expr->getConvergenceLimit(
+                                           otherRange.getUpperLimit(expr->code.acceptsFloat ? TYPE_FLOAT : TYPE_INT32) &
+                                           &Value::getLiteralValue)
+                                       .value_or(UNDEFINED_VALUE));
+                }
 
                 // If (partial) range of input is set, and output range is not (e.g. this is the only write), set output
                 // range to this. Otherwise, we always get full-range... This should be okay, since if f(lower) -> x and
@@ -553,7 +588,16 @@ void ValueRange::updateRecursively(const Local* currentLocal, const Method* meth
                 // some operations always converge to a fixed value, independent of the actual start values
                 limits.emplace(expr->getConvergenceLimit().value_or(UNDEFINED_VALUE));
 
-            if(limits.size() == 1 && !limits.begin()->isUndefined())
+            if(fixedExpressionRange)
+            {
+                // TODO iteration step is applied once too many (due to the other partial instruction calculating the
+                // local?)
+                localRange = *fixedExpressionRange;
+                openSet.erase(write);
+                closedSet.emplace(write, localRange);
+                openWrites.erase(write);
+            }
+            else if(limits.size() == 1 && !limits.begin()->isUndefined())
             {
                 auto limit = *limits.begin();
                 CPPLOG_LAZY(logging::Level::DEBUG,
@@ -570,7 +614,9 @@ void ValueRange::updateRecursively(const Local* currentLocal, const Method* meth
 
                 if(auto lit = limit.getLiteralValue())
                 {
-                    localRange.extendBoundaries(*lit, limit.type.isFloatingType());
+                    // immediate values are always signed
+                    localRange.extendBoundaries(
+                        *lit, limit.type.isFloatingType(), limit.checkImmediate(), limit.isUnsignedInteger());
                     openSet.erase(write);
                     closedSet.emplace(write, localRange);
                     openWrites.erase(write);
@@ -590,7 +636,7 @@ void ValueRange::updateRecursively(const Local* currentLocal, const Method* meth
     }
 }
 
-void ValueRange::processedOpenSet(const Method* method, FastMap<const Local*, ValueRange>& ranges,
+void ValueRange::processedOpenSet(Method* method, FastMap<const Local*, ValueRange>& ranges,
     FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
     FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet)
 {
@@ -650,7 +696,7 @@ ValueRange ValueRange::getValueRange(const Value& val, const Method* method)
     return range;
 }
 
-ValueRange ValueRange::getValueRangeRecursive(const Value& val, const Method* method)
+ValueRange ValueRange::getValueRangeRecursive(const Value& val, Method* method)
 {
     FastMap<const Local*, ValueRange> ranges;
     if(auto loc = val.checkLocal())
@@ -832,10 +878,16 @@ void ValueRange::extendBoundaries(const ValueRange& other)
     }
 }
 
-void ValueRange::extendBoundaries(Literal literal, bool isFloat)
+void ValueRange::extendBoundaries(Literal literal, bool isFloat, bool isKnownSigned, bool isKnownUnsigned)
 {
     if(isFloat)
         extendBoundaries(ValueRange(static_cast<double>(literal.real()), static_cast<double>(literal.real())));
+    else if(isKnownSigned)
+        extendBoundaries(
+            ValueRange(static_cast<double>(literal.signedInt()), static_cast<double>(literal.signedInt())));
+    else if(isKnownUnsigned)
+        extendBoundaries(
+            ValueRange(static_cast<double>(literal.unsignedInt()), static_cast<double>(literal.unsignedInt())));
     else
         extendBoundaries(
             ValueRange(static_cast<double>(literal.signedInt()), static_cast<double>(literal.unsignedInt())));

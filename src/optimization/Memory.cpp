@@ -447,17 +447,22 @@ NODISCARD static InstructionWalker findGroupOfVPMAccess(
                 break;
             auto genericValue = (*genericSetup)->precalculate().first & &Value::getLiteralValue;
             auto groupGenericValue = !group.genericSetups.empty() ?
-                (group.genericSetups.at(0)->precalculate().first & &Value::getLiteralValue) :
+                (group.genericSetups.front()->precalculate().first & &Value::getLiteralValue) :
                 Optional<Literal>{};
             if(!genericValue || (groupGenericValue && genericValue != groupGenericValue))
                 // generic setups do not match
                 break;
             auto dmaValue = (*dmaSetup)->precalculate().first & &Value::getLiteralValue;
             auto groupDmaValue = !group.dmaSetups.empty() ?
-                (group.dmaSetups.at(0)->precalculate().first & &Value::getLiteralValue) :
+                (group.dmaSetups.front()->precalculate().first & &Value::getLiteralValue) :
                 Optional<Literal>{};
             if(!dmaValue || dmaValue != groupDmaValue)
                 // DMA setups do not match
+                break;
+            auto dmaSetup = periphery::VPWSetup{dmaValue->unsignedInt()}.dmaSetup;
+            if(!dmaSetup.getHorizontal() && dmaSetup.getDepth() == 2)
+                // writing 2 rows (with N columns) vertically means 64-bit write, which cannot be combined, reordering
+                // of the actual VPM writes would be required
                 break;
         }
 
@@ -548,13 +553,13 @@ NODISCARD static bool groupVPMWrites(periphery::VPM& vpm, VPMAccessGroup& group)
 
     // 1. Update DMA setup to the number of rows written
     {
-        auto dmaSetupValue = wrapVPMSetup<periphery::VPWSetupWrapper>(group.dmaSetups.at(0).get());
+        auto dmaSetupValue = wrapVPMSetup<periphery::VPWSetupWrapper>(group.dmaSetups.front().get());
         dmaSetupValue.dmaSetup.setUnits(static_cast<uint8_t>(group.addressWrites.size()));
     }
     // 1.1 Update stride setup to the stride between rows
     {
-        auto dmaSetupValue = wrapVPMSetup<periphery::VPWSetupWrapper>(group.dmaSetups.at(0).get());
-        auto strideSetup = wrapVPMSetup<periphery::VPWSetupWrapper>(group.strideSetups.at(0).get());
+        auto dmaSetupValue = wrapVPMSetup<periphery::VPWSetupWrapper>(group.dmaSetups.front().get());
+        auto strideSetup = wrapVPMSetup<periphery::VPWSetupWrapper>(group.strideSetups.front().get());
         // stride is the distance in bytes from end of v1 to start of v2
         // This line is to calculate the stride in actually written vectors, e.g. for vload/vstore in scalar pointers
         // FIXME this is wrong for mixed vload/vstore, e.g. I/O with different vector types
@@ -577,7 +582,7 @@ NODISCARD static bool groupVPMWrites(periphery::VPM& vpm, VPMAccessGroup& group)
     // 3. remove all but the last address writes (and the following DMA waits), update the last write to write the first
     // address written to
     group.addressWrites.back().get<intermediate::MoveOperation>()->setSource(
-        Value(group.addressWrites.at(0).get<intermediate::MoveOperation>()->getSource()));
+        Value(group.addressWrites.front().get<intermediate::MoveOperation>()->getSource()));
     for(std::size_t i = 0; i < group.addressWrites.size() - 1; ++i)
     {
         if(!group.addressWrites[i].copy().nextInBlock()->readsRegister(
@@ -634,7 +639,7 @@ NODISCARD static bool groupVPMReads(periphery::VPM& vpm, VPMAccessGroup& group)
 
     // 1. Update DMA setup to the number of rows read
     {
-        auto dmaSetupValue = wrapVPMSetup<periphery::VPRSetupWrapper>(group.dmaSetups.at(0).get());
+        auto dmaSetupValue = wrapVPMSetup<periphery::VPRSetupWrapper>(group.dmaSetups.front().get());
         dmaSetupValue.dmaSetup.setNumberRows(group.genericSetups.size() % 16);
         vpm.updateScratchSize(static_cast<unsigned char>(group.genericSetups.size()));
         // TODO can be space-optimized, half-words and bytes can be packed into single row (VPM writes too)
@@ -643,13 +648,13 @@ NODISCARD static bool groupVPMReads(periphery::VPM& vpm, VPMAccessGroup& group)
 
     // 1.1 Update generic Setup to the number of rows read
     {
-        auto genericSetup = wrapVPMSetup<periphery::VPRSetupWrapper>(group.genericSetups.at(0).get());
+        auto genericSetup = wrapVPMSetup<periphery::VPRSetupWrapper>(group.genericSetups.front().get());
         genericSetup.genericSetup.setNumber(group.genericSetups.size() % 16);
     }
 
     // 1.2 Update stride setup for the stride used
     {
-        auto strideSetup = wrapVPMSetup<periphery::VPRSetupWrapper>(group.strideSetups.at(0).get());
+        auto strideSetup = wrapVPMSetup<periphery::VPRSetupWrapper>(group.strideSetups.front().get());
         // in contrast to writing memory, the pitch is the distance from start to start of successive rows
         strideSetup.strideSetup.setPitch(static_cast<uint16_t>(group.stride));
     }
@@ -919,7 +924,7 @@ NODISCARD static bool checkSecondAddressCalculation(InstructionWalker start, Ins
 static std::pair<std::vector<SubExpression>, std::vector<std::vector<SubExpression>>> getElementOffsetsAndStrides(
     TMUAccessGroup& group, const std::vector<SubExpression>& baseUniformParts)
 {
-    auto previousUniformOffset = group.uniformAddressParts.at(0);
+    auto previousUniformOffset = group.uniformAddressParts.front();
     std::vector<SubExpression> elementStrides;
     std::vector<std::vector<SubExpression>> elementOffsetsParts;
     elementStrides.reserve(group.usedVectorSize);
@@ -1068,7 +1073,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
     // 1. Calculate all element offsets and strides
     std::vector<SubExpression> elementStrides;
     std::vector<std::vector<SubExpression>> elementOffsetsParts;
-    auto baseUniformParts = getAddParts(group.uniformAddressParts.at(0));
+    auto baseUniformParts = getAddParts(group.uniformAddressParts.front());
     std::tie(elementStrides, elementOffsetsParts) = getElementOffsetsAndStrides(group, baseUniformParts);
 
     auto currentOffset = group.cacheEntry->numVectorElements.getLiteralValue().value().unsignedInt();
@@ -1166,7 +1171,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
     else if(currentOffset == 1 /* needed to calculate the stride via sub of second to first address */ &&
         std::all_of(elementStrides.begin() + 1, elementStrides.end(),
             [=](const SubExpression& stride) -> bool { return stride == commonStride; }) &&
-        checkSecondAddressCalculation(group.ramReads.at(1), group.ramReads.at(0),
+        checkSecondAddressCalculation(group.ramReads.at(1), group.ramReads.front(),
             group.ramReads.at(1).get<intermediate::RAMAccessInstruction>()->getMemoryAddress().checkLocal(),
             secondAddressCalculations))
     {
@@ -1238,7 +1243,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
             // of elements in the first RAM load. Or in other words: the first primary stride needs to actually come
             // from the second RAM load instruction.
             return false;
-        if(!checkSecondAddressCalculation(group.ramReads.at(1), group.ramReads.at(0),
+        if(!checkSecondAddressCalculation(group.ramReads.at(1), group.ramReads.front(),
                secondRAMLoad->getMemoryAddress().local(), secondAddressCalculations))
             // Same reasoning as above, we use the address of the second load to calculate the primary stride, so we
             // need to be able to move its calculating instructions before the first load.

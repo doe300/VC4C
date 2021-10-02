@@ -36,6 +36,8 @@ namespace vc4c
             Value comparisonValue;
             // the local storing the boolean result value of the repeat condition
             const Local* conditionResult;
+
+            std::string to_string() const;
         };
 
         /**
@@ -84,9 +86,9 @@ namespace vc4c
             Optional<Literal> getStep() const;
 
             /**
-             * Returns the total range between the lower and the upper bounds
+             * Returns the total range between the smallest and largest value
              */
-            Optional<unsigned> getRange() const;
+            Optional<ValueRange> getRange() const;
 
             /**
              * Returns the static number of iterations using the lower and upper bounds and the iteration step.
@@ -198,6 +200,8 @@ namespace vc4c
              */
             FastAccessList<InductionVariable> findInductionVariables(
                 const DataDependencyGraph& dependencyGraph, bool includeIterationInformation) const;
+            Optional<InductionVariable> checkInductionVariable(
+                const Local* local, bool includeIterationInformation) const;
 
             /*
              * Returns this loop's header, or a nullptr if the header could not be deduced.

@@ -11,6 +11,7 @@
 #include "DataDependencyGraph.h"
 #include "DebugGraph.h"
 #include "DominatorTree.h"
+#include "ValueRange.h"
 #include "log.h"
 
 #include <limits>
@@ -20,14 +21,19 @@ using namespace vc4c;
 using namespace vc4c::analysis;
 
 LCOV_EXCL_START
+
+std::string RepeatCondition::to_string() const
+{
+    return comparisonName + " " + comparisonValue.to_string() + " into " + conditionResult->to_string();
+}
+
 std::string InductionVariable::to_string() const
 {
     std::string condString = "(?)";
     if(repeatCondition)
     {
         condString = conditionCheckedBeforeStep ? local->name : inductionStep->checkOutputLocal()->name;
-        condString += std::string(" ") + repeatCondition->comparisonName + " " +
-            repeatCondition->comparisonValue.to_string() + " into " + repeatCondition->conditionResult->to_string();
+        condString += " " + repeatCondition->to_string();
     }
     return local->to_string() + " from " + initialAssignment->to_string() + ", step " + inductionStep->to_string() +
         ", while " + condString;
@@ -55,7 +61,7 @@ Optional<Literal> InductionVariable::getStep() const
     return {};
 }
 
-Optional<unsigned> InductionVariable::getRange() const
+Optional<ValueRange> InductionVariable::getRange() const
 {
     if(!repeatCondition)
         return {};
@@ -84,25 +90,24 @@ Optional<unsigned> InductionVariable::getRange() const
     }
 
     if(comp == intermediate::COMP_SIGNED_LT)
-        return static_cast<unsigned>(upperBound->signedInt() - lowerBound->signedInt());
+        return ValueRange(lowerBound->signedInt(), upperBound->signedInt() - 1);
     if(comp == intermediate::COMP_SIGNED_LE)
-        return static_cast<unsigned>(upperBound->signedInt() - lowerBound->signedInt() + 1);
+        return ValueRange(lowerBound->signedInt(), upperBound->signedInt());
     if(comp == intermediate::COMP_SIGNED_GT)
-        return static_cast<unsigned>(lowerBound->signedInt() - upperBound->signedInt());
+        return ValueRange(lowerBound->signedInt(), upperBound->signedInt() + 1);
     if(comp == intermediate::COMP_SIGNED_GE)
-        return static_cast<unsigned>(lowerBound->signedInt() - upperBound->signedInt() + 1);
+        return ValueRange(lowerBound->signedInt(), upperBound->signedInt());
     if(comp == intermediate::COMP_UNSIGNED_LT)
-        return upperBound->unsignedInt() - lowerBound->unsignedInt();
+        return ValueRange(lowerBound->unsignedInt(), upperBound->unsignedInt() - 1);
     if(comp == intermediate::COMP_UNSIGNED_LE)
-        return upperBound->unsignedInt() - lowerBound->unsignedInt() + 1u;
+        return ValueRange(lowerBound->unsignedInt(), upperBound->unsignedInt());
     if(comp == intermediate::COMP_UNSIGNED_GT)
-        return lowerBound->unsignedInt() - upperBound->unsignedInt();
+        return ValueRange(lowerBound->unsignedInt(), upperBound->unsignedInt() + 1);
     if(comp == intermediate::COMP_UNSIGNED_GE)
-        return lowerBound->unsignedInt() - upperBound->unsignedInt() + 1u;
+        return ValueRange(lowerBound->unsignedInt(), upperBound->unsignedInt());
     if(comp == intermediate::COMP_NEQ)
         // XXX could be wrong for unsigned induction variable and more than 2^31 iterations
-        return static_cast<unsigned>(std::max(lowerBound->signedInt(), upperBound->signedInt()) -
-            std::min(lowerBound->signedInt(), upperBound->signedInt()));
+        return ValueRange(lowerBound->signedInt(), upperBound->signedInt());
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Unsupported comparison for calculating distance for: " << to_string() << logging::endl);
@@ -111,7 +116,9 @@ Optional<unsigned> InductionVariable::getRange() const
 
 Optional<unsigned> InductionVariable::getIterationCount() const
 {
-    auto distance = getRange();
+    Optional<uint32_t> distance;
+    if(auto range = getRange())
+        distance = static_cast<uint32_t>(range->getRange());
     auto stepValue = getStep();
     if(!distance || !stepValue)
         return {};
@@ -461,10 +468,58 @@ FastAccessList<InductionVariable> ControlFlowLoop::findInductionVariables(
         if(local == nullptr)
             continue;
         if(auto inductionVar = extractInductionVariable(local, tailBranch, exitBranch, includeIterationInformation))
+        {
             variables.emplace_back(std::move(inductionVar).value());
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Found induction variable: " << variables.back().to_string() << logging::endl);
+        }
     }
 
     return variables;
+}
+
+Optional<InductionVariable> ControlFlowLoop::checkInductionVariable(
+    const Local* local, bool includeIterationInformation) const
+{
+    // 1. run basic local dependency check
+    bool writerInLoop = false;
+    bool writerOutsideOfLoop = false;
+    for(auto writer : local->getUsers(LocalUse::Type::WRITER))
+    {
+        if(findInLoop(writer))
+            writerInLoop = true;
+        else
+            writerOutsideOfLoop = true;
+    }
+
+    if(!writerInLoop || !writerOutsideOfLoop)
+        return {};
+
+    // The loop tail, the block taking the repetition branch
+    auto tail = getTail();
+    // The repetition branch
+    InstructionWalker tailBranch = tail ? backEdge->data.getPredecessor(tail->key) : InstructionWalker{};
+    if(!tail || tailBranch.isEndOfBlock())
+    {
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Failed to determine loop tail for: " << to_string() << logging::endl);
+        return {};
+    }
+
+    // If the repetition branch in the tail block is unconditional, the exit branch is conditional and has to be checked
+    Optional<InstructionWalker> exitBranch{};
+    if(auto exitEdge = findExitEdge())
+    {
+        auto first = *exitEdge->getNodes().begin();
+        auto second = *(++exitEdge->getNodes().begin());
+        if(find(first) != end())
+            exitBranch = exitEdge->data.getPredecessor(first->key);
+        else
+            exitBranch = exitEdge->data.getPredecessor(second->key);
+    }
+
+    // 2. retrieve actual information
+    return extractInductionVariable(local, tailBranch, exitBranch, includeIterationInformation);
 }
 
 const CFGNode* ControlFlowLoop::getHeader() const

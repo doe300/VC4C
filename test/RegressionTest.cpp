@@ -239,7 +239,7 @@ static std::vector<Entry> allKernels = {
     Entry{PASSED, FAST, "./testing/HandBrake/nv12toyuv.cl", ""},
     Entry{PENDING_SPIRV, FAST, "./testing/HandBrake/vscale_all_dither_opencl.cl", ""},
     Entry{PENDING_LLVM_CI, FAST, "./testing/HandBrake/vscale_all_nodither_opencl.cl", ""},
-    Entry{PENDING_LLVM, FAST, "./testing/HandBrake/vscale_fast_opencl.cl", ""},
+    Entry{PASSED, FAST, "./testing/HandBrake/vscale_fast_opencl.cl", ""},
     Entry{PENDING_LLVM_CI, FAST, "./testing/HandBrake/yaif_filter.cl", ""},
 
     Entry{PASSED, SLOW, "./testing/bfgminer/diablo.cl", "-DWORKSIZE=8"},

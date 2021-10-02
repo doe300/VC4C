@@ -67,7 +67,7 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                             call->getOutput()->local()->name :
                             std::string("%") + (calledMethod->name + ".") + std::to_string(rand())) +
                     '.';
-                const Local* methodEndLabel = currentMethod.createLocal(TYPE_LABEL, newLocalPrefix + "after");
+                const Local* methodEndLabel = nullptr;
                 inlineMethod(newLocalPrefix, methods, functionAliases, *calledMethod);
                 // at this point, the called method has already inlined all other methods
 
@@ -101,6 +101,7 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                         mapping.emplace(&arg, currentMethod.createLocal(arg.type, newLocalPrefix + arg.name));
                 }
                 // insert instructions
+                auto lastIt = calledMethod->appendToEnd().previousInBlock();
                 calledMethod->forAllInstructions([&](const intermediate::IntermediateInstruction& instr) -> void {
                     if(auto ret = dynamic_cast<const intermediate::Return*>(&instr))
                     {
@@ -123,6 +124,14 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                         }
                         // after each return, jump to label after call-site (since there may be several return
                         // statements in a method)
+                        if(lastIt.get() == &instr)
+                            // do not insert the jump (and with that probably not the label after the call-side) for the
+                            // last return in the called function, since the jump will be optimized away immediately
+                            // anyway.
+                            return;
+
+                        if(!methodEndLabel)
+                            methodEndLabel = currentMethod.createLocal(TYPE_LABEL, newLocalPrefix + "after");
                         it.emplace(std::make_unique<intermediate::Branch>(methodEndLabel));
                     }
                     else
@@ -146,15 +155,23 @@ static Method& inlineMethod(const std::string& localPrefix, const std::vector<st
                     log << "Function body for " << call->to_string() << " inlined, added "
                         << (currentMethod.countInstructions() - 1 - numInstructions) << " instructions"
                         << logging::endl);
+
                 // replace method-call from parent with label to jump to (for returns)
                 it = it.erase();
-                auto copyIt = it.copy().previousInMethod();
-                it = currentMethod.emplaceLabel(it, std::make_unique<intermediate::BranchLabel>(*methodEndLabel));
+                if(methodEndLabel)
+                {
+                    auto copyIt = it.copy().previousInMethod();
+                    it = currentMethod.emplaceLabel(it, std::make_unique<intermediate::BranchLabel>(*methodEndLabel));
 
-                // fix-up to immediately remove branches from return to %end_of_function when consecutive instructions
-                if(copyIt.get<intermediate::Branch>() &&
-                    copyIt.get<intermediate::Branch>()->getSingleTargetLabel() == methodEndLabel)
-                    copyIt.erase();
+                    // fix-up to immediately remove branches from return to %end_of_function when consecutive
+                    // instructions
+                    if(copyIt.get<intermediate::Branch>() &&
+                        copyIt.get<intermediate::Branch>()->getSingleTargetLabel() == methodEndLabel)
+                        copyIt.erase();
+                }
+                else
+                    // don't skip the next instruction which might be a call-site too
+                    continue;
             }
         }
         it.nextInMethod();

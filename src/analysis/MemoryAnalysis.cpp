@@ -336,8 +336,9 @@ static bool findTypeSizeShift(
     return true;
 }
 
-static Optional<MemoryAccessRange> determineAccessRange(
-    Method& method, const intermediate::IntermediateInstruction& inst, InstructionWalker memIt)
+static Optional<MemoryAccessRange> determineAccessRange(Method& method,
+    const intermediate::IntermediateInstruction& inst, InstructionWalker memIt,
+    FastMap<const Local*, ValueRange>& knownRanges)
 {
     // 1. find writes to memory addresses with work-group uniform part in address values
     if(auto memInst = dynamic_cast<const intermediate::MemoryInstruction*>(&inst))
@@ -428,12 +429,19 @@ static Optional<MemoryAccessRange> determineAccessRange(
         if(!has_flag(val.second, intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))
         {
             range.dynamicAddressParts.emplace(val);
-            if(val.first.checkLocal())
+            if(auto loc = val.first.checkLocal())
             {
+                auto rangeIt = knownRanges.find(loc);
+                if(rangeIt != knownRanges.end())
+                {
+                    if(range.offsetRange && *range.offsetRange)
+                        *range.offsetRange += rangeIt->second;
+                }
                 if(auto singleRange = analysis::ValueRange::getValueRangeRecursive(val.first, &method))
                 {
                     if(range.offsetRange && *range.offsetRange)
                         *range.offsetRange += singleRange;
+                    knownRanges.emplace(loc, singleRange);
                 }
                 else
                 {
@@ -461,6 +469,7 @@ AccessRanges analysis::determineAccessRanges(Method& method)
 {
     // TODO if we cannot find an access range for a local, we cannot combine any other access ranges for this globally!
     AccessRanges result;
+    FastMap<const Local*, ValueRange> knownRanges;
     for(BasicBlock& block : method)
     {
         InstructionWalker it = block.walk();
@@ -468,7 +477,7 @@ AccessRanges analysis::determineAccessRanges(Method& method)
         {
             if(it.has() && (it->writesRegister(REG_VPM_DMA_LOAD_ADDR) || it->writesRegister(REG_VPM_DMA_STORE_ADDR)))
             {
-                if(auto range = determineAccessRange(method, *it.get(), it))
+                if(auto range = determineAccessRange(method, *it.get(), it, knownRanges))
                     result[range->memoryObject].emplace_back(range.value());
             }
             it.nextInBlock();
@@ -478,11 +487,12 @@ AccessRanges analysis::determineAccessRanges(Method& method)
 }
 
 static Optional<MemoryAccessRange> findAccessRange(Method& method, const Value& val, const Local* baseAddr,
-    InstructionWalker accessIt, const intermediate::IntermediateInstruction* defaultInst)
+    InstructionWalker accessIt, const intermediate::IntermediateInstruction* defaultInst,
+    FastMap<const Local*, ValueRange>& knownRanges)
 {
     if(auto writer = getSingleWriter(val, defaultInst))
         // if there is a single address writer, take that one
-        return determineAccessRange(method, *writer, accessIt);
+        return determineAccessRange(method, *writer, accessIt, knownRanges);
     // TODO how to determine access range for a memory location for conditionally written address??
     return {};
 }
@@ -492,6 +502,7 @@ FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
 {
     // NOTE: If we cannot find one access range for a local, we cannot combine any other access ranges for this local!
     FastAccessList<MemoryAccessRange> result;
+    FastMap<const Local*, ValueRange> knownRanges;
     for(const auto& entry : accessInstructions)
     {
         const auto memInstr = entry.first.get<intermediate::MemoryInstruction>();
@@ -499,7 +510,7 @@ FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
         {
         case intermediate::MemoryOperation::READ:
         {
-            if(auto res = findAccessRange(method, memInstr->getSource(), baseAddr, entry.first, memInstr))
+            if(auto res = findAccessRange(method, memInstr->getSource(), baseAddr, entry.first, memInstr, knownRanges))
             {
                 result.emplace_back(std::move(res).value());
                 break;
@@ -513,7 +524,8 @@ FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
         case intermediate::MemoryOperation::WRITE:
         case intermediate::MemoryOperation::FILL:
         {
-            if(auto res = findAccessRange(method, memInstr->getDestination(), baseAddr, entry.first, memInstr))
+            if(auto res =
+                    findAccessRange(method, memInstr->getDestination(), baseAddr, entry.first, memInstr, knownRanges))
             {
                 result.emplace_back(std::move(res).value());
                 break;
@@ -534,7 +546,7 @@ FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
                 throw CompilationError(CompilationStep::GENERAL, "Failed to find address referring to memory location",
                     memInstr->to_string() + " and " + baseAddr->to_string());
 
-            if(auto res = findAccessRange(method, matchingAddress, baseAddr, entry.first, memInstr))
+            if(auto res = findAccessRange(method, matchingAddress, baseAddr, entry.first, memInstr, knownRanges))
             {
                 result.emplace_back(std::move(res).value());
                 break;

@@ -9,6 +9,7 @@
 #include "analysis/DataDependencyGraph.h"
 #include "analysis/DominatorTree.h"
 #include "analysis/FlagsAnalysis.h"
+#include "analysis/ValueRange.h"
 #include "intermediate/Helper.h"
 #include "intermediate/operators.h"
 #include "intrinsics/Comparisons.h"
@@ -336,6 +337,12 @@ void TestAnalyses::testControlFlowLoops()
             TEST_ASSERT(!!inductionVar.initialAssignment);
             TEST_ASSERT(!!inductionVar.inductionStep);
             TEST_ASSERT(!!inductionVar.repeatCondition);
+            auto checkedVar = loop.checkInductionVariable(inductionVar.local, true);
+            TEST_ASSERT(!!checkedVar);
+            TEST_ASSERT_EQUALS(inductionVar.initialAssignment, checkedVar->initialAssignment);
+            TEST_ASSERT_EQUALS(inductionVar.inductionStep, checkedVar->inductionStep);
+            TEST_ASSERT_EQUALS(inductionVar.repeatCondition.value().conditionResult,
+                checkedVar->repeatCondition.value().conditionResult);
             if(&loop == &innerLoop)
             {
                 // for the inner loop we can't determine the range or iteration count, since the upper limit is
@@ -483,6 +490,10 @@ void TestAnalyses::testControlFlowLoops()
             TEST_ASSERT(!!inductionVar.local);
             TEST_ASSERT(!!inductionVar.initialAssignment);
             TEST_ASSERT(!!inductionVar.inductionStep);
+            auto checkedVar = loop.checkInductionVariable(inductionVar.local, true);
+            TEST_ASSERT(!!checkedVar);
+            TEST_ASSERT_EQUALS(inductionVar.initialAssignment, checkedVar->initialAssignment);
+            TEST_ASSERT_EQUALS(inductionVar.inductionStep, checkedVar->inductionStep);
             if(loop.size() == 1)
             {
                 // for the inner loop we can't determine the range or iteration count, since the upper limit is

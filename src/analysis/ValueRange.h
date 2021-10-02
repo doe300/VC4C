@@ -125,7 +125,7 @@ namespace vc4c
             static ValueRange getValueRange(const intermediate::IntermediateInstruction& inst, const Method* method,
                 const ValueRanges& knownRanges);
             static ValueRange getValueRange(const Value& val, const Method* method = nullptr);
-            static ValueRange getValueRangeRecursive(const Value& val, const Method* method = nullptr);
+            static ValueRange getValueRangeRecursive(const Value& val, Method* method = nullptr);
             static ValueRange getValueRange(const Expression& expr, const Method* method = nullptr);
 
             ValueRange operator*(double val) const noexcept
@@ -188,16 +188,16 @@ namespace vc4c
             RangeType type;
 
             void extendBoundaries(const ValueRange& other);
-            void extendBoundaries(Literal literal, bool isFloat);
+            void extendBoundaries(Literal literal, bool isFloat, bool isKnownSigned, bool isKnownUnsigned);
             void update(const Optional<Value>& constant, const FastMap<const Local*, ValueRange>& ranges,
                 const intermediate::IntermediateInstruction* it = nullptr, const Method* method = nullptr);
 
-            static void updateRecursively(const Local* currentLocal, const Method* method,
+            static void updateRecursively(const Local* currentLocal, Method* method,
                 FastMap<const Local*, ValueRange>& ranges,
                 FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
                 FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet);
 
-            static void processedOpenSet(const Method* method, FastMap<const Local*, ValueRange>& ranges,
+            static void processedOpenSet(Method* method, FastMap<const Local*, ValueRange>& ranges,
                 FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
                 FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet);
 
