@@ -615,92 +615,113 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
     return !blocksToMerge.empty();
 }
 
+using BasicBlockIterator = decltype(std::declval<Method>().begin());
+
+static void reorderNode(Method& method, const DominatorTreeNode& node,
+    const FastMap<const BasicBlock*, BasicBlockIterator>& blockIterators, BasicBlockIterator& insertIt,
+    const FastMap<const CFGNode*, std::size_t>& visitedNodes)
+{
+    auto blockIt = blockIterators.at(node.key->key);
+    if(blockIt != insertIt)
+    {
+        CPPLOG_LAZY(
+            logging::Level::DEBUG, log << "Reordering basic block: " << node.key->key->to_string() << logging::endl);
+        method.moveBlock(blockIt, insertIt);
+    }
+    else if(insertIt != method.end())
+        ++insertIt;
+
+    std::vector<std::pair<const DominatorTreeNode*, std::size_t>> sortedSuccessors;
+    node.forAllOutgoingEdges([&](const DominatorTreeNode& successor, const auto& edge) {
+        sortedSuccessors.emplace_back(&successor, visitedNodes.at(successor.key));
+        return true;
+    });
+    std::sort(sortedSuccessors.begin(), sortedSuccessors.end(), [](const auto& one, const auto& other) {
+        // prefer children/successors with a smaller sub-tree over larger sub-trees, mainly to keep small loops
+        // together
+        return one.second < other.second || (one.second == other.second && one.first->key->key < other.first->key->key);
+    });
+
+    for(auto& successor : sortedSuccessors)
+        // run this reordering recursively to keep all (small) sub-trees together and not interleave them
+        reorderNode(method, *successor.first, blockIterators, insertIt, visitedNodes);
+};
+
 bool optimizations::reorderBasicBlocks(const Module& module, Method& method, const Configuration& config)
 {
     if(method.empty())
         return false;
     auto& cfg = method.getCFG();
+
+    // 1. create and walk dominator tree to determine length of dominator sub-paths
+    FastMap<const CFGNode*, std::size_t> visitedNodes;
+    auto dominatorTree = cfg.getDominatorTree();
+    std::queue<const DominatorTreeNode*> openNodes;
+    dominatorTree->forAllSinks([&](const DominatorTreeNode& node) {
+        visitedNodes[node.key] = node.key->isSink() ? cfg.getNodes().size() : 1;
+        if(auto dominator = node.getSinglePredecessor())
+        {
+            visitedNodes[dominator->key] = std::max(visitedNodes[dominator->key], visitedNodes[node.key] + 1);
+            openNodes.emplace(dominator);
+        }
+        return true;
+    });
+
+    while(!openNodes.empty())
+    {
+        auto node = openNodes.front();
+        openNodes.pop();
+        if(auto dominator = node->getSinglePredecessor())
+        {
+            visitedNodes[dominator->key] = std::max(visitedNodes[dominator->key], visitedNodes[node->key] + 1);
+            openNodes.emplace(dominator);
+        }
+    }
+
+    // as a helper (to not need to search for every block), map the blocks to their original position
+    FastMap<const BasicBlock*, decltype(method.begin())> blockIterators;
+    for(auto it = method.begin(); it != method.end(); ++it)
+        blockIterators.emplace(&*it, it);
+
+    // 3. reorder the blocks according to the determined order
+    auto insertIt = method.begin();
+    dominatorTree->forAllSources([&](const DominatorTreeNode& node) {
+        reorderNode(method, node, blockIterators, insertIt, visitedNodes);
+        return true;
+    });
+
+    // 4. fix-up wrong fall-through in now reordered blocks
     auto blockIt = method.begin();
-    auto prevIt = method.begin();
-    ++blockIt;
     while(blockIt != method.end())
     {
-        auto& node = cfg.assertNode(&(*blockIt));
-        const auto predecessor = node.getSinglePredecessor();
-        // Never re-order end-of-block. Though it should work, there could be trouble anyway
-        if(blockIt->getLabel()->getLabel()->name != BasicBlock::LAST_BLOCK && predecessor != nullptr &&
-            predecessor->key != &(*prevIt) && !prevIt->fallsThroughToNextBlock())
+        auto& node = cfg.assertNode(&*blockIt);
+
+        // if the now moved block did fall-through, we need to insert an explicit branch to its previous successor,
+        // since they might now not longer be adjacent.
+        const CFGNode* fallThroughSuccessor = nullptr;
+        node.forAllOutgoingEdges([&](const CFGNode& successor, const CFGEdge& edge) -> bool {
+            if(edge.data.isImplicit(node.key))
+            {
+                if(fallThroughSuccessor)
+                    throw CompilationError(
+                        CompilationStep::GENERAL, "Multiple implicit branches from basic block", node.key->to_string());
+                fallThroughSuccessor = &successor;
+            }
+            return true;
+        });
+        auto nextIt = blockIt;
+        ++nextIt;
+        if(fallThroughSuccessor && (nextIt == method.end() || &*nextIt != fallThroughSuccessor->key))
         {
-            auto predecessorIt = method.begin();
-            while(predecessorIt != method.end())
-            {
-                if(&(*predecessorIt) == predecessor->key)
-                    break;
-                ++predecessorIt;
-            }
-
-            if(predecessorIt == method.end())
-                throw CompilationError(CompilationStep::OPTIMIZER,
-                    "Failed to find predecessor basic block: ", predecessor->key->to_string());
-
-            // we insert before the iteration, so we need to set the iterator after the predecessor
-            ++predecessorIt;
-
-            // don't insert if the block after the predecessor is also a successor of the predecessor
-            bool predecessorAlreadyFollowedBySuccessor = false;
-            predecessor->forAllOutgoingEdges(
-                [&, successorKey(&*predecessorIt)](const CFGNode& successor, const CFGEdge& edge) -> bool {
-                    if(successor.key == successorKey)
-                    {
-                        predecessorAlreadyFollowedBySuccessor = true;
-                        return false;
-                    }
-                    return true;
-                });
-            if(predecessorAlreadyFollowedBySuccessor)
-            {
-                ++blockIt;
-                ++prevIt;
-                continue;
-            }
-
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Reordering block with single predecessor not being the previous block: " << blockIt->to_string()
+                log << "Inserting explicit branch to previous fall-through successor for moved block '"
+                    << node.key->to_string() << "' to '" << fallThroughSuccessor->key->to_string() << '\''
                     << logging::endl);
-
-            method.moveBlock(blockIt, predecessorIt);
-            // prevIt stays the same, since we removed the block and the next blockIt now follows prevIt
-            blockIt = prevIt;
-            ++blockIt;
-
-            // if the now moved block did fall-through, we need to insert an explicit branch to its previous successor,
-            // since they might now not longer be adjacent.
-            const CFGNode* fallThroughSuccessor = nullptr;
-            node.forAllOutgoingEdges([&](const CFGNode& successor, const CFGEdge& edge) -> bool {
-                if(edge.data.isImplicit(node.key))
-                {
-                    if(fallThroughSuccessor)
-                        throw CompilationError(CompilationStep::GENERAL, "Multiple implicit branches from basic block",
-                            node.key->to_string());
-                    fallThroughSuccessor = &successor;
-                }
-                return true;
-            });
-            if(fallThroughSuccessor)
-            {
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Inserting explicit branch to previous fall-through successor for moved block '"
-                        << node.key->to_string() << "' to '" << fallThroughSuccessor->key->to_string() << '\''
-                        << logging::endl);
-                node.key->walkEnd().emplace(
-                    std::make_unique<intermediate::Branch>(fallThroughSuccessor->key->getLabel()->getLabel()));
-            }
+            node.key->walkEnd().emplace(
+                std::make_unique<intermediate::Branch>(fallThroughSuccessor->key->getLabel()->getLabel()));
         }
-        else
-        {
-            ++blockIt;
-            ++prevIt;
-        }
+
+        ++blockIt;
     }
 
 #ifdef DEBUG_MODE

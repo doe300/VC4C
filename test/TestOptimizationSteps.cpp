@@ -1159,7 +1159,8 @@ void TestOptimizationSteps::testReorderBasicBlocks()
         label(outIt, output3);
     }
 
-    // Blocks 1 (->2/3), 3 (->4), 2 (fall-through), 4 don't get reordered
+    // Blocks 1 (->2/3), 3 (->4), 2 (fall-through), 4 get reordered (unnecessary, but artifact of algorithm choosing
+    // first-added block (2) first for equal-length sub-chains)
     {
         auto input1 = inputMethod.addNewLocal(TYPE_LABEL, "%fifth.1").local();
         auto input2 = inputMethod.addNewLocal(TYPE_LABEL, "%fifth.2").local();
@@ -1180,31 +1181,6 @@ void TestOptimizationSteps::testReorderBasicBlocks()
         label(outIt, output1);
         branch(outIt, output2, BRANCH_ALL_Z_CLEAR);
         branch(outIt, output3, BRANCH_ANY_Z_SET);
-        label(outIt, output3);
-        branch(outIt, output4);
-        label(outIt, output2);
-        label(outIt, output4);
-    }
-
-    // Blocks 1 (->2), 3 (->4), 2 (fall-through), 4 get reordered
-    {
-        auto input1 = inputMethod.addNewLocal(TYPE_LABEL, "%fifth.1").local();
-        auto input2 = inputMethod.addNewLocal(TYPE_LABEL, "%fifth.2").local();
-        auto input3 = inputMethod.addNewLocal(TYPE_LABEL, "%fifth.3").local();
-        auto input4 = inputMethod.addNewLocal(TYPE_LABEL, "%fifth.4").local();
-        label(inIt, input1);
-        branch(inIt, input2);
-        label(inIt, input3);
-        branch(inIt, input4);
-        label(inIt, input2);
-        label(inIt, input4);
-
-        auto output1 = outputMethod.createLocal(TYPE_LABEL, input1->name);
-        auto output2 = outputMethod.createLocal(TYPE_LABEL, input2->name);
-        auto output3 = outputMethod.createLocal(TYPE_LABEL, input3->name);
-        auto output4 = outputMethod.createLocal(TYPE_LABEL, input4->name);
-        label(outIt, output1);
-        branch(outIt, output2);
         label(outIt, output2);
         branch(outIt, output4);
         label(outIt, output3);
