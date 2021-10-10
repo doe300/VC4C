@@ -98,3 +98,50 @@ __kernel void execute_sha256_cpu(__global const uint *data, __global uint *H, in
         H[k*8+7] += h;
     }
 }
+
+// Below is the above original version partially optimized by me:
+__attribute__((reqd_work_group_size(1,1,1)))
+__kernel void execute_sha256_gpu(__global const uint *data, __global uint8 *H, int stride)
+{
+    uint W[64];
+    uint a, b, c, d, e, f, g, h;
+
+    for (int k=0; k < BUFFER_SIZE; k++)
+    {
+        for (int i=0; i < 16; i++)
+            W[i] = data[k*stride+i];
+        for (int i=16; i < 64; i++)
+            W[i] = smsigma1(W[i-2]) + W[i-7] + smsigma0(W[i-15]) + W[i-16];
+
+        uint8 tmp = H[k];
+
+        a = tmp.s0;
+        b = tmp.s1;
+        c = tmp.s2;
+        d = tmp.s3;
+        e = tmp.s4;
+        f = tmp.s5;
+        g = tmp.s6;
+        h = tmp.s7;
+
+        for (int i=0; i < 64; i++)
+        {
+            uint T1 = h + sigma1(e) + CH(e,f,g) + K[i] + W[i];
+            uint T2 = sigma0(a) + Maj(a,b,c);
+            h = g;
+            g = f;
+            f = e;
+            e = d + T1;
+            d = c;
+            c = b;
+            b = a;
+            a = T1 + T2;
+        }
+
+#ifdef EMULATE_CPU
+        H[k] += uint8{a, b, c, d, e, f, g, h};
+#else
+        H[k] += (uint8)(a, b, c, d, e, f, g, h);
+#endif
+    }
+}

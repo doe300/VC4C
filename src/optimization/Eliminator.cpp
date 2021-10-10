@@ -559,6 +559,10 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
             auto checkRegister = createRegisterCheck(it, newValue);
             while(!it2.isEndOfBlock() && !remainingLocalReads.empty())
             {
+                if(it2->getOutput() == newValue)
+                    // new value is changed, differs in successive instructions from old value
+                    break;
+
                 bool replacedThisInstruction = false;
                 if(!skipLiteralReads || !it2->readsLiteral())
                 {
@@ -578,6 +582,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
                     foldConstants(module, method, it2, config);
 
                 if(it2->getOutput() && it2->getOutput() == oldValue)
+                    // old value is changed, differs in successive instructions from new value
                     break;
 
                 if(it2.has() && !checkRegister(*it2.get()))

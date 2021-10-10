@@ -116,7 +116,22 @@ void test_data::registerGeneralTests()
         toDimensions(1),
         {checkParameterEquals(1,
             std::vector<uint32_t>{
-                0xf90a1ef4, 0x422350ca, 0x8c448530, 0xa7d5d0b2, 0x35054803, 0xf7b2a73d, 0x86f4b639, 0x4b1329a5})}});
+                0xc24cbddc, 0xf26698b6, 0xf07dcadf, 0x7a8f4bb0, 0x87d4733b, 0xaa817cc2, 0x2d8f7709, 0x1e7442e6})}});
+
+    registerTest(TestData{"SHA256_gpu", DataFilter::DISABLED | DataFilter::COMPLEX_KERNEL, &SHA_256_cl_string, "",
+        "execute_sha256_gpu",
+        {// parameter 0 is the input with a block-size of 16 words
+            toBufferParameter(std::vector<uint8_t>{'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '!', '1', '1',
+                '1', '1', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}),
+            // parameter 1 is the digest
+            toBufferParameter(std::vector<uint32_t>(128)),
+            // parameter 2 is the stride
+            toScalarParameter(0)},
+        toDimensions(1),
+        {checkParameterEquals(1,
+            std::vector<uint32_t>{
+                0xc24cbddc, 0xf26698b6, 0xf07dcadf, 0x7a8f4bb0, 0x87d4733b, 0xaa817cc2, 0x2d8f7709, 0x1e7442e6})}});
 
     registerTest(TestData{"prime_found", DataFilter::NONE, &test_prime_cl_string, "", "test_prime",
         {toScalarParameter(17u), toBufferParameter(std::vector<uint32_t>(1))}, toDimensions(1),

@@ -13,6 +13,8 @@
 #include "LongOperations.h"
 #include "log.h"
 
+#include <algorithm>
+
 using namespace vc4c;
 using namespace vc4c::normalization;
 using namespace vc4c::operators;
@@ -103,18 +105,6 @@ void normalization::extendBranches(const Module& module, Method& method, const C
     }
 }
 
-/*
- * Check whether there is a phi-instruction that writes the output which is read by the phi-instruction to be inserted.
- *
- * In such case, we need to insert the new phi-instruction before the old one, since we need to act "as-if" the
- * phi-writes would have happen at the beginning of the jumped-to block (or on the edge itself), in which case the input
- * variable still has its old value.
- */
-static bool doesWritePhiInput(InstructionWalker it, const Value& phiInput)
-{
-    return it->hasDecoration(intermediate::InstructionDecorations::PHI_NODE) && it->getOutput() == phiInput;
-}
-
 static Optional<std::pair<Literal, Literal>> is64BitLiteralLoad(const Local* input)
 {
     if(auto loc = Local::getLocalData<MultiRegisterData>(input))
@@ -129,78 +119,128 @@ static Optional<std::pair<Literal, Literal>> is64BitLiteralLoad(const Local* inp
     return {};
 }
 
-static void mapPhi(const intermediate::PhiNode& node, Method& method, InstructionWalker it)
+struct PhiMove
 {
-    while(!it.isStartOfBlock())
-    {
-        it.previousInBlock();
-    }
-    const Local* label = it.get<intermediate::BranchLabel>()->getLabel();
-    for(const auto& pair : node.getValuesForLabels())
-    {
-        BasicBlock* bb = method.findBasicBlock(pair.first);
-        if(bb == nullptr)
-        {
-            logging::error() << "Cannot map phi-node to label: " << pair.first->name << logging::endl;
-            throw CompilationError(CompilationStep::OPTIMIZER, "Failed to map all phi-options to valid basic-blocks",
-                pair.first->to_string());
-        }
-        // make sure, moves are inserted before the outgoing branches
-        InstructionWalker blockIt = bb->walkEnd();
-        ConditionCode jumpCondition = COND_ALWAYS;
-        Value condition(UNDEFINED_VALUE);
-        while(blockIt.copy().previousInBlock().get<intermediate::Branch>() ||
-            doesWritePhiInput(blockIt.copy().previousInBlock(), pair.second) ||
-            blockIt.copy().previousInBlock()->doesSetFlag())
-        {
-            blockIt.previousInBlock();
-            auto branch = blockIt.get<intermediate::Branch>();
-            if(branch && branch->getSingleTargetLabel() == label)
-            {
-                jumpCondition = branch->branchCondition.toConditionCode();
-                if(branch->branchCondition != BRANCH_ALWAYS)
-                {
-                    if(auto branchCondition = bb->findLastSettingOfFlags(blockIt))
-                        condition =
-                            intermediate::getBranchCondition(branchCondition->get<intermediate::ExtendedInstruction>())
-                                .first.value();
-                }
-            }
-            else if(branch && branch->isDynamicBranch())
-            {
-                const intermediate::CodeAddress* associatedWriter = nullptr;
-                branch->getTarget().local()->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) {
-                    auto codeAddress = dynamic_cast<const intermediate::CodeAddress*>(writer);
-                    if(codeAddress && codeAddress->getLabel() == label)
-                        associatedWriter = codeAddress;
-                });
-                if(!associatedWriter)
-                    throw CompilationError(CompilationStep::NORMALIZER,
-                        "Failed to find code-address writer for dynamic branch to target '" + label->to_string() + ":",
-                        branch->to_string());
-                auto writerIt = blockIt.getBasicBlock()->findWalkerForInstruction(
-                    associatedWriter, blockIt.getBasicBlock()->walk(), blockIt);
-                if(!writerIt)
-                    throw CompilationError(CompilationStep::NORMALIZER,
-                        "Failed to find instruction walker for code-address write", associatedWriter->to_string());
-                // we need to insert the phi-node for the same set-flags instruction and conditional flags as the
-                // address-write of the target label
-                blockIt = *writerIt;
-                condition = UNDEFINED_VALUE;
-                jumpCondition = associatedWriter->getCondition();
-                break;
-            }
-        }
-        // Since originally the value of the PHI node is set after the jump (at the start of the destination basic
-        // block)  and we have conditional branches "jump to A or B", we need to only set the value if we take the
-        // (conditional) branch jumping to this basic block.
+    std::shared_ptr<intermediate::PhiNode> node;
+    Value input;
+};
 
-        if(jumpCondition != COND_ALWAYS && !condition.isUndefined())
-            // Since the correct flags for the branch might not be set, we need to set them here.
-            // Also, don't "or" with element number, since we might need to set the flags for more than the first
-            // SIMD-element, this way, we set it for all
-            assignNop(blockIt) = (condition, SetFlag::SET_FLAGS);
-        if(auto literalParts = is64BitLiteralLoad(pair.second.checkLocal()))
+// The algorithm is adapted from: https://cp-algorithms.com/graph/topological-sort.html
+static void sortTopological(
+    PhiMove& current, FastSet<const Local*>& visited, FastAccessList<PhiMove>& input, FastAccessList<PhiMove>& output)
+{
+    visited.emplace(current.node->checkOutputLocal());
+    auto local = current.input.checkLocal();
+    if(local && visited.find(local) == visited.end())
+    {
+        auto it = std::find_if(input.begin(), input.end(),
+            [local](const PhiMove& node) { return node.node && node.node->checkOutputLocal() == local; });
+        if(it != input.end())
+            sortTopological(*it, visited, input, output);
+    }
+    output.push_back(std::move(current));
+}
+
+static void mapPhiMoves(BasicBlock& sourceBlock, const Local* targetLabel, FastAccessList<PhiMove>& nodes)
+{
+    // make sure, moves are inserted before the outgoing branches
+    InstructionWalker blockIt = sourceBlock.walkEnd();
+    ConditionCode jumpCondition = COND_ALWAYS;
+    Value condition(UNDEFINED_VALUE);
+    while(
+        blockIt.copy().previousInBlock().get<intermediate::Branch>() || blockIt.copy().previousInBlock()->doesSetFlag())
+    {
+        blockIt.previousInBlock();
+        auto branch = blockIt.get<intermediate::Branch>();
+        if(branch && branch->getSingleTargetLabel() == targetLabel)
+        {
+            jumpCondition = branch->branchCondition.toConditionCode();
+            if(branch->branchCondition != BRANCH_ALWAYS)
+            {
+                if(auto branchCondition = sourceBlock.findLastSettingOfFlags(blockIt))
+                    condition =
+                        intermediate::getBranchCondition(branchCondition->get<intermediate::ExtendedInstruction>())
+                            .first.value();
+            }
+        }
+        else if(branch && branch->isDynamicBranch())
+        {
+            const intermediate::CodeAddress* associatedWriter = nullptr;
+            branch->getTarget().local()->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* writer) {
+                auto codeAddress = dynamic_cast<const intermediate::CodeAddress*>(writer);
+                if(codeAddress && codeAddress->getLabel() == targetLabel)
+                    associatedWriter = codeAddress;
+            });
+            if(!associatedWriter)
+                throw CompilationError(CompilationStep::NORMALIZER,
+                    "Failed to find code-address writer for dynamic branch to '" + targetLabel->to_string() + "'",
+                    branch->to_string());
+            auto writerIt = blockIt.getBasicBlock()->findWalkerForInstruction(
+                associatedWriter, blockIt.getBasicBlock()->walk(), blockIt);
+            if(!writerIt)
+                throw CompilationError(CompilationStep::NORMALIZER,
+                    "Failed to find instruction walker for code-address write", associatedWriter->to_string());
+            // we need to insert the phi-node for the same set-flags instruction and conditional flags as the
+            // address-write of the target label
+            blockIt = *writerIt;
+            condition = UNDEFINED_VALUE;
+            jumpCondition = associatedWriter->getCondition();
+            break;
+        }
+    }
+    // Since originally the value of the PHI node is set after the jump (at the start of the destination basic
+    // block)  and we have conditional branches "jump to A or B", we need to only set the value if we take the
+    // (conditional) branch jumping to this basic block.
+
+    if(jumpCondition != COND_ALWAYS && !condition.isUndefined())
+        // Since the correct flags for the branch might not be set, we need to set them here.
+        // Also, don't "or" with element number, since we might need to set the flags for more than the first
+        // SIMD-element, this way, we set it for all
+        assignNop(blockIt) = (condition, SetFlag::SET_FLAGS);
+
+    if(nodes.size() > 1)
+    {
+        /*
+         * Since all phi-nodes happen "at the same time" on the branch, we need to make sure one inserted move does not
+         * overwrite an input value for another inserted move.
+         * To do so, we need to sort the phi-nodes according to their input/output values.
+         *
+         * To achieve this, we do a topological sorting via a depth-first-search.
+         */
+        FastSet<const Local*> visitedEntries;
+        FastAccessList<PhiMove> sortedNodes;
+        sortedNodes.reserve(nodes.size());
+
+        for(auto& entry : nodes)
+        {
+            // we move the entries, so anything already visited is moved-from
+            if(entry.node)
+                sortTopological(entry, visitedEntries, nodes, sortedNodes);
+        }
+        // we sort every dependencies before the dependent nodes, so invert the result
+        std::reverse(sortedNodes.begin(), sortedNodes.end());
+        nodes = std::move(sortedNodes);
+
+        // sanity check to make sure the sorting is correct
+        FastSet<const Local*> writtenLocals;
+        for(auto& entry : nodes)
+        {
+            if(writtenLocals.find(entry.input.checkLocal()) != writtenLocals.end())
+            {
+                logging::error() << "Phi-moves to be inserted: " << to_string<PhiMove>(nodes, [](const PhiMove& node) {
+                    return node.node->getOutput().to_string() + " <- " + node.input.to_string();
+                }) << logging::endl;
+                throw CompilationError(CompilationStep::NORMALIZER,
+                    "Phi-node source value will be overridden by previous phi-node mode for", sourceBlock.to_string());
+            }
+            if(auto local = entry.node->checkOutputLocal())
+                writtenLocals.emplace(local);
+        }
+    }
+
+    for(auto& entry : nodes)
+    {
+        if(auto literalParts = is64BitLiteralLoad(entry.input.checkLocal()))
         {
             // for phi-nodes moving 64-bit literal values, the source constant is not directly used as the argument for
             // the phi-node (like it is for max 32-bit type-sizes), but instead loaded in separate instructions into the
@@ -212,28 +252,32 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
 
             Value lowDest = UNDEFINED_VALUE;
             Value upDest = UNDEFINED_VALUE;
-            std::tie(lowDest, upDest) = normalization::getLowerAndUpperWords(node.getOutput().value());
+            std::tie(lowDest, upDest) = normalization::getLowerAndUpperWords(entry.node->getOutput().value());
 
             blockIt
                 .emplace(intermediate::createWithExtras<intermediate::LoadImmediate>(
-                    node, lowDest, literalParts->first, jumpCondition))
-                .addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE));
+                    *entry.node, lowDest, literalParts->first, jumpCondition))
+                .addDecorations(add_flag(entry.node->decoration, intermediate::InstructionDecorations::PHI_NODE));
             blockIt.nextInBlock();
             blockIt
                 .emplace(intermediate::createWithExtras<intermediate::LoadImmediate>(
-                    node, upDest, literalParts->second, jumpCondition))
-                .addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE));
+                    *entry.node, upDest, literalParts->second, jumpCondition))
+                .addDecorations(add_flag(entry.node->decoration, intermediate::InstructionDecorations::PHI_NODE));
         }
         else
             blockIt
                 .emplace(intermediate::createWithExtras<intermediate::MoveOperation>(
-                    node, node.getOutput().value(), pair.second, jumpCondition))
-                .addDecorations(add_flag(node.decoration, intermediate::InstructionDecorations::PHI_NODE));
-        CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Inserting into end of basic-block '" << pair.first->name << "': " << blockIt->to_string()
-                << logging::endl);
-    }
+                    *entry.node, entry.node->getOutput().value(), entry.input, jumpCondition))
+                .addDecorations(add_flag(entry.node->decoration, intermediate::InstructionDecorations::PHI_NODE));
 
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Inserting into '" << sourceBlock.to_string() << "': " << blockIt->to_string() << logging::endl);
+        blockIt.nextInBlock();
+    }
+}
+
+static void setPhiReferences(const intermediate::PhiNode& node)
+{
     // set reference of local to original reference, if always the same for all possible sources
     if(auto output = node.checkOutputLocal())
     {
@@ -261,20 +305,52 @@ static void mapPhi(const intermediate::PhiNode& node, Method& method, Instructio
 
 void normalization::eliminatePhiNodes(const Module& module, Method& method, const Configuration& config)
 {
-    // Search for all phi-nodes and insert all mapped instructions to the end of the corresponding basic block
-    auto it = method.walkAllInstructions();
-    while(!it.isEndOfMethod())
+    // 1. search for all phi-nodes, remove from instructions and create mapping
+    // mapping of source block -> target block -> phi node data
+    FastMap<const Local*, FastMap<const Local*, FastAccessList<PhiMove>>> nodeMapping;
+    FastSet<std::shared_ptr<intermediate::PhiNode>> phiNodes;
+    for(auto& block : method)
     {
-        if(auto phiNode = it.get<intermediate::PhiNode>())
+        auto it = block.walk();
+        while(!it.isEndOfBlock())
         {
-            // 2) map the phi-node to the move-operations per predecessor-label
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Eliminating phi-node by inserting moves: " << it->to_string() << logging::endl);
-            mapPhi(*phiNode, method, it);
-            it.erase();
+            if(auto phiNode = it.get<intermediate::PhiNode>())
+            {
+                CPPLOG_LAZY(logging::Level::DEBUG,
+                    log << "Eliminating phi-node by inserting moves: " << phiNode->to_string() << logging::endl);
+
+                std::shared_ptr<intermediate::IntermediateInstruction> tmp{it.release()};
+                auto sharedNode = std::dynamic_pointer_cast<intermediate::PhiNode>(tmp);
+                auto targetLabel = block.getLabel()->getLabel();
+
+                for(const auto& entry : phiNode->getValuesForLabels())
+                {
+                    nodeMapping[entry.first][targetLabel].push_back(PhiMove{sharedNode, entry.second});
+                    phiNodes.emplace(sharedNode);
+                }
+
+                it.erase();
+            }
+            else
+                it.nextInBlock();
         }
-        else
-            it.nextInMethod();
+    }
+
+    // 2. insert new instructions at the end of the source blocks
+    for(auto& entry : nodeMapping)
+    {
+        BasicBlock* bb = method.findBasicBlock(entry.first);
+        if(bb == nullptr)
+            throw CompilationError(CompilationStep::OPTIMIZER, "Failed to map all phi-options to valid basic-blocks",
+                entry.first->to_string());
+        for(auto& move : entry.second)
+            mapPhiMoves(*bb, move.first, move.second);
+    }
+
+    // 3. update  references where necessary
+    for(auto entry : phiNodes)
+    {
+        setPhiReferences(*entry);
     }
 }
 
