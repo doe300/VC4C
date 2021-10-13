@@ -312,25 +312,36 @@ Optional<ValueRange> ValueRange::getValueRange(intermediate::InstructionDecorati
     return {};
 }
 
-// TODO also return partial range
-ValueRange ValueRange::getValueRange(
-    const intermediate::IntermediateInstruction& inst, const Method* method, const ValueRanges& knownRanges)
+static ValueRange getArgRange(
+    const Value& arg, const FastMap<const Local*, ValueRange>& knownRanges, const Method* method)
 {
-    // TODO consider (un)pack modes
+    if(arg.isUndefined())
+        return ValueRange{};
+    if(auto loc = arg.checkLocal())
+    {
+        auto rangeIt = knownRanges.find(loc);
+        if(rangeIt != knownRanges.end())
+            return rangeIt->second;
+    }
+    return ValueRange::getValueRangeFlat(arg, true, method);
+}
 
+ValueRange ValueRange::getValueRangeFlat(const intermediate::IntermediateInstruction& inst,
+    const FastMap<const Local*, ValueRange>& knownRanges, const Method* method)
+{
     if(auto val = inst.precalculate(3).first)
-        return getValueRange(*val, method);
+        return getValueRangeFlat(*val, true, method);
 
     if(auto range = getValueRange(inst.decoration, method))
         return *range;
 
     const Local* inputLocal = nullptr;
-    auto inputRangeIt = knownRanges.fullRanges.end();
+    auto inputRangeIt = knownRanges.end();
     auto move = dynamic_cast<const MoveOperation*>(&inst);
     auto op = dynamic_cast<const Operation*>(&inst);
 
     if(move && (inputLocal = inst.assertArgument(0).checkLocal()) &&
-        (inputRangeIt = knownRanges.fullRanges.find(inputLocal)) != knownRanges.fullRanges.end())
+        (inputRangeIt = knownRanges.find(inputLocal)) != knownRanges.end())
     {
         // move -> copy range from source local
         // if the move is a vector rotation, this does not change the range of the full vector
@@ -344,32 +355,18 @@ ValueRange ValueRange::getValueRange(
     // general case for operations
     else if(op)
     {
-        const Value& arg0 = op->getFirstArg();
-        ValueRange firstRange(arg0.type);
-        if(auto lit = arg0.getConstantValue() & &Value::getLiteralValue)
-            firstRange = ValueRange(*lit, arg0.type);
-        else if(arg0.checkLocal() && knownRanges.fullRanges.find(arg0.local()) != knownRanges.fullRanges.end())
-            firstRange = knownRanges.fullRanges.at(arg0.local());
-        firstRange = firstRange ? firstRange : getValueRange(arg0);
+        auto firstRange = getArgRange(op->getFirstArg(), knownRanges, method);
 
         ValueRange secondRange{};
-        if(op->getArguments().size() > 1)
-        {
-            const Value arg1 = op->assertArgument(1);
-            ValueRange secondRange(arg1.type);
-            if(auto lit = arg1.getConstantValue() & &Value::getLiteralValue)
-                secondRange = ValueRange(*lit, arg1.type);
-            else if(arg1.checkLocal() && knownRanges.fullRanges.find(arg1.local()) != knownRanges.fullRanges.end())
-                secondRange = knownRanges.fullRanges.at(arg1.local());
-            secondRange = secondRange ? secondRange : getValueRange(arg1);
-        }
+        if(auto secondOp = op->getArgument(1))
+            secondRange = getArgRange(*secondOp, knownRanges, method);
         return op->getPackMode()(ValueRange(op->op(firstRange, secondRange)), op->op.returnsFloat);
     }
     return ValueRange{};
 }
 
 void ValueRange::update(const Optional<Value>& constant, const FastMap<const Local*, ValueRange>& ranges,
-    const intermediate::IntermediateInstruction* it, const Method* method)
+    const intermediate::IntermediateInstruction* it, const Method* method, const BuiltinLocal* builtin)
 {
     // values set by built-ins
     if(auto range = getValueRange(it ? it->decoration : InstructionDecorations::NONE, method))
@@ -426,13 +423,21 @@ void ValueRange::update(const Optional<Value>& constant, const FastMap<const Loc
     {
         extendBoundaries(ValueRange(0.0, 1.0));
     }
+    else if(builtin)
+    {
+        if(builtin->builtinType == BuiltinLocal::Type::WORK_DIMENSIONS)
+            extendBoundaries(ValueRange(1.0, 3.0));
+        else
+            // all builtin locals are unsigned
+            extendBoundaries(RANGE_UINT);
+    }
     else if(it)
-        extendBoundaries(getValueRange(*it, method, ValueRanges{ranges, {}}));
+        extendBoundaries(getValueRangeFlat(*it, ranges, method));
 }
 
 void ValueRange::updateRecursively(const Local* currentLocal, Method* method, FastMap<const Local*, ValueRange>& ranges,
     FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
-    FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet)
+    FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet, bool secondRun)
 {
     if(ranges.find(currentLocal) != ranges.end())
         return;
@@ -462,13 +467,13 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
             // we can skip recursively processing the arguments, if we know that the below #update will already result
             // in an explicit range, e.g. for accessing work-item info
             writer->forReadLocals([&](const Local* loc, const intermediate::IntermediateInstruction& inst) {
-                updateRecursively(loc, method, ranges, closedSet, openSet);
+                updateRecursively(loc, method, ranges, closedSet, openSet, secondRun);
                 if(ranges.find(loc) == ranges.end())
                     allInputsProcessed = false;
             });
         }
         ValueRange tmpRange;
-        tmpRange.update(writer->precalculate().first, ranges, writer, method);
+        tmpRange.update(writer->precalculate().first, ranges, writer, method, currentLocal->as<BuiltinLocal>());
         if(allInputsProcessed && tmpRange.hasExplicitBoundaries())
         {
             // in the first step, only close if bounds are explicitly set to something. The default bounds are handled
@@ -493,18 +498,14 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
         // if we only have 1 open write, can determine an expression for it and have a non-default partial range (from
         // all other writes) for this local, we can check whether the expression converges to a value and then extend
         // the bounds to it.
-        // NOTE: The convergence is pessimistic, since we could create a smaller range if we knew the exact number the
-        // (most likely phi-instruction) is executed, e.g. once for if-else and a fixed number for some loops.
         if(auto expr = Expression::createRecursiveExpression(*write))
         {
             FastSet<Value> limits;
             Optional<ValueRange> fixedExpressionRange{};
+            bool otherLocalIsInductionVariable = false;
             if((expr->arg0.checkLocal() && expr->arg0.checkLocal() != currentLocal) ||
                 (expr->arg1.checkLocal() && expr->arg1.checkLocal() != currentLocal))
             {
-                // TODO does this still work as expected since rewriting expressions??
-                // TODO need to fix this, esp. for fake operations!!
-
                 // the expression takes another local as input, use its bounds as starting values for the convergence
                 // limit calculation
                 auto otherLocal = expr->arg0.checkLocal() ? expr->arg0.checkLocal() : expr->arg1.checkLocal();
@@ -534,9 +535,7 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
 
                 if(method && expr->hasConstantOperand())
                 {
-                    // the induction variables of the work-group loops have no constant upper bound, so we do not need
-                    // to check them at all
-                    for(auto& loop : method->getCFG().findLoops(true, true))
+                    for(auto& loop : method->getCFG().findLoops(true, false))
                     {
                         if(loop.findInLoop(write))
                         {
@@ -544,15 +543,19 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
                             if(auto range = inductionVariable & &InductionVariable::getRange)
                             {
                                 if(expr->arg0.isConstant())
-                                    fixedExpressionRange =
-                                        expr->code(getValueRange(expr->arg0.checkValue().value()), *range);
+                                    fixedExpressionRange = expr->code(
+                                        getValueRangeFlat(expr->arg0.checkValue().value(), true, method), *range);
                                 else if(expr->arg1.isConstant())
-                                    fixedExpressionRange =
-                                        expr->code(*range, getValueRange(expr->arg1.checkValue().value()));
+                                    fixedExpressionRange = expr->code(
+                                        *range, getValueRangeFlat(expr->arg1.checkValue().value(), true, method));
                                 CPPLOG_LAZY(logging::Level::DEBUG,
                                     log << "Using known range '" << range.to_string() << "' of induction variable '"
                                         << otherLocal->to_string() << "' to calculate limits of '" << expr->to_string()
                                         << "' to: " << fixedExpressionRange.to_string() << logging::endl);
+                            }
+                            if(inductionVariable)
+                            {
+                                otherLocalIsInductionVariable = true;
                                 // XXX Even if we cannot calculate any meaningful range, no local is induction variable
                                 // of multiple loops, are they? So we can abort immediately
                                 break;
@@ -561,10 +564,10 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
                     }
                 }
 
-                if(!fixedExpressionRange)
+                if(!fixedExpressionRange && otherLocalIsInductionVariable)
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Using input '" << otherLocal->to_string() << "' with"
+                        log << "Using induction variable '" << otherLocal->to_string() << "' with"
                             << (isPartialRange ? " partial " : " ") << "range '" << otherRange.to_string()
                             << "' for calculating convergence limit of: " << expr->to_string() << logging::endl);
 
@@ -590,9 +593,7 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
 
             if(fixedExpressionRange)
             {
-                // TODO iteration step is applied once too many (due to the other partial instruction calculating the
-                // local?)
-                localRange = *fixedExpressionRange;
+                localRange.extendBoundaries(*fixedExpressionRange);
                 openSet.erase(write);
                 closedSet.emplace(write, localRange);
                 openWrites.erase(write);
@@ -610,9 +611,9 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
                 // if at this point the localRange is still the default range (e.g. this is the only write and we could
                 // not determine the input local's range, see above), set to explicitly use all values for safety.
                 // Otherwise, the resulting range would only be the converged value!
-                localRange = ValueRange{};
-
-                if(auto lit = limit.getLiteralValue())
+                if(!localRange)
+                    localRange = ValueRange{limit.type};
+                else if(auto lit = limit.getLiteralValue())
                 {
                     // immediate values are always signed
                     localRange.extendBoundaries(
@@ -623,6 +624,19 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
                 }
             }
         }
+    }
+    if(!localRange && secondRun && openWrites.size() == 1 && currentLocal->getSingleWriter() == *openWrites.begin())
+    {
+        // if we are in the second run, have a single writer and no explicit bounds yet, try to calculate the explicit
+        // bounds for that writer (and if that does not work for the result type) to not have to rerun the calculations
+        // for this writer instruction again for the next dependent local.
+        auto write = *openWrites.begin();
+        localRange = getValueRangeFlat(*write, ranges, method);
+        if(!localRange)
+            localRange = getValueRangeFlat(currentLocal->createReference(), false, method);
+        openSet.erase(write);
+        closedSet.emplace(write, localRange);
+        openWrites.erase(write);
     }
 
     // 4. store final range
@@ -649,7 +663,7 @@ void ValueRange::processedOpenSet(Method* method, FastMap<const Local*, ValueRan
             logging::Level::DEBUG, log << "Rerunning value range for: " << it->first->to_string() << logging::endl);
         FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>> tmpOpenSet{openSet};
         tmpOpenSet.erase(it->first);
-        updateRecursively(it->first->checkOutputLocal(), method, ranges, closedSet, tmpOpenSet);
+        updateRecursively(it->first->checkOutputLocal(), method, ranges, closedSet, tmpOpenSet, true);
         if(tmpOpenSet.size() != openSet.size())
         {
             // we actually did something, update open set. Since we don't known which entries were removed (and whether
@@ -675,52 +689,57 @@ void ValueRange::processedOpenSet(Method* method, FastMap<const Local*, ValueRan
     LCOV_EXCL_STOP
 }
 
-ValueRange ValueRange::getValueRange(const Value& val, const Method* method)
+ValueRange ValueRange::getValueRangeFlat(const Value& val, bool indeterminateOnFulRange, const Method* method)
 {
     if(val.isUndefined())
         return ValueRange{};
     ValueRange range;
     auto singleWriter = val.getSingleWriter();
     FastMap<const Local*, ValueRange> ranges;
-    if(singleWriter && dynamic_cast<const MoveOperation*>(singleWriter))
+    if(auto singleMove = dynamic_cast<const MoveOperation*>(singleWriter))
     {
-        const Value& src = dynamic_cast<const MoveOperation*>(singleWriter)->getSource();
-        if(auto loc = src.checkLocal())
+        if(auto loc = singleMove->getSource().checkLocal())
         {
             auto& tmp = ranges.emplace(loc, loc->type).first->second;
-            tmp.update(NO_VALUE, ranges, loc->getSingleWriter(), method);
+            tmp.update(NO_VALUE, ranges, loc->getSingleWriter(), method, loc->as<BuiltinLocal>());
         }
     }
     range.update(val.getConstantValue() | (singleWriter ? singleWriter->precalculate(3).first : Optional<Value>{}),
-        ranges, singleWriter, method);
+        ranges, singleWriter, method, val.checkLocal() ? val.local()->as<BuiltinLocal>() : nullptr);
+    if(!range.hasExplicitBoundaries() && !indeterminateOnFulRange)
+        range = ValueRange{val.type};
     return range;
 }
 
-ValueRange ValueRange::getValueRangeRecursive(const Value& val, Method* method)
+ValueRange ValueRange::getValueRangeRecursive(
+    const Value& val, Method* method, FastMap<const Local*, ValueRange>& ranges)
 {
-    FastMap<const Local*, ValueRange> ranges;
     if(auto loc = val.checkLocal())
     {
-        PROFILE_START(RecursiveValueRange);
+        PROFILE_SCOPE(RecursiveValueRange);
         FastMap<const intermediate::IntermediateInstruction*, ValueRange> closedSet;
         FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>> openSet;
-        updateRecursively(loc, method, ranges, closedSet, openSet);
-        processedOpenSet(method, ranges, closedSet, openSet);
-        PROFILE_END(RecursiveValueRange);
-
+        updateRecursively(loc, method, ranges, closedSet, openSet, false);
         auto rangeIt = ranges.find(loc);
+        if(rangeIt != ranges.end() && rangeIt->second.hasExplicitBoundaries())
+            // short-circuit on case we do have a full range and don't need to process the rest (e.g. if value range
+            // does not depend on all inputs, e.g. for AND with 0)
+            return rangeIt->second;
+        processedOpenSet(method, ranges, closedSet, openSet);
+        rangeIt = ranges.find(loc);
         if(rangeIt != ranges.end())
             return rangeIt->second;
     }
     ValueRange range;
-    range.update(val.getConstantValue(), ranges, val.getSingleWriter(), method);
+    range.update(val.getConstantValue(), ranges, val.getSingleWriter(), method,
+        val.checkLocal() ? val.local()->as<BuiltinLocal>() : nullptr);
     return range;
 }
 
 static Optional<analysis::ValueRange> getRange(const SubExpression& sub, const Method* method)
 {
     if(auto val = sub.checkValue())
-        return analysis::ValueRange::getValueRange(*val, method);
+        return analysis::ValueRange::getValueRangeFlat(*val, true, method);
 
     if(auto expr = sub.checkExpression())
         return ValueRange::getValueRange(*expr, method);
@@ -931,7 +950,7 @@ ValueRanges ValueRangeAnalysis::analyzeRanges(
     if(auto loc = inst->checkOutputLocal())
     {
         // TODO how to pass in the method??
-        if(auto newRange = ValueRange::getValueRange(*inst, nullptr, previousRanges))
+        if(auto newRange = ValueRange::getValueRangeFlat(*inst, previousRanges.fullRanges))
         {
             if(inst->hasConditionalExecution())
             {

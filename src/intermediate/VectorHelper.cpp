@@ -835,9 +835,7 @@ static std::vector<std::set<ElementSource>> getElementSources(DataType type, con
 
 Optional<std::vector<ElementSource>> checkVectorCanBeAssembled(DataType type, const SIMDVector& vector)
 {
-    PROFILE_START(getElementSources);
-    auto sources = getElementSources(type, vector);
-    PROFILE_END(getElementSources);
+    auto sources = PROFILE(getElementSources, type, vector);
 
     std::vector<ElementSource> results;
     results.reserve(sources.size());

@@ -184,7 +184,9 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
 
     if(callSite->methodName == FUNCTION_NAME_NUM_DIMENSIONS && callSite->getArguments().empty())
     {
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of work-item dimensions" << logging::endl);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying reading of work-item dimensions into: " << callSite->getOutput().to_string()
+                << logging::endl);
         // setting the type to int8 allows us to optimize e.g. multiplications with work-item values
         Value out = callSite->getOutput().value();
         out.type = TYPE_INT8;
@@ -197,8 +199,9 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
     }
     if(callSite->methodName == FUNCTION_NAME_NUM_GROUPS && callSite->getArguments().size() == 1)
     {
-        CPPLOG_LAZY(
-            logging::Level::DEBUG, log << "Intrinsifying reading of the number of work-groups" << logging::endl);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying reading of the number of work-groups into: " << callSite->getOutput().to_string()
+                << logging::endl);
         it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {BuiltinLocal::Type::NUM_GROUPS_X, BuiltinLocal::Type::NUM_GROUPS_Y, BuiltinLocal::Type::NUM_GROUPS_Z},
             INT_ONE,
@@ -208,7 +211,9 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
     }
     if(callSite->methodName == FUNCTION_NAME_GROUP_ID && callSite->getArguments().size() == 1)
     {
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of the work-group ids" << logging::endl);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying reading of the work-group ids into: " << callSite->getOutput().to_string()
+                << logging::endl);
         it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {BuiltinLocal::Type::GROUP_ID_X, BuiltinLocal::Type::GROUP_ID_Y, BuiltinLocal::Type::GROUP_ID_Z}, INT_ZERO,
             add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT,
@@ -217,7 +222,9 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
     }
     if(callSite->methodName == FUNCTION_NAME_GLOBAL_OFFSET && callSite->getArguments().size() == 1)
     {
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of the global offsets" << logging::endl);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying reading of the global offsets into: " << callSite->getOutput().to_string()
+                << logging::endl);
         it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
             {BuiltinLocal::Type::GLOBAL_OFFSET_X, BuiltinLocal::Type::GLOBAL_OFFSET_Y,
                 BuiltinLocal::Type::GLOBAL_OFFSET_Z},
@@ -228,20 +235,26 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
     }
     if(callSite->methodName == FUNCTION_NAME_LOCAL_SIZE && callSite->getArguments().size() == 1)
     {
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of local work-item sizes" << logging::endl);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying reading of local work-item sizes into: " << callSite->getOutput().to_string()
+                << logging::endl);
         it = intrinsifyReadLocalSize(method, it, callSite->assertArgument(0));
         return true;
     }
     if(callSite->methodName == FUNCTION_NAME_LOCAL_ID && callSite->getArguments().size() == 1)
     {
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of local work-item ids" << logging::endl);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying reading of local work-item ids into: " << callSite->getOutput().to_string()
+                << logging::endl);
         it = intrinsifyReadLocalID(method, it, callSite->assertArgument(0));
         return true;
     }
     if(callSite->methodName == FUNCTION_NAME_GLOBAL_SIZE && callSite->getArguments().size() == 1)
     {
         // global_size(dim) = local_size(dim) * num_groups(dim)
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of global work-item sizes" << logging::endl);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying reading of global work-item sizes into: " << callSite->getOutput().to_string()
+                << logging::endl);
 
         const Value tmpLocalSize = method.addNewLocal(TYPE_INT8, "%local_size");
         const Value tmpNumGroups = method.addNewLocal(TYPE_INT32, "%num_groups");
@@ -266,7 +279,9 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
     if(callSite->methodName == FUNCTION_NAME_GLOBAL_ID && callSite->getArguments().size() == 1)
     {
         // global_id(dim) = global_offset(dim) + (group_id(dim) * local_size(dim) + local_id(dim)
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying reading of global work-item ids" << logging::endl);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying reading of global work-item ids into: " << callSite->getOutput().to_string()
+                << logging::endl);
 
         const Value tmpGroupID = method.addNewLocal(TYPE_INT32, "%group_id");
         const Value tmpLocalSize = method.addNewLocal(TYPE_INT8, "%local_size");

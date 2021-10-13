@@ -1020,7 +1020,7 @@ void TestInstructions::testOpCodeRanges()
     TEST_ASSERT_EQUALS(RANGE_FLOAT, OP_FMUL(ValueRange{}, ValueRange{}))
     TEST_ASSERT_EQUALS(RANGE_INT, OP_FTOI(ValueRange{}, ValueRange{}))
     TEST_ASSERT_EQUALS(RANGE_FLOAT, OP_ITOF(ValueRange{}, ValueRange{}))
-    TEST_ASSERT_EQUALS(RANGE_INT, OP_ADD(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_INT | RANGE_UINT, OP_ADD(ValueRange{}, ValueRange{}))
     TEST_ASSERT_EQUALS(RANGE_INT, OP_SUB(ValueRange{}, ValueRange{}))
     TEST_ASSERT_EQUALS(RANGE_UINT, OP_SHR(ValueRange{}, ValueRange{}))
     TEST_ASSERT_EQUALS(RANGE_UINT, OP_SHL(ValueRange{}, ValueRange{}))
@@ -1910,7 +1910,7 @@ void TestInstructions::testValueRanges()
     using namespace analysis;
     // undefined/unlimited range
     {
-        auto range = ValueRange::getValueRange(UNDEFINED_VALUE);
+        auto range = ValueRange::getValueRangeFlat(UNDEFINED_VALUE, true);
         TEST_ASSERT(!range.hasExplicitBoundaries())
         TEST_ASSERT(!range.fitsIntoType(TYPE_INT32))
         TEST_ASSERT(!range.fitsIntoType(TYPE_VOID))
@@ -1927,7 +1927,7 @@ void TestInstructions::testValueRanges()
     // constant range
     {
         Value constant(Literal(0.5f), TYPE_FLOAT);
-        auto range = ValueRange::getValueRange(constant);
+        auto range = ValueRange::getValueRangeFlat(constant, true);
         TEST_ASSERT(range.hasExplicitBoundaries())
         TEST_ASSERT(range.isUnsigned())
         TEST_ASSERT(range.fitsIntoType(TYPE_HALF))
@@ -1947,7 +1947,7 @@ void TestInstructions::testValueRanges()
     {
         SIMDVector vec({Literal(-16.4f), Literal(15.0f), Literal(-3.2f)});
         Value constant(&vec, TYPE_FLOAT);
-        auto range = ValueRange::getValueRange(constant);
+        auto range = ValueRange::getValueRangeFlat(constant, true);
         TEST_ASSERT(range.hasExplicitBoundaries())
         TEST_ASSERT(!range.isUnsigned())
         TEST_ASSERT(range.fitsIntoType(TYPE_HALF))
@@ -1962,7 +1962,7 @@ void TestInstructions::testValueRanges()
 
         vec = SIMDVector{};
         constant = Value(&vec, TYPE_INT32);
-        range = ValueRange::getValueRange(constant);
+        range = ValueRange::getValueRangeFlat(constant, true);
         TEST_ASSERT(!range.hasExplicitBoundaries())
     }
 

@@ -14,12 +14,13 @@ namespace vc4c
 {
 #if DEBUG_MODE
 #define PROFILE(func, ...)                                                                                             \
-    static_assert(__builtin_constant_p(#func), "");                                                                    \
-    static thread_local auto profileEntry##func =                                                                      \
-        profiler::createEntry(reinterpret_cast<std::uintptr_t>(std::addressof(#func[0])), #func, __FILE__, __LINE__);  \
-    auto profileStart##func = profiler::Clock::now();                                                                  \
-    func(__VA_ARGS__);                                                                                                 \
-    profiler::endFunctionCall(profileEntry##func, profileStart##func)
+    [&]() {                                                                                                            \
+        static_assert(__builtin_constant_p(#func), "");                                                                \
+        static thread_local auto profileEntry##func = profiler::createEntry(                                           \
+            reinterpret_cast<std::uintptr_t>(std::addressof(#func[0])), #func, __FILE__, __LINE__);                    \
+        profiler::ProfilingScope profile##name{profileEntry##func};                                                    \
+        return func(__VA_ARGS__);                                                                                      \
+    }();
 
 #define PROFILE_START(name)                                                                                            \
     static_assert(__builtin_constant_p(#name), "");                                                                    \

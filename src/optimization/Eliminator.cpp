@@ -410,34 +410,31 @@ InstructionWalker optimizations::foldConstants(
     intermediate::Operation* op = it.get<intermediate::Operation>();
     // Don't pre-calculate on flags, since i.e. carry flags cannot be set by moves!
     // Similarly for (un)pack modes (esp. 32-bit saturation) XXX we could precalculate them in the compiler
-    if(op != nullptr && !op->doesSetFlag() && !op->hasUnpackMode() && !op->hasPackMode())
+    if(op && !op->doesSetFlag() && !op->hasUnpackMode() && !op->hasPackMode())
     {
-        // calculations with literals can be pre-calculated
-        if((op->getFirstArg().getConstantValue() & &Value::getLiteralValue) &&
-            (!op->getSecondArg() || (op->assertArgument(1).getConstantValue() & &Value::getLiteralValue)))
+        if(op->hasConditionalExecution() && op->op == OP_XOR && op->getSecondArg() == op->getFirstArg())
         {
-            if(op->hasConditionalExecution() && op->op == OP_XOR && op->getSecondArg() == op->getFirstArg())
-            {
-                // skip "xor ?, true, true", so it can be optimized (combined with "move ?, true") afterwards
-                // also skip any "xor ?, val, val", since they are created on purpose (by combineSelectionWithZero to
-                // allow for combination with the other case)
-                return it;
-            }
-            if(op->hasDecoration(intermediate::InstructionDecorations::CONSTANT_LOAD))
-            {
-                // This instruction was inserted for the purpose of loading the constant value, don't revert that.
-                // Otherwise, we will probably revert this precalculation back to the same constant load instruction in
-                // the adjustment step.
-                return it;
-            }
-            if(auto value = op->precalculate(3).first)
-            {
-                CPPLOG_LAZY(logging::Level::DEBUG,
-                    log << "Replacing '" << op->to_string() << "' with constant value: " << value.to_string()
-                        << logging::endl);
-                it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(
-                    *op, op->getOutput().value(), value.value()));
-            }
+            // skip "xor ?, true, true", so it can be optimized (combined with "move ?, true") afterwards
+            // also skip any "xor ?, val, val", since they are created on purpose (by combineSelectionWithZero to
+            // allow for combination with the other case)
+            return it;
+        }
+        if(op->hasDecoration(intermediate::InstructionDecorations::CONSTANT_LOAD))
+        {
+            // This instruction was inserted for the purpose of loading the constant value, don't revert that.
+            // Otherwise, we will probably revert this precalculation back to the same constant load instruction in
+            // the adjustment step.
+            return it;
+        }
+
+        // calculations with literals can be pre-calculated
+        if(auto value = op->precalculate(3).first & &Value::getLiteralValue)
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Replacing '" << op->to_string() << "' with constant value: " << value.to_string()
+                    << logging::endl);
+            it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(
+                *op, op->getOutput().value(), Value(value.value(), op->getOutput()->type)));
         }
     }
     return it;

@@ -325,8 +325,12 @@ static bool findTypeSizeShift(
             dynamic_cast<const intermediate::Operation*>(writer)->op == OP_SHL)
         {
             auto secondLiteral = writer->assertArgument(1).getConstantValue() & &Value::getLiteralValue;
-            if(!secondLiteral ||
-                (1u << secondLiteral->unsignedInt()) != inst.assertArgument(0).type.getElementType().getLogicalWidth())
+            auto type = inst.assertArgument(0).type.getElementType();
+            bool shiftIsElementTypeSize =
+                secondLiteral && (1u << secondLiteral->unsignedInt()) == type.getLogicalWidth();
+            bool shiftIsArrayElementTypeSize = secondLiteral && type.getArrayType() &&
+                (1u << secondLiteral->unsignedInt()) == type.getArrayType()->elementType.getLogicalWidth();
+            if(!shiftIsElementTypeSize && !shiftIsArrayElementTypeSize)
                 // Abort, since the offset shifted does not match the type-width of the element type
                 return false;
             range.typeSizeShift = dynamic_cast<const intermediate::Operation*>(writer);
@@ -338,15 +342,30 @@ static bool findTypeSizeShift(
 
 static Optional<MemoryAccessRange> determineAccessRange(Method& method,
     const intermediate::IntermediateInstruction& inst, InstructionWalker memIt,
-    FastMap<const Local*, ValueRange>& knownRanges)
+    FastMap<const Local*, ValueRange>& knownRanges, const Local* checkBaseAddress = nullptr)
 {
     // 1. find writes to memory addresses with work-group uniform part in address values
     if(auto memInst = dynamic_cast<const intermediate::MemoryInstruction*>(&inst))
     {
-        auto checkLocal = memInst->op == intermediate::MemoryOperation::READ ?
-            memInst->getSource().checkLocal() :
-            (memInst->op == intermediate::MemoryOperation::WRITE ? memInst->getDestination().checkLocal() : nullptr);
-        if(checkLocal && checkLocal->residesInMemory())
+        const Local* checkLocal = nullptr;
+        switch(memInst->op)
+        {
+        case intermediate::MemoryOperation::READ:
+            checkLocal = memInst->getSource().checkLocal();
+            break;
+        case intermediate::MemoryOperation::FILL:
+        case intermediate::MemoryOperation::WRITE:
+            checkLocal = memInst->getDestination().checkLocal();
+            break;
+        case intermediate::MemoryOperation::COPY:
+            if(checkBaseAddress &&
+                (memInst->getSource().hasLocal(checkBaseAddress) ||
+                    memInst->getDestination().hasLocal(checkBaseAddress)))
+                // is read for either input or output
+                checkLocal = checkBaseAddress;
+            break;
+        }
+        if(checkLocal && checkLocal->residesInMemory() && (!checkBaseAddress || checkLocal == checkBaseAddress))
         {
             // direct write of address (e.g. all work items access the same location)
             MemoryAccessRange range;
@@ -431,17 +450,10 @@ static Optional<MemoryAccessRange> determineAccessRange(Method& method,
             range.dynamicAddressParts.emplace(val);
             if(auto loc = val.first.checkLocal())
             {
-                auto rangeIt = knownRanges.find(loc);
-                if(rangeIt != knownRanges.end())
-                {
-                    if(range.offsetRange && *range.offsetRange)
-                        *range.offsetRange += rangeIt->second;
-                }
-                if(auto singleRange = analysis::ValueRange::getValueRangeRecursive(val.first, &method))
+                if(auto singleRange = analysis::ValueRange::getValueRangeRecursive(val.first, &method, knownRanges))
                 {
                     if(range.offsetRange && *range.offsetRange)
                         *range.offsetRange += singleRange;
-                    knownRanges.emplace(loc, singleRange);
                 }
                 else
                 {
@@ -492,7 +504,7 @@ static Optional<MemoryAccessRange> findAccessRange(Method& method, const Value& 
 {
     if(auto writer = getSingleWriter(val, defaultInst))
         // if there is a single address writer, take that one
-        return determineAccessRange(method, *writer, accessIt, knownRanges);
+        return determineAccessRange(method, *writer, accessIt, knownRanges, baseAddr);
     // TODO how to determine access range for a memory location for conditionally written address??
     return {};
 }

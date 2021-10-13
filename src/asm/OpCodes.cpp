@@ -1483,11 +1483,11 @@ analysis::ValueRange OpCode::operator()(
     case OP_FADD.opAdd:
         if(!firstRange || !secondRange)
             return RANGE_FLOAT;
-        return firstRange + secondRange;
+        return RANGE_FLOAT & (firstRange + secondRange);
     case OP_FSUB.opAdd:
         if(!firstRange || !secondRange)
             return RANGE_FLOAT;
-        return firstRange - secondRange;
+        return RANGE_FLOAT & (firstRange - secondRange);
     case OP_FMIN.opAdd:
         if(!firstRange || !secondRange)
             return RANGE_FLOAT;
@@ -1514,12 +1514,12 @@ analysis::ValueRange OpCode::operator()(
         return RANGE_FLOAT & firstRange;
     case OP_ADD.opAdd:
         if(!firstRange || !secondRange)
-            return RANGE_INT;
-        return firstRange + secondRange;
+            return RANGE_UINT | RANGE_INT;
+        return (RANGE_UINT | RANGE_INT) & (firstRange + secondRange);
     case OP_SUB.opAdd:
         if(!firstRange || !secondRange)
             return RANGE_INT;
-        return firstRange - secondRange;
+        return RANGE_INT & (firstRange - secondRange);
     case OP_SHR.opAdd:
         if(firstRange.isUnsigned() && secondRange.isUnsigned() &&
             static_cast<int64_t>(secondRange.minValue) / 32 == static_cast<int64_t>(secondRange.maxValue) / 32)
@@ -1543,6 +1543,12 @@ analysis::ValueRange OpCode::operator()(
         if(firstRange.isUnsigned())
             // [a, b] >> [?, ?] -> [0, b]
             return ValueRange(0.0) | firstRange;
+        if(auto fixedOffset = secondRange.getSingletonValue())
+        {
+            // [?, ?] >> a -> [0, MAX >> a]
+            auto max = std::numeric_limits<uint32_t>::max() >> (static_cast<uint32_t>(*fixedOffset) % 32);
+            return ValueRange(0.0, static_cast<double>(max));
+        }
         return RANGE_UINT;
     case OP_SHL.opAdd:
         if(firstRange.getSingletonValue() == 0.0)
@@ -1591,7 +1597,7 @@ analysis::ValueRange OpCode::operator()(
             return ValueRange{TYPE_FLOAT};
         auto options = {firstRange.minValue * secondRange.minValue, firstRange.minValue * secondRange.maxValue,
             firstRange.maxValue * secondRange.minValue, firstRange.maxValue * secondRange.maxValue};
-        return ValueRange{std::min(options), std::max(options)};
+        return RANGE_FLOAT & ValueRange{std::min(options), std::max(options)};
     }
     if(opMul == OP_MUL24.opMul)
     {
@@ -1607,7 +1613,7 @@ analysis::ValueRange OpCode::operator()(
 
         auto options = {firstRange.minValue * secondRange.minValue, firstRange.minValue * secondRange.maxValue,
             firstRange.maxValue * secondRange.minValue, firstRange.maxValue * secondRange.maxValue};
-        return ValueRange{std::min(options), std::max(options)};
+        return RANGE_UINT & ValueRange{std::min(options), std::max(options)};
     }
 
     return ValueRange(returnsFloat ? TYPE_FLOAT : TYPE_INT32);

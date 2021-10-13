@@ -217,10 +217,8 @@ static NODISCARD InstructionWalker findReplacementCandidate(
             excludedValues.emplace(Value(REG_REPLICATE_ALL, TYPE_UNKNOWN));
             excludedValues.emplace(Value(REG_REPLICATE_QUAD, TYPE_UNKNOWN));
         }
-        PROFILE_START(findInstructionNotAccessing);
-        replacementIt = findInstructionNotAccessing(basicBlock, pos, excludedValues,
+        replacementIt = PROFILE(findInstructionNotAccessing, basicBlock, pos, excludedValues,
             config.additionalOptions.replaceNopThreshold, config.additionalOptions.accumulatorThreshold);
-        PROFILE_END(findInstructionNotAccessing);
         break;
     }
     case DelayType::WAIT_SFU:
@@ -237,10 +235,8 @@ static NODISCARD InstructionWalker findReplacementCandidate(
         excludedValues.emplace(Value(REG_SFU_RECIP_SQRT, TYPE_FLOAT));
         excludedValues.emplace(Value(REG_TMU0_ADDRESS, TYPE_VOID_POINTER));
         excludedValues.emplace(Value(REG_TMU1_ADDRESS, TYPE_VOID_POINTER));
-        PROFILE_START(findInstructionNotAccessing);
-        replacementIt = findInstructionNotAccessing(basicBlock, pos, excludedValues,
+        replacementIt = PROFILE(findInstructionNotAccessing, basicBlock, pos, excludedValues,
             config.additionalOptions.replaceNopThreshold, config.additionalOptions.accumulatorThreshold);
-        PROFILE_END(findInstructionNotAccessing);
         break;
     }
     case DelayType::WAIT_UNIFORM:
@@ -261,9 +257,7 @@ static bool replaceNOPs(BasicBlock& basicBlock, Method& method, const Configurat
         if(nop != nullptr && !nop->hasSideEffects())
         {
             auto isMandatoryDelay = has_flag(nop->decoration, InstructionDecorations::MANDATORY_DELAY);
-            PROFILE_START(findReplacementCandidate);
-            InstructionWalker replacementIt = findReplacementCandidate(basicBlock, it, nop->type, config);
-            PROFILE_END(findReplacementCandidate);
+            InstructionWalker replacementIt = PROFILE(findReplacementCandidate, basicBlock, it, nop->type, config);
             if(!replacementIt.isEndOfBlock())
             {
                 // replace NOP with instruction, reset instruction at position (do not yet erase, otherwise iterators

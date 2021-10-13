@@ -91,6 +91,7 @@ static std::unique_ptr<DominatorTree> createTreeInner(ControlFlowGraph& cfg,
     // 2. check whether we can resolve transitive dominators
     while(!predecessors.empty())
     {
+        bool didChanges = false;
         // extend all dominator chains by appending other known chains
         for(auto& chain : dominatorChains)
         {
@@ -98,7 +99,10 @@ static std::unique_ptr<DominatorTree> createTreeInner(ControlFlowGraph& cfg,
             {
                 auto chainIt = dominatorChains.find(chain.second.back());
                 if(chainIt != dominatorChains.end())
+                {
                     chain.second.insert(chain.second.end(), chainIt->second.begin(), chainIt->second.end());
+                    didChanges = true;
+                }
             }
         }
 
@@ -159,10 +163,21 @@ static std::unique_ptr<DominatorTree> createTreeInner(ControlFlowGraph& cfg,
                         tree->assertNode(first).addEdge(&tree->assertNode(pendingNode.first), {});
                     dominatorChains.emplace(pendingNode.first, std::move(dominatorCandidates));
                     it = predecessors.erase(it);
+                    didChanges = true;
                     continue;
                 }
             }
             ++it;
+        }
+
+        if(!didChanges)
+        {
+            for(const auto& chain : dominatorChains)
+                logging::warn() << "Dominator chain: " << chain.first->key->to_string() << ": "
+                                << to_string<const CFGNode*>(chain.second,
+                                       [](const CFGNode* node) { return node ? node->key->to_string() : "(null)"; })
+                                << logging::endl;
+            throw CompilationError(CompilationStep::GENERAL, "Dominator tree analysis is stuck, aborting!");
         }
     }
 

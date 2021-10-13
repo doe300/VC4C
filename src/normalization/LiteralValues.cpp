@@ -573,9 +573,7 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
         const Value source = op.assertArgument(i);
         if(auto lit = source.checkLiteral())
         {
-            PROFILE_START(mapImmediateValue);
-            ImmediateHandler mapped = mapImmediateValue(*lit);
-            PROFILE_END(mapImmediateValue);
+            ImmediateHandler mapped = PROFILE(mapImmediateValue, *lit);
             if(mapped.changeValue)
             {
                 const Value tmp = method.addNewLocal(source.type, "%immediate");
@@ -633,9 +631,7 @@ static NODISCARD InstructionWalker handleImmediateInMove(
     Value source = move->getSource();
     if(auto lit = source.checkLiteral())
     {
-        PROFILE_START(mapImmediateValue);
-        ImmediateHandler mapped = mapImmediateValue(*lit);
-        PROFILE_END(mapImmediateValue);
+        ImmediateHandler mapped = PROFILE(mapImmediateValue, *lit);
         if(mapped.changeValue)
         {
             // value was changed

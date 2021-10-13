@@ -167,8 +167,6 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
             CompilationStep::GENERAL, "Splitting bit-cast with element stride is not yet implemented");
     // the number of destination elements to extract from a single source element
     unsigned sizeFactor = src.type.getScalarBitCount() / dest.type.getScalarBitCount();
-    // the number of bits to shift per element
-    auto shift = dest.type.getScalarBitCount();
 
     /*
      * By shifting and ANDing whole source vector, we save a few instructions for sources with more than 1 element
@@ -187,14 +185,18 @@ static NODISCARD InstructionWalker insertSplittingBitcast(
             method.addNewLocal(dest.type.toVectorType(src.type.getVectorWidth()), "%bit_cast"));
         const Value& result = shiftedTruncatedVectors.back();
         auto srcVal = src;
+        auto shiftOffset = dest.type.getScalarBitCount() * i;
         if(srcLongData)
-            // need to correctly take the lower or upper part for 64-bit locals
+        {
+            // need to correctly take the lower or upper part for 64-bit locals and adapt the shift offset
             srcVal = (i >= (sizeFactor / 2) ? srcLongData->upper : srcLongData->lower)->createReference();
+            shiftOffset -= i >= (sizeFactor / 2) ? 32 : 0;
+        }
         Value tmpShifted = srcVal;
-        if(i > 0)
+        if(shiftOffset != 0)
             // no need to shift for 0th element
             tmpShifted = assign(it, result.type, "%bit_cast") =
-                as_unsigned{srcVal} >> Value(Literal(shift * i), TYPE_INT8);
+                as_unsigned{srcVal} >> Value(Literal(shiftOffset), TYPE_INT8);
         if(i == (sizeFactor - 1u))
             // no need to AND for upper-most element
             assign(it, result) = tmpShifted;

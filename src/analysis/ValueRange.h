@@ -122,10 +122,12 @@ namespace vc4c
 
             static Optional<ValueRange> getValueRange(
                 intermediate::InstructionDecorations deco, const Method* method = nullptr);
-            static ValueRange getValueRange(const intermediate::IntermediateInstruction& inst, const Method* method,
-                const ValueRanges& knownRanges);
-            static ValueRange getValueRange(const Value& val, const Method* method = nullptr);
-            static ValueRange getValueRangeRecursive(const Value& val, Method* method = nullptr);
+            static ValueRange getValueRangeFlat(const intermediate::IntermediateInstruction& inst,
+                const FastMap<const Local*, ValueRange>& knownRanges, const Method* method = nullptr);
+            static ValueRange getValueRangeFlat(
+                const Value& val, bool indeterminateOnFulRange, const Method* method = nullptr);
+            static ValueRange getValueRangeRecursive(
+                const Value& val, Method* method, FastMap<const Local*, ValueRange>& knownRanges);
             static ValueRange getValueRange(const Expression& expr, const Method* method = nullptr);
 
             ValueRange operator*(double val) const noexcept
@@ -190,12 +192,13 @@ namespace vc4c
             void extendBoundaries(const ValueRange& other);
             void extendBoundaries(Literal literal, bool isFloat, bool isKnownSigned, bool isKnownUnsigned);
             void update(const Optional<Value>& constant, const FastMap<const Local*, ValueRange>& ranges,
-                const intermediate::IntermediateInstruction* it = nullptr, const Method* method = nullptr);
+                const intermediate::IntermediateInstruction* it = nullptr, const Method* method = nullptr,
+                const BuiltinLocal* builtin = nullptr);
 
             static void updateRecursively(const Local* currentLocal, Method* method,
                 FastMap<const Local*, ValueRange>& ranges,
                 FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
-                FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet);
+                FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet, bool secondRun);
 
             static void processedOpenSet(Method* method, FastMap<const Local*, ValueRange>& ranges,
                 FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
