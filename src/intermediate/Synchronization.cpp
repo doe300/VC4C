@@ -111,7 +111,7 @@ static std::string toString(MemorySemantics semantics)
         result.emplace_back("atomic counter");
     if(has_flag(semantics, MemorySemantics::IMAGE_MEMORY))
         result.emplace_back("image");
-    return vc4c::to_string<std::string>(result, "|");
+    return vc4c::to_string<std::string>(result, std::string{"|"});
 }
 
 std::string MemoryBarrier::to_string() const

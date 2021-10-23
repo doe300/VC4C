@@ -171,7 +171,7 @@ static void compileOpenCLToLLVMIR0(std::istream* input, std::ostream* output, co
         buildClangCommand(CLANG_PATH, defaultOptions, options, std::string("-S ").append("-emit-" + outputType),
             outputFile.value_or("/dev/stdout"), inputFile.value_or("-"), withPCH);
 
-    auto commandString = to_string<std::string>(command, " ");
+    auto commandString = to_string<std::string>(command, std::string{" "});
     CPPLOG_LAZY(logging::Level::INFO, log << "Compiling OpenCL to LLVM-IR with: " << commandString << logging::endl);
 
 #ifdef USE_LIBCLANG

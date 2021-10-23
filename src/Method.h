@@ -52,10 +52,12 @@ namespace vc4c
          */
         TRAILING_CONTROL_FLOW_BARRIER = 1 << 3,
         /**
-         * This kernel function is guaranteed to have no cross-item memory access, i.e. a work-item never writes memory
-         * read by another work-item. This property allows us to do some more memory access optimizations.
+         * This kernel function is guaranteed to have no cross-item memory access within the same work-group (i.e. a
+         * work-item never writes memory read by another work-item within the same work-group) or such accesses are
+         * otherwise guarded, so that no data race might occur between work-items of different work-groups executed
+         * serially. This property allows us to do some more memory access optimizations.
          */
-        NO_CROSS_ITEM_MEMORY_ACCESS = 1 << 4
+        NO_UNGUARDED_CROSS_ITEM_MEMORY_DEPENDENCIES = 1 << 4
     };
 
     /*

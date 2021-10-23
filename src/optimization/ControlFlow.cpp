@@ -1233,7 +1233,7 @@ static bool insertSynchronizationBlock(Method& method, BasicBlock& lastBlock)
         return false;
     }
 
-    if(has_flag(method.flags, MethodFlags::NO_CROSS_ITEM_MEMORY_ACCESS))
+    if(has_flag(method.flags, MethodFlags::NO_UNGUARDED_CROSS_ITEM_MEMORY_DEPENDENCIES))
     {
         // There is no memory written which is read by another work-item, so we cannot run into data races there!
         CPPLOG_LAZY(logging::Level::DEBUG,

@@ -402,8 +402,8 @@ static void insertPrimaryBarrierCode(Method& method, BasicBlock& block, const Va
     // the second work-item
     auto it = block.walkEnd();
     // just copy to ease register association
-    auto locaSize = assign(it, localSizeScalar.type, "%local_id_scalar") = localSizeScalar;
-    auto numRepetitions = assign(it, TYPE_INT8) = (locaSize - 1_val, InstructionDecorations::PHI_NODE);
+    auto localSize = assign(it, localSizeScalar.type, "%local_size_scalar") = localSizeScalar;
+    auto numRepetitions = assign(it, TYPE_INT8) = (localSize - 1_val, InstructionDecorations::PHI_NODE);
     auto& loopBlock = insertLoop(method, it, numRepetitions, "%barrier_primary_loop");
     {
         // inside loop

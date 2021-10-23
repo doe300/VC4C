@@ -456,7 +456,8 @@ struct Intrinsic
     Intrinsic(const IntrinsicFunction& func, const BinaryInstruction& binary) : func(func), binaryInstr(binary) {}
 };
 
-static UnaryInstruction calculateIntrinsic(DataType resultBaseType, std::function<Literal(Literal)>&& func)
+template <typename Func>
+static UnaryInstruction calculateIntrinsic(DataType resultBaseType, Func&& func)
 {
     return [=](const Value& val) {
         auto resultType = resultBaseType.toVectorType(val.type.getVectorWidth());

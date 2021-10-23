@@ -119,7 +119,11 @@ static std::unique_ptr<DominatorTree> createTreeInner(ControlFlowGraph& cfg,
             {
                 auto domIt = dominatorChains.find(predecessor);
                 if(domIt != dominatorChains.end())
-                    predecessorDominatorChains.emplace(predecessor, &domIt->second);
+                {
+                    if(std::find(domIt->second.begin(), domIt->second.end(), pendingNode.first) == domIt->second.end())
+                        // if the candidate chain contains the pending node itself, it can't be a candidate, so skip it
+                        predecessorDominatorChains.emplace(predecessor, &domIt->second);
+                }
                 else
                 {
                     allPredecessorsProcessed = false;
@@ -175,6 +179,11 @@ static std::unique_ptr<DominatorTree> createTreeInner(ControlFlowGraph& cfg,
             for(const auto& chain : dominatorChains)
                 logging::warn() << "Dominator chain: " << chain.first->key->to_string() << ": "
                                 << to_string<const CFGNode*>(chain.second,
+                                       [](const CFGNode* node) { return node ? node->key->to_string() : "(null)"; })
+                                << logging::endl;
+            for(const auto& entry : predecessors)
+                logging::warn() << "Pending predecessors: " << entry.first->key->to_string() << ": "
+                                << to_string<const CFGNode*>(entry.second,
                                        [](const CFGNode* node) { return node ? node->key->to_string() : "(null)"; })
                                 << logging::endl;
             throw CompilationError(CompilationStep::GENERAL, "Dominator tree analysis is stuck, aborting!");

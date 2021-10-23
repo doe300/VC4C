@@ -128,7 +128,7 @@ static void printInfo()
         "compilation with libClang"
 #endif
     };
-    std::cout << vc4c::to_string<std::string>(infoString, "; ") << '\n' << std::endl;
+    std::cout << vc4c::to_string<std::string>(infoString, std::string{"; "}) << '\n' << std::endl;
 
     std::cout << "Standard library location:" << std::endl;
     try
@@ -326,7 +326,7 @@ int main(int argc, char** argv)
     }
 
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Compiling '" << to_string<std::string>(inputFiles, "', '") << "' into '" << outputFile
+        log << "Compiling '" << to_string<std::string>(inputFiles, std::string{"', '"}) << "' into '" << outputFile
             << "' with optimization level " << static_cast<unsigned>(config.optimizationLevel) << " and options '"
             << options << "' ..." << logging::endl);
 

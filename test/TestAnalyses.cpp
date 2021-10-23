@@ -863,7 +863,7 @@ void TestAnalyses::testDominatorTree()
         TEST_ASSERT_EQUALS(numNodes - 1, start->getDominatedNodes().size());
         // the end of the control flow dominates no nodes
         auto* end = &tree->assertNode(&cfg.getEndOfControlFlow());
-        TEST_ASSERT(end->getDominators().size() > 4);
+        TEST_ASSERT(end->getDominators().size() > 3);
         TEST_ASSERT_EQUALS(0u, end->getDominatedNodes().size());
 
         for(auto& node : tree->getNodes())
@@ -881,7 +881,7 @@ void TestAnalyses::testDominatorTree()
 
         // the start of the control flow post-dominates no nodes
         start = &tree->assertNode(&cfg.getStartOfControlFlow());
-        TEST_ASSERT(start->getDominators().size() > 4);
+        TEST_ASSERT(start->getDominators().size() > 3);
         TEST_ASSERT_EQUALS(0u, start->getDominatedNodes().size());
         // the end of the control flow post-dominates all nodes (except itself)
         end = &tree->assertNode(&cfg.getEndOfControlFlow());

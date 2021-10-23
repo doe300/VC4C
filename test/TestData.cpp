@@ -103,8 +103,7 @@ void test_data::registerGeneralTests()
         toDimensions(1),
         {checkParameterEquals(3, std::vector<uint32_t>{0x2ef7bde6, 0x08ce5404, 0xe97d5f04, 0x2f95f89f, 0x1c232871})}});
 
-    registerTest(TestData{"SHA256", DataFilter::DISABLED | DataFilter::COMPLEX_KERNEL, &SHA_256_cl_string, "",
-        "execute_sha256_cpu",
+    registerTest(TestData{"SHA256", DataFilter::COMPLEX_KERNEL, &SHA_256_cl_string, "", "execute_sha256_cpu",
         {// parameter 0 is the input with a block-size of 16 words
             toBufferParameter(std::vector<uint8_t>{'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '!', '1', '1',
                 '1', '1', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -118,8 +117,7 @@ void test_data::registerGeneralTests()
             std::vector<uint32_t>{
                 0xc24cbddc, 0xf26698b6, 0xf07dcadf, 0x7a8f4bb0, 0x87d4733b, 0xaa817cc2, 0x2d8f7709, 0x1e7442e6})}});
 
-    registerTest(TestData{"SHA256_gpu", DataFilter::DISABLED | DataFilter::COMPLEX_KERNEL, &SHA_256_cl_string, "",
-        "execute_sha256_gpu",
+    registerTest(TestData{"SHA256_vector", DataFilter::COMPLEX_KERNEL, &SHA_256_cl_string, "", "execute_sha256_gpu",
         {// parameter 0 is the input with a block-size of 16 words
             toBufferParameter(std::vector<uint8_t>{'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '!', '1', '1',
                 '1', '1', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

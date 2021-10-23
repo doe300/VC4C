@@ -6,6 +6,7 @@
 
 #include "FlagsAnalysis.h"
 
+#include "../Profiler.h"
 #include "../intermediate/Helper.h"
 #include "PatternMatching.h"
 
@@ -624,6 +625,7 @@ Optional<analysis::ComparisonInfo> analysis::getComparison(
     const intermediate::IntermediateInstruction* conditionalInstruction, InstructionWalker searchStart,
     bool checkTransitive)
 {
+    PROFILE_SCOPE(getComparison);
     // TODO add floating point and long comparisons??
 
     Optional<InstructionWalker> matchingFlagSetterIt;

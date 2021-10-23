@@ -450,7 +450,7 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
         // We can reason that no work-item (across work-group loops) accesses memory written by another work-item
         // (except maybe the work-item of the previous loop with the same local ID) and thus we can omit the work-group
         // synchronization barrier blocks, since there is no possible data races we need to guard against.
-        method.flags = add_flag(method.flags, MethodFlags::NO_CROSS_ITEM_MEMORY_ACCESS);
+        method.flags = add_flag(method.flags, MethodFlags::NO_UNGUARDED_CROSS_ITEM_MEMORY_DEPENDENCIES);
 
     // list of basic blocks where multiple VPM accesses could be combined
     FastSet<BasicBlock*> affectedBlocks;
