@@ -18,11 +18,6 @@
 
 namespace vc4c
 {
-    namespace analysis
-    {
-        class ControlFlowGraph;
-    } // namespace analysis
-
     namespace intermediate
     {
         class IntermediateInstruction;
@@ -180,7 +175,6 @@ namespace vc4c
         Method& method;
         intermediate::InstructionsList instructions;
 
-        friend class analysis::ControlFlowGraph;
         friend class InstructionWalker;
         friend class ConstInstructionWalker;
         friend struct InstructionVisitor;

@@ -72,6 +72,14 @@ std::string intermediate::toString(const InstructionDecorations decoration)
         res.append("splat ");
     if(has_flag(decoration, InstructionDecorations::CONSTANT_LOAD))
         res.append("const_load ");
+    if(has_flag(decoration, InstructionDecorations::DIMENSION_X))
+        res.append("X ");
+    if(has_flag(decoration, InstructionDecorations::DIMENSION_Y))
+        res.append("Y ");
+    if(has_flag(decoration, InstructionDecorations::DIMENSION_Z))
+        res.append("Z ");
+    if(has_flag(decoration, InstructionDecorations::DIMENSION_SCALAR))
+        res.append("XYZ ");
     return res.substr(0, res.empty() ? 0 : res.size() - 1);
 }
 LCOV_EXCL_STOP
@@ -105,6 +113,14 @@ InstructionDecorations intermediate::forwardDecorations(InstructionDecorations d
         res = add_flag(res, InstructionDecorations::VPM_WRITE_CONFIGURATION);
     if(has_flag(decorations, InstructionDecorations::IDENTICAL_ELEMENTS))
         res = add_flag(res, InstructionDecorations::IDENTICAL_ELEMENTS);
+    if(has_flag(decorations, InstructionDecorations::DIMENSION_X))
+        res = add_flag(res, InstructionDecorations::DIMENSION_X);
+    if(has_flag(decorations, InstructionDecorations::DIMENSION_Y))
+        res = add_flag(res, InstructionDecorations::DIMENSION_Y);
+    if(has_flag(decorations, InstructionDecorations::DIMENSION_Z))
+        res = add_flag(res, InstructionDecorations::DIMENSION_Z);
+    if(has_flag(decorations, InstructionDecorations::DIMENSION_SCALAR))
+        res = add_flag(res, InstructionDecorations::DIMENSION_SCALAR);
     return res;
 }
 

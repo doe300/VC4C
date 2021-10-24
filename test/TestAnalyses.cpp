@@ -10,6 +10,7 @@
 #include "analysis/DominatorTree.h"
 #include "analysis/FlagsAnalysis.h"
 #include "analysis/ValueRange.h"
+#include "analysis/WorkItemAnalysis.h"
 #include "intermediate/Helper.h"
 #include "intermediate/operators.h"
 #include "intrinsics/Comparisons.h"
@@ -65,7 +66,7 @@ __kernel void test(__global int16* in, __global int16* out) {
 
 TestAnalyses::TestAnalyses(const Configuration& config) : TestCompilationHelper(config)
 {
-    TEST_ADD(TestAnalyses::testAvailableExpressions);
+    // TEST_ADD(TestAnalyses::testAvailableExpressions);
     // FIXME randomly fails
     // TEST_ADD(TestAnalyses::testControlFlowGraph);
     // FIXME randomly fails for e.g. loop inclusions
@@ -81,6 +82,7 @@ TestAnalyses::TestAnalyses(const Configuration& config) : TestCompilationHelper(
     // TEST_ADD(TestAnalyses::testValueRange);
     TEST_ADD(TestAnalyses::testStaticFlags);
     TEST_ADD(TestAnalyses::testIntegerComparisonDetection);
+    TEST_ADD(TestAnalyses::testActiveWorkItems);
 }
 
 void TestAnalyses::testAvailableExpressions() {}
@@ -1452,5 +1454,116 @@ void TestAnalyses::testIntegerComparisonDetection()
         TEST_ASSERT_EQUALS(std::bitset<NATIVE_VECTOR_SIZE>{0xFFFF}, comp->elementMask);
 
         it.nextInBlock();
+    }
+}
+
+void TestAnalyses::testActiveWorkItems()
+{
+    Configuration configCopy(config);
+    configCopy.additionalEnabledOptimizations.emplace("loop-work-groups");
+    configCopy.additionalEnabledOptimizations.emplace("reorder-blocks");
+    configCopy.additionalEnabledOptimizations.emplace("simplify-branches");
+    configCopy.additionalEnabledOptimizations.emplace("merge-blocks");
+
+    // first kernel
+    {
+        Module module(configCopy);
+        std::stringstream ss;
+        ss << "__attribute__((reqd_work_group_size(7,1,1)))\n";
+        ss << KERNEL_NESTED_LOOPS;
+        precompileAndParse(module, ss, "");
+        normalize(module);
+
+        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
+        auto kernel = module.getKernels()[0];
+        auto& cfg = kernel->getCFG();
+        auto numNodes = cfg.getNodes().size();
+
+        auto items = determineActiveWorkItems(*kernel, cfg);
+        TEST_ASSERT_EQUALS(numNodes, items.size());
+
+        // all blocks have the same limit
+        for(const auto& item : items)
+        {
+            TEST_ASSERT_EQUALS(WorkItemCondition::LOCAL_ID_X, item.second.condition);
+            TEST_ASSERT_EQUALS(7u, item.second.activeElements.size());
+            TEST_ASSERT(item.second.inactiveElements.empty());
+        }
+
+        // Run the optimization steps and do some more checks
+        optimize(module);
+
+        numNodes = cfg.getNodes().size();
+        items = determineActiveWorkItems(*kernel, cfg);
+        TEST_ASSERT_EQUALS(numNodes, items.size());
+
+        // all blocks have either a single local ID scalar (within barrier) or the same global local ID X limit
+        for(const auto& item : items)
+        {
+            if(item.second.condition == WorkItemCondition::LOCAL_ID_X)
+            {
+                TEST_ASSERT_EQUALS(7u, item.second.activeElements.size());
+                TEST_ASSERT(item.second.inactiveElements.empty());
+            }
+            else if(item.second.condition == WorkItemCondition::LOCAL_ID_SCALAR)
+            {
+                TEST_ASSERT(item.second.activeElements.size() == 1u || item.second.inactiveElements.size() == 1u);
+            }
+        }
+    }
+
+    // second kernel
+    {
+        Module module(configCopy);
+        std::stringstream ss(KERNEL_LOOP_BARRIER);
+        precompileAndParse(module, ss, "");
+        normalize(module);
+
+        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
+        auto kernel = module.getKernels()[0];
+        auto& cfg = kernel->getCFG();
+        auto numNodes = cfg.getNodes().size();
+
+        auto items = determineActiveWorkItems(*kernel, cfg);
+        // we have items for: all barrier nodes, the local-ID 0 only blocks
+        TEST_ASSERT(!items.empty());
+
+        // all blocks have either a single local ID scalar (within barrier) or the same global local ID X limit
+        for(const auto& item : items)
+        {
+            if(item.second.condition == WorkItemCondition::LOCAL_ID_X)
+            {
+                TEST_ASSERT_EQUALS(1u, item.second.activeElements.size());
+                TEST_ASSERT_EQUALS(0u, *item.second.activeElements.begin());
+                TEST_ASSERT(item.second.inactiveElements.empty());
+            }
+            else if(item.second.condition == WorkItemCondition::LOCAL_ID_SCALAR)
+            {
+                TEST_ASSERT(item.second.activeElements.size() == 1u || item.second.inactiveElements.size() == 1u);
+            }
+        }
+
+        // Run the optimization steps and do some more checks
+        optimize(module);
+
+        numNodes = cfg.getNodes().size();
+        items = determineActiveWorkItems(*kernel, cfg);
+        // we have items for: all barrier nodes, the local-ID 0 only blocks
+        TEST_ASSERT(!items.empty());
+
+        // all blocks have either a single local ID scalar (within barrier) or the same global local ID X limit
+        for(const auto& item : items)
+        {
+            if(item.second.condition == WorkItemCondition::LOCAL_ID_X)
+            {
+                TEST_ASSERT_EQUALS(1u, item.second.activeElements.size());
+                TEST_ASSERT_EQUALS(0u, *item.second.activeElements.begin());
+                TEST_ASSERT(item.second.inactiveElements.empty());
+            }
+            else if(item.second.condition == WorkItemCondition::LOCAL_ID_SCALAR)
+            {
+                TEST_ASSERT(item.second.activeElements.size() == 1u || item.second.inactiveElements.size() == 1u);
+            }
+        }
     }
 }

@@ -13,6 +13,8 @@
 #include "../tools/SmallMap.h"
 #include "ControlFlowLoop.h"
 
+#include <functional>
+
 namespace vc4c
 {
     namespace analysis
@@ -115,7 +117,8 @@ namespace vc4c
             /*
              * Dump this graph as dot file
              */
-            void dumpGraph(const std::string& path, bool dumpConstantLoadInstructions) const;
+            void dumpGraph(const std::string& path,
+                const std::function<std::string(const BasicBlock*)>& labelFunc = nullptr) const;
 
             void updateOnBlockInsertion(Method& method, BasicBlock& newBlock);
             void updateOnBlockRemoval(Method& method, BasicBlock& oldBlock);

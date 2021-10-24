@@ -22,6 +22,7 @@
 #include <map>
 #include <queue>
 #include <set>
+#include <sstream>
 #include <tuple>
 #include <vector>
 
@@ -499,7 +500,17 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
 
 #ifdef DEBUG_MODE
     auto& cfg2 = method.getCFG();
-    cfg2.dumpGraph("/tmp/vc4c-loop-invariant-code-motion-after.dot", true);
+    cfg2.dumpGraph("/tmp/vc4c-loop-invariant-code-motion-after.dot", [](const BasicBlock* bb) -> std::string {
+        std::stringstream ss;
+        ss << bb->getLabel()->getLabel()->name << "\\n";
+        for(auto it = bb->walk(); !it.isEndOfBlock(); it.nextInBlock())
+        {
+            if(it.has() && it->isConstantInstruction() &&
+                (check(it->checkOutputLocal()) & &Local::getSingleWriter) == it.get())
+                ss << it->to_string() << "\\l";
+        };
+        return ss.str();
+    });
 #endif
 
     if(hasChanged)
@@ -725,7 +736,7 @@ bool optimizations::reorderBasicBlocks(const Module& module, Method& method, con
     }
 
 #ifdef DEBUG_MODE
-    cfg.dumpGraph("/tmp/vc4c-cfg-reordered.dot", false);
+    cfg.dumpGraph("/tmp/vc4c-cfg-reordered.dot");
 #endif
     return false;
 }
@@ -1108,7 +1119,8 @@ NODISCARD static InstructionWalker insertAddressResetBlock(
 // - If so, jumps back to the default block
 // - Otherwise, falls through to the next block
 NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& method, const BasicBlock& defaultBlock,
-    Value id, const Value& maxValue, InstructionWalker it, const Local* previousId, int8_t mergedValueIndex)
+    Value id, const Value& maxValue, InstructionWalker it, const Local* previousId, int8_t mergedValueIndex,
+    InstructionDecorations dimension)
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Inserting repetition block for: " << id.to_string() << logging::endl);
     it = method.emplaceLabel(it,
@@ -1157,7 +1169,8 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     std::tie(it, branchCond) =
         intermediate::insertBranchCondition(method, it, condValue, 1u << std::max(int8_t{0}, mergedValueIndex));
     it.emplace(std::make_unique<intermediate::Branch>(defaultBlock.getLabel()->getLabel(), branchCond))
-        .addDecorations(InstructionDecorations::WORK_GROUP_LOOP);
+        .addDecorations(InstructionDecorations::WORK_GROUP_LOOP)
+        .addDecorations(dimension);
     it.nextInMethod();
     return it;
 }
@@ -1173,16 +1186,16 @@ static void insertRepetitionBlocks(
     it = insertAddressResetBlock(method, it, maxGroupIdX, maxGroupIdY, maxGroupIdZ);
 
     auto groupIdX = method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_ID_X)->createReference();
-    it = insertSingleDimensionRepetitionBlock(
-        method, defaultBlock, groupIdX, maxGroupIdX, it, nullptr, mergeGroupIds ? 0 : -1);
+    it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdX, maxGroupIdX, it, nullptr,
+        mergeGroupIds ? 0 : -1, InstructionDecorations::DIMENSION_X);
 
     auto groupIdY = method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_ID_Y)->createReference();
-    it = insertSingleDimensionRepetitionBlock(
-        method, defaultBlock, groupIdY, maxGroupIdY, it, groupIdX.local(), mergeGroupIds ? 1 : -1);
+    it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdY, maxGroupIdY, it, groupIdX.local(),
+        mergeGroupIds ? 1 : -1, InstructionDecorations::DIMENSION_Y);
 
     auto groupIdZ = method.findOrCreateBuiltin(BuiltinLocal::Type::GROUP_ID_Z)->createReference();
-    it = insertSingleDimensionRepetitionBlock(
-        method, defaultBlock, groupIdZ, maxGroupIdZ, it, groupIdY.local(), mergeGroupIds ? 2 : -1);
+    it = insertSingleDimensionRepetitionBlock(method, defaultBlock, groupIdZ, maxGroupIdZ, it, groupIdY.local(),
+        mergeGroupIds ? 2 : -1, InstructionDecorations::DIMENSION_Z);
 }
 
 /**

@@ -104,7 +104,15 @@ namespace vc4c
             IDENTICAL_ELEMENTS = 1u << 25u,
             // The instruction was inserted to "load"" a constant value and should not be precalculated back to that
             // constant value
-            CONSTANT_LOAD = 1u << 26u
+            CONSTANT_LOAD = 1u << 26u,
+            // Value indicating the set built-in flag is present in the X-dimension (0th)
+            DIMENSION_X = 1u << 27u,
+            // Value indicating the set built-in flag is present in the Y-dimension (1st)
+            DIMENSION_Y = 1u << 28u,
+            // Value indicating the set built-in flag is present in the Z-dimension (2nd)
+            DIMENSION_Z = 1u << 29u,
+            // Value indicating the set built-in flag is scalar (added up across all dimensions)
+            DIMENSION_SCALAR = 1u << 30u
         };
 
         std::string toString(InstructionDecorations decoration);

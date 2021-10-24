@@ -88,7 +88,7 @@ CFGNode& ControlFlowGraph::getStartOfControlFlow()
     if(nodes.empty())
         throw CompilationError(CompilationStep::GENERAL, "Cannot get start of empty CFG!");
     // TODO return node without any predecessors?
-    return assertNode(&(*nodes.begin()->first->method.begin()));
+    return assertNode(&(*nodes.begin()->first->getMethod().begin()));
 }
 
 CFGNode& ControlFlowGraph::getEndOfControlFlow()
@@ -313,30 +313,15 @@ std::shared_ptr<DominatorTree> ControlFlowGraph::getDominatorTree()
 }
 
 LCOV_EXCL_START
-void ControlFlowGraph::dumpGraph(const std::string& path, bool dumpConstantLoadInstructions) const
+void ControlFlowGraph::dumpGraph(
+    const std::string& path, const std::function<std::string(const BasicBlock*)>& labelFunc) const
 {
 #ifdef DEBUG_MODE
     // XXX to be exact, would need bidirectional arrow [dir="both"] for compact loops
-    auto nameFunc = [&dumpConstantLoadInstructions](const BasicBlock* bb) -> std::string {
-        if(dumpConstantLoadInstructions)
-        {
-            std::stringstream ss;
-            ss << bb->getLabel()->getLabel()->name << "\\n";
-            std::for_each(bb->instructions.begin(), bb->instructions.end(),
-                [&ss](const std::unique_ptr<intermediate::IntermediateInstruction>& instr) {
-                    if(instr && instr->isConstantInstruction() &&
-                        (check(instr->checkOutputLocal()) & &Local::getSingleWriter) == instr.get())
-                        ss << instr->to_string() << "\\l";
-                });
-            return ss.str();
-        }
-        else
-        {
-            return bb->getLabel()->getLabel()->name;
-        }
-    };
+    auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
     auto edgeLabelFunc = [](const CFGRelation& r) -> std::string { return r.getLabel(); };
-    DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(*this, path, nameFunc,
+    DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(
+        *this, path, labelFunc ? labelFunc : nameFunc,
         [](const CFGRelation& rel) -> bool {
             return std::all_of(rel.predecessors.begin(), rel.predecessors.end(),
                 [](const auto& pair) -> bool { return !pair.second; });
@@ -660,7 +645,7 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
         updateBackEdges(*graph, &graph->getStartOfControlFlow());
 
 #ifdef DEBUG_MODE
-    logging::logLazy(logging::Level::DEBUG, [&]() { graph->dumpGraph("/tmp/vc4c-cfg.dot", false); });
+    logging::logLazy(logging::Level::DEBUG, [&]() { graph->dumpGraph("/tmp/vc4c-cfg.dot"); });
 #endif
     return graph;
 }

@@ -29,6 +29,7 @@ public:
     void testValueRange();
     void testStaticFlags();
     void testIntegerComparisonDetection();
+    void testActiveWorkItems();
 };
 
 #endif /* VC4C_TEST_ANALYSES_H */

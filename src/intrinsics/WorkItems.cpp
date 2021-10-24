@@ -28,27 +28,50 @@ const std::string intrinsics::FUNCTION_NAME_GLOBAL_OFFSET = "vc4cl_global_offset
 const std::string intrinsics::FUNCTION_NAME_GLOBAL_SIZE = "vc4cl_global_size";
 const std::string intrinsics::FUNCTION_NAME_GLOBAL_ID = "vc4cl_global_id";
 
+static InstructionDecorations getDimension(uint32_t dimension) noexcept
+{
+    if(dimension == 0)
+        return InstructionDecorations::DIMENSION_X;
+    if(dimension == 1)
+        return InstructionDecorations::DIMENSION_Y;
+    if(dimension == 2)
+        return InstructionDecorations::DIMENSION_Z;
+    return InstructionDecorations::NONE;
+}
+
+static InstructionDecorations getDimension(const Value& val)
+{
+    if(auto literal = val.getConstantValue() & &Value::getLiteralValue)
+        return getDimension(literal->unsignedInt());
+    return InstructionDecorations::NONE;
+}
+
 static NODISCARD InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, InstructionWalker it, const Value& arg,
     const std::vector<BuiltinLocal::Type>& locals, const Value& defaultValue, const InstructionDecorations decoration)
 {
     if(auto lit = (arg.getConstantValue() & &Value::getLiteralValue))
     {
         Value src = UNDEFINED_VALUE;
+        InstructionDecorations dimension = InstructionDecorations::NONE;
         switch(lit->unsignedInt())
         {
         case 0:
             src = method.findOrCreateBuiltin(locals.at(0))->createReference();
+            dimension = InstructionDecorations::DIMENSION_X;
             break;
         case 1:
             src = method.findOrCreateBuiltin(locals.at(1))->createReference();
+            dimension = InstructionDecorations::DIMENSION_Y;
             break;
         case 2:
             src = method.findOrCreateBuiltin(locals.at(2))->createReference();
+            dimension = InstructionDecorations::DIMENSION_Z;
             break;
         default:
             src = defaultValue;
         }
         it.reset(createWithExtras<MoveOperation>(*it.get(), it->getOutput().value(), src));
+        it->addDecorations(decoration).addDecorations(dimension);
         return it;
     }
     // set default value first and always, so a path for the destination local is guaranteed
@@ -57,19 +80,22 @@ static NODISCARD InstructionWalker intrinsifyReadWorkGroupInfo(Method& method, I
     assign(it, NOP_REGISTER) = (arg ^ 0_val, SetFlag::SET_FLAGS);
     it.emplace(std::make_unique<MoveOperation>(
                    it->getOutput().value(), method.findOrCreateBuiltin(locals.at(0))->createReference(), COND_ZERO_SET))
-        .addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION));
+        .addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION))
+        .addDecorations(InstructionDecorations::DIMENSION_X);
     it.nextInBlock();
     // dim == 1 -> return second value
     assign(it, NOP_REGISTER) = (arg ^ 1_val, SetFlag::SET_FLAGS);
     it.emplace(std::make_unique<MoveOperation>(
                    it->getOutput().value(), method.findOrCreateBuiltin(locals.at(1))->createReference(), COND_ZERO_SET))
-        .addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION));
+        .addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION))
+        .addDecorations(InstructionDecorations::DIMENSION_Y);
     it.nextInBlock();
     // dim == 2 -> return third value
     assign(it, NOP_REGISTER) = (arg ^ 2_val, SetFlag::SET_FLAGS);
     it.reset(std::make_unique<MoveOperation>(
                  it->getOutput().value(), method.findOrCreateBuiltin(locals.at(2))->createReference(), COND_ZERO_SET))
-        .addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION));
+        .addDecorations(add_flag(decoration, InstructionDecorations::ELEMENT_INSERTION))
+        .addDecorations(InstructionDecorations::DIMENSION_Z);
     return it;
 }
 
@@ -92,17 +118,20 @@ static NODISCARD InstructionWalker intrinsifyReadWorkItemInfo(Method& method, In
         case 0:
             it.reset(createWithExtras<MoveOperation>(*it.get(), it->getOutput().value(), itemInfo->createReference()))
                 .setUnpackMode(UNPACK_8A_32)
-                .addDecorations(decoration);
+                .addDecorations(decoration)
+                .addDecorations(InstructionDecorations::DIMENSION_X);
             break;
         case 1:
             it.reset(createWithExtras<MoveOperation>(*it.get(), it->getOutput().value(), itemInfo->createReference()))
                 .setUnpackMode(UNPACK_8B_32)
-                .addDecorations(decoration);
+                .addDecorations(decoration)
+                .addDecorations(InstructionDecorations::DIMENSION_Y);
             break;
         case 2:
             it.reset(createWithExtras<MoveOperation>(*it.get(), it->getOutput().value(), itemInfo->createReference()))
                 .setUnpackMode(UNPACK_8C_32)
-                .addDecorations(decoration);
+                .addDecorations(decoration)
+                .addDecorations(InstructionDecorations::DIMENSION_Z);
             break;
         case 3:
             it.reset(createWithExtras<MoveOperation>(*it.get(), it->getOutput().value(), itemInfo->createReference()))
@@ -151,7 +180,8 @@ static NODISCARD InstructionWalker intrinsifyReadLocalSize(Method& method, Instr
             else
                 it.reset(std::make_unique<MoveOperation>(it->getOutput().value(),
                              Value(Literal(workGroupSizes.at(immediate->unsignedInt())), TYPE_INT8)))
-                    .addDecorations(decorations);
+                    .addDecorations(decorations)
+                    .addDecorations(getDimension(immediate->unsignedInt()));
             return it;
         }
     }
@@ -165,8 +195,8 @@ static NODISCARD InstructionWalker intrinsifyReadLocalID(Method& method, Instruc
     {
         // if all the work-group sizes are 1, the ID is always 0 for all dimensions
         it.reset(std::make_unique<MoveOperation>(it->getOutput().value(), INT_ZERO))
-            .addDecorations(
-                add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT));
+            .addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT))
+            .addDecorations(getDimension(arg));
         return it;
     }
     return intrinsifyReadWorkItemInfo(method, it, arg, BuiltinLocal::Type::LOCAL_IDS,
@@ -258,6 +288,7 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
 
         const Value tmpLocalSize = method.addNewLocal(TYPE_INT8, "%local_size");
         const Value tmpNumGroups = method.addNewLocal(TYPE_INT32, "%num_groups");
+        auto dimension = getDimension(callSite->assertArgument(0));
         // emplace dummy instructions to be replaced
         it.emplace(std::make_unique<MoveOperation>(tmpLocalSize, NOP_REGISTER));
         it = intrinsifyReadLocalSize(method, it, callSite->assertArgument(0));
@@ -273,7 +304,8 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
                      *callSite, OP_MUL24, callSite->getOutput().value(), tmpLocalSize, tmpNumGroups))
             .addDecorations(add_flag(decoration,
                 add_flag(InstructionDecorations::BUILTIN_GLOBAL_SIZE, InstructionDecorations::UNSIGNED_RESULT,
-                    InstructionDecorations::WORK_GROUP_UNIFORM_VALUE)));
+                    InstructionDecorations::WORK_GROUP_UNIFORM_VALUE)))
+            .addDecorations(dimension);
         return true;
     }
     if(callSite->methodName == FUNCTION_NAME_GLOBAL_ID && callSite->getArguments().size() == 1)
@@ -289,6 +321,7 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
         const Value tmpLocalID = method.addNewLocal(TYPE_INT8, "%local_id");
         const Value tmpRes0 = method.addNewLocal(TYPE_INT32, "%group_global_id");
         const Value tmpRes1 = method.addNewLocal(TYPE_INT32, "%group_global_id");
+        auto dimension = getDimension(callSite->assertArgument(0));
         // emplace dummy instructions to be replaced
         it.emplace(std::make_unique<MoveOperation>(tmpGroupID, NOP_REGISTER));
         it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
@@ -314,7 +347,8 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
         assign(it, tmpRes1) = (tmpGlobalOffset + tmpRes0, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
         it.reset(createWithExtras<Operation>(*callSite, OP_ADD, callSite->getOutput().value(), tmpRes1, tmpLocalID))
             .addDecorations(add_flag(
-                decoration, InstructionDecorations::BUILTIN_GLOBAL_ID, InstructionDecorations::UNSIGNED_RESULT));
+                decoration, InstructionDecorations::BUILTIN_GLOBAL_ID, InstructionDecorations::UNSIGNED_RESULT))
+            .addDecorations(dimension);
         return true;
     }
     return false;
@@ -370,6 +404,8 @@ static void insertNonPrimaryBarrierCode(Method& method, BasicBlock& block, const
     // replicate to make sure the SIMD element 15 which is actually used by the branch is set correctly
     auto localId = method.addNewLocal(localIdScalar.type, "%local_id_scalar");
     auto switchIt = intermediate::insertReplication(it, localIdScalar, localId);
+    if(auto writer = localIdScalar.getSingleWriter())
+        switchIt.copy().previousInBlock()->addDecorations(writer->decoration);
 
     // we need to create the other blocks first to be able to correctly update the CFG
     SortedMap<unsigned, const Local*> singleBlocks;
@@ -511,13 +547,16 @@ static void lowerBarrier(Method& method, InstructionWalker it, const MethodCall*
     tmp = assign(it, TYPE_INT8, "%local_id_scalar") = tmp + localIdY;
     tmp = assign(it, TYPE_INT8, "%local_id_scalar") = mul24(tmp, localSizeX);
     auto localIdScalar = assign(it, TYPE_INT8, "%local_id_scalar") =
-        (tmp + localIdX, InstructionDecorations::UNSIGNED_RESULT);
+        (tmp + localIdX, InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::BUILTIN_LOCAL_ID,
+            InstructionDecorations::DIMENSION_SCALAR);
 
     if(!localSizeScalar)
     {
         // local_size_scalar = local_size_z * local_size_y * local_size_x
         tmp = assign(it, TYPE_INT8, "%local_size_scalar") = mul24(localSizeZ, localSizeY);
-        localSizeScalar = assign(it, TYPE_INT8, "%local_size_scalar") = mul24(tmp, localSizeX);
+        localSizeScalar = assign(it, TYPE_INT8, "%local_size_scalar") =
+            (mul24(tmp, localSizeX), InstructionDecorations::UNSIGNED_RESULT,
+                InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::DIMENSION_SCALAR);
     }
 
     auto branchIt = it.copy().previousInBlock();
