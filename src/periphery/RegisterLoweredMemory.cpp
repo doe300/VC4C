@@ -19,8 +19,10 @@ using namespace vc4c::periphery;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
 
-RegisterCacheEntry::RegisterCacheEntry(const Value& cacheRegister, const Value& addr, DataType valueType) :
-    loweredRegister(cacheRegister), byteOffset(addr), valueType(valueType)
+RegisterCacheEntry::RegisterCacheEntry(
+    const Value& cacheRegister, const Value& addr, DataType valueType, MultiPartDataAccess valueAccess) :
+    loweredRegister(cacheRegister),
+    byteOffset(addr), valueType(valueType), valuePartAccess(valueAccess)
 {
     if(!cacheRegister.checkLocal() || !cacheRegister.type.isSimpleType())
         throw CompilationError(
@@ -32,7 +34,10 @@ RegisterCacheEntry::~RegisterCacheEntry() noexcept = default;
 LCOV_EXCL_START
 std::string RegisterCacheEntry::to_string() const
 {
-    return "register cache entry accessing " + valueType.to_string() + " in " + loweredRegister.to_string() +
+    std::string part = valuePartAccess == MultiPartDataAccess::LOWER_PART ?
+        "lower part of " :
+        (valuePartAccess == MultiPartDataAccess::UPPER_PART ? "upper part of " : "");
+    return "register cache entry accessing " + part + valueType.to_string() + " in " + loweredRegister.to_string() +
         " at byte-offset of " + byteOffset.to_string();
 }
 LCOV_EXCL_STOP
@@ -49,9 +54,10 @@ Value RegisterCacheEntry::precalculateOffset() const
 }
 
 static InstructionWalker insertWriteLoweredRegisterInner(Method& method, InstructionWalker it, const Value& src,
-    const Value& addressOffset, const Value& loweredRegister, DataType srcType)
+    const Value& addressOffset, const Value& loweredRegister, DataType srcType,
+    MultiPartDataAccess partAccess = MultiPartDataAccess::SINGLE_PART)
 {
-    auto entry = std::make_shared<RegisterCacheEntry>(loweredRegister, addressOffset, srcType);
+    auto entry = std::make_shared<RegisterCacheEntry>(loweredRegister, addressOffset, srcType, partAccess);
     it.emplace(std::make_unique<intermediate::CacheAccessInstruction>(MemoryOperation::WRITE, src, entry));
     it.nextInBlock();
     return it;
@@ -62,19 +68,20 @@ InstructionWalker periphery::insertWriteLoweredRegister(
 {
     if(auto srcData = Local::getLocalData<MultiRegisterData>(src.checkLocal()))
     {
-        it = insertWriteLoweredRegisterInner(
-            method, it, srcData->lower->createReference(), addressOffset, loweredRegister, src.type);
+        it = insertWriteLoweredRegisterInner(method, it, srcData->lower->createReference(), addressOffset,
+            loweredRegister, src.type, MultiPartDataAccess::LOWER_PART);
         auto highAddressOffset = assign(it, addressOffset.type) = addressOffset + 4_val;
-        return insertWriteLoweredRegisterInner(
-            method, it, srcData->upper->createReference(), highAddressOffset, loweredRegister, src.type);
+        return insertWriteLoweredRegisterInner(method, it, srcData->upper->createReference(), highAddressOffset,
+            loweredRegister, src.type, MultiPartDataAccess::UPPER_PART);
     }
     return insertWriteLoweredRegisterInner(method, it, src, addressOffset, loweredRegister, src.type);
 }
 
 static InstructionWalker insertReadLoweredRegisterInner(Method& method, InstructionWalker it, const Value& dest,
-    const Value& addressOffset, const Value& loweredRegister, DataType destType)
+    const Value& addressOffset, const Value& loweredRegister, DataType destType,
+    MultiPartDataAccess partAccess = MultiPartDataAccess::SINGLE_PART)
 {
-    auto entry = std::make_shared<RegisterCacheEntry>(loweredRegister, addressOffset, destType);
+    auto entry = std::make_shared<RegisterCacheEntry>(loweredRegister, addressOffset, destType, partAccess);
     it.emplace(std::make_unique<intermediate::CacheAccessInstruction>(MemoryOperation::READ, dest, entry));
     it.nextInBlock();
     return it;
@@ -85,19 +92,18 @@ InstructionWalker periphery::insertReadLoweredRegister(
 {
     if(auto destData = Local::getLocalData<MultiRegisterData>(dest.checkLocal()))
     {
-        it = insertReadLoweredRegisterInner(
-            method, it, destData->lower->createReference(), addressOffset, loweredRegister, dest.type);
+        it = insertReadLoweredRegisterInner(method, it, destData->lower->createReference(), addressOffset,
+            loweredRegister, dest.type, MultiPartDataAccess::LOWER_PART);
         auto highAddressOffset = assign(it, addressOffset.type) = addressOffset + 4_val;
-        return insertReadLoweredRegisterInner(
-            method, it, destData->upper->createReference(), highAddressOffset, loweredRegister, dest.type);
+        return insertReadLoweredRegisterInner(method, it, destData->upper->createReference(), highAddressOffset,
+            loweredRegister, dest.type, MultiPartDataAccess::UPPER_PART);
     }
     return insertReadLoweredRegisterInner(method, it, dest, addressOffset, loweredRegister, dest.type);
 }
 
-static NODISCARD InstructionWalker insertByteToElementAndSubOffsetAndSelectedPart(InstructionWalker it,
-    Value& outElementOffset, Value& outSubOffset, Value& outSelectedPart, const RegisterCacheEntry& entry)
+static NODISCARD InstructionWalker insertByteToElementAndSubOffset(
+    InstructionWalker it, Value& outElementOffset, Value& outSubOffset, const RegisterCacheEntry& entry)
 {
-    outSelectedPart = entry.loweredRegister;
     unsigned elementTypeSize = 0;
     auto containerType = entry.loweredRegister.type;
     if(containerType.isSimpleType() || containerType.getArrayType())
@@ -112,33 +118,65 @@ static NODISCARD InstructionWalker insertByteToElementAndSubOffsetAndSelectedPar
     auto byteOffset = entry.precalculateOffset();
     outElementOffset = assign(it, TYPE_INT8, "%element_offset") = byteOffset / Literal(elementTypeSize);
     outSubOffset = assign(it, TYPE_INT8, "%sub_offset") = byteOffset % Literal(elementTypeSize);
-    if(auto multiParts = Local::getLocalData<MultiRegisterData>(entry.loweredRegister.checkLocal()))
+    return it;
+}
+
+static NODISCARD InstructionWalker insertByteToElementAndSubOffsetAndSelectedPart(InstructionWalker it,
+    Value& outElementOffset, Value& outSubOffset, Value& outSelectedPart, const RegisterCacheEntry& entry,
+    const MultiRegisterData& loweredRegisters, bool isRead)
+{
+    auto byteOffset = entry.precalculateOffset();
+
+    /*
+     * Byte offset in 64-bit 2 register) container:
+     *
+     * - byte-offset 0 -> lower part, element 0, sub-element 0
+     * - byte-offset 4 -> upper part, element 0, sub-element 0
+     * - byte-offset 7 -> upper part, element 0, sub-element 3
+     * - byte-offset 9 -> lower part, element 1, sub-element 1
+     * - byte offset 13 -> upper part, element 2, sub-element 1
+     *
+     * => byte-offset / 4 % 2 ? lower part : upper part
+     * => byte-offset / 8 -> element
+     * => byte-offset % 4 -> sub-element offset
+     */
+    if(auto constantOffset = byteOffset.getLiteralValue())
     {
-        /*
-         * Byte offset in 64-bit 2 register) container:
-         *
-         * - byte-offset 0 -> lower part, element 0, sub-element 0
-         * - byte-offset 4 -> upper part, element 0, sub-element 0
-         * - byte-offset 7 -> upper part, element 0, sub-element 3
-         * - byte-offset 9 -> lower part, element 1, sub-element 1
-         * - byte offset 13 -> upper part, element 2, sub-element 1
-         *
-         * => byte-offset / 4 % 2 ? lower part : upper part
-         * => byte-offset / 8 -> element
-         * => byte-offset % 4 -> sub-element offset
-         */
-        if(auto constantOffset = byteOffset.getLiteralValue())
-        {
-            outSelectedPart =
-                ((constantOffset->unsignedInt() / 4) % 2 ? multiParts->upper : multiParts->lower)->createReference();
-            outElementOffset = Value(Literal(constantOffset->unsignedInt() / 8), TYPE_INT8);
-            outSubOffset = Value(Literal(constantOffset->unsignedInt() % 4), TYPE_INT8);
-        }
-        else
-            throw CompilationError(CompilationStep::NORMALIZER,
-                "General calculation of multi-register container access parts is not yet implemented");
-        // TODO the part returned here is only for the element (part of the first) access!
+        outSelectedPart = ((constantOffset->unsignedInt() / 4) % 2 ? loweredRegisters.upper : loweredRegisters.lower)
+                              ->createReference();
+        outElementOffset = Value(Literal(constantOffset->unsignedInt() / 8), TYPE_INT8);
+        outSubOffset = Value(Literal(constantOffset->unsignedInt() % 4), TYPE_INT8);
     }
+    else if(isRead && entry.valueType.isScalarType())
+    {
+        outSelectedPart = assign(it, loweredRegisters.lower->type) = loweredRegisters.lower->createReference();
+        auto tmp = assign(it, TYPE_INT8) = byteOffset / 4_lit;
+        assignNop(it) = (tmp % 2_lit, SetFlag::SET_FLAGS);
+        assign(it, outSelectedPart) = (loweredRegisters.upper->createReference(), COND_ZERO_CLEAR);
+        outElementOffset = assign(it, TYPE_INT8) = byteOffset / 8_lit;
+        outSubOffset = assign(it, TYPE_INT8) = byteOffset % 4_lit;
+    }
+    else if(entry.valuePartAccess == MultiPartDataAccess::LOWER_PART)
+    {
+        // accessing a whole lower data part in a 64-bit multi-part lowered register is always correctly aligned to the
+        // part bounds
+        outSelectedPart = loweredRegisters.lower->createReference();
+        outElementOffset = assign(it, TYPE_INT8) = byteOffset / 8_lit;
+        outSubOffset = assign(it, TYPE_INT8) = byteOffset % 4_lit;
+    }
+    else if(entry.valuePartAccess == MultiPartDataAccess::UPPER_PART)
+    {
+        // accessing a whole upper data part in a 64-bit multi-part lowered register is always correctly aligned to the
+        // part bounds
+        outSelectedPart = loweredRegisters.upper->createReference();
+        auto removedOffset = assign(it, TYPE_INT8) = byteOffset - 4_val;
+        outElementOffset = assign(it, TYPE_INT8) = removedOffset / 8_lit;
+        outSubOffset = assign(it, TYPE_INT8) = removedOffset % 4_lit;
+    }
+    else
+        throw CompilationError(CompilationStep::NORMALIZER,
+            "General calculation of multi-register container access parts is not yet implemented");
+    // TODO the part returned here is only for the element (part of the first) access!
     return it;
 }
 
@@ -169,8 +207,12 @@ static NODISCARD InstructionWalker lowerRegisterRead(Method& method, Instruction
 {
     auto elementOffset = UNDEFINED_VALUE;
     auto subOffset = UNDEFINED_VALUE;
-    auto selectedPart = UNDEFINED_VALUE;
-    it = insertByteToElementAndSubOffsetAndSelectedPart(it, elementOffset, subOffset, selectedPart, entry);
+    auto selectedPart = entry.loweredRegister;
+    if(auto multiParts = Local::getLocalData<MultiRegisterData>(entry.loweredRegister.checkLocal()))
+        it = insertByteToElementAndSubOffsetAndSelectedPart(
+            it, elementOffset, subOffset, selectedPart, entry, *multiParts, true);
+    else
+        it = insertByteToElementAndSubOffset(it, elementOffset, subOffset, entry);
 
     const auto& dest = readInstruction.getData();
     auto containerType = entry.loweredRegister.type;
@@ -196,8 +238,8 @@ static NODISCARD InstructionWalker lowerRegisterRead(Method& method, Instruction
          * at the beginning and still need to have in the end 16 elements. So exclude this more complex case here.
          */
         auto tmpInput = method.addNewLocal(
-            convertLargeContainerSmallDataType(containerType, entry.valueType, true), "%load_register_input");
-        it = insertVectorExtraction(it, method, entry.loweredRegister, elementOffset, tmpInput);
+            convertLargeContainerSmallDataType(selectedPart.type, entry.valueType, true), "%load_register_input");
+        it = insertVectorExtraction(it, method, selectedPart, elementOffset, tmpInput);
         // for intN container and shortM elements, we can have an sub-offset of 1 short, thus we need to extract M + 1
         // shorts, for charM elements, we can have up to 3 chars as sub-offset, so need to extract M + 3 chars
         auto maxSubOffset = (containerType.getScalarBitCount() / entry.valueType.getScalarBitCount()) - 1u;
@@ -221,7 +263,7 @@ static NODISCARD InstructionWalker lowerRegisterRead(Method& method, Instruction
         // create a vector with the same element type as the container but the same total bit-width as the output type
         auto tmpValue = method.addNewLocal(
             convertSmallContainerLargeDataType(containerType, entry.valueType), "%load_register_tmp");
-        it = insertVectorExtraction(it, method, entry.loweredRegister, elementOffset, tmpValue);
+        it = insertVectorExtraction(it, method, selectedPart, elementOffset, tmpValue);
         it = insertBitcast(it, method, tmpValue, dest, InstructionDecorations::NONE,
             entry.valueType.getScalarBitCount() > 32 ? 2u : 1u);
     }
@@ -253,8 +295,12 @@ static NODISCARD InstructionWalker lowerRegisterWrite(Method& method, Instructio
 {
     auto elementOffset = UNDEFINED_VALUE;
     auto subOffset = UNDEFINED_VALUE;
-    auto selectedPart = UNDEFINED_VALUE;
-    it = insertByteToElementAndSubOffsetAndSelectedPart(it, elementOffset, subOffset, selectedPart, entry);
+    auto selectedPart = entry.loweredRegister;
+    if(auto multiParts = Local::getLocalData<MultiRegisterData>(entry.loweredRegister.checkLocal()))
+        it = insertByteToElementAndSubOffsetAndSelectedPart(
+            it, elementOffset, subOffset, selectedPart, entry, *multiParts, false);
+    else
+        it = insertByteToElementAndSubOffset(it, elementOffset, subOffset, entry);
 
     auto src = writeInstruction.getData();
     // restore original type, to e.g. for insertion of zero not insert "i8 0", but "i32 0"

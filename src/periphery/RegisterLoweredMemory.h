@@ -16,12 +16,19 @@ namespace vc4c
 
     namespace periphery
     {
+        enum class MultiPartDataAccess
+        {
+            SINGLE_PART,
+            LOWER_PART,
+            UPPER_PART
+        };
+
         /**
          * A cache entry for "memory" accesses to memory areas lowered to registers (e.g. stack variables)
          */
         struct RegisterCacheEntry : public CacheEntry
         {
-            RegisterCacheEntry(const Value& cacheRegister, const Value& addr, DataType valueType);
+            RegisterCacheEntry(const Value& cacheRegister, const Value& addr, DataType valueType, MultiPartDataAccess valueAccess);
             ~RegisterCacheEntry() noexcept override;
 
             std::string to_string() const override;
@@ -57,6 +64,10 @@ namespace vc4c
              * Also this value determines the extracted element stride as e.g. required for reading 64-bit values.
              */
             const DataType valueType;
+            /**
+             * Indication as to which part of the value to be stored/read (not the lowered register!) is accessed.
+             */
+            MultiPartDataAccess valuePartAccess;
         };
 
         /*

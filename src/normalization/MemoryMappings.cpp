@@ -379,9 +379,6 @@ static InstructionWalker lowerMemoryCopyToRegister(Method& method, InstructionWa
 {
     ASSERT_SINGLE_SOURCE("lowerMemoryCopyToRegister");
     ASSERT_SINGLE_DESTINATION("lowerMemoryCopyToRegister");
-    if(srcInfo.local == destInfo.local)
-        throw CompilationError(CompilationStep::NORMALIZER,
-            "Copy from and to same register lowered memory area is not supported", mem->to_string());
     if(mem->op != MemoryOperation::COPY)
         throw CompilationError(
             CompilationStep::NORMALIZER, "Unhandled case of lowering memory access to register", mem->to_string());
@@ -442,19 +439,6 @@ static InstructionWalker lowerMemoryCopyToRegister(Method& method, InstructionWa
         auto memWrite = &it.reset(std::make_unique<MemoryInstruction>(
             MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmp), std::move(numEntries)));
         return mapMemoryAccess(method, it, memWrite, srcInfos, destInfos);
-    }
-    if(destInfo.mappedRegisterOrConstant)
-    {
-        // TODO is this ever called?? copying into register (from anywhere should be handled smewhere else)
-        throw CompilationError(CompilationStep::NORMALIZER,
-            "lowerMemoryCopyToRegister should not be called to copy into register", mem->to_string());
-        auto tmp = method.addNewLocal(mem->getDestinationElementType());
-        auto memRead = &it.emplace(
-            std::make_unique<MemoryInstruction>(MemoryOperation::READ, std::move(tmp), Value(mem->getSource())));
-        it = mapMemoryAccess(method, it, memRead, srcInfos, destInfos);
-        it = periphery::insertWriteLoweredRegister(
-            method, it, mem->getSource(), offset, *destInfo.mappedRegisterOrConstant);
-        return it.erase();
     }
     throw CompilationError(
         CompilationStep::NORMALIZER, "Unhandled case of lowering memory access to register", mem->to_string());

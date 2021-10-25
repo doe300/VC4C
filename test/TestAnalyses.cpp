@@ -1533,9 +1533,18 @@ void TestAnalyses::testActiveWorkItems()
         {
             if(item.second.condition == WorkItemCondition::LOCAL_ID_X)
             {
-                TEST_ASSERT_EQUALS(1u, item.second.activeElements.size());
-                TEST_ASSERT_EQUALS(0u, *item.second.activeElements.begin());
-                TEST_ASSERT(item.second.inactiveElements.empty());
+                if(!item.second.activeElements.empty())
+                {
+                    TEST_ASSERT_EQUALS(1u, item.second.activeElements.size());
+                    TEST_ASSERT_EQUALS(0u, *item.second.activeElements.begin());
+                    TEST_ASSERT(item.second.inactiveElements.empty());
+                }
+                else
+                {
+                    TEST_ASSERT_EQUALS(1u, item.second.inactiveElements.size());
+                    TEST_ASSERT_EQUALS(0u, *item.second.inactiveElements.begin());
+                    TEST_ASSERT(item.second.activeElements.empty());
+                }
             }
             else if(item.second.condition == WorkItemCondition::LOCAL_ID_SCALAR)
             {
@@ -1556,9 +1565,18 @@ void TestAnalyses::testActiveWorkItems()
         {
             if(item.second.condition == WorkItemCondition::LOCAL_ID_X)
             {
-                TEST_ASSERT_EQUALS(1u, item.second.activeElements.size());
-                TEST_ASSERT_EQUALS(0u, *item.second.activeElements.begin());
-                TEST_ASSERT(item.second.inactiveElements.empty());
+                if(!item.second.activeElements.empty())
+                {
+                    TEST_ASSERT_EQUALS(1u, item.second.activeElements.size());
+                    TEST_ASSERT_EQUALS(0u, *item.second.activeElements.begin());
+                    TEST_ASSERT(item.second.inactiveElements.empty());
+                }
+                else
+                {
+                    TEST_ASSERT_EQUALS(1u, item.second.inactiveElements.size());
+                    TEST_ASSERT_EQUALS(0u, *item.second.inactiveElements.begin());
+                    TEST_ASSERT(item.second.activeElements.empty());
+                }
             }
             else if(item.second.condition == WorkItemCondition::LOCAL_ID_SCALAR)
             {
