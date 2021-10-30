@@ -73,6 +73,8 @@ namespace vc4c
             CompoundConstant toConstantGlobal(Module& module, const llvm::Value* val);
 
             void extractKernelMetadata(Module& module, Method& kernel, const llvm::Function& func);
+            void extractSPIRMetadata(
+                Module& module, Method& kernel, const llvm::Function& func, const llvm::Module& llvmModule);
         };
 #endif
 
