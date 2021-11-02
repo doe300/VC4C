@@ -282,7 +282,6 @@ std::size_t CodeGenerator::writeOutput(std::ostream& stream)
 // register/instruction mapping
 void CodeGenerator::toMachineCode(Method& kernel)
 {
-    kernel.cleanLocals();
     const auto& instructions = generateInstructions(kernel);
 #ifdef VERIFIER_HEADER
     LCOV_EXCL_START

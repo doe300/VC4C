@@ -195,10 +195,6 @@ namespace vc4c
         InstructionWalker appendToEnd();
 
         std::size_t getNumLocals() const;
-        /*
-         * Removes all locals without any usages left
-         */
-        void cleanLocals();
 
         /*
          * Prints all instruction to the logging-stream

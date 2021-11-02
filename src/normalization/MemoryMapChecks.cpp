@@ -523,6 +523,7 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping, I
         // To still be able to map them, try to get to some memory area by following the local's value source and try
         // again to find underlying memory area
         auto sourceLocal = local;
+        bool hasOffset = false;
         while(auto writer = analysis::getSingleWriter(sourceLocal->createReference()))
         {
             if(auto source = writer->getMoveSource())
@@ -539,6 +540,7 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping, I
                 {
                     auto firstArg = getSourceValue(op->getFirstArg());
                     auto secondArg = getSourceValue(op->assertArgument(1));
+                    hasOffset = true;
 
                     // XXX The "one argument is pointer the other not" check is not completely true, but the most
                     // fitting one. In theory, they both could be pointers or the actual base pointer could be reachable
@@ -594,7 +596,15 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping, I
         }
 
         if(sourceLocal)
-            sourceLocal = sourceLocal->getBase(true);
+        {
+            sourceLocal = sourceLocal->getBase(false);
+            auto tmp = sourceLocal->getBase(true);
+            if(tmp && tmp != sourceLocal)
+            {
+                sourceLocal = tmp;
+                hasOffset = true;
+            }
+        }
         if(sourceLocal && local != sourceLocal)
         {
             // try again to map the local to an (existing) memory area
@@ -616,7 +626,17 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping, I
                 auto innerMappingIt = mapping.find(memoryLocal);
                 if(innerMappingIt != mapping.end())
                     innerMappingIt->second.accessInstructions.emplace(it, local);
-                const_cast<Local*>(local)->set(ReferenceData(*memoryLocal, ANY_ELEMENT));
+                const_cast<Local*>(local)->set(ReferenceData(*memoryLocal, hasOffset ? ANY_ELEMENT : 0));
+                auto memoryParameter = memoryLocal->as<Parameter>();
+                if(memoryParameter && memInstr->op != MemoryOperation::READ &&
+                    !has_flag(memoryParameter->decorations, ParameterDecorations::READ_ONLY))
+                {
+                    // Mark the original memory area as being written to.
+                    // NOTE: This is too pessimistic for copy-from non-read-only memory areas. But for memory areas
+                    // which are written someplace else, this has no effect anyway.
+                    const_cast<Parameter*>(memoryParameter)->decorations =
+                        add_flag(memoryParameter->decorations, ParameterDecorations::OUTPUT);
+                }
             }
             return memoryLocal;
         }
@@ -1226,6 +1246,18 @@ static MemoryInfo canMapToTMUReadOnly(Method& method, const Local* baseAddr, Mem
     // TODO for better performance, the TMU flag should alternate in according to the order of usage (first read use
     // TMU0, second read use TMU1, ...)
     static thread_local bool tmuFlag = true;
+
+    auto param = baseAddr->as<Parameter>();
+    if(param && has_flag(param->decorations, ParameterDecorations::OUTPUT))
+    {
+        // In case the memory address is stored in a stack allocation and then used afterwards, we initially do not know
+        // that it might be written-to. Thus we check here again and if so, move to RAM access via VPM.
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Fixing up TMU-loaded memory to VPM-accessed memory: " << baseAddr->to_string() << logging::endl);
+        access.preferred = access.fallback;
+        return checkMemoryMapping(method, baseAddr, access);
+    }
+
     tmuFlag = !tmuFlag;
     return MemoryInfo{baseAddr, MemoryAccessType::RAM_LOAD_TMU, nullptr, {}, {}, {}, tmuFlag};
 }

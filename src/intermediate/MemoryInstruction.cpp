@@ -381,8 +381,6 @@ CacheAccessInstruction::CacheAccessInstruction(
         else if(op == MemoryOperation::READ)
             setArgument(0, Value(REG_VPM_IO, data.type));
     }
-
-    checkLocalValue(data);
 }
 
 LCOV_EXCL_START

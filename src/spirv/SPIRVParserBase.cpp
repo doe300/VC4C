@@ -398,29 +398,6 @@ static SPIRVMethod& getOrCreateMethod(Module& module, MethodMapping& methods, co
     return methods.at(id);
 }
 
-static std::string toScalarType(uint16_t vectorType)
-{
-    switch(vectorType)
-    {
-    case 0:
-        return "i8";
-    case 1:
-        return "i16";
-    case 2:
-        return "i32";
-    case 3:
-        return "i64";
-    case 4:
-        return "half";
-    case 5:
-        return "float";
-    case 6:
-        return "double";
-    default:
-        throw CompilationError(CompilationStep::PARSER, "Unsupported vector-type", std::to_string(vectorType));
-    }
-}
-
 #define UNSUPPORTED_INSTRUCTION(name)                                                                                  \
     (errorExtra = (name), logging::error() << "Unsupported SPIR-V instruction: " << (name) << logging::endl,           \
         ParseResultCode::UNSUPPORTED)

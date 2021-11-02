@@ -18,9 +18,6 @@
 
 using namespace vc4c;
 
-// TODO track locals via thread-not-safe shared_ptr. Method itself tracks as weak_ptr,
-// so local is erased when there is no more use. Local#reference also is shared_ptr
-
 Method::Method(Module& module) :
     flags(MethodFlags::NONE), name(), returnType(TYPE_UNKNOWN),
     vpm(new periphery::VPM(module.compilationConfig.availableVPMSize)), module(module)
@@ -343,50 +340,6 @@ InstructionWalker Method::appendToEnd()
 std::size_t Method::getNumLocals() const
 {
     return locals.size();
-}
-
-void Method::cleanLocals()
-{
-    // FIXME deletes locals which still have Local#reference to them
-    // If locals are tracked via shared_ptr (weak_ptr in Method), walk through pointers and only remove when no more
-    // shared references
-    /*
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL + 7, "Clean locals (before)", locals.size());
-#ifdef DEBUG_MODE
-    // check duplicate locals
-    FastSet<std::string> localNames;
-    for(const Global& g : module.globalData)
-    {
-        if(!localNames.emplace(g.name).second)
-            throw CompilationError(CompilationStep::GENERAL, "Duplicate global", g.to_string());
-    }
-    for(const Parameter& p : parameters)
-    {
-        if(!localNames.emplace(p.name).second)
-            throw CompilationError(CompilationStep::GENERAL, "Duplicate parameter for method", p.to_string());
-    }
-#endif
-    auto it = locals.begin();
-    std::size_t numCleaned = 0;
-    while(it != locals.end())
-    {
-#ifdef DEBUG_MODE
-        if(!localNames.emplace(it->first).second)
-            throw CompilationError(
-                CompilationStep::GENERAL, "Local is already defined for method", it->second.to_string());
-#endif
-        if((*it).second.getUsers().empty())
-        {
-            it = locals.erase(it);
-            ++numCleaned;
-        }
-        else
-            ++it;
-    }
-    logging::debug() << "Cleaned " << numCleaned << " unused locals from method " << name << logging::endl;
-    PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_GENERAL + 8, "Clean locals (after)", locals.size(),
-        vc4c::profiler::COUNTER_GENERAL + 7);
-        */
 }
 
 LCOV_EXCL_START

@@ -11,61 +11,11 @@
 #include "intermediate/IntermediateInstruction.h"
 
 #include <functional>
-#include <iterator>
 #include <memory>
 
 namespace vc4c
 {
     class BasicBlock;
-
-    namespace analysis
-    {
-        class ControlFlowGraph;
-    } // namespace analysis
-
-    enum class InstructionVisitResult : unsigned char
-    {
-        // continue to visit the next instruction
-        CONTINUE,
-        // stop visiting this branch, continue with others, if any
-        STOP_BRANCH,
-        // stop completely
-        STOP_ALL
-    };
-
-    class InstructionWalker;
-
-    /*
-     * Visitor-pattern to iterate over instructions in a method
-     */
-    struct InstructionVisitor
-    {
-        const std::function<InstructionVisitResult(InstructionWalker&)> op;
-        /*
-         * Whether to stop at the end/beginning of a basic-block or continue with its successors/predecessors
-         */
-        const bool stopAtBlock;
-        /*
-         * Whether to follow jumps (e.g. iterate in order of execution) or linearly iterate over the basic blocks (e.g.
-         * in order of appearance)
-         */
-        const bool followJumps;
-
-        /*
-         * Visits start and all following instructions, according to the settings
-         *
-         * \return true, if the end of the block/method was reached, false, if the visiting operation aborted with
-         * STOP_ALL
-         */
-        bool visit(const InstructionWalker& start) const;
-        /*
-         * Visits start and all preceding instructions, according to the settings
-         *
-         * \return true, if the beginning of the block/method was reached, false, of the visiting operation aborted with
-         * STOP_ALL
-         */
-        bool visitReverse(const InstructionWalker& start, analysis::ControlFlowGraph* blockGraph = nullptr) const;
-    };
 
     /*
      * Enhanced version of an iterator over instructions within a method.

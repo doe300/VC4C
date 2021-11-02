@@ -1584,6 +1584,25 @@ analysis::ValueRange OpCode::operator()(
             // [a, b] & [c, d] -> [0, min(b, d)]
             return ValueRange{0.0} | min(firstRange, secondRange);
         return RANGE_UINT;
+    case OP_OR.opAdd:
+        if(firstRange.isUnsigned() && secondRange.isUnsigned())
+        {
+            if(auto singleton = firstRange.getSingletonValue())
+            {
+                // a | [c, d] -> [a | c, a | d]
+                auto mask = static_cast<uint64_t>(*singleton);
+                return ValueRange{static_cast<double>(static_cast<uint64_t>(secondRange.minValue) | mask),
+                    static_cast<double>(static_cast<uint64_t>(secondRange.maxValue) | mask)};
+            }
+            if(auto singleton = secondRange.getSingletonValue())
+            {
+                // [a, b] | c -> [a | c, b | c]
+                auto mask = static_cast<uint64_t>(*singleton);
+                return ValueRange{static_cast<double>(static_cast<uint64_t>(firstRange.minValue) | mask),
+                    static_cast<double>(static_cast<uint64_t>(firstRange.maxValue) | mask)};
+            }
+        }
+        return RANGE_UINT;
     case OP_CLZ.opAdd:
         // XXX could try to determine maximum number of leading zeroes from input
         return ValueRange{0.0, 32.0};

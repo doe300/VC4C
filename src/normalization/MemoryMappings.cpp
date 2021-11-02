@@ -752,14 +752,17 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
         auto origType = srcInfo.local->type.getElementType();
         auto numBytes = numEntries.getLiteralValue()->unsignedInt();
         if(numBytes != origType.getInMemoryWidth())
-            throw CompilationError(
-                CompilationStep::NORMALIZER, "Byte-wise partial copy from VPM is yet implemented", mem->to_string());
+        {
+            logging::error() << "Trying to copy " << numBytes << " bytes of " << origType.to_string() << logging::endl;
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Byte-wise partial copy from VPM is not yet implemented", mem->to_string());
+        }
         if(auto array = origType.getArrayType())
         {
             numEntries = Value(Literal(array->size), TYPE_INT32);
             vpmRowType = array->elementType;
         }
-        else if(origType.isVectorType())
+        else if(origType.isScalarType() || origType.isVectorType())
         {
             numEntries = INT_ONE;
             vpmRowType = origType;
@@ -775,14 +778,17 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
         auto origType = destInfo.local->type.getElementType();
         auto numBytes = numEntries.getLiteralValue()->unsignedInt();
         if(numBytes != origType.getInMemoryWidth())
+        {
+            logging::error() << "Trying to copy " << numBytes << " bytes of " << origType.to_string() << logging::endl;
             throw CompilationError(
-                CompilationStep::NORMALIZER, "Byte-wise partial copy to VPM is yet implemented", mem->to_string());
+                CompilationStep::NORMALIZER, "Byte-wise partial copy to VPM is not yet implemented", mem->to_string());
+        }
         if(auto array = origType.getArrayType())
         {
             numEntries = Value(Literal(array->size), TYPE_INT32);
             vpmRowType = array->elementType;
         }
-        else if(origType.isVectorType())
+        else if(origType.isScalarType() || origType.isVectorType())
         {
             numEntries = INT_ONE;
             vpmRowType = origType;

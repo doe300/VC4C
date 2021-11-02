@@ -806,7 +806,7 @@ void precompilation::precompileStandardLibraryFiles(const std::string& sourceFil
         "-Wno-undefined-inline "
         "-Wno-unknown-attributes -x cl "
         "-emit-llvm-bc -o ";
-    auto spirvArgs = " --spirv-lower-const-expr --spirv-mem2reg --expensive-combines -o ";
+    auto spirvArgs = " --spirv-lower-const-expr --spirv-mem2reg -o ";
 
     auto pchCommand = CLANG_PATH + pchArgs + destinationFolder + "/VC4CLStdLib.h.pch " + sourceFile;
     auto moduleCommand = CLANG_PATH + moduleArgs + destinationFolder + "/VC4CLStdLib.bc " + sourceFile;

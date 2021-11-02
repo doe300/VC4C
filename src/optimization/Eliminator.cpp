@@ -226,9 +226,6 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
         }
         it.nextInMethod();
     }
-    // remove unused locals. This is actually not required, but gives us some feedback about the effect of this
-    // optimization
-    method.cleanLocals();
     return hasChanged;
 }
 

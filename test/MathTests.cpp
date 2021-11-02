@@ -262,7 +262,7 @@ void test_data::registerMathTests()
                 return exp;
             }))}});
 
-    // TODO fails on hardware
+    // TODO fails on hardware for +-0.0, returns INT_MIN instead of -INT_MAX returned by the host ilogb(0)
     registerTest(TestData{"ilogb", defaultFlags, &UNARY_INT_FUNCTION, "-DFUNC=ilogb", "test",
         {toBufferParameter(std::vector<int32_t>(values.size(), 42.0f)), toBufferParameter(std::vector<float>(values))},
         calculateDimensions(values.size()), {checkParameterEquals(0, transform<int32_t>(values, [](float x) -> int32_t {

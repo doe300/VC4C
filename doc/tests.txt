@@ -126,7 +126,7 @@ test_result_of					PASSED
 test_reverse					PASSED
 test_rotate						PASSED
 test_rotate_copy				PASSED
-test_scan						result mismatch
+test_scan						result mismatch (long test)
 test_scatter					PASSED
 test_scatter_if					PASSED
 test_search						PASSED
@@ -463,16 +463,378 @@ work_efficient_prefix_sum     result mismatch
 
 opencv:
 (only lists relevant tests, e.g. via --gtest_filter=*CL*)
+(run with OPENCV_OPENCL_CACHE_ENABLE=false to not use a kernel cache)
 opencv_test_core
-  OCL_MeanStdDev_.ZeroMask    PASSED
-  OCL_Gemm.small              FAILED (invalid work group size, test_gemm.cpp:160)
-  OpenCL.support_binary_programs FAILED (test_opencl.cpp:22, invalid work group size)
-  OpenCL.support_SPIR_programs FAILED ("Can't find required data file")
-  UMat.setOpenCL              PASSED
-  OCL_Arithm/Lut.Mat/...      result mismatch (sub-tests 1-124), passes sub-test 125-158, hangs at sub-test 158
-
-... (TODO)
-
+  OCL_MeanStdDev_.ZeroMask                                         PASSED
+  OCL_Gemm.small                                                   PASSED
+  Image2D.turnOffOpenCL                                            SKIPPED
+  OpenCL.support_binary_programs                                   FAILED ("can't create cl_mem handle for passed UMat buffer")
+  OpenCL.support_SPIR_programs                                     FAILED ("Can't find required data file: opencl/test_kernel.spir32 in function 'findData'")
+  OpenCL.image2Dcount_regression_19334                             SKIPPED
+  OpenCL.move_construct_assign                                     FAILED ("can't create cl_mem handle for passed UMat buffer")
+  OCL_Context.createFromDevice                                     PASSED
+  OCL_OpenCLExecutionContextDefault.basic                          PASSED
+  OCL_OpenCLExecutionContextDefault.createAndBind                  PASSED
+  UMat.setOpenCL                                                   PASSED
+  OCL_Arithm/Lut.Mat/[0-223]                                       PASSED
+  OCL_Arithm/Add.Mat/[0-55]                                        passes tests 0-39, error threshold exceeded for tests 40-47 (CV_32F), passes tests 48-55
+  OCL_Arithm/Add.Mat_Mask/[0-55]                                   passes tests 0-39, error threshold exceeded for tests 40-47 (CV_32F), passes tests 48-55
+  OCL_Arithm/Add.Scalar/[0-55]                                     PASSED
+  OCL_Arithm/Add.Scalar_Mask/[0-55]                                PASSED
+  OCL_Arithm/Subtract.Mat/[0-55]                                   passes tests 0-39, error threshold exceeded for tests 40-47 (CV_32F), passes tests 48-55
+  OCL_Arithm/Subtract.Mat_Mask/[0-55]                              passes tests 0-39, error threshold exceeded for tests 40-47 (CV_32F), passes tests 48-55
+  OCL_Arithm/Subtract.Scalar/[0-55]                                PASSED
+  OCL_Arithm/Subtract.Scalar_Mask/[0-55]                           PASSED
+  OCL_Arithm/Mul.Mat/[0-55]                                        passes tests 0-39, error threshold exceeded for tests 40-47 (CV_32F), passes tests 48-55
+  OCL_Arithm/Mul.Scalar/[0-55]                                     passes tests 0-35, hangs QPUs in test 36
+  OCL_Arithm/Mul.Mat_Scale/[0-55]
+  OCL_Arithm/Mul.Mat_Scalar_Scale/[0-55]
+  OCL_Arithm/Div.Mat/[0-55]                                        passes tests 0-1, hangs QPUs in test 2
+  OCL_Arithm/Div.Scalar/[0-55]
+  OCL_Arithm/Div.Scalar2/[0-55]
+  OCL_Arithm/Div.Mat_Scale/[0-55]
+  OCL_Arithm/Div.Mat_Scalar_Scale/[0-55]
+  OCL_Arithm/Div.Recip/[0-55]
+  OCL_Arithm/Min.Mat/[0-55]                                        PASSED
+  OCL_Arithm/Max.Mat/[0-55]                                        PASSED
+  OCL_Arithm/Absdiff.Mat/[0-55]                                    passes tests 0-39, error threshold exceeded for tests 40-47 (CV_32F), passes tests 48-55
+  OCL_Arithm/Absdiff.Scalar/[0-55]                                 PASSED
+  OCL_Arithm/CartToPolar.angleInDegree/[0-15]                      PASSED
+  OCL_Arithm/CartToPolar.angleInRadians/[0-15]                     PASSED
+  OCL_Arithm/PolarToCart.angleInDegree/[0-15]                      takes long/hangs QPUs
+  OCL_Arithm/PolarToCart.angleInRadians/[0-15]
+  OCL_Arithm/Transpose.Mat/[0-55]                                  PASSED, but prints "OpenCL error CL_INVALID_WORK_GROUP_SIZE (-54) during call: clEnqueueNDRangeKernel"
+  OCL_Arithm/Transpose.SquareInplace/[0-55]                        PASSED, but prints "OpenCL error CL_INVALID_WORK_GROUP_SIZE (-54) during call: clEnqueueNDRangeKernel"
+  OCL_Arithm/Bitwise_and.Mat/[0-55]                                PASSED
+  OCL_Arithm/Bitwise_and.Mat_Mask/[0-55]                           PASSED
+  OCL_Arithm/Bitwise_and.Scalar/[0-55]                             passes tests 0-47, hangs in test 48 (CV_64F)
+  OCL_Arithm/Bitwise_and.Scalar_Mask/[0-55]
+  OCL_Arithm/Bitwise_or.Mat/[0-55]                                 PASSED
+  OCL_Arithm/Bitwise_or.Mat_Mask/[0-55]                            PASSED
+  OCL_Arithm/Bitwise_or.Scalar/[0-55]                              passes tests 0-47, hangs in test 48 (CV_64F)
+  OCL_Arithm/Bitwise_or.Scalar_Mask/[0-55]
+  OCL_Arithm/Bitwise_xor.Mat/[0-55]                                PASSED
+  OCL_Arithm/Bitwise_xor.Mat_Mask/[0-55]                           PASSED
+  OCL_Arithm/Bitwise_xor.Scalar/[0-55]                             passes tests 0-47, hangs in test 48 (CV_64F)
+  OCL_Arithm/Bitwise_xor.Scalar_Mask/[0-55]
+  OCL_Arithm/Bitwise_not.Mat/[0-55]                                PASSED
+  OCL_Arithm/Compare.Mat/[0-55]                                    passes tests 0-11, takes long/hangs in test 12
+  OCL_Arithm/Compare.Scalar/[0-55]                                 passes tests 0-1, takes long/hangs in test 2
+  OCL_Arithm/Compare.Scalar2/[0-55]
+  OCL_Arithm/Pow.Mat/[0-15]
+  OCL_Arithm/AddWeighted.Mat/[0-55]                                passes tests 0-11, takes long/hangs in test 12
+  OCL_Arithm/SetIdentity.Mat/[0-55]
+  OCL_Arithm/Repeat.Mat/[0-55]
+  OCL_Arithm/CountNonZero.MAT/[0-13]
+  OCL_Arithm/Sum.MAT/[0-55]
+  OCL_Arithm/MeanStdDev.Mat/[0-55]
+  OCL_Arithm/MeanStdDev.Mat_Mask/[0-55]
+  OCL_Arithm/Log.Mat/[0-15]
+  OCL_Arithm/Exp.Mat/[0-15]
+  OCL_Arithm/Phase.angleInDegree/[0-15]
+  OCL_Arithm/Phase.angleInRadians/[0-15]
+  OCL_Arithm/Magnitude.Mat/[0-15]
+  OCL_Arithm/Flip.X/[0-55]
+  OCL_Arithm/Flip.Y/[0-55]
+  OCL_Arithm/Flip.BOTH/[0-55]
+  OCL_Arithm/MinMaxIdx.Mat/[0-55]                                  result value mismatch for test 1
+  OCL_Arithm/MinMaxIdx_Mask.Mat/[0-13]
+  OCL_Arithm/Norm.NORM_INF_1arg/[0-63]                             PASSED
+  OCL_Arithm/Norm.NORM_INF_1arg_mask/[0-63]                        passes test 0, hangs in test 1
+  OCL_Arithm/Norm.NORM_L1_1arg/[0-63]
+  OCL_Arithm/Norm.NORM_L1_1arg_mask/[0-63]
+  OCL_Arithm/Norm.NORM_L2_1arg/[0-63]
+  OCL_Arithm/Norm.NORM_L2_1arg_mask/[0-63]
+  OCL_Arithm/Norm.NORM_INF_2args/[0-63]
+  OCL_Arithm/Norm.NORM_INF_2args_mask/[0-63]
+  OCL_Arithm/Norm.NORM_L1_2args/[0-63]
+  OCL_Arithm/Norm.NORM_L1_2args_mask/[0-63]
+  OCL_Arithm/Norm.NORM_L2_2args/[0-63]
+  OCL_Arithm/Norm.NORM_L2_2args_mask/[0-63]
+  OCL_Arithm/UMatDot.Mat/[0-55]
+  OCL_Arithm/Sqrt.Mat/[0-15]
+  OCL_Arithm/Normalize.Mat/[0-13]
+  OCL_Arithm/InRange.Mat/[0-111]
+  OCL_Arithm/InRange.Scalar/[0-111]
+  OCL_Arithm/ConvertScaleAbs.Mat/[0-55]
+  OCL_Arithm/ConvertFp16.Mat/[0-7]
+  OCL_Arithm/ScaleAdd.Mat/[0-55]
+  OCL_Arithm/PatchNaNs.Mat/[0-7]
+  OCL_Arithm/Psnr.Mat/[0-7]
+  OCL_Arithm/ReduceSum.Mat/[0-159]
+  OCL_Arithm/ReduceMax.Mat/[0-79]
+  OCL_Arithm/ReduceMin.Mat/[0-79]
+  OCL_Arithm/ReduceAvg.Mat/[0-159]
+  OCL_Channels/Merge.Accuracy/[0-55]
+  OCL_Channels/Split.Accuracy/[0-55]
+  OCL_Channels/MixChannels.Accuracy/[0-15]
+  OCL_Channels/InsertChannel.Accuracy/[0-55]
+  OCL_Channels/ExtractChannel.Accuracy/[0-55]
+  OCL_Core/Dft.Mat/[0-511]
+  OCL_OCL_ImgProc/MulSpectrums.Mat/[0-3]
+  OCL_Core/Gemm.Accuracy/[0-63]
+  OCL_MatrixOperation/UMatExpr.Eye/[0-31]                          SKIPPED (due to OpenCV test tag skipping)
+  OCL_MatrixOperation/UMatExpr.Zeroes/[0-31]                       SKIPPED (due to OpenCV test tag skipping)
+  OCL_MatrixOperation/UMatExpr.Ones/[0-31]                         SKIPPED (due to OpenCV test tag skipping)
+  OCL_MatrixOperation/UMatExpr.WithUsageFlags/[0-31]               SKIPPED (due to OpenCV test tag skipping)
+  OCL_MatrixOperation/ConvertTo.WithScale_Accuracy/[0-391]         SKIPPED (due to OpenCV test tag skipping)
+  OCL_MatrixOperation/ConvertTo.NoScale_Accuracy/[0-391]           SKIPPED (due to OpenCV test tag skipping)
+  OCL_MatrixOperation/CopyTo.Accuracy/[0-111]                      SKIPPED (due to OpenCV test tag skipping)
+  OCL_MatrixOperation/SetTo.Accuracy/[0-111]                       SKIPPED (due to OpenCV test tag skipping)
+opencv_test_dnn
+  Test_Caffe/opencv_face_detector.Accuracy/1                       SKIPPED (due to OpenCV test tag skipping)
+  Test_Caffe/opencv_face_detector.Accuracy/3                       SKIPPED (due to OpenCV test tag skipping)
+  Test_Caffe/opencv_face_detector.issue_15106/1                    SKIPPED (due to OpenCV test tag skipping)
+  Test_Caffe/opencv_face_detector.issue_15106/3                    SKIPPED (due to OpenCV test tag skipping)
+opencv_test_features2d
+  OCL_Matcher/BruteForceMatcher.Match_Single/[0-13]                passes tests 0 and 1 while giving a CL_INVALID_WORK_GROUP_SIZE in kernel enqueue, needs a lot of memory for compiling kernel of tests 2
+  OCL_Matcher/BruteForceMatcher.KnnMatch_2_Single/[0-13]
+  OCL_Matcher/BruteForceMatcher.RadiusMatch_Single/[0-13]
+  OCL_AKAZE/Feature2DFixture.KeypointsSame/[0-2]                   FAILED (result? image is empty)
+  OCL_AKAZE/Feature2DFixture.DescriptorsSame/[0-2]                 FAILED (result? image is empty)
+  OCL_AKAZE_DESCRIPTOR_KAZE/Feature2DFixture.KeypointsSame/[0-2]   FAILED (result? image is empty)
+  OCL_AKAZE_DESCRIPTOR_KAZE/Feature2DFixture.DescriptorsSame/[0-2] FAILED (result? image is empty)
+opencv_test_imgproc
+  OCL_Imgproc_Moments.accuracy
+  OCL_ImgProc/Accumulate.Mat/[0-55]
+  OCL_ImgProc/Accumulate.Mask/[0-55]
+  OCL_ImgProc/AccumulateSquare.Mat/[0-55]
+  OCL_ImgProc/AccumulateSquare.Mask/[0-55]
+  OCL_ImgProc/AccumulateProduct.Mat/[0-55]
+  OCL_ImgProc/AccumulateProduct.Mask/[0-55]
+  OCL_ImgProc/AccumulateWeighted.Mat/[0-55]
+  OCL_ImgProc/AccumulateWeighted.Mask/[0-55]
+  OCL_ImgProc/BlendLinear.Accuracy/[0-15]
+  OCL_ImageProc/BoxFilter.Mat/[0-319]
+  OCL_ImageProc/SqrBoxFilter.Mat/[0-319]
+  OCL_ImageProc/BoxFilter3x3_cols16_rows2.Mat/[0-7]
+  OCL_ImgProc/Canny.Accuracy/[0-15]
+  OCL_ImgProc/Canny.AccuracyCustomGradient/[0-15]
+  OCL_ImgProc/CvtColor.BGR2BGRA/[0-5]
+  OCL_ImgProc/CvtColor.RGB2RGBA/[0-5]
+  OCL_ImgProc/CvtColor.BGRA2BGR/[0-5]
+  OCL_ImgProc/CvtColor.RGBA2RGB/[0-5]
+  OCL_ImgProc/CvtColor.BGR2RGBA/[0-5]
+  OCL_ImgProc/CvtColor.RGB2BGRA/[0-5]
+  OCL_ImgProc/CvtColor.RGBA2BGR/[0-5]
+  OCL_ImgProc/CvtColor.BGRA2RGB/[0-5]
+  OCL_ImgProc/CvtColor.BGR2RGB/[0-5]
+  OCL_ImgProc/CvtColor.RGB2BGR/[0-5]
+  OCL_ImgProc/CvtColor.BGRA2RGBA/[0-5]
+  OCL_ImgProc/CvtColor.RGBA2BGRA/[0-5]
+  OCL_ImgProc/CvtColor.RGB2GRAY/[0-5]
+  OCL_ImgProc/CvtColor.GRAY2RGB/[0-5]
+  OCL_ImgProc/CvtColor.BGR2GRAY/[0-5]
+  OCL_ImgProc/CvtColor.GRAY2BGR/[0-5]
+  OCL_ImgProc/CvtColor.RGBA2GRAY/[0-5]
+  OCL_ImgProc/CvtColor.GRAY2RGBA/[0-5]
+  OCL_ImgProc/CvtColor.BGRA2GRAY/[0-5]
+  OCL_ImgProc/CvtColor.GRAY2BGRA/[0-5]
+  OCL_ImgProc/CvtColor.RGB2YUV/[0-5]
+  OCL_ImgProc/CvtColor.BGR2YUV/[0-5]
+  OCL_ImgProc/CvtColor.RGBA2YUV/[0-5]
+  OCL_ImgProc/CvtColor.YUV2RGB/[0-5]
+  OCL_ImgProc/CvtColor.YUV2BGR/[0-5]
+  OCL_ImgProc/CvtColor.YUV2RGBA/[0-5]
+  OCL_ImgProc/CvtColor.YUV2BGRA/[0-5]
+  OCL_ImgProc/CvtColor.RGB2YCrCb/[0-5]
+  OCL_ImgProc/CvtColor.BGR2YCrCb/[0-5]
+  OCL_ImgProc/CvtColor.RGBA2YCrCb/[0-5]
+  OCL_ImgProc/CvtColor.BGRA2YCrCb/[0-5]
+  OCL_ImgProc/CvtColor.YCrCb2RGB/[0-5]
+  OCL_ImgProc/CvtColor.YCrCb2BGR/[0-5]
+  OCL_ImgProc/CvtColor.YCrCb2RGBA/[0-5]
+  OCL_ImgProc/CvtColor.YCrCb2BGRA/[0-5]
+  OCL_ImgProc/CvtColor.RGB2XYZ/[0-5]
+  OCL_ImgProc/CvtColor.BGR2XYZ/[0-5]
+  OCL_ImgProc/CvtColor.RGBA2XYZ/[0-5]
+  OCL_ImgProc/CvtColor.BGRA2XYZ/[0-5]
+  OCL_ImgProc/CvtColor.XYZ2RGB/[0-5]
+  OCL_ImgProc/CvtColor.XYZ2BGR/[0-5]
+  OCL_ImgProc/CvtColor.XYZ2RGBA/[0-5]
+  OCL_ImgProc/CvtColor.XYZ2BGRA/[0-5]
+  OCL_ImgProc/CvtColor8u32f.RGB2HSV/[0-3]
+  OCL_ImgProc/CvtColor8u32f.BGR2HSV/[0-3]
+  OCL_ImgProc/CvtColor8u32f.RGBA2HSV/[0-3]
+  OCL_ImgProc/CvtColor8u32f.BGRA2HSV/[0-3]
+  OCL_ImgProc/CvtColor8u32f.RGB2HSV_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.BGR2HSV_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.RGBA2HSV_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.BGRA2HSV_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HSV2RGB/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HSV2BGR/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HSV2RGBA/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HSV2BGRA/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HSV2RGB_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HSV2BGR_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HSV2RGBA_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HSV2BGRA_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.RGB2HLS/[0-3]
+  OCL_ImgProc/CvtColor8u32f.BGR2HLS/[0-3]
+  OCL_ImgProc/CvtColor8u32f.RGBA2HLS/[0-3]
+  OCL_ImgProc/CvtColor8u32f.BGRA2HLS/[0-3]
+  OCL_ImgProc/CvtColor8u32f.RGB2HLS_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.BGR2HLS_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.RGBA2HLS_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.BGRA2HLS_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HLS2RGB/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HLS2BGR/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HLS2RGBA/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HLS2BGRA/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HLS2RGB_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HLS2BGR_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HLS2RGBA_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.HLS2BGRA_FULL/[0-3]
+  OCL_ImgProc/CvtColor8u32f.BGR2Lab/[0-3]
+  OCL_ImgProc/CvtColor8u32f.RGB2Lab/[0-3]
+  OCL_ImgProc/CvtColor8u32f.LBGR2Lab/[0-3]
+  OCL_ImgProc/CvtColor8u32f.LRGB2Lab/[0-3]
+  OCL_ImgProc/CvtColor8u32f.BGRA2Lab/[0-3]
+  OCL_ImgProc/CvtColor8u32f.RGBA2Lab/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Lab2BGR/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Lab2RGB/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Lab2LBGR/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Lab2LRGB/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Lab2BGRA/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Lab2RGBA/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Lab2LBGRA/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Lab2LRGBA/[0-3]
+  OCL_ImgProc/CvtColor8u32f.BGR2Luv/[0-3]
+  OCL_ImgProc/CvtColor8u32f.RGB2Luv/[0-3]
+  OCL_ImgProc/CvtColor8u32f.LBGR2Luv/[0-3]
+  OCL_ImgProc/CvtColor8u32f.LRGB2Luv/[0-3]
+  OCL_ImgProc/CvtColor8u32f.BGRA2Luv/[0-3]
+  OCL_ImgProc/CvtColor8u32f.RGBA2Luv/[0-3]
+  OCL_ImgProc/CvtColor8u32f.LBGRA2Luv/[0-3]
+  OCL_ImgProc/CvtColor8u32f.LRGBA2Luv/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Luv2BGR/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Luv2RGB/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Luv2LBGR/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Luv2LRGB/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Luv2BGRA/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Luv2RGBA/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Luv2LBGRA/[0-3]
+  OCL_ImgProc/CvtColor8u32f.Luv2LRGBA/[0-3]
+  OCL_ImgProc/CvtColor8u.BGR5652BGR/[0-1]
+  OCL_ImgProc/CvtColor8u.BGR5652RGB/[0-1]
+  OCL_ImgProc/CvtColor8u.BGR5652BGRA/[0-1]
+  OCL_ImgProc/CvtColor8u.BGR5652RGBA/[0-1]
+  OCL_ImgProc/CvtColor8u.BGR5552BGR/[0-1]
+  OCL_ImgProc/CvtColor8u.BGR5552RGB/[0-1]
+  OCL_ImgProc/CvtColor8u.BGR5552BGRA/[0-1]
+  OCL_ImgProc/CvtColor8u.BGR5552RGBA/[0-1]
+  OCL_ImgProc/CvtColor8u.BGR2BGR565/[0-1]
+  OCL_ImgProc/CvtColor8u.RGB2BGR565/[0-1]
+  OCL_ImgProc/CvtColor8u.BGRA2BGR565/[0-1]
+  OCL_ImgProc/CvtColor8u.RGBA2BGR565/[0-1]
+  OCL_ImgProc/CvtColor8u.BGR2BGR555/[0-1]
+  OCL_ImgProc/CvtColor8u.RGB2BGR555/[0-1]
+  OCL_ImgProc/CvtColor8u.BGRA2BGR555/[0-1]
+  OCL_ImgProc/CvtColor8u.RGBA2BGR555/[0-1]
+  OCL_ImgProc/CvtColor8u.BGR5652GRAY/[0-1]
+  OCL_ImgProc/CvtColor8u.BGR5552GRAY/[0-1]
+  OCL_ImgProc/CvtColor8u.GRAY2BGR565/[0-1]
+  OCL_ImgProc/CvtColor8u.GRAY2BGR555/[0-1]
+  OCL_ImgProc/CvtColor8u.RGBA2mRGBA/[0-1]
+  OCL_ImgProc/CvtColor8u.mRGBA2RGBA/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2RGBA_NV12/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2BGRA_NV12/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2RGB_NV12/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2BGR_NV12/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2RGBA_NV21/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2BGRA_NV21/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2RGB_NV21/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2BGR_NV21/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2RGBA_YV12/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2BGRA_YV12/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2RGB_YV12/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2BGR_YV12/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2RGBA_IYUV/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2BGRA_IYUV/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2RGB_IYUV/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2BGR_IYUV/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_420.YUV2GRAY_420/[0-1]
+  OCL_ImgProc/CvtColor_RGB2YUV_420.RGBA2YUV_YV12/[0-1]
+  OCL_ImgProc/CvtColor_RGB2YUV_420.BGRA2YUV_YV12/[0-1]
+  OCL_ImgProc/CvtColor_RGB2YUV_420.RGB2YUV_YV12/[0-1]
+  OCL_ImgProc/CvtColor_RGB2YUV_420.BGR2YUV_YV12/[0-1]
+  OCL_ImgProc/CvtColor_RGB2YUV_420.RGBA2YUV_IYUV/[0-1]
+  OCL_ImgProc/CvtColor_RGB2YUV_420.BGRA2YUV_IYUV/[0-1]
+  OCL_ImgProc/CvtColor_RGB2YUV_420.RGB2YUV_IYUV/[0-1]
+  OCL_ImgProc/CvtColor_RGB2YUV_420.BGR2YUV_IYUV/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_422.YUV2RGB_UYVY/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_422.YUV2BGR_UYVY/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_422.YUV2RGBA_UYVY/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_422.YUV2BGRA_UYVY/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_422.YUV2RGB_YUY2/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_422.YUV2BGR_YUY2/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_422.YUV2RGBA_YUY2/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_422.YUV2BGRA_YUY2/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_422.YUV2RGB_YVYU/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_422.YUV2BGR_YVYU/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_422.YUV2RGBA_YVYU/[0-1]
+  OCL_ImgProc/CvtColor_YUV2RGB_422.YUV2BGRA_YVYU/[0-1]
+  OCL_ImageProc/Filter2D.mat/[0-1727]
+  OCL_Filter/Bilateral.Mat/[0-79]
+  OCL_Filter/LaplacianTest.Accuracy/[0-647]
+  OCL_Filter/Laplacian3_cols16_rows2.Accuracy/[0-23]
+  OCL_Filter/SobelTest.Mat/[0-575]
+  OCL_Filter/Sobel3x3_cols16_rows2.Mat/[0-31]
+  OCL_Filter/ScharrTest.Mat/[0-287]
+  OCL_Filter/Scharr3x3_cols16_rows2.Mat/[0-287]
+  OCL_Filter/GaussianBlurTest.Mat/[0-143]
+  OCL_Filter/GaussianBlur_multicols.Mat/[0-255]
+  OCL_Filter/Dilate.Mat/[0-319]
+  OCL_Filter/MorphFilter3x3_cols16_rows2.Mat/[0-11]
+  OCL_Filter/MorphologyEx.Mat/[0-539]
+  OCL_Imgproc/GoodFeaturesToTrack.Accuracy/[0-3]
+  OCL_Imgproc/GoodFeaturesToTrack.EmptyCorners/[0-3]
+  OCL_Imgproc/CalcBackProject.Mat/[0-3]
+  OCL_Imgproc/CalcBackProject.Mat_RealImage/[0-3]
+  OCL_Imgproc/CalcHist.Mat/[0-1]
+  OCL_Imgproc/HoughLines.RealImage/[0-7]
+  OCL_Imgproc/HoughLines.GeneratedImage/[0-7]
+  OCL_Imgproc/HoughLinesP.RealImage/[0-7]
+  OCL_ImgprocTestBase/CopyMakeBorder.Mat/[0-239]
+  OCL_Imgproc/EqualizeHist.Mat/[0-1]
+  OCL_Imgproc/CornerMinEigenVal.Mat/[0-31]
+  OCL_Imgproc/CornerHarris.Mat/[0-31]
+  OCL_Imgproc/PreCornerDetect.Mat/[0-31]
+  OCL_Imgproc/Integral.Mat/[0-7]
+  OCL_Imgproc/Threshold.Mat/[0-119]
+  OCL_Imgproc/CLAHETest.Accuracy/[0-23]
+  OCL_ImageProc/MatchTemplate.Mat/[0-95]
+  OCL_ImageProc/MedianFilter.Mat/[0-63]
+  OCL_ImgprocPyr/PyrDown.Mat/[0-119]
+  OCL_ImgprocPyr/PyrUp.Mat/[0-39]
+  OCL_ImgprocPyr/PyrUp_cols2.Mat/[0-1]
+  OCL_ImageProc/SepFilter2D.Mat/[0-127]
+  OCL_ImageProc/SepFilter2D.Mat_BitExact/[0-127]
+  OCL_ImgprocWarp/WarpAffine.Mat/[0-71]
+  OCL_ImgprocWarp/WarpAffine_cols4.Mat/[0-11]
+  OCL_ImgprocWarp/WarpPerspective.Mat/[0-71]
+  OCL_ImgprocWarp/WarpPerspective_cols4.Mat/[0-11]
+  OCL_ImgprocWarp/Resize.Mat/[0-639]
+  OCL_ImgprocWarpLinearExact/Resize.Mat/[0-191]
+  OCL_ImgprocWarpResizeArea/Resize.Mat/[0-143]
+  OCL_ImgprocWarp/Remap_INTER_NEAREST.Mat/[0-359]
+  OCL_ImgprocWarp/Remap_INTER_LINEAR.Mat/[0-269]
+opencv_test_objdetect
+  OCL_ObjDetect/HOG.GetDescriptors/[0-1]                           FAILED (result? image is empty)
+  OCL_ObjDetect/HOG.SVMDetector/[0-1]                              FAILED (result? image is empty)
+  OCL_ObjDetect/HOG.Detect/[0-1]                                   FAILED (result? image is empty)
+opencv_test_photo
+  OCL_Photo/FastNlMeansDenoising.Mat/[0-15]                        FAILED (result? image is empty)
+  OCL_Photo/FastNlMeansDenoising_hsep.Mat/[0-15]                   FAILED (result? image is empty)
+  OCL_Photo/FastNlMeansDenoisingColored.Mat/[0-3]
 opencv_test_stitching
-FAILED (result mismatch)
-SEGFAULTS
+  OCL_SphericalWarperTest.Mat
+  OCL_CylindricalWarperTest.Mat
+  OCL_PlaneWarperTest.Mat
+  OCL_AffineWarperTest.Mat
+opencv_test_video
+  OCL_OCL_Video/Mog2_Update.Accuracy/[0-7]                         SKIPPED (cannot open video file)
+  OCL_OCL_Video/Mog2_getBackgroundImage.Accuracy/[0-3]             SKIPPED (cannot open video file)
+  OCL_Video/OCL_DenseOpticalFlow_DIS.Mat/[0-2]                     FAILED (assertion failure)
+  OCL_Video/FarnebackOpticalFlow.Mat/[0-23]                        FAILED (result? frame is empty)
+  OCL_Video/PyrLKOpticalFlow.Mat/[0-7]                             FAILED (result? frame is empty)

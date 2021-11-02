@@ -211,21 +211,23 @@ static bool findMemoryObjectAndBaseAddressAdd(
         dynamic_cast<const intermediate::Operation*>(trackInst)->op == OP_ADD)
     {
         const auto& arg0 = trackInst->assertArgument(0);
+        auto firstLoc = arg0.checkLocal() ? arg0.local()->getBase(false) : nullptr;
         const auto& arg1 = trackInst->assertArgument(1);
-        if(arg0.checkLocal() &&
-            (arg0.local()->residesInMemory() ||
-                (arg0.local()->is<BuiltinLocal>() &&
-                    arg0.local()->as<BuiltinLocal>()->builtinType == BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)))
+        auto secondLoc = arg1.checkLocal() ? arg1.local()->getBase(false) : nullptr;
+        if(firstLoc &&
+            (firstLoc->residesInMemory() ||
+                (firstLoc->is<BuiltinLocal>() &&
+                    firstLoc->as<BuiltinLocal>()->builtinType == BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)))
         {
-            range.memoryObject = arg0.local();
+            range.memoryObject = firstLoc;
             varArg = arg1;
         }
-        else if(arg1.checkLocal() &&
-            (arg1.local()->residesInMemory() ||
-                (arg1.local()->is<BuiltinLocal>() &&
-                    arg1.local()->as<BuiltinLocal>()->builtinType == BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)))
+        else if(secondLoc &&
+            (secondLoc->residesInMemory() ||
+                (secondLoc->is<BuiltinLocal>() &&
+                    secondLoc->as<BuiltinLocal>()->builtinType == BuiltinLocal::Type::GLOBAL_DATA_ADDRESS)))
         {
-            range.memoryObject = arg1.local();
+            range.memoryObject = secondLoc;
             varArg = arg0;
         }
         else if(arg0.hasRegister(REG_UNIFORM))
@@ -270,7 +272,11 @@ static bool findMemoryObjectAndBaseAddressAdd(
             if(expr && expr->code == OP_ADD)
             {
                 auto firstLoc = expr->arg0.checkLocal(true);
+                if(firstLoc)
+                    firstLoc = firstLoc->getBase(false);
                 auto secondLoc = expr->arg1.checkLocal(true);
+                if(secondLoc)
+                    secondLoc = secondLoc->getBase(false);
                 if(firstLoc &&
                     (firstLoc->residesInMemory() ||
                         (firstLoc->is<BuiltinLocal>() &&
