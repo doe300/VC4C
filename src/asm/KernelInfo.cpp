@@ -8,6 +8,7 @@
 
 #include "../GlobalValues.h"
 #include "../Method.h"
+#include "../Module.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "Instruction.h"
 #include "log.h"
@@ -200,6 +201,19 @@ std::size_t qpu_asm::writeModule(std::ostream& stream, ModuleHeader& module, con
     return numWords;
 }
 
+template <MetaData::Type Type, typename T>
+static bool addSingletonMetaData(std::vector<MetaData>& list, const T& value)
+{
+    auto it = std::find_if(list.begin(), list.end(), [](const MetaData& entry) { return entry.getType() == Type; });
+    if(it == list.end())
+    {
+        list.emplace_back();
+        list.back().setValue<Type>(value);
+        return true;
+    }
+    return false;
+}
+
 KernelHeader qpu_asm::createKernelHeader(
     const Method& method, const std::size_t initialOffset, const std::size_t numInstructions)
 {
@@ -284,6 +298,28 @@ KernelHeader qpu_asm::createKernelHeader(
         });
         LCOV_EXCL_STOP
     }
+
+    uint32_t privateBufferSize = 0;
+    uint32_t localBufferSize = 0;
+    for(const auto& global : method.module.globalData)
+    {
+        if(global.name.find("@" + method.name + ".") != 0)
+            // LLVM prefixes local buffers with the name of the kernel. This is currently the only way to distinguish to
+            // which kernel a buffer belongs to
+            continue;
+        if(auto ptrType = global.type.getPointerType())
+        {
+            if(ptrType->addressSpace == AddressSpace::LOCAL)
+                localBufferSize += ptrType->elementType.getInMemoryWidth();
+            else if(ptrType->addressSpace == AddressSpace::PRIVATE)
+                privateBufferSize += ptrType->elementType.getInMemoryWidth();
+        }
+    }
+    auto stackSize = static_cast<uint32_t>(method.calculateStackSize());
+    if((stackSize + privateBufferSize) > 0)
+        addSingletonMetaData<MetaData::KERNEL_PRIVATE_MEMORY_SIZE>(kernel.metaData, stackSize + privateBufferSize);
+    if(localBufferSize > 0)
+        addSingletonMetaData<MetaData::KERNEL_LOCAL_MEMORY_SIZE>(kernel.metaData, localBufferSize);
 
     return kernel;
 }
