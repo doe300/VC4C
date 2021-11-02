@@ -51,8 +51,6 @@ std::string intermediate::toString(const InstructionDecorations decoration)
         res.append("delay ");
     if(has_flag(decoration, InstructionDecorations::ELEMENT_INSERTION))
         res.append("single_element ");
-    if(has_flag(decoration, InstructionDecorations::AUTO_VECTORIZED))
-        res.append("vectorized ");
     if(has_flag(decoration, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))
         res.append("group_uniform ");
     if(has_flag(decoration, InstructionDecorations::VPM_READ_CONFIGURATION))

@@ -81,8 +81,7 @@ namespace vc4c
             MANDATORY_DELAY = 1u << 15u,
             // The instructions inserts a single element into a vector
             ELEMENT_INSERTION = 1u << 16u,
-            // The instruction was already processed by auto-vectorization
-            AUTO_VECTORIZED = 1u << 17u,
+            // 1 << 17 IS UNUSED
             // The result of the instruction is the same for all work-items within a single work-group
             WORK_GROUP_UNIFORM_VALUE = 1u << 18u,
             // The instruction calculates VPM read configuration

@@ -65,6 +65,10 @@ namespace vc4c
          */
         NODISCARD InstructionWalker insertFoldVector(InstructionWalker it, Method& method, const Value& dest,
             const Value& src, OpCode foldingOp, InstructionDecorations decorations = InstructionDecorations::NONE);
+        NODISCARD InstructionWalker insertFoldVector(InstructionWalker it, Method& method, const Value& dest,
+            const Value& src, OpCode foldingOp,
+            FastSet<const intermediate::IntermediateInstruction*>& addedInstructions,
+            InstructionDecorations decorations = InstructionDecorations::NONE);
 
     } // namespace intermediate
 } // namespace vc4c

@@ -1958,7 +1958,7 @@ void TestOptimizationSteps::testCombineRotations()
         inIt.nextInBlock();
         assign(inIt, ROTATION_REGISTER) = 4_val;
         inIt.emplace(std::make_unique<VectorRotation>(i, in, VECTOR_ROTATE_R5, RotationType::PER_QUAD));
-        inIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+        inIt->addDecorations(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
         inIt.nextInBlock();
         assign(inIt, ROTATION_REGISTER) = 16_val;
         inIt.emplace(std::make_unique<VectorRotation>(j, in, VECTOR_ROTATE_R5, RotationType::FULL))
@@ -1968,7 +1968,7 @@ void TestOptimizationSteps::testCombineRotations()
         assign(outIt, f) = in;
         assign(outIt, h) = in;
         assign(outIt, ROTATION_REGISTER) = 4_val;
-        assign(outIt, i) = (in, InstructionDecorations::AUTO_VECTORIZED);
+        assign(outIt, i) = (in, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
         assign(outIt, ROTATION_REGISTER) = 16_val;
         assign(outIt, j) = (in, PACK_32_16B_S);
     }
@@ -2086,7 +2086,7 @@ void TestOptimizationSteps::testCombineRotations()
         inIt.emplace(std::make_unique<LoadImmediate>(m, 1234_lit));
         inIt.nextInBlock();
         inIt.emplace(std::make_unique<VectorRotation>(n, m, VECTOR_ROTATE_R5, RotationType::FULL));
-        inIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+        inIt->addDecorations(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
         inIt.nextInBlock();
     }
 
@@ -2101,7 +2101,7 @@ void TestOptimizationSteps::testCombineRotations()
         inIt.nextInBlock();
         // TODO test per-quad rotation, full rotation is already tested above
         inIt.emplace(std::make_unique<VectorRotation>(s, r, SmallImmediate::fromRotationOffset(2), RotationType::FULL));
-        inIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+        inIt->addDecorations(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
         inIt.nextInBlock();
     }
 
@@ -2116,7 +2116,7 @@ void TestOptimizationSteps::testCombineRotations()
         outIt.emplace(std::make_unique<LoadImmediate>(m, 1234_lit));
         outIt.nextInBlock();
         outIt.emplace(std::make_unique<LoadImmediate>(n, 1234_lit));
-        outIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+        outIt->addDecorations(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
         outIt.nextInBlock();
     }
 
@@ -2130,7 +2130,7 @@ void TestOptimizationSteps::testCombineRotations()
         outIt.emplace(std::make_unique<LoadImmediate>(r, 0x00001234, LoadType::PER_ELEMENT_UNSIGNED));
         outIt.nextInBlock();
         outIt.emplace(std::make_unique<LoadImmediate>(s, 0x000048D0, LoadType::PER_ELEMENT_UNSIGNED));
-        outIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+        outIt->addDecorations(InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
         outIt.nextInBlock();
     }
 

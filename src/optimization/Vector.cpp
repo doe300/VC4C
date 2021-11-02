@@ -232,10 +232,11 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
 
 static void scheduleForVectorization(const Local* local,
     FastMap<const intermediate::IntermediateInstruction*, uint8_t>& openInstructions, ControlFlowLoop& loop,
-    bool scheduleWriters, uint8_t minVectorWidth)
+    bool scheduleWriters, uint8_t minVectorWidth,
+    FastSet<const intermediate::IntermediateInstruction*>& closedInstructions)
 {
-    local->forUsers(LocalUse::Type::READER, [&openInstructions, &loop, minVectorWidth](const LocalUser* user) -> void {
-        if(!user->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
+    local->forUsers(LocalUse::Type::READER, [&](const LocalUser* user) -> void {
+        if(closedInstructions.find(user) == closedInstructions.end())
             openInstructions.emplace(user, minVectorWidth);
         if(user->checkOutputRegister() &&
             (user->getOutput()->reg().isSpecialFunctionsUnit() || user->getOutput()->reg().isTextureMemoryUnit()))
@@ -246,8 +247,7 @@ static void scheduleForVectorization(const Local* local,
                 InstructionWalker it = optIt.value().nextInBlock();
                 while(!it.isEndOfBlock())
                 {
-                    if(it->readsRegister(REG_SFU_OUT) &&
-                        !it->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
+                    if(it->readsRegister(REG_SFU_OUT) && closedInstructions.find(it.get()) == closedInstructions.end())
                     {
                         openInstructions.emplace(it.get(), minVectorWidth);
                         break;
@@ -260,8 +260,8 @@ static void scheduleForVectorization(const Local* local,
     });
     if(scheduleWriters)
     {
-        local->forUsers(LocalUse::Type::WRITER, [&openInstructions, minVectorWidth](const LocalUser* user) -> void {
-            if(!user->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
+        local->forUsers(LocalUse::Type::WRITER, [&](const LocalUser* user) -> void {
+            if(closedInstructions.find(user) == closedInstructions.end())
                 openInstructions.emplace(user, minVectorWidth);
         });
     }
@@ -301,7 +301,7 @@ static void removeSplatDecoration(IntermediateInstruction* inst, Optional<Instru
 
 static void scheduleForOutputValue(Value& out, intermediate::IntermediateInstruction* inst, Method& method,
     FastMap<const intermediate::IntermediateInstruction*, uint8_t>& openInstructions, uint8_t vectorWidth,
-    ControlFlowLoop& loop)
+    ControlFlowLoop& loop, FastSet<const intermediate::IntermediateInstruction*>& closedInstructions)
 {
     if(auto ptrType = out.type.getPointerType())
         // TODO this is only correct if the elements are located in one block (base+0, base+1, base+2...). Is this
@@ -317,7 +317,7 @@ static void scheduleForOutputValue(Value& out, intermediate::IntermediateInstruc
                 loc->type.getPointerType()->elementType.toVectorType(getVectorWidth(out.type)), ptrType->addressSpace);
         else
             const_cast<DataType&>(loc->type) = loc->type.toVectorType(getVectorWidth(out.type));
-        scheduleForVectorization(loc, openInstructions, loop, false, vectorWidth);
+        scheduleForVectorization(loc, openInstructions, loop, false, vectorWidth, closedInstructions);
     }
     if(out.hasRegister(REG_REPLICATE_ALL) || out.hasRegister(REG_REPLICATE_QUAD))
     {
@@ -359,13 +359,14 @@ static void scheduleForOutputValue(Value& out, intermediate::IntermediateInstruc
                 break;
             checkIt.nextInBlock();
         }
-        scheduleForVectorization(newLoc.local(), openInstructions, loop, false, vectorWidth);
+        scheduleForVectorization(newLoc.local(), openInstructions, loop, false, vectorWidth, closedInstructions);
     }
 }
 
 static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Method& method,
     FastMap<const intermediate::IntermediateInstruction*, uint8_t>& openInstructions, unsigned vectorizationFactor,
-    ControlFlowLoop& loop, uint8_t minVectorWidth, const Optional<Value>& dynamicElementCount)
+    ControlFlowLoop& loop, uint8_t minVectorWidth, const Optional<Value>& dynamicElementCount,
+    FastSet<const intermediate::IntermediateInstruction*>& closedInstructions)
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Vectorizing instruction: " << inst->to_string() << logging::endl);
 
@@ -399,7 +400,7 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
         {
             if(!loc->is<Parameter>() &&
                 (check(loc->getSingleWriter()) & &IntermediateInstruction::getMoveSource) != UNIFORM_REGISTER)
-                scheduleForVectorization(loc, openInstructions, loop, true, vectorWidth);
+                scheduleForVectorization(loc, openInstructions, loop, true, vectorWidth, closedInstructions);
         }
     }
     if(inst->hasConditionalExecution())
@@ -410,7 +411,7 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
         if(auto lastFlagSetterIt =
                 instIt ? instIt->getBasicBlock()->findLastSettingOfFlags(*instIt) : Optional<InstructionWalker>{})
         {
-            if(!(*lastFlagSetterIt)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
+            if(closedInstructions.find(lastFlagSetterIt->get()) == closedInstructions.end())
                 openInstructions.emplace(lastFlagSetterIt->get(), vectorWidth);
         }
         else
@@ -428,7 +429,7 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
                 instIt->getBasicBlock()->findLastWritingOfRegister(*instIt, REG_REPLICATE_ALL) :
                 Optional<InstructionWalker>{})
         {
-            if(!(*replicationIt)->hasDecoration(intermediate::InstructionDecorations::AUTO_VECTORIZED))
+            if(closedInstructions.find(replicationIt->get()) == closedInstructions.end())
                 openInstructions.emplace(replicationIt->get(), vectorWidth);
         }
         else
@@ -443,7 +444,7 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
     {
         // TODO vector-rotations need special handling?!
         Value& out = const_cast<Value&>(inst->getOutput().value());
-        scheduleForOutputValue(out, inst, method, openInstructions, vectorWidth, loop);
+        scheduleForOutputValue(out, inst, method, openInstructions, vectorWidth, loop, closedInstructions);
     }
 
     if(auto access = dynamic_cast<RAMAccessInstruction*>(inst))
@@ -476,7 +477,7 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
         // schedule all other accesses of the same cache entry for vectorization
         for(auto* inst : access->cache->accesses)
         {
-            if(!has_flag(inst->decoration, InstructionDecorations::AUTO_VECTORIZED))
+            if(closedInstructions.find(inst) == closedInstructions.end())
                 openInstructions.emplace(inst, vectorWidth);
         }
     }
@@ -486,13 +487,13 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
         if(access->op == MemoryOperation::READ)
         {
             auto& out = const_cast<Value&>(access->getData());
-            scheduleForOutputValue(out, inst, method, openInstructions, vectorWidth, loop);
+            scheduleForOutputValue(out, inst, method, openInstructions, vectorWidth, loop, closedInstructions);
         }
 
         // schedule all other accesses of the same cache entry for vectorization
         for(auto* inst : access->cache->accesses)
         {
-            if(!has_flag(inst->decoration, InstructionDecorations::AUTO_VECTORIZED))
+            if(closedInstructions.find(inst) == closedInstructions.end())
                 openInstructions.emplace(inst, vectorWidth);
         }
     }
@@ -502,7 +503,7 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
     // scalars, if the read-instruction was vectorized before the write-instruction
 
     // mark as already processed and remove from open-set
-    inst->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+    closedInstructions.emplace(inst);
     openInstructions.erase(inst);
 }
 
@@ -515,7 +516,8 @@ static Optional<InstructionWalker> findWalker(const CFGNode* node, const interme
 }
 
 static void fixInitialValueAndStep(Method& method, ControlFlowLoop& loop, InductionVariable& inductionVariable,
-    Literal stepValue, unsigned vectorizationFactor)
+    Literal stepValue, unsigned vectorizationFactor,
+    FastSet<const intermediate::IntermediateInstruction*>& closedInstructions)
 {
     auto stepOp = const_cast<intermediate::Operation*>(inductionVariable.inductionStep);
     const_cast<DataType&>(inductionVariable.initialAssignment->getOutput()->type) =
@@ -530,7 +532,7 @@ static void fixInitialValueAndStep(Method& method, ControlFlowLoop& loop, Induct
     {
         // special/default case: initial value is zero and step is +1
         move->setSource(Value(ELEMENT_NUMBER_REGISTER));
-        move->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+        closedInstructions.emplace(move);
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Changed initial value: " << inductionVariable.initialAssignment->to_string() << logging::endl);
     }
@@ -540,7 +542,7 @@ static void fixInitialValueAndStep(Method& method, ControlFlowLoop& loop, Induct
         // more general case: initial value is a literal and step is +1
         initialValueWalker->reset(intermediate::createWithExtras<intermediate::Operation>(
             *move, OP_ADD, move->getOutput().value(), move->getSource(), ELEMENT_NUMBER_REGISTER));
-        initialValueWalker.value()->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+        closedInstructions.emplace(initialValueWalker.value().get());
         inductionVariable.initialAssignment = initialValueWalker->get();
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Changed initial value: " << inductionVariable.initialAssignment->to_string() << logging::endl);
@@ -552,7 +554,7 @@ static void fixInitialValueAndStep(Method& method, ControlFlowLoop& loop, Induct
         initialValueWalker->reset(intermediate::createWithExtras<intermediate::Operation>(
             *inductionVariable.initialAssignment, OP_ADD, inductionVariable.initialAssignment->getOutput().value(),
             *precalculatedInitialValue, ELEMENT_NUMBER_REGISTER));
-        initialValueWalker.value()->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+        closedInstructions.emplace(initialValueWalker.value().get());
         inductionVariable.initialAssignment = initialValueWalker->get();
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Changed initial value: " << inductionVariable.initialAssignment->to_string() << logging::endl);
@@ -573,7 +575,7 @@ static void fixInitialValueAndStep(Method& method, ControlFlowLoop& loop, Induct
         initialValueWalker->reset(
             intermediate::createWithExtras<intermediate::Operation>(*inductionVariable.initialAssignment, OP_ADD,
                 inductionVariable.initialAssignment->getOutput().value(), source, ELEMENT_NUMBER_REGISTER));
-        (*initialValueWalker)->addDecorations(intermediate::InstructionDecorations::AUTO_VECTORIZED);
+        closedInstructions.emplace(initialValueWalker.value().get());
         inductionVariable.initialAssignment = initialValueWalker->get();
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Changed initial value: " << inductionVariable.initialAssignment->to_string() << logging::endl);
@@ -618,7 +620,8 @@ static void fixInitialValueAndStep(Method& method, ControlFlowLoop& loop, Induct
 }
 
 static unsigned fixRepetitionBranch(Method& method, ControlFlowLoop& loop, InductionVariable& inductionVariable,
-    unsigned vectorizationFactor, const Optional<Value>& dynamicElementCount)
+    unsigned vectorizationFactor, const Optional<Value>& dynamicElementCount,
+    FastSet<const intermediate::IntermediateInstruction*>& closedInstructions)
 {
     // If the branch is on scalar, it usually is converted to flags via "register - = or %cond, element_number", which
     // will hide the zero/non-zero flags for all upper elements. This needs to be fixed.
@@ -638,7 +641,7 @@ static unsigned fixRepetitionBranch(Method& method, ControlFlowLoop& loop, Induc
             reader->checkOutputRegister() == REG_NOP)
         {
             // setting of scalar flags for phi-nodes, nothing needs to be done here
-            (*opIt)->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+            closedInstructions.emplace(opIt->get());
             return;
         }
         auto readerOp = dynamic_cast<const intermediate::Operation*>(reader);
@@ -656,8 +659,8 @@ static unsigned fixRepetitionBranch(Method& method, ControlFlowLoop& loop, Induc
              * Depending on the compared value (induction variable or step variable), we need to either check the flags
              * for the highest used element or for the 0th element.
              */
-            auto tmp = method.addNewLocal(mask.type, "%cond_mask");
-            assign(it, tmp) = (load(0xFFFE, LoadType::PER_ELEMENT_UNSIGNED), InstructionDecorations::AUTO_VECTORIZED);
+            auto tmp = assign(it, mask.type, "%cond_mask") = load(0xFFFE, LoadType::PER_ELEMENT_UNSIGNED);
+            closedInstructions.emplace(it.copy().previousInBlock().get());
             if(inductionVariable.conditionCheckedBeforeStep)
             {
                 /*
@@ -667,9 +670,11 @@ static unsigned fixRepetitionBranch(Method& method, ControlFlowLoop& loop, Induc
                 auto tmpOffset = assign(it, dynamicElementCount->type, "%mask_offset") = (*dynamicElementCount - 1_val);
                 it = insertVectorRotation(it, tmp, tmpOffset, mask);
                 auto decoIt = it.copy().previousInBlock();
-                // add decoration to the vector rotation inserted just now
+                // mark the vector rotation inserted just now as vectorized
                 if(decoIt.has() && decoIt->getVectorRotation())
-                    decoIt->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+                {
+                    closedInstructions.emplace(decoIt.get());
+                }
             }
             else
                 /*
@@ -686,11 +691,11 @@ static unsigned fixRepetitionBranch(Method& method, ControlFlowLoop& loop, Induc
             // removes the need to rewrite the actual repetition branch, since we retain the (zero/not-zero) flag
             // behavior.
             // TODO is this correct in all cases?
-            assign(it, mask) = (load(0xFFFF ^ (1u << (vectorizationFactor - 1)), LoadType::PER_ELEMENT_UNSIGNED),
-                InstructionDecorations::AUTO_VECTORIZED);
+            assign(it, mask) = load(0xFFFF ^ (1u << (vectorizationFactor - 1)), LoadType::PER_ELEMENT_UNSIGNED);
+            closedInstructions.emplace(it.copy().previousInBlock().get());
         }
         it->replaceValue(ELEMENT_NUMBER_REGISTER, mask, LocalUse::Type::READER);
-        it->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+        closedInstructions.emplace(it.get());
         ++numRewritten;
     });
 
@@ -702,7 +707,8 @@ static unsigned fixRepetitionBranch(Method& method, ControlFlowLoop& loop, Induc
  * available throughout the loop.
  */
 static unsigned calculateDynamicElementCount(Method& method, ControlFlowLoop& loop, const Local* iterationLocal,
-    const Value& limitValue, unsigned vectorizationFactor, const Value& dynamicElementCount)
+    const Value& limitValue, unsigned vectorizationFactor, const Value& dynamicElementCount,
+    FastSet<const intermediate::IntermediateInstruction*>& closedInstructions)
 {
     auto head = loop.getHeader();
     if(!head)
@@ -711,10 +717,13 @@ static unsigned calculateDynamicElementCount(Method& method, ControlFlowLoop& lo
     auto it = head->key->walk().nextInBlock();
     // TODO need to invert for decrementing step??
     auto tmp = assign(it, dynamicElementCount.type, std::string{dynamicElementCount.local()->name}) =
-        (limitValue - iterationLocal->createReference(), InstructionDecorations::AUTO_VECTORIZED);
+        (limitValue - iterationLocal->createReference());
+    tmp.local()->forUsers(
+        LocalUse::Type::WRITER, [&closedInstructions](const LocalUser* user) { closedInstructions.emplace(user); });
     tmp = assign(it, dynamicElementCount.type, std::string{dynamicElementCount.local()->name}) =
-        (min(as_signed{Value(Literal(vectorizationFactor), TYPE_INT8)}, as_signed{tmp}),
-            InstructionDecorations::AUTO_VECTORIZED);
+        min(as_signed{Value(Literal(vectorizationFactor), TYPE_INT8)}, as_signed{tmp});
+    tmp.local()->forUsers(
+        LocalUse::Type::WRITER, [&closedInstructions](const LocalUser* user) { closedInstructions.emplace(user); });
     it = insertReplication(it, tmp, dynamicElementCount);
 
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -839,7 +848,8 @@ struct AccumulationInfo
  * active elements (or always initialize the default value).
  */
 static unsigned fixLCSSAElementMask(Method& method, ControlFlowLoop& loop,
-    const FastMap<const Local*, AccumulationInfo>& accumulationsToFold, const Value& dynamicElementCount)
+    const FastMap<const Local*, AccumulationInfo>& accumulationsToFold, const Value& dynamicElementCount,
+    FastSet<const intermediate::IntermediateInstruction*>& closedInstructions)
 {
     unsigned numModified = 0;
     for(auto& acc : accumulationsToFold)
@@ -885,8 +895,8 @@ static unsigned fixLCSSAElementMask(Method& method, ControlFlowLoop& loop,
             auto insertIt = *lastSettingIt;
             inLoopIt->erase();
 
-            auto cond = assignNop(insertIt) = (as_signed{ELEMENT_NUMBER_REGISTER} < as_signed{dynamicElementCount},
-                InstructionDecorations::AUTO_VECTORIZED);
+            auto cond = assignNop(insertIt) = as_signed{ELEMENT_NUMBER_REGISTER} < as_signed{dynamicElementCount};
+            closedInstructions.emplace(insertIt.copy().previousInBlock().get());
             insertIt.get<ExtendedInstruction>()->setCondition(cond);
 
             // The instruction itself is conditional, so it is only assigned if the loop is not entered. We need to
@@ -894,7 +904,7 @@ static unsigned fixLCSSAElementMask(Method& method, ControlFlowLoop& loop,
             // TODO is this true for a different initial value than the unit of the accumulation operation?
             // TODO if initial value is not splat, need to replicate it!
             outOfLoopInst->setCondition(COND_ALWAYS);
-            outOfLoopInst->addDecorations(InstructionDecorations::AUTO_VECTORIZED);
+            closedInstructions.emplace(outOfLoopInst);
 
             numModified += 3;
         }
@@ -912,7 +922,8 @@ static unsigned fixLCSSAElementMask(Method& method, ControlFlowLoop& loop,
  */
 static std::size_t vectorize(ControlFlowLoop& loop, const Local* startLocal, Method& method,
     unsigned vectorizationFactor, const FastMap<const Local*, AccumulationInfo>& accumulationsToFold,
-    const Optional<Value>& dynamicElementCount)
+    const Optional<Value>& dynamicElementCount,
+    FastSet<const intermediate::IntermediateInstruction*>& closedInstructions)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Vectorizing loop '" << loop.to_string() << "' with factor of " << vectorizationFactor
@@ -921,7 +932,8 @@ static std::size_t vectorize(ControlFlowLoop& loop, const Local* startLocal, Met
 
     const_cast<DataType&>(startLocal->type) = startLocal->type.toVectorType(
         static_cast<unsigned char>(startLocal->type.getVectorWidth() * vectorizationFactor));
-    scheduleForVectorization(startLocal, openInstructions, loop, false, static_cast<uint8_t>(vectorizationFactor));
+    scheduleForVectorization(
+        startLocal, openInstructions, loop, false, static_cast<uint8_t>(vectorizationFactor), closedInstructions);
     std::size_t numVectorized = 0;
 
     // iteratively change all instructions
@@ -931,8 +943,8 @@ static std::size_t vectorize(ControlFlowLoop& loop, const Local* startLocal, Met
         auto inst = instIt->first;
         if(auto it = loop.findInLoop(inst))
         {
-            vectorizeInstruction(
-                it->get(), method, openInstructions, vectorizationFactor, loop, instIt->second, dynamicElementCount);
+            vectorizeInstruction(it->get(), method, openInstructions, vectorizationFactor, loop, instIt->second,
+                dynamicElementCount, closedInstructions);
             ++numVectorized;
         }
         else if((inst->isSimpleMove() || dynamic_cast<const LoadImmediate*>(inst)) && inst->checkOutputLocal())
@@ -941,7 +953,7 @@ static std::size_t vectorize(ControlFlowLoop& loop, const Local* startLocal, Met
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Local is accessed outside of loop: " << inst->to_string() << logging::endl);
             vectorizeInstruction(const_cast<intermediate::IntermediateInstruction*>(inst), method, openInstructions,
-                vectorizationFactor, loop, instIt->second, dynamicElementCount);
+                vectorizationFactor, loop, instIt->second, dynamicElementCount, closedInstructions);
             ++numVectorized;
         }
         else
@@ -981,8 +993,8 @@ static std::size_t vectorize(ControlFlowLoop& loop, const Local* startLocal, Met
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Folding vectorized local " << arg.to_string() << " into " << newArg.to_string()
                             << " for: " << inst->to_string() << logging::endl);
-                    ignoreReturnValue(insertFoldVector(
-                        *it, method, newArg, arg, foldIt->second.op, InstructionDecorations::AUTO_VECTORIZED));
+                    ignoreReturnValue(
+                        insertFoldVector(*it, method, newArg, arg, foldIt->second.op, closedInstructions));
                     // replace argument with folded version
                     const_cast<IntermediateInstruction*>(inst)->replaceValue(arg, newArg, LocalUse::Type::READER);
                     openInstructions.erase(inst);
@@ -996,7 +1008,8 @@ static std::size_t vectorize(ControlFlowLoop& loop, const Local* startLocal, Met
     }
 
     if(dynamicElementCount)
-        numVectorized += fixLCSSAElementMask(method, loop, accumulationsToFold, *dynamicElementCount);
+        numVectorized +=
+            fixLCSSAElementMask(method, loop, accumulationsToFold, *dynamicElementCount, closedInstructions);
 
     return numVectorized;
 }
@@ -1011,17 +1024,20 @@ static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariabl
     unsigned vectorizationFactor, Literal stepValue, const FastMap<const Local*, AccumulationInfo>& accumulationsToFold,
     const Optional<Value>& dynamicElementCount)
 {
-    std::size_t numVectorized =
-        vectorize(loop, inductionVariable.local, method, vectorizationFactor, accumulationsToFold, dynamicElementCount);
+    FastSet<const intermediate::IntermediateInstruction*> closedInstructions;
+    std::size_t numVectorized = vectorize(loop, inductionVariable.local, method, vectorizationFactor,
+        accumulationsToFold, dynamicElementCount, closedInstructions);
 
-    fixInitialValueAndStep(method, loop, inductionVariable, stepValue, vectorizationFactor);
+    fixInitialValueAndStep(method, loop, inductionVariable, stepValue, vectorizationFactor, closedInstructions);
     numVectorized += 2;
 
-    numVectorized += fixRepetitionBranch(method, loop, inductionVariable, vectorizationFactor, dynamicElementCount);
+    numVectorized += fixRepetitionBranch(
+        method, loop, inductionVariable, vectorizationFactor, dynamicElementCount, closedInstructions);
 
     if(dynamicElementCount)
         numVectorized += calculateDynamicElementCount(method, loop, inductionVariable.local,
-            inductionVariable.repeatCondition.value().comparisonValue, vectorizationFactor, *dynamicElementCount);
+            inductionVariable.repeatCondition.value().comparisonValue, vectorizationFactor, *dynamicElementCount,
+            closedInstructions);
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Vectorization done, changed " << numVectorized << " instructions!" << logging::endl);

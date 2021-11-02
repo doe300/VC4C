@@ -1119,6 +1119,14 @@ InstructionWalker intermediate::insertAssembleVector(
 InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& method, const Value& dest,
     const Value& src, OpCode foldingOp, InstructionDecorations decorations)
 {
+    FastSet<const intermediate::IntermediateInstruction*> dummy{};
+    return insertFoldVector(it, method, dest, src, foldingOp, dummy, decorations);
+}
+
+InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& method, const Value& dest,
+    const Value& src, OpCode foldingOp, FastSet<const intermediate::IntermediateInstruction*>& addedInstructions,
+    InstructionDecorations decorations)
+{
     if(foldingOp.numOperands != 2 || foldingOp.acceptsFloat != foldingOp.returnsFloat)
         throw CompilationError(CompilationStep::GENERAL, "Invalid operation to fold vectors", foldingOp.name);
 
@@ -1130,7 +1138,9 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
         auto tmp = assign(it, src.type.toVectorType(4), "%vector_fold") = (*foldingOp.getLeftIdentity(), decorations);
         auto cond = assignNop(it) = selectSIMDElements(std::bitset<NATIVE_VECTOR_SIZE>{0x7});
         assign(it, tmp) = (src, cond, decorations);
-        return insertFoldVector(it, method, dest, tmp, foldingOp, decorations);
+        tmp.local()->forUsers(
+            LocalUse::Type::WRITER, [&addedInstructions](const LocalUser* user) { addedInstructions.emplace(user); });
+        return insertFoldVector(it, method, dest, tmp, foldingOp, addedInstructions, decorations);
     }
 
     if(!isPowerTwo(dest.type.getVectorWidth()))
@@ -1173,9 +1183,13 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
         auto decoIt = it.copy().previousInBlock();
         // add decoration to the vector rotation inserted just now
         if(decoIt.has() && decoIt->getVectorRotation())
+        {
             decoIt->addDecorations(decorations);
+            addedInstructions.emplace(decoIt.get());
+        }
 
         it.emplace(std::make_unique<Operation>(foldingOp, newTmpResult, tmpResult, tmpUp)).addDecorations(decorations);
+        addedInstructions.emplace(it.get());
         it.nextInBlock();
 
         tmpResult = newTmpResult;
