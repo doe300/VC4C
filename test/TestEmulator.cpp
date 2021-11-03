@@ -176,7 +176,12 @@ EmulationRunner::~EmulationRunner() noexcept = default;
 void TestEmulator::runTestData(std::string dataName, bool useCompilationCache)
 {
     std::unordered_map<std::string, std::string> dummyCache;
-    EmulationRunner runner(config, useCompilationCache ? compilationCache : dummyCache);
+    runTestData(dataName, useCompilationCache ? compilationCache : dummyCache);
+}
+
+void TestEmulator::runTestData(std::string dataName, vc4c::FastMap<std::string, std::string>& cache)
+{
+    EmulationRunner runner(config, cache);
     auto test = test_data::getTest(dataName);
     auto result = test_data::execute(test, runner);
     TEST_ASSERT(result.wasSuccess)

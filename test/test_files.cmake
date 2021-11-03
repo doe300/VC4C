@@ -71,6 +71,7 @@ create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ boost-compute/test_reduce.
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ boost-compute/test_insertion_sort.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ boost-compute/test_merge.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ boost-compute/test_transform2.cl)
+create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ boost-compute/user_defined_types.cl)
 
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ OpenCL-CTS/pointer_cast.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ OpenCL-CTS/integer_add_sat.cl)

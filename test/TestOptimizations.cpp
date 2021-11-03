@@ -72,6 +72,8 @@ TestOptimizations::TestOptimizations(const vc4c::Configuration& config) : TestEm
     TEST_ADD_WITH_STRING(TestOptimizations::testIntPrivateStorage, "");
     TEST_ADD_WITH_STRING(TestOptimizations::testIntLocalStorage, "");
     TEST_ADD_WITH_STRING(TestOptimizations::testIntGlobalStorage, "");
+    TEST_ADD_WITH_STRING(TestOptimizations::testVectorizations, "");
+    TEST_ADD_WITH_STRING(TestOptimizations::testStructTypeHandling, "");
 
     for(const auto& pass : optimizations::Optimizer::ALL_PASSES)
     {
@@ -105,6 +107,8 @@ TestOptimizations::TestOptimizations(const vc4c::Configuration& config) : TestEm
         TEST_ADD_WITH_STRING(TestOptimizations::testIntPrivateStorage, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testIntLocalStorage, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testIntGlobalStorage, pass.parameterName);
+        TEST_ADD_WITH_STRING(TestOptimizations::testVectorizations, pass.parameterName);
+        TEST_ADD_WITH_STRING(TestOptimizations::testStructTypeHandling, pass.parameterName);
     }
     TEST_ADD(TestOptimizations::printProfilingInfo);
 }
@@ -171,8 +175,9 @@ void TestOptimizations::testBarrier(std::string passParamName)
     config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
-    TestEmulator::runTestData("barrier_dynamic_work_size", false);
-    TestEmulator::runTestData("barrier_fix_work_size", false);
+    FastMap<std::string, std::string> cache{};
+    TestEmulator::runTestData("barrier_dynamic_work_size", cache);
+    TestEmulator::runTestData("barrier_fix_work_size", cache);
 }
 
 void TestOptimizations::testBranches(std::string passParamName)
@@ -188,8 +193,9 @@ void TestOptimizations::testWorkItem(std::string passParamName)
     config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
-    TestEmulator::runTestData("work_item", false);
-    TestEmulator::runTestData("work_item_global_offset", false);
+    FastMap<std::string, std::string> cache{};
+    TestEmulator::runTestData("work_item", cache);
+    TestEmulator::runTestData("work_item_global_offset", cache);
 }
 
 void TestOptimizations::testCRC16(std::string passParamName)
@@ -455,4 +461,42 @@ void TestOptimizations::testIntGlobalStorage(std::string passParamName)
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::runTestData("storage_global_int", false);
+}
+
+void TestOptimizations::testVectorizations(std::string passParamName)
+{
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
+    config.optimizationLevel = OptimizationLevel::NONE;
+
+    FastMap<std::string, std::string> cache{};
+    TestEmulator::runTestData("vectorization1", cache);
+    TestEmulator::runTestData("vectorization2", cache);
+    TestEmulator::runTestData("vectorization3", cache);
+    TestEmulator::runTestData("vectorization4", cache);
+    TestEmulator::runTestData("vectorization5", cache);
+    TestEmulator::runTestData("vectorization6", cache);
+    TestEmulator::runTestData("vectorization7", cache);
+    TestEmulator::runTestData("vectorization8", cache);
+    TestEmulator::runTestData("vectorization9", cache);
+    TestEmulator::runTestData("vectorization10", cache);
+    TestEmulator::runTestData("vectorization11", cache);
+    TestEmulator::runTestData("vectorization12", cache);
+    TestEmulator::runTestData("vectorization12_partial", cache);
+    TestEmulator::runTestData("vectorization13", cache);
+    TestEmulator::runTestData("vectorization13_partial", cache);
+    TestEmulator::runTestData("vectorization14", cache);
+    TestEmulator::runTestData("vectorization14_partial", cache);
+    TestEmulator::runTestData("vectorization15", cache);
+    TestEmulator::runTestData("vectorization16", cache);
+    TestEmulator::runTestData("vectorization17", cache);
+    TestEmulator::runTestData("vectorization18", cache);
+    TestEmulator::runTestData("vectorization19", cache);
+}
+
+void TestOptimizations::testStructTypeHandling(std::string passParamName)
+{
+    config.additionalEnabledOptimizations = {std::move(passParamName)};
+    config.optimizationLevel = OptimizationLevel::NONE;
+
+    TestEmulator::runTestData("boost_user_defined_types", false);
 }

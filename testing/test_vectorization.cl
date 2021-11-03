@@ -124,7 +124,7 @@ kernel void test15(global int *A, global int *B) {
   unsigned sum = 17;
   //Expected: should be able to vectorize
   //Attention: need to make sure the initial sum value is vectorized correctly
-  //Actual: loop is recognized with correct iteration variable, not vectorized due to non-identity initial accumulation value
+  //Actual: loop is recognized with correct iteration variable, vectorized version calculates correctly
   for (int i = 0; i < 1024; ++i)
     sum += A[i] + 5;
   *B = sum;
@@ -158,7 +158,7 @@ kernel void test17(global unsigned *A, global unsigned *B) {
 kernel void test18(global unsigned *A, global unsigned *B) {
   unsigned sum = 0;
   //Expected: should be able to be vectorized
-  //Actual: skipped due to unhandled sum variable
+  //Actual: loop is recognized with correct iteration variable, vectorized version calculates correctly
   for (int i = 0; i < 1024; ++i) {
     unsigned tmp = 5;
     if (get_local_id(0) % 2)

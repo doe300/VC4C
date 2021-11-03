@@ -7,6 +7,7 @@
 
 #include "../Profiler.h"
 #include "../SIMDVector.h"
+#include "../intrinsics/Operators.h"
 #include "log.h"
 #include "operators.h"
 
@@ -1129,26 +1130,60 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
 {
     if(foldingOp.numOperands != 2 || foldingOp.acceptsFloat != foldingOp.returnsFloat)
         throw CompilationError(CompilationStep::GENERAL, "Invalid operation to fold vectors", foldingOp.name);
-
-    // fix-up 3-element vector input to use the 4-element input fold expression
-    if(src.type.getVectorWidth() == 3 && foldingOp.getLeftIdentity() &&
-        foldingOp.getLeftIdentity() == foldingOp.getRightIdentity())
-    {
-        // XXX could write own custom implementation for better performance
-        auto tmp = assign(it, src.type.toVectorType(4), "%vector_fold") = (*foldingOp.getLeftIdentity(), decorations);
-        auto cond = assignNop(it) = selectSIMDElements(std::bitset<NATIVE_VECTOR_SIZE>{0x7});
-        assign(it, tmp) = (src, cond, decorations);
-        tmp.local()->forUsers(
-            LocalUse::Type::WRITER, [&addedInstructions](const LocalUser* user) { addedInstructions.emplace(user); });
-        return insertFoldVector(it, method, dest, tmp, foldingOp, addedInstructions, decorations);
-    }
-
     if(!isPowerTwo(dest.type.getVectorWidth()))
         throw CompilationError(
             CompilationStep::GENERAL, "Folding with vectors non-power of two is not yet implemented", dest.to_string());
+
+    // 0. handle vectors with sizes not powers of 2 by composition of powers of 2 sub-vectors
     if(!isPowerTwo(src.type.getVectorWidth()))
-        throw CompilationError(
-            CompilationStep::GENERAL, "Folding with vectors non-power of two is not yet implemented", src.to_string());
+    {
+        if(!dest.type.isScalarType())
+            throw CompilationError(CompilationStep::GENERAL,
+                "Folding with vectors non-power of two into non-scalar values is not yet implemented",
+                dest.to_string());
+
+        auto partialVector = src;
+        while(partialVector.type.getVectorWidth() > dest.type.getVectorWidth())
+        {
+            // take the biggest sub-vector (starting from element 0) which is a power of 2 and fold it
+            auto largestPowerOf2 = 31u - intrinsics::clz(Literal{partialVector.type.getVectorWidth()}).unsignedInt();
+            auto partialSourceType = src.type.toVectorType(static_cast<uint8_t>(1u << largestPowerOf2));
+            auto partialSource = assign(it, partialSourceType, "%vector_fold_partial") = (partialVector, decorations);
+            addedInstructions.emplace(it.copy().previousInBlock().get());
+            auto partialDestination = method.addNewLocal(dest.type.getElementType(), "%vector_fold_partial");
+            it = insertFoldVector(
+                it, method, partialDestination, partialSource, foldingOp, addedInstructions, decorations);
+            it.nextInBlock();
+
+            if(partialVector.type.getVectorWidth() == partialSourceType.getVectorWidth())
+            {
+                // in this step we folded all remaining elements, so we are done
+                partialVector = partialDestination;
+                break;
+            }
+
+            // we folded parts down to a scalar value (at element 0), so prepend it to the remaining elements for the
+            // next iteration
+            auto remainingType =
+                src.type.toVectorType(partialVector.type.getVectorWidth() - partialSourceType.getVectorWidth() + 1u);
+            auto tmp = method.addNewLocal(remainingType, "%vector_fold_remainder");
+            it = insertVectorRotation(it, partialVector,
+                Value(Literal(partialSourceType.getVectorWidth() - 1u), TYPE_INT8), tmp, Direction::DOWN);
+            auto decoIt = it.copy().previousInBlock();
+            // add decoration to the vector rotation inserted just now
+            if(decoIt.has() && decoIt->getVectorRotation())
+            {
+                decoIt->addDecorations(decorations);
+                addedInstructions.emplace(decoIt.get());
+            }
+            auto cond = assignNop(it) = selectSIMDElement(0);
+            assign(it, tmp) = (partialDestination, cond, decorations);
+            addedInstructions.emplace(it.copy().previousInBlock().get());
+            partialVector = tmp;
+        }
+        it.emplace(std::make_unique<MoveOperation>(dest, partialVector));
+        return it;
+    }
 
     // 1. split into N parts with the output vector width
     // first temporary result is the lower N elements of the source

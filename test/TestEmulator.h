@@ -11,6 +11,7 @@
 
 #include "TestCompilationHelper.h"
 #include "config.h"
+#include "performance.h"
 
 #include <map>
 #include <unordered_map>
@@ -37,6 +38,7 @@ public:
 
     void printProfilingInfo();
     void runTestData(std::string dataName, bool useCompilationCache);
+    void runTestData(std::string dataName, vc4c::FastMap<std::string, std::string>& cache);
     void runNoSuchTestData(std::string dataName);
 
     static std::map<std::string, const test_data::TestData*> getAllTestData();

@@ -53,6 +53,9 @@ public:
     void testIntLocalStorage(std::string passParamName);
     void testIntGlobalStorage(std::string passParamName);
 
+    void testVectorizations(std::string passParamName);
+    void testStructTypeHandling(std::string passParamName);
+
 private:
     void testSHA1();
     void testSHA256();

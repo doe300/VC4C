@@ -142,6 +142,48 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
                             return std::numeric_limits<int>::min();
                         }
                     }
+                    // Check that the elements accessed are singular for for dynamic iteration count, since we assume we
+                    // can dynamically vectorize to up to 16 elements and then accessing 16 * non-singular elements
+                    // would no longer fit in the caches.
+                    if(auto tmuCacheEntry = access->getTMUCacheEntry())
+                    {
+                        if(isDynamicIterationCount && tmuCacheEntry->numVectorElements != 1_val)
+                        {
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Cannot dynamically vectorize loop which (possibly) accesses multiple memory "
+                                       "elements: "
+                                    << access->to_string() << logging::endl);
+                            return std::numeric_limits<int>::min();
+                        }
+                    }
+                    if(auto vpmCacheEntry = access->getVPMCacheEntry())
+                    {
+                        if(isDynamicIterationCount && vpmCacheEntry->getVectorWidth() != 1_val)
+                        {
+                            CPPLOG_LAZY(logging::Level::DEBUG,
+                                log << "Cannot dynamically vectorize loop which (possibly) accesses multiple memory "
+                                       "elements: "
+                                    << access->to_string() << logging::endl);
+                            return std::numeric_limits<int>::min();
+                        }
+                    }
+                }
+                else if(auto access = dynamic_cast<const CacheAccessInstruction*>(it.get()))
+                {
+                    // Since for cache access instructions (without a corresponding RAM access instruction), the cache
+                    // entry and not the instruction contains the locals (e.g. for addresses/offsets), there is no
+                    // LocalUser and therefore the cache access instruction is not vectorized.
+                    auto ramAccesses = access->cache->getMemoryAccesses();
+                    if(std::none_of(ramAccesses.begin(), ramAccesses.end(),
+                           [&loop](const RAMAccessInstruction* inst) { return loop.findInLoop(inst); }))
+                    {
+                        // XXX for now we do not support this, since we cannot reliably track those uses, so abort
+                        CPPLOG_LAZY(logging::Level::DEBUG,
+                            log << "Cannot vectorize loops containing cache accesses without corresponding RAM "
+                                   "accesses: "
+                                << it->to_string() << logging::endl);
+                        return std::numeric_limits<int>::min();
+                    }
                 }
                 else if(it->getVectorRotation())
                 {
@@ -461,6 +503,38 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
                 // TODO need to set the static vector width dynamically
                 throw CompilationError(CompilationStep::OPTIMIZER,
                     "Vectorizing this type of TMU vector width is not supported", inst->to_string());
+
+            if(auto instIt = loop.findInLoop(inst))
+            {
+                /*
+                 * Rewrite address calculation. This is required, since for loading vectors from TMU, the TMU lowering
+                 * code inserts element-address = base-address + element-number * type stride. If the (vectorized) index
+                 * accessed is not linear (e.g. there is a factor), the vectorized address calculation would be
+                 * rewritten by the TMU lowering, so skip it.
+                 *
+                 * Example (taken from OpenCL-CTS/constant.cl):
+                 *
+                 * for(int i = 0; i < num; i++) {
+                 *   float pos = i_pos[i * 3];
+                 *   sum += pos;
+                 * }
+                 *
+                 * vectorized (without rewrite) to something like:
+                 *
+                 * for(int i = 0; i < num; i+=16) {
+                 *   float16 pos = (float16*)i_pos[i * 3];
+                 *   sum += pos;
+                 * }
+                 *
+                 * which wrongly accesses elements 0, 1, ..., 14, 15, 48, 49, ..., 62, 63, ...
+                 */
+                auto it = *instIt;
+                assign(it, cacheEntry->addresses) = access->getMemoryAddress();
+                cacheEntry->customAddressCalculation = true;
+            }
+            else
+                throw CompilationError(CompilationStep::OPTIMIZER,
+                    "Failed to rewrite address calculation for vectorized TMU read", inst->to_string());
         }
         if(auto cacheEntry = access->getVPMCacheEntry())
         {
@@ -832,6 +906,8 @@ struct AccumulationInfo
     tools::SmallSortedPointerSet<const Local*> outputLocals;
     tools::SmallSortedPointerSet<const LocalUser*> toBeFolded;
     tools::SmallSortedPointerSet<const Local*> toBeMasked;
+    Optional<Value> initialValue;
+    IntermediateInstruction* initialWriter;
 };
 
 /**
@@ -917,8 +993,7 @@ static unsigned fixLCSSAElementMask(Method& method, ControlFlowLoop& loop,
  * Approach:
  * - set the iteration variable (local) to vector
  * - iterative (until no more values changed), modify all value (and local)-types so argument/result-types match again
- * - add new instruction-decoration (vectorized) to facilitate
- * - in final iteration, fix TMU/VPM configuration and address calculation
+ * - update TMU/VPM configuration and address calculation
  */
 static std::size_t vectorize(ControlFlowLoop& loop, const Local* startLocal, Method& method,
     unsigned vectorizationFactor, const FastMap<const Local*, AccumulationInfo>& accumulationsToFold,
@@ -973,10 +1048,22 @@ static std::size_t vectorize(ControlFlowLoop& loop, const Local* startLocal, Met
             // fold vectorized version into "scalar" version by applying the accumulation function
             // NOTE: The "scalar" version is not required to be actual scalar (vector-width of 1), could just be
             // some other smaller vector-width
-            if((inst->getArguments().size() == 1 || inst->assertArgument(1) == inst->assertArgument(0)) &&
-                inst->assertArgument(0).checkLocal())
+            const Local* matchingLocal = nullptr;
+            for(auto* loc : foldIt->second.outputLocals)
             {
-                auto arg = inst->assertArgument(0);
+                if(inst->readsLocal(loc))
+                {
+                    if(matchingLocal)
+                        throw CompilationError(CompilationStep::OPTIMIZER,
+                            "Folding instructions with multiple arguments depending on same folding local is not yet "
+                            "supported",
+                            inst->to_string());
+                    matchingLocal = loc;
+                }
+            }
+            if(matchingLocal)
+            {
+                auto arg = matchingLocal->createReference();
                 // since we are in the process of vectorization, the local type is already updated, but the argument
                 // type is pending. For the next steps, we need to update the argument type.
                 arg.type = arg.local()->type;
@@ -993,8 +1080,27 @@ static std::size_t vectorize(ControlFlowLoop& loop, const Local* startLocal, Met
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Folding vectorized local " << arg.to_string() << " into " << newArg.to_string()
                             << " for: " << inst->to_string() << logging::endl);
-                    ignoreReturnValue(
-                        insertFoldVector(*it, method, newArg, arg, foldIt->second.op, closedInstructions));
+                    auto insertIt = insertFoldVector(*it, method, newArg, arg, foldIt->second.op, closedInstructions);
+                    if(auto initial = foldIt->second.initialValue)
+                    {
+                        // since the initial value setter will be set for all vector-elements and therefore applied too
+                        // often, disable it (but leave the the instruction to have an unconditional local setter).
+                        if(auto move = dynamic_cast<MoveOperation*>(foldIt->second.initialWriter))
+                            move->setSource(foldIt->second.op.getLeftIdentity().value());
+                        else if(auto load = dynamic_cast<LoadImmediate*>(foldIt->second.initialWriter))
+                            load->setImmediate(foldIt->second.op.getLeftIdentity().value().literal());
+                        else
+                            throw CompilationError(CompilationStep::OPTIMIZER,
+                                "Unhandled initial value writer for folding accumulation as part of loop vectorization",
+                                foldIt->second.initialWriter->to_string());
+                        // ... and instead fold it back in at the very end
+                        auto tmp = method.addNewLocal(origVectorType, "%vector_fold");
+                        insertIt.emplace(std::make_unique<Operation>(foldIt->second.op, tmp, newArg, *initial));
+                        closedInstructions.emplace(insertIt.get());
+                        insertIt.nextInBlock();
+                        newArg = tmp;
+                    }
+
                     // replace argument with folded version
                     const_cast<IntermediateInstruction*>(inst)->replaceValue(arg, newArg, LocalUse::Type::READER);
                     openInstructions.erase(inst);
@@ -1157,8 +1263,15 @@ static Optional<AccumulationInfo> determineAccumulation(const Local* loc, const 
         return {};
     }
 
-    if(initialWrite->precalculate().first != op->op.getLeftIdentity())
+    auto initialValue = initialWrite->precalculate().first;
+    if(initialValue == op->op.getLeftIdentity())
+        // no initial value to add
+        initialValue = NO_VALUE;
+    else if(!initialValue || !initialValue->type.isScalarType() || !op->op.isAssociative() || !op->op.isCommutative() ||
+        (!dynamic_cast<const MoveOperation*>(initialWrite) && !dynamic_cast<const LoadImmediate*>(initialWrite)))
     {
+        // since we apply the initial value after the folding, we can only do that for associative and commutative fold
+        // operations
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Accumulation with non-identity initial value is not yet supported: " << initialWrite->to_string()
                 << logging::endl);
@@ -1237,7 +1350,8 @@ static Optional<AccumulationInfo> determineAccumulation(const Local* loc, const 
         log << "Local '" << loc->to_string() << "' is accumulated with operation '" << op->op.name
             << "' in: " << vc4c::to_string<const LocalUser*>(toBeFolded) << logging::endl);
 
-    return AccumulationInfo{loc, op->op, std::move(outputLocals), std::move(toBeFolded), std::move(toBeMasked)};
+    return AccumulationInfo{loc, op->op, std::move(outputLocals), std::move(toBeFolded), std::move(toBeMasked),
+        initialValue, const_cast<IntermediateInstruction*>(initialWrite)};
 }
 
 bool optimizations::vectorizeLoops(const Module& module, Method& method, const Configuration& config)
