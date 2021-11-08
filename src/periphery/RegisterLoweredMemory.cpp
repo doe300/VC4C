@@ -12,6 +12,7 @@
 #include "../intermediate/TypeConversions.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
+#include "../normalization/LiteralValues.h"
 #include "logger.h"
 
 using namespace vc4c;
@@ -303,6 +304,15 @@ static NODISCARD InstructionWalker lowerRegisterWrite(Method& method, Instructio
         it = insertByteToElementAndSubOffset(it, elementOffset, subOffset, entry);
 
     auto src = writeInstruction.getData();
+    if(src.checkVector())
+    {
+        // lower vector assembly, since the normalization step did already run
+        src = method.addNewLocal(src.type);
+        it.emplace(std::make_unique<MoveOperation>(src, writeInstruction.getData()));
+        it = normalization::handleContainer(method.module, method, it, {});
+        while(!it.isEndOfBlock() && !it.get<CacheAccessInstruction>())
+            it.nextInBlock();
+    }
     // restore original type, to e.g. for insertion of zero not insert "i8 0", but "i32 0"
     src.type = entry.valueType;
 

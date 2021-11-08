@@ -526,8 +526,12 @@ void GraphColoring::createGraph()
             node.blockRegister(RegisterFile::ACCUMULATOR, 4);
             node.blockRegister(RegisterFile::ACCUMULATOR, 5);
         }
-        if(pair.second.firstOccurrence.get() == pair.second.lastOccurrence.get())
+        if(pair.second.firstOccurrence.get() == pair.second.lastOccurrence.get() ||
+            !pair.first->hasUsers(LocalUse::Type::READER))
         {
+            // If a local is only accessed by a single instruction, it does not do anything useful (either it is only
+            // written or only read...). Similarly, if a local is written by multiple instructions but never read, the
+            // written value has no use and can be omitted too.
             CPPLOG_LAZY(
                 logging::Level::DEBUG, log << "Local " << pair.first->name << " is never read!" << logging::endl);
             // sanity check

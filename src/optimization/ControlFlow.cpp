@@ -1198,6 +1198,22 @@ static void insertRepetitionBlocks(
         mergeGroupIds ? 2 : -1, InstructionDecorations::DIMENSION_Z);
 }
 
+/*!
+ * Checks whether any built-in which differs between invocations (within or across work-groups) is used.
+ */
+static bool usesWorkItemSpecificBuiltins(const Method& kernel)
+{
+    for(const auto* builtin :
+        {kernel.findBuiltin(BuiltinLocal::Type::LOCAL_IDS), kernel.findBuiltin(BuiltinLocal::Type::GROUP_ID_X),
+            kernel.findBuiltin(BuiltinLocal::Type::GROUP_ID_Y), kernel.findBuiltin(BuiltinLocal::Type::GROUP_ID_Z),
+            kernel.findBuiltin(BuiltinLocal::Type::GROUP_IDS), kernel.findBuiltin(BuiltinLocal::Type::UNIFORM_ADDRESS)})
+    {
+        if(builtin && builtin->hasUsers(LocalUse::Type::READER))
+            return true;
+    }
+    return false;
+}
+
 /**
  * We need to synchronize the execution paths of all work-item executions (QPUs).
  *
@@ -1251,6 +1267,17 @@ static bool insertSynchronizationBlock(Method& method, BasicBlock& lastBlock)
         // There is no memory written which is read by another work-item, so we cannot run into data races there!
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Skipping work-item synchronization block due to absence of cross-item data dependencies!"
+                << logging::endl);
+        return false;
+    }
+
+    if(!usesWorkItemSpecificBuiltins(method))
+    {
+        // If no work-item specific built-ins are used, all kernels execute exactly on the same data (i.e. if the kernel
+        // would be executed by multiple work-items, it would race anyway), since all other parameters (and therefore
+        // memory addresses) are identical across all invocations within (across work-items and work-groups).
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Skipping work-item synchronization block for kernel having no dependencies on work-item ids!"
                 << logging::endl);
         return false;
     }

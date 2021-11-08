@@ -1055,7 +1055,7 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                 {
                     if(newExpr->insertInstructions(it, it->getOutput().value(), expressions))
                     {
-                        CPPLOG_LAZY(logging::Level::WARNING,
+                        CPPLOG_LAZY(logging::Level::DEBUG,
                             log << "Rewriting expression '" << expr->to_string() << "' to '" << newExpr->to_string()
                                 << "'" << logging::endl);
 
