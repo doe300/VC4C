@@ -328,9 +328,6 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         OptimizationType::FINAL),
     OptimizationPass("LoopInvariantCodeMotion", "move-loop-invariant-code", moveLoopInvariantCode,
         "move constant loads in (nested) loops outside the loops", OptimizationType::FINAL),
-    OptimizationPass("CacheAcrossWorkGroup", "work-group-cache", cacheWorkGroupDMAAccess,
-        "finds memory access across the work-group which can be cached in VPM to combine the DMA operation (WIP)",
-        OptimizationType::FINAL),
     OptimizationPass("InstructionScheduler", "schedule-instructions", reorderInstructions,
         "schedule instructions according to their dependencies within basic blocks (WIP, slow)",
         OptimizationType::FINAL),
@@ -356,7 +353,6 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
     case OptimizationLevel::FULL:
         passes.emplace("vectorize-loops");
         passes.emplace("schedule-instructions");
-        passes.emplace("work-group-cache");
         // XXX move CSE to medium? Need to profile performance and re-check all emulation tests with CSE enabled
         passes.emplace("eliminate-common-subexpressions");
         passes.emplace("simplify-conditionals");

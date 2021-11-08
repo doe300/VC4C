@@ -483,27 +483,6 @@ static Optional<MemoryAccessRange> determineAccessRange(Method& method,
     return range;
 }
 
-AccessRanges analysis::determineAccessRanges(Method& method)
-{
-    // TODO if we cannot find an access range for a local, we cannot combine any other access ranges for this globally!
-    AccessRanges result;
-    FastMap<const Local*, ValueRange> knownRanges;
-    for(BasicBlock& block : method)
-    {
-        InstructionWalker it = block.walk();
-        while(!it.isEndOfBlock())
-        {
-            if(it.has() && (it->writesRegister(REG_VPM_DMA_LOAD_ADDR) || it->writesRegister(REG_VPM_DMA_STORE_ADDR)))
-            {
-                if(auto range = determineAccessRange(method, *it.get(), it, knownRanges))
-                    result[range->memoryObject].emplace_back(range.value());
-            }
-            it.nextInBlock();
-        }
-    }
-    return result;
-}
-
 static Optional<MemoryAccessRange> findAccessRange(Method& method, const Value& val, const Local* baseAddr,
     InstructionWalker accessIt, const intermediate::IntermediateInstruction* defaultInst,
     FastMap<const Local*, ValueRange>& knownRanges)

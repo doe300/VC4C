@@ -70,15 +70,6 @@ namespace vc4c
         using AccessRanges = SortedMap<const Local*, FastAccessList<analysis::MemoryAccessRange>, LocalUsageOrdering>;
 
         /**
-         * Determines all the limited access ranges of the single memory-bases locals.
-         *
-         * For any local not present in the resulting map, the access range could not be determined
-         *
-         * NOTE: This function is intended to be run AFTER the MemoryInstructions have been lowered!
-         */
-        AccessRanges determineAccessRanges(Method& method);
-
-        /**
          * Determines all the limited access ranges of the given local.
          *
          * if the access range could not be determined for all memory access operations, an empty list is returned.

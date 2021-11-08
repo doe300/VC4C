@@ -209,9 +209,6 @@ namespace vc4c
          */
         InstructionWalker combineArithmeticOperations(
             const Module& module, Method& method, InstructionWalker it, const Configuration& config);
-
-        // TODO documentation, TODO move somewhere else?!
-        bool cacheWorkGroupDMAAccess(const Module& module, Method& method, const Configuration& config);
     } // namespace optimizations
 } // namespace vc4c
 #endif /* COMBINER_H */
