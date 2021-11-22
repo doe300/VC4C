@@ -269,186 +269,250 @@ static void registerTypeTests(const std::string& typeName, const std::string& up
         }
     }
 
-    registerTest(TestData{"abs_" + typeName, flags, &UNARY_FUNCTION,
-        "-DOUT=" + unsignedName + "16 -DIN=" + typeName + "16 -DFUNC=abs", "test",
-        {toBufferParameter(std::vector<T>(values.size(), 0x42)), toBufferParameter(std::vector<T>(values))},
-        calculateDimensions(values.size()),
-        {checkParameterEquals(
-            0, transform<std::make_unsigned_t<T>, T>(values, Abs<T, std::is_unsigned<T>::value>{}))}});
-
-    // TODO abs_diff_ulong fails on hardware and Emulator
-    // TODO fail for (among many others): (0, max), (1, max), (-1, max), (min, max), (min, most), (max, most)
-    registerTest(TestData{"abs_diff_" + typeName, flags | LONG_UNSUPPORTED, &BINARY_FUNCTION,
-        "-DOUT=" + unsignedName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=abs_diff", "test",
-        {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)), toBufferParameter(std::vector<T>(productLeft)),
-            toBufferParameter(std::vector<T>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(0,
-            transform<std::make_unsigned_t<T>, T, T>(
-                productLeft, productRight, Abs<T, std::is_unsigned<T>::value>{}))}});
-
-    // XXX SPIRV-LLVM-Translator can't lower llvm.uadd.sat.v16i32 yet
-    registerTest(
-        TestData{"add_sat_" + typeName, flags | LONG_UNSUPPORTED | DataFilter::SPIRV_DISABLED, &BINARY_FUNCTION,
-            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=add_sat", "test",
-            {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)),
-                toBufferParameter(std::vector<T>(productLeft)), toBufferParameter(std::vector<T>(productRight))},
-            calculateDimensions(productLeft.size()),
-            {checkParameterEquals(
-                0, transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return addSat(in0, in1); }))}});
-
-    registerTest(TestData{"hadd_" + typeName, flags, &BINARY_FUNCTION,
-        "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=hadd", "test",
-        {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)), toBufferParameter(std::vector<T>(productLeft)),
-            toBufferParameter(std::vector<T>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(
-            0, transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return hAdd(in0, in1); }))}});
-
-    registerTest(TestData{"rhadd_" + typeName, flags, &BINARY_FUNCTION,
-        "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=rhadd", "test",
-        {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)), toBufferParameter(std::vector<T>(productLeft)),
-            toBufferParameter(std::vector<T>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(
-            0, transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return rHAdd(in0, in1); }))}});
-
-    // OpenCL 1.2 specification: "Results are undefined if minval > maxval."
-    auto minValues = transform<T>(productLeft, productRight, [](T a, T b) -> T { return std::min(a, b); });
-    auto maxValues = transform<T>(productLeft, productRight, [](T a, T b) -> T { return std::max(a, b); });
-    registerTest(TestData{"clamp_" + typeName, flags, &TERNARY_FUNCTION,
-        "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DIN2=" + typeName +
-            "16 -DFUNC=clamp",
-        "test",
-        {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)), toBufferParameter(std::vector<T>(productLeft)),
-            toBufferParameter(std::vector<T>(minValues)), toBufferParameter(std::vector<T>(maxValues))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(0, transform<T>(productLeft, minValues, maxValues, [](T in0, T in1, T in2) -> T {
-            return clamp(in0, in1, in2);
-        }))}});
-
-    registerTest(TestData{"clz_" + typeName, flags | LONG_UNSUPPORTED, &UNARY_FUNCTION,
-        "-DOUT=" + typeName + "16 -DIN=" + typeName + "16 -DFUNC=clz", "test",
-        {toBufferParameter(std::vector<T>(values.size(), 0x42)), toBufferParameter(std::vector<T>(values))},
-        calculateDimensions(values.size()),
-        {checkParameterEquals(0, transform<T>(values, [](T val) -> T { return clz(val); }))}});
-
-    if(sizeof(T) <= sizeof(uint32_t))
     {
-        // TODO add 64-bit support
-        registerTest(TestData{"mad_hi_" + typeName, flags, &TERNARY_FUNCTION,
-            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DIN2=" + typeName +
-                "16 -DFUNC=mad_hi",
+        TestDataBuilder<Buffer<std::make_unsigned_t<T>>, Buffer<T>> builder("abs_" + typeName, UNARY_FUNCTION, "test",
+            "-DOUT=" + unsignedName + "16 -DIN=" + typeName + "16 -DFUNC=abs");
+        builder.setFlags(flags);
+        builder.calculateDimensions(values.size());
+        builder.template allocateParameter<0>(values.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(values));
+        builder.template checkParameterEquals<0>(
+            transform<std::make_unsigned_t<T>, T>(values, Abs<T, std::is_unsigned<T>::value>{}));
+    }
+
+    {
+        // TODO abs_diff_ulong fails on hardware and Emulator
+        // TODO fail for (among many others): (0, max), (1, max), (-1, max), (min, max), (min, most), (max, most)
+        TestDataBuilder<Buffer<std::make_unsigned_t<T>>, Buffer<T>, Buffer<T>> builder("abs_diff_" + typeName,
+            BINARY_FUNCTION, "test",
+            "-DOUT=" + unsignedName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=abs_diff");
+        builder.setFlags(flags | LONG_UNSUPPORTED);
+        builder.calculateDimensions(productLeft.size());
+        builder.template allocateParameter<0>(productLeft.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(productLeft));
+        builder.template setParameter<2>(std::vector<T>(productRight));
+        builder.template checkParameterEquals<0>(
+            transform<std::make_unsigned_t<T>, T, T>(productLeft, productRight, Abs<T, std::is_unsigned<T>::value>{}));
+    }
+
+    {
+        // XXX SPIRV-LLVM-Translator can't lower llvm.uadd.sat.v16i32 yet
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder("add_sat_" + typeName, BINARY_FUNCTION, "test",
+            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=add_sat");
+        builder.setFlags(flags | LONG_UNSUPPORTED | DataFilter::SPIRV_DISABLED);
+        builder.calculateDimensions(productLeft.size());
+        builder.template allocateParameter<0>(productLeft.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(productLeft));
+        builder.template setParameter<2>(std::vector<T>(productRight));
+        builder.template checkParameterEquals<0>(
+            transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return addSat(in0, in1); }));
+    }
+
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder("hadd_" + typeName, BINARY_FUNCTION, "test",
+            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=hadd");
+        builder.setFlags(flags);
+        builder.calculateDimensions(productLeft.size());
+        builder.template allocateParameter<0>(productLeft.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(productLeft));
+        builder.template setParameter<2>(std::vector<T>(productRight));
+        builder.template checkParameterEquals<0>(
+            transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return hAdd(in0, in1); }));
+    }
+
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder("rhadd_" + typeName, BINARY_FUNCTION, "test",
+            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=rhadd");
+        builder.setFlags(flags);
+        builder.calculateDimensions(productLeft.size());
+        builder.template allocateParameter<0>(productLeft.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(productLeft));
+        builder.template setParameter<2>(std::vector<T>(productRight));
+        builder.template checkParameterEquals<0>(
+            transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return rHAdd(in0, in1); }));
+    }
+
+    {
+        // OpenCL 1.2 specification: "Results are undefined if minval > maxval."
+        auto minValues = transform<T>(productLeft, productRight, [](T a, T b) -> T { return std::min(a, b); });
+        auto maxValues = transform<T>(productLeft, productRight, [](T a, T b) -> T { return std::max(a, b); });
+
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>> builder("clamp_" + typeName, TERNARY_FUNCTION,
             "test",
-            {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)),
-                toBufferParameter(std::vector<T>(productLeft)), toBufferParameter(std::vector<T>(productRight)),
-                toBufferParameter(std::vector<T>(productRight))},
-            calculateDimensions(productLeft.size()),
-            {checkParameterEquals(0,
-                transform<T>(productLeft, productRight, productRight,
-                    [](T in0, T in1, T in2) -> T { return madHi(in0, in1, in2); }))}});
+            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DIN2=" + typeName +
+                "16 -DFUNC=clamp");
+        builder.setFlags(flags);
+        builder.calculateDimensions(productLeft.size());
+        builder.template allocateParameter<0>(productLeft.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(productLeft));
+        builder.template setParameter<2>(std::vector<T>(minValues));
+        builder.template setParameter<3>(std::vector<T>(maxValues));
+        builder.template checkParameterEquals<0>(transform<T>(
+            productLeft, minValues, maxValues, [](T in0, T in1, T in2) -> T { return clamp(in0, in1, in2); }));
     }
 
-    // TODO mad_sat_int fails on emulator and hardware (but OpenCL CTS test passes! Probably does not test such corner
-    // cases)
-    // Fails for 1 * min/max + 1/min, since long add is not saturated and overflows
-    registerTest(TestData{"mad_sat_" + typeName,
-        flags | LONG_UNSUPPORTED | (std::is_same<T, int32_t>::value ? DataFilter::DISABLED : DataFilter::NONE),
-        &TERNARY_FUNCTION,
-        "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DIN2=" + typeName +
-            "16 -DFUNC=mad_sat",
-        "test",
-        {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)), toBufferParameter(std::vector<T>(productLeft)),
-            toBufferParameter(std::vector<T>(productRight)), toBufferParameter(std::vector<T>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(0, transform<T>(productLeft, productRight, productRight, [](T in0, T in1, T in2) -> T {
-            return madSat(in0, in1, in2);
-        }))}});
-
-    registerTest(TestData{"max_" + typeName, flags, &BINARY_FUNCTION,
-        "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=max", "test",
-        {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)), toBufferParameter(std::vector<T>(productLeft)),
-            toBufferParameter(std::vector<T>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(
-            0, transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return std::max(in0, in1); }))}});
-
-    registerTest(TestData{"min_" + typeName, flags, &BINARY_FUNCTION,
-        "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=min", "test",
-        {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)), toBufferParameter(std::vector<T>(productLeft)),
-            toBufferParameter(std::vector<T>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(
-            0, transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return std::min(in0, in1); }))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>> builder(
+            "clz_" + typeName, UNARY_FUNCTION, "test", "-DOUT=" + typeName + "16 -DIN=" + typeName + "16 -DFUNC=clz");
+        builder.setFlags(flags | LONG_UNSUPPORTED);
+        builder.calculateDimensions(values.size());
+        builder.template allocateParameter<0>(values.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(values));
+        builder.template checkParameterEquals<0>(transform<T>(values, [](T val) -> T { return clz(val); }));
+    }
 
     if(sizeof(T) <= sizeof(uint32_t))
     {
         // TODO add 64-bit support
-        registerTest(TestData{"mul_hi_" + typeName, flags, &BINARY_FUNCTION,
-            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=mul_hi", "test",
-            {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)),
-                toBufferParameter(std::vector<T>(productLeft)), toBufferParameter(std::vector<T>(productRight))},
-            calculateDimensions(productLeft.size()),
-            {checkParameterEquals(
-                0, transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return mulHi(in0, in1); }))}});
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>> builder("mad_hi_" + typeName, TERNARY_FUNCTION,
+            "test",
+            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DIN2=" + typeName +
+                "16 -DFUNC=mad_hi");
+        builder.setFlags(flags);
+        builder.calculateDimensions(productLeft.size());
+        builder.template allocateParameter<0>(productLeft.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(productLeft));
+        builder.template setParameter<2>(std::vector<T>(productRight));
+        builder.template setParameter<3>(std::vector<T>(productRight));
+        builder.template checkParameterEquals<0>(transform<T>(
+            productLeft, productRight, productRight, [](T in0, T in1, T in2) -> T { return madHi(in0, in1, in2); }));
     }
 
-    registerTest(TestData{"rotate_" + typeName, flags | LONG_UNSUPPORTED, &BINARY_FUNCTION,
-        "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=rotate", "test",
-        {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)), toBufferParameter(std::vector<T>(productLeft)),
-            toBufferParameter(std::vector<T>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(
-            0, transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return rotate(in0, in1); }))}});
+    {
+        // TODO mad_sat_int fails on emulator and hardware (but OpenCL CTS test passes! Probably does not test such
+        // corner cases) Fails for 1 * min/max + 1/min, since long add is not saturated and overflows
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>> builder("mad_sat_" + typeName, TERNARY_FUNCTION,
+            "test",
+            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DIN2=" + typeName +
+                "16 -DFUNC=mad_sat");
+        builder.setFlags(
+            flags | LONG_UNSUPPORTED | (std::is_same<T, int32_t>::value ? DataFilter::DISABLED : DataFilter::NONE));
+        builder.calculateDimensions(productLeft.size());
+        builder.template allocateParameter<0>(productLeft.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(productLeft));
+        builder.template setParameter<2>(std::vector<T>(productRight));
+        builder.template setParameter<3>(std::vector<T>(productRight));
+        builder.template checkParameterEquals<0>(transform<T>(
+            productLeft, productRight, productRight, [](T in0, T in1, T in2) -> T { return madSat(in0, in1, in2); }));
+    }
 
-    // XXX SPIRV-LLVM-Translator can't lower llvm.usub.sat.v16i32 yet
-    registerTest(
-        TestData{"sub_sat_" + typeName, flags | LONG_UNSUPPORTED | DataFilter::SPIRV_DISABLED, &BINARY_FUNCTION,
-            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=sub_sat", "test",
-            {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)),
-                toBufferParameter(std::vector<T>(productLeft)), toBufferParameter(std::vector<T>(productRight))},
-            calculateDimensions(productLeft.size()),
-            {checkParameterEquals(
-                0, transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return subSat(in0, in1); }))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder("max_" + typeName, BINARY_FUNCTION, "test",
+            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=max");
+        builder.setFlags(flags);
+        builder.calculateDimensions(productLeft.size());
+        builder.template allocateParameter<0>(productLeft.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(productLeft));
+        builder.template setParameter<2>(std::vector<T>(productRight));
+        builder.template checkParameterEquals<0>(
+            transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return std::max(in0, in1); }));
+    }
 
-    registerTest(TestData{"upsample_" + typeName, flags | LONG_UNSUPPORTED, &BINARY_FUNCTION,
-        "-DOUT=" + upsampleTypeName + "16 -DIN0=" + typeName + "16 -DIN1=" + unsignedName + "16 -DFUNC=upsample",
-        "test",
-        {toBufferParameter(std::vector<UpsampleType>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<T>(productLeft)), toBufferParameter(std::vector<T>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(
-            0, transform<UpsampleType, T>(productLeft, productRight, [](T in0, T in1) -> UpsampleType {
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder("min_" + typeName, BINARY_FUNCTION, "test",
+            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=min");
+        builder.setFlags(flags);
+        builder.calculateDimensions(productLeft.size());
+        builder.template allocateParameter<0>(productLeft.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(productLeft));
+        builder.template setParameter<2>(std::vector<T>(productRight));
+        builder.template checkParameterEquals<0>(
+            transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return std::min(in0, in1); }));
+    }
+
+    if(sizeof(T) <= sizeof(uint32_t))
+    {
+        // TODO add 64-bit support
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder("mul_hi_" + typeName, BINARY_FUNCTION, "test",
+            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=mul_hi");
+        builder.setFlags(flags);
+        builder.calculateDimensions(productLeft.size());
+        builder.template allocateParameter<0>(productLeft.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(productLeft));
+        builder.template setParameter<2>(std::vector<T>(productRight));
+        builder.template checkParameterEquals<0>(
+            transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return mulHi(in0, in1); }));
+    }
+
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder("rotate_" + typeName, BINARY_FUNCTION, "test",
+            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=rotate");
+        builder.setFlags(flags | LONG_UNSUPPORTED);
+        builder.calculateDimensions(productLeft.size());
+        builder.template allocateParameter<0>(productLeft.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(productLeft));
+        builder.template setParameter<2>(std::vector<T>(productRight));
+        builder.template checkParameterEquals<0>(
+            transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return rotate(in0, in1); }));
+    }
+
+    {
+        // XXX SPIRV-LLVM-Translator can't lower llvm.usub.sat.v16i32 yet
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder("sub_sat_" + typeName, BINARY_FUNCTION, "test",
+            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=sub_sat");
+        builder.setFlags(flags | LONG_UNSUPPORTED | DataFilter::SPIRV_DISABLED);
+        builder.calculateDimensions(productLeft.size());
+        builder.template allocateParameter<0>(productLeft.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(productLeft));
+        builder.template setParameter<2>(std::vector<T>(productRight));
+        builder.template checkParameterEquals<0>(
+            transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return subSat(in0, in1); }));
+    }
+
+    {
+        // XXX SPIRV-LLVM-Translator can't lower llvm.usub.sat.v16i32 yet
+        TestDataBuilder<Buffer<UpsampleType>, Buffer<T>, Buffer<T>> builder("upsample_" + typeName, BINARY_FUNCTION,
+            "test",
+            "-DOUT=" + upsampleTypeName + "16 -DIN0=" + typeName + "16 -DIN1=" + unsignedName + "16 -DFUNC=upsample");
+        builder.setFlags(flags | LONG_UNSUPPORTED);
+        builder.calculateDimensions(productLeft.size());
+        builder.template allocateParameter<0>(productLeft.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(productLeft));
+        builder.template setParameter<2>(std::vector<T>(productRight));
+        builder.template checkParameterEquals<0>(
+            transform<UpsampleType, T>(productLeft, productRight, [](T in0, T in1) -> UpsampleType {
                 return Upsample<UpsampleType, T, sizeof(T) >= sizeof(int64_t)>{}(in0, in1);
-            }))}});
+            }));
+    }
 
-    registerTest(TestData{"popcount_" + typeName, flags, &UNARY_FUNCTION,
-        "-DOUT=" + typeName + "16 -DIN=" + typeName + "16 -DFUNC=popcount", "test",
-        {toBufferParameter(std::vector<T>(values.size(), 0x42)), toBufferParameter(std::vector<T>(values))},
-        calculateDimensions(values.size()),
-        {checkParameterEquals(0, transform<T>(values, [](T val) -> T { return popcount(val); }))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>> builder("popcount_" + typeName, UNARY_FUNCTION, "test",
+            "-DOUT=" + typeName + "16 -DIN=" + typeName + "16 -DFUNC=popcount");
+        builder.setFlags(flags);
+        builder.calculateDimensions(values.size());
+        builder.template allocateParameter<0>(values.size(), 0x42);
+        builder.template setParameter<1>(std::vector<T>(values));
+        builder.template checkParameterEquals<0>(transform<T>(values, [](T val) -> T { return popcount(val); }));
+    }
 
     if(sizeof(T) == sizeof(int32_t))
     {
-        registerTest(TestData{"mul24_" + typeName, flags, &BINARY_FUNCTION,
-            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=mul24", "test",
-            {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)),
-                toBufferParameter(std::vector<T>(productLeft)), toBufferParameter(std::vector<T>(productRight))},
-            calculateDimensions(productLeft.size()),
-            {checkParameterEquals(
-                0, transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return mul24(in0, in1); }))}});
+        {
+            TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder("mul24_" + typeName, BINARY_FUNCTION, "test",
+                "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DFUNC=mul24");
+            builder.setFlags(flags);
+            builder.calculateDimensions(productLeft.size());
+            builder.template allocateParameter<0>(productLeft.size(), 0x42);
+            builder.template setParameter<1>(std::vector<T>(productLeft));
+            builder.template setParameter<2>(std::vector<T>(productRight));
+            builder.template checkParameterEquals<0>(
+                transform<T>(productLeft, productRight, [](T in0, T in1) -> T { return mul24(in0, in1); }));
+        }
 
-        registerTest(TestData{"mad24_" + typeName, flags, &TERNARY_FUNCTION,
-            "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DIN2=" + typeName +
-                "16 -DFUNC=mad24",
-            "test",
-            {toBufferParameter(std::vector<T>(productLeft.size(), 0x42)),
-                toBufferParameter(std::vector<T>(productLeft)), toBufferParameter(std::vector<T>(productRight)),
-                toBufferParameter(std::vector<T>(productRight))},
-            calculateDimensions(productLeft.size()),
-            {checkParameterEquals(0,
-                transform<T>(productLeft, productRight, productRight,
-                    [](T in0, T in1, T in2) -> T { return mad24(in0, in1, in2); }))}});
+        {
+            TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>> builder("mad24_" + typeName, TERNARY_FUNCTION,
+                "test",
+                "-DOUT=" + typeName + "16 -DIN0=" + typeName + "16 -DIN1=" + typeName + "16 -DIN2=" + typeName +
+                    "16 -DFUNC=mad24");
+            builder.setFlags(flags);
+            builder.calculateDimensions(productLeft.size());
+            builder.template allocateParameter<0>(productLeft.size(), 0x42);
+            builder.template setParameter<1>(std::vector<T>(productLeft));
+            builder.template setParameter<2>(std::vector<T>(productRight));
+            builder.template setParameter<3>(std::vector<T>(productRight));
+            builder.template checkParameterEquals<0>(transform<T>(productLeft, productRight, productRight,
+                [](T in0, T in1, T in2) -> T { return mad24(in0, in1, in2); }));
+        }
     }
 }
 

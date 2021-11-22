@@ -209,20 +209,36 @@ static void registerNonFloatTests(const std::string& typeName, test_data::DataFi
     // Unary operators
     ////
 
-    registerTest(TestData{"unary_increment_" + typeName, flags, &UNARY_OPERATIONS, options, "test_increment",
-        {toBufferParameter(std::vector<T>(unaryInputs.size())), toBufferParameter(std::vector<T>(unaryInputs))},
-        calculateDimensions(unaryInputs.size()),
-        {checkParameterEquals(0, transform<T>(unaryInputs, [](T val) -> T { return ++val; }))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>> builder(
+            "unary_increment_" + typeName, UNARY_OPERATIONS, "test_increment", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(unaryInputs.size());
+        builder.template allocateParameter<0>(unaryInputs.size());
+        builder.template setParameter<1>(std::vector<T>(unaryInputs));
+        builder.template checkParameterEquals<0>(transform<T>(unaryInputs, [](T val) -> T { return ++val; }));
+    }
 
-    registerTest(TestData{"unary_decrement_" + typeName, flags, &UNARY_OPERATIONS, options, "test_decrement",
-        {toBufferParameter(std::vector<T>(unaryInputs.size())), toBufferParameter(std::vector<T>(unaryInputs))},
-        calculateDimensions(unaryInputs.size()),
-        {checkParameterEquals(0, transform<T>(unaryInputs, [](T val) -> T { return --val; }))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>> builder(
+            "unary_decrement_" + typeName, UNARY_OPERATIONS, "test_decrement", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(unaryInputs.size());
+        builder.template allocateParameter<0>(unaryInputs.size());
+        builder.template setParameter<1>(std::vector<T>(unaryInputs));
+        builder.template checkParameterEquals<0>(transform<T>(unaryInputs, [](T val) -> T { return --val; }));
+    }
 
-    registerTest(TestData{"unary_bitwise_not_" + typeName, flags, &UNARY_OPERATIONS, options, "test_bitnot",
-        {toBufferParameter(std::vector<T>(unaryInputs.size())), toBufferParameter(std::vector<T>(unaryInputs))},
-        calculateDimensions(unaryInputs.size()),
-        {checkParameterEquals(0, transform<T>(unaryInputs, [](T val) -> T { return static_cast<T>(~val); }))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>> builder(
+            "unary_bitwise_not_" + typeName, UNARY_OPERATIONS, "test_bitnot", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(unaryInputs.size());
+        builder.template allocateParameter<0>(unaryInputs.size());
+        builder.template setParameter<1>(std::vector<T>(unaryInputs));
+        builder.template checkParameterEquals<0>(
+            transform<T>(unaryInputs, [](T val) -> T { return static_cast<T>(~val); }));
+    }
 
     ////
     // Binary operators
@@ -231,61 +247,95 @@ static void registerNonFloatTests(const std::string& typeName, test_data::DataFi
     // TODO (u)long division/modulo is not correct yet
     auto divisionFlags = sizeof(T) > sizeof(uint32_t) ? DataFilter::DISABLED : DataFilter::NONE;
 
-    registerTest(TestData{"binary_mod_" + typeName, flags | divisionFlags, &BINARY_OPERATIONS, options, "test_mod",
-        {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameterEquals(0, transform<T>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> T {
-            if(val2 == static_cast<T>(-1))
-                // somehow my host does not like divisions by -1 (at least not for some types)
-                return std::is_unsigned<T>::value ? (val1 == static_cast<T>(-1) ? 0 : val1) : 0;
-            return static_cast<T>(val2 != 0 ? val1 % val2 : val1);
-        }))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder(
+            "binary_mod_" + typeName, BINARY_OPERATIONS, "test_mod", options);
+        builder.setFlags(flags | divisionFlags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(
+            transform<T>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> T {
+                if(val2 == static_cast<T>(-1))
+                    // somehow my host does not like divisions by -1 (at least not for some types)
+                    return std::is_unsigned<T>::value ? (val1 == static_cast<T>(-1) ? 0 : val1) : 0;
+                return static_cast<T>(val2 != 0 ? val1 % val2 : val1);
+            }));
+    }
 
-    registerTest(TestData{"binary_bitwise_and_" + typeName, flags, &BINARY_OPERATIONS, options, "test_bitand",
-        {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameterEquals(
-            0, transform<T>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> T { return val1 & val2; }))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder(
+            "binary_bitwise_and_" + typeName, BINARY_OPERATIONS, "test_bitand", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(
+            transform<T>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> T { return val1 & val2; }));
+    }
 
-    registerTest(TestData{"binary_bitwise_or_" + typeName, flags, &BINARY_OPERATIONS, options, "test_bitor",
-        {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameterEquals(
-            0, transform<T>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> T { return val1 | val2; }))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder(
+            "binary_bitwise_or_" + typeName, BINARY_OPERATIONS, "test_bitor", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(
+            transform<T>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> T { return val1 | val2; }));
+    }
 
-    registerTest(TestData{"binary_bitwise_xor_" + typeName, flags, &BINARY_OPERATIONS, options, "test_bitxor",
-        {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameterEquals(
-            0, transform<T>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> T { return val1 ^ val2; }))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder(
+            "binary_bitwise_xor_" + typeName, BINARY_OPERATIONS, "test_bitxor", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(
+            transform<T>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> T { return val1 ^ val2; }));
+    }
 
-    registerTest(TestData{"binary_shl_" + typeName, flags, &BINARY_OPERATIONS, options, "test_shl",
-        {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameterEquals(0, transform<T>(binaryInputsLeft, binaryInputsRight, checkShiftLeft<T>))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder(
+            "binary_shl_" + typeName, BINARY_OPERATIONS, "test_shl", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(transform<T>(binaryInputsLeft, binaryInputsRight, checkShiftLeft<T>));
+    }
 
-    // TODO binary_shr_long fails on hardware
-    registerTest(TestData{"binary_shr_" + typeName, flags, &BINARY_OPERATIONS, options, "test_shr",
-        {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameterEquals(0, transform<T>(binaryInputsLeft, binaryInputsRight, checkShiftRight<T>))}});
+    {
+        // TODO binary_shr_long fails on hardware
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder(
+            "binary_shr_" + typeName, BINARY_OPERATIONS, "test_shr", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(transform<T>(binaryInputsLeft, binaryInputsRight, checkShiftRight<T>));
+    }
 
-    // OpenCL 1.2, 6.3.i: "exp1 ? exp2 : exp3 [...] If the result is a vector value, then this is equivalent to calling
-    // select(exp3, exp2, exp1)" -> is already tested
-    registerTest(TestData{"ternary_selection_" + typeName, flags, &TERNARY_OPERATOR, "-DTYPE=" + typeName,
-        "test_scalar",
-        {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size(), 1),
-        {checkParameterEquals(0, transform<T>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> T {
-            return std::min(val1, val2);
-        }))}});
+    {
+        // OpenCL 1.2, 6.3.i: "exp1 ? exp2 : exp3 [...] If the result is a vector value, then this is equivalent to
+        // calling select(exp3, exp2, exp1)" -> is already tested
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder(
+            "ternary_selection_" + typeName, TERNARY_OPERATOR, "test_scalar", "-DTYPE=" + typeName);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size(), 1);
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(transform<T>(
+            binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> T { return std::min(val1, val2); }));
+    }
 }
 
 static void registerNonFloatTests(const std::string& typeName, test_data::DataFilter flags, const std::string& options,
@@ -347,53 +397,89 @@ static void registerTypeTests(const std::string& typeName)
     // Unary operators
     ////
 
-    registerTest(TestData{"unary_plus_" + typeName, flags, &UNARY_OPERATIONS, options, "test_plus",
-        {toBufferParameter(std::vector<T>(unaryInputs.size())), toBufferParameter(std::vector<T>(unaryInputs))},
-        calculateDimensions(unaryInputs.size()), {checkParameter<Comparator>(0, std::vector<T>(unaryInputs))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>> builder("unary_plus_" + typeName, UNARY_OPERATIONS, "test_plus", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(unaryInputs.size());
+        builder.template allocateParameter<0>(unaryInputs.size());
+        builder.template setParameter<1>(std::vector<T>(unaryInputs));
+        builder.template checkParameter<0, Comparator>(std::vector<T>(unaryInputs));
+    }
 
-    registerTest(TestData{"unary_minus_" + typeName, flags, &UNARY_OPERATIONS, options, "test_minus",
-        {toBufferParameter(std::vector<T>(unaryInputs.size())), toBufferParameter(std::vector<T>(unaryInputs))},
-        calculateDimensions(unaryInputs.size()),
-        {checkParameter<Comparator>(
-            0, transform<T>(unaryInputs, wrap<T>([](T val) -> T { return static_cast<T>(-val); })))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>> builder(
+            "unary_minus_" + typeName, UNARY_OPERATIONS, "test_minus", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(unaryInputs.size());
+        builder.template allocateParameter<0>(unaryInputs.size());
+        builder.template setParameter<1>(std::vector<T>(unaryInputs));
+        builder.template checkParameter<0, Comparator>(
+            transform<T>(unaryInputs, wrap<T>([](T val) -> T { return static_cast<T>(-val); })));
+    }
 
-    // TODO wrong results for (u)long and SPIR-V front-end
-    auto additionalFlags = sizeof(T) > sizeof(uint32_t) ? DataFilter::SPIRV_DISABLED : DataFilter::NONE;
-    registerTest(TestData{"unary_logical_not_" + typeName, flags | additionalFlags, &UNARY_OPERATIONS, options,
-        "test_not",
-        {toBufferParameter(std::vector<IntType>(unaryInputs.size())), toBufferParameter(std::vector<T>(unaryInputs))},
-        calculateDimensions(unaryInputs.size()),
-        {checkParameterEquals(0, transform<IntType>(unaryInputs, [](T val) -> IntType { return !val ? -1 : 0; }))}});
+    {
+        // TODO wrong results for (u)long and SPIR-V front-end
+        auto additionalFlags = sizeof(T) > sizeof(uint32_t) ? DataFilter::SPIRV_DISABLED : DataFilter::NONE;
+        TestDataBuilder<Buffer<T>, Buffer<T>> builder(
+            "unary_logical_not_" + typeName, UNARY_OPERATIONS, "test_not", options);
+        builder.setFlags(flags | additionalFlags);
+        builder.calculateDimensions(unaryInputs.size());
+        builder.template allocateParameter<0>(unaryInputs.size());
+        builder.template setParameter<1>(std::vector<T>(unaryInputs));
+        builder.template checkParameterEquals<0>(
+            transform<T>(unaryInputs, [](T val) -> IntType { return !val ? -1 : 0; }));
+    }
 
     ////
     // Binary operators
     ////
 
-    registerTest(TestData{"binary_add_" + typeName, flags, &BINARY_OPERATIONS, options, "test_add",
-        {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameter<Comparator>(0, transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>(std::plus<T>{})))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder(
+            "binary_add_" + typeName, BINARY_OPERATIONS, "test_add", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameter<0, Comparator>(
+            transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>(std::plus<T>{})));
+    }
 
-    registerTest(TestData{"binary_sub_" + typeName, flags, &BINARY_OPERATIONS, options, "test_sub",
-        {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameter<Comparator>(0, transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>(std::minus<T>{})))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder(
+            "binary_sub_" + typeName, BINARY_OPERATIONS, "test_sub", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameter<0, Comparator>(
+            transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>(std::minus<T>{})));
+    }
 
-    registerTest(TestData{"binary_mul_" + typeName, flags, &BINARY_OPERATIONS, options, "test_mul",
-        {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameter<MulComparator>(
-            0, transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>(std::multiplies<T>{})))}});
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder(
+            "binary_mul_" + typeName, BINARY_OPERATIONS, "test_mul", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameter<0, MulComparator>(
+            transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>(std::multiplies<T>{})));
+    }
 
-    registerTest(TestData{"binary_div_" + typeName, flags | divisionFlags, &BINARY_OPERATIONS, options, "test_div",
-        {toBufferParameter(std::vector<T>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameter<MulComparator>(
-            0, transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>([](T val1, T val2) -> T {
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder(
+            "binary_div_" + typeName, BINARY_OPERATIONS, "test_div", options);
+        builder.setFlags(flags | divisionFlags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameter<0, MulComparator>(
+            transform<T>(binaryInputsLeft, binaryInputsRight, wrap<T>([](T val1, T val2) -> T {
                 if(std::is_integral<T>::value && val2 == static_cast<T>(-1))
                     // somehow my host does not like divisions by -1 (at least not for some types)
                     return static_cast<T>(std::is_unsigned<T>::value ? (val1 == static_cast<T>(-1) ? 1 : 0) : -val1);
@@ -405,75 +491,107 @@ static void registerTypeTests(const std::string& typeName)
                     return sizeof(T) <= 3 ? (std::signbit(val1) != std::signbit(val2) ? -1 : 1) :
                                             static_cast<T>(std::signbit(val1) ? 1 : -1);
                 return static_cast<T>(val1 / val2);
-            })))}});
+            })));
+    }
 
     ////
     // Relational operators
     ////
-    registerTest(TestData{"binary_equal_" + typeName, flags, &RELATIONAL_OPERATIONS, options, "test_equal",
-        {toBufferParameter(std::vector<int32_t>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameterEquals(0, transform<int32_t>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t {
-            return val1 == val2 ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<T>, Buffer<T>> builder(
+            "binary_equal_" + typeName, RELATIONAL_OPERATIONS, "test_equal", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(transform<int32_t>(
+            binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t { return val1 == val2 ? -1 : 0; }));
+    }
 
-    registerTest(TestData{"binary_notequal_" + typeName, flags, &RELATIONAL_OPERATIONS, options, "test_notequal",
-        {toBufferParameter(std::vector<int32_t>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameterEquals(0, transform<int32_t>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t {
-            return val1 != val2 ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<T>, Buffer<T>> builder(
+            "binary_notequal_" + typeName, RELATIONAL_OPERATIONS, "test_notequal", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(transform<int32_t>(
+            binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t { return val1 != val2 ? -1 : 0; }));
+    }
 
-    registerTest(TestData{"binary_greater_" + typeName, flags, &RELATIONAL_OPERATIONS, options, "test_greater",
-        {toBufferParameter(std::vector<int32_t>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameterEquals(0, transform<int32_t>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t {
-            return val1 > val2 ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<T>, Buffer<T>> builder(
+            "binary_greater_" + typeName, RELATIONAL_OPERATIONS, "test_greater", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(transform<int32_t>(
+            binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t { return val1 > val2 ? -1 : 0; }));
+    }
 
-    registerTest(TestData{"binary_less_" + typeName, flags, &RELATIONAL_OPERATIONS, options, "test_less",
-        {toBufferParameter(std::vector<int32_t>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameterEquals(0, transform<int32_t>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t {
-            return val1 < val2 ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<T>, Buffer<T>> builder(
+            "binary_less_" + typeName, RELATIONAL_OPERATIONS, "test_less", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(transform<int32_t>(
+            binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t { return val1 < val2 ? -1 : 0; }));
+    }
 
-    registerTest(TestData{"binary_greaterequal_" + typeName, flags, &RELATIONAL_OPERATIONS, options,
-        "test_greaterequal",
-        {toBufferParameter(std::vector<int32_t>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameterEquals(0, transform<int32_t>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t {
-            return val1 >= val2 ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<T>, Buffer<T>> builder(
+            "binary_greaterequal_" + typeName, RELATIONAL_OPERATIONS, "test_greaterequal", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(transform<int32_t>(
+            binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t { return val1 >= val2 ? -1 : 0; }));
+    }
 
-    registerTest(TestData{"binary_lessequal_" + typeName, flags, &RELATIONAL_OPERATIONS, options, "test_lessequal",
-        {toBufferParameter(std::vector<int32_t>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameterEquals(0, transform<int32_t>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t {
-            return val1 <= val2 ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<T>, Buffer<T>> builder(
+            "binary_lessequal_" + typeName, RELATIONAL_OPERATIONS, "test_lessequal", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(transform<int32_t>(
+            binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t { return val1 <= val2 ? -1 : 0; }));
+    }
 
-    registerTest(TestData{"binary_logical_and_" + typeName, flags, &RELATIONAL_OPERATIONS, options, "test_and",
-        {toBufferParameter(std::vector<int32_t>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameterEquals(0, transform<int32_t>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t {
-            return val1 && val2 ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<T>, Buffer<T>> builder(
+            "binary_logical_and_" + typeName, RELATIONAL_OPERATIONS, "test_and", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(transform<int32_t>(
+            binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t { return val1 && val2 ? -1 : 0; }));
+    }
 
-    registerTest(TestData{"binary_logical_or_" + typeName, flags, &RELATIONAL_OPERATIONS, options, "test_or",
-        {toBufferParameter(std::vector<int32_t>(binaryInputsLeft.size())),
-            toBufferParameter(std::vector<T>(binaryInputsLeft)), toBufferParameter(std::vector<T>(binaryInputsRight))},
-        calculateDimensions(binaryInputsLeft.size()),
-        {checkParameterEquals(0, transform<int32_t>(binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t {
-            return val1 || val2 ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<T>, Buffer<T>> builder(
+            "binary_logical_or_" + typeName, RELATIONAL_OPERATIONS, "test_or", options);
+        builder.setFlags(flags);
+        builder.calculateDimensions(binaryInputsLeft.size());
+        builder.template allocateParameter<0>(binaryInputsLeft.size());
+        builder.template setParameter<1>(std::vector<T>(binaryInputsLeft));
+        builder.template setParameter<2>(std::vector<T>(binaryInputsRight));
+        builder.template checkParameterEquals<0>(transform<int32_t>(
+            binaryInputsLeft, binaryInputsRight, [](T val1, T val2) -> int32_t { return val1 || val2 ? -1 : 0; }));
+    }
 
     registerNonFloatTests(typeName, flags, options, unaryInputs, binaryInputsLeft, binaryInputsRight);
 }

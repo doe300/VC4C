@@ -68,6 +68,20 @@ namespace test_data
         return out;
     }
 
+    template <typename T>
+    std::vector<T> canaries(std::vector<T>&& in, T canary = 17, std::size_t num = 11)
+    {
+        in.resize(in.size() + num, canary);
+        return std::move(in);
+    }
+
+    template <>
+    inline std::vector<float> canaries<float>(std::vector<float>&& in, float canary, std::size_t num)
+    {
+        in.resize(in.size() + num, canary);
+        return std::move(in);
+    }
+
     template <typename R, typename T = R, typename Func = std::function<R(T)>>
     std::vector<R> transform(const std::vector<T>& arg, const Func& func)
     {
@@ -601,4 +615,128 @@ namespace test_data
     void registerTypeConversionTests();
     void registerVectorTests();
 
+    template <typename T>
+    using Buffer = std::vector<T>;
+
+    template <typename... Parameters>
+    class TestDataBuilder
+    {
+        template <std::size_t N>
+        using ParameterType = typename std::tuple_element<N, std::tuple<Parameters...>>::type;
+
+        template <typename T>
+        struct is_vector : std::false_type
+        {
+        };
+
+        template <typename T>
+        struct is_vector<std::vector<T>> : std::true_type
+        {
+        };
+
+    public:
+        TestDataBuilder(std::string&& uniqueName, const std::string& sources, std::string&& kernelName,
+            const std::string& compilationOptions = "") :
+            data{std::move(uniqueName), DataFilter::NONE, &sources, compilationOptions, std::move(kernelName),
+                std::vector<ArgumentSetter>(std::tuple_size<std::tuple<Parameters...>>::value, nullptr),
+                toDimensions(1), {}}
+        {
+        }
+
+        ~TestDataBuilder()
+        {
+            registerTest(std::move(data));
+        }
+
+        void setFlags(DataFilter flags)
+        {
+            data.filter = flags;
+        }
+
+        void setDimensions(uint32_t localSizeX, uint32_t localSizeY = 1, uint32_t localSizeZ = 1,
+            uint32_t numGroupsX = 1, uint32_t numGroupsY = 1, uint32_t numGroupsZ = 1, uint32_t globalOffsetX = 0,
+            uint32_t globalOffsetY = 0, uint32_t globalOffsetZ = 0)
+        {
+            data.workDimensions = toDimensions(localSizeX, localSizeY, localSizeZ, numGroupsX, numGroupsY, numGroupsZ,
+                globalOffsetX, globalOffsetY, globalOffsetZ);
+        }
+
+        void calculateDimensions(std::size_t numElements, std::size_t vectorWidth = 16)
+        {
+            data.workDimensions = test_data::calculateDimensions(numElements, vectorWidth);
+        }
+
+        template <std::size_t N>
+        std::enable_if_t<is_vector<ParameterType<N>>::value> setParameter(ParameterType<N>&& param)
+        {
+            data.kernelArguments[N] = toBufferParameter(canaries(std::move(param)));
+        }
+
+        template <std::size_t N>
+        void allocateParameter(std::size_t numValues, typename ParameterType<N>::value_type value = {})
+        {
+            setParameter<N>(std::vector<typename ParameterType<N>::value_type>(numValues, value));
+        }
+
+        template <std::size_t N>
+        void allocateParameterRange(typename ParameterType<N>::value_type start,
+            typename ParameterType<N>::value_type end, typename ParameterType<N>::value_type step = 1)
+        {
+            setParameter<N>(toRange(start, end, step));
+        }
+
+        template <std::size_t N>
+        std::enable_if_t<!is_vector<ParameterType<N>>::value> setParameter(ParameterType<N>&& param)
+        {
+            data.kernelArguments[N] = toScalarParameter(std::move(param));
+        }
+
+        template <std::size_t N, typename Printer = DefaultPrinter<typename ParameterType<N>::value_type>>
+        void checkParameterEquals(ParameterType<N>&& param)
+        {
+            data.verifications.emplace_back(
+                test_data::checkParameterEquals<typename ParameterType<N>::value_type, Printer>(
+                    N, canaries(std::move(param))));
+        }
+
+        template <std::size_t N, typename Comparison, typename Printer = DefaultPrinter<typename Comparison::type>>
+        void checkParameter(ParameterType<N>&& param, Comparison comp = {})
+        {
+            data.verifications.emplace_back(test_data::checkParameter<Comparison, typename Comparison::type, Printer>(
+                N, canaries(std::move(param)), std::move(comp)));
+        }
+
+        template <std::size_t N, typename Printer = DefaultPrinter<typename ParameterType<N>::value_type>>
+        void checkParameterPartialEquals(ParameterType<N>&& param)
+        {
+            data.verifications.emplace_back(
+                test_data::checkParameterEquals<typename ParameterType<N>::value_type, Printer>(N, std::move(param)));
+        }
+
+        template <std::size_t N, typename Comparison, typename Printer = DefaultPrinter<typename Comparison::type>>
+        void checkParameterPartial(ParameterType<N>&& param)
+        {
+            data.verifications.emplace_back(
+                test_data::checkParameter<Comparison, typename Comparison::type, Printer>(N, std::move(param)));
+        }
+
+        template <std::size_t N, typename Func = std::function<Result(const ParameterType<N>&)>>
+        void checkParameter(std::size_t numEntries, Func&& predicate)
+        {
+            data.verifications.emplace_back(test_data::checkParameter<typename ParameterType<N>::value_type, Func>(
+                N, numEntries, std::forward<Func>(predicate)));
+        }
+
+        template <std::size_t N, typename Func,
+            typename Printer = DefaultPrinter<typename ParameterType<N>::value_type>>
+        void checkParameterMatches(std::size_t numValues, Func&& func, const std::string& expectedMessage)
+        {
+            data.verifications.emplace_back(
+                test_data::checkParameterMatches<typename ParameterType<N>::value_type, Func, Printer>(
+                    N, numValues, std::forward<Func>(func), expectedMessage));
+        }
+
+    private:
+        TestData data;
+    };
 } // namespace test_data

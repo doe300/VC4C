@@ -103,356 +103,556 @@ void test_data::registerOpenCLRelationalFunctionTests()
     // Binary comparisons
     ////
 
-    registerTest(TestData{"isequal_vector", relationalFlags, &BINARY_FUNCTION, "-DFUNC=isequal", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] isequal [...] shall return a [...] 0 if the specified relation is false and a -1
-            // (i.e. all bits set) if the specified relation is true for vector argument types."
-            // "The relational functions isequal [...] always return 0 if either argument is not a number (NaN)."
-            return (std::isnan(a) || std::isnan(b)) ? 0 : (a == b) ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "isequal_vector", BINARY_FUNCTION, "test", "-DFUNC=isequal");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size());
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] isequal [...] shall return a [...] 0 if the specified relation is false and a -1
+                // (i.e. all bits set) if the specified relation is true for vector argument types."
+                // "The relational functions isequal [...] always return 0 if either argument is not a number (NaN)."
+                return (std::isnan(a) || std::isnan(b)) ? 0 : (a == b) ? -1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"isequal_scalar", relationalFlags, &BINARY_FUNCTION_SCALAR, "-DFUNC=isequal", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size(), 1),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] isequal [...] shall return a 0 if the specified relation is false and a 1 if the
-            // specified relation is true for scalar argument types."
-            // "The relational functions isequal [...] always return 0 if either argument is not a number (NaN)."
-            return (std::isnan(a) || std::isnan(b)) ? 0 : (a == b) ? 1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "isequal_scalar", BINARY_FUNCTION_SCALAR, "test", "-DFUNC=isequal");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size(), 1);
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] isequal [...] shall return a 0 if the specified relation is false and a 1 if the
+                // specified relation is true for scalar argument types."
+                // "The relational functions isequal [...] always return 0 if either argument is not a number (NaN)."
+                return (std::isnan(a) || std::isnan(b)) ? 0 : (a == b) ? 1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"isnotequal_vector", relationalFlags, &BINARY_FUNCTION, "-DFUNC=isnotequal", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] isnotequal [...] shall return a [...] 0 if the specified relation is false and a -1
-            // (i.e. all bits set) if the specified relation is true for vector argument types."
-            // "isnotequal returns returns -1 if one or both arguments are not a number (NaN) and the argument type is a
-            // vector."
-            return (std::isnan(a) || std::isnan(b)) ? -1 : (a != b) ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "isnotequal_vector", BINARY_FUNCTION, "test", "-DFUNC=isnotequal");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size());
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] isnotequal [...] shall return a [...] 0 if the specified relation is false and a
+                // -1 (i.e. all bits set) if the specified relation is true for vector argument types." "isnotequal
+                // returns returns -1 if one or both arguments are not a number (NaN) and the argument type is a
+                // vector."
+                return (std::isnan(a) || std::isnan(b)) ? -1 : (a != b) ? -1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"isnotequal_scalar", relationalFlags, &BINARY_FUNCTION_SCALAR, "-DFUNC=isnotequal", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size(), 1),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] isnotequal [...] shall return a 0 if the specified relation is false and a 1 if the
-            // specified relation is true for scalar argument types."
-            // "isnotequal returns 1 if one or both arguments are not a number (NaN) and the argument type is a scalar."
-            return (std::isnan(a) || std::isnan(b)) ? 1 : (a != b) ? 1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "isnotequal_scalar", BINARY_FUNCTION_SCALAR, "test", "-DFUNC=isnotequal");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size(), 1);
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] isnotequal [...] shall return a 0 if the specified relation is false and a 1 if
+                // the specified relation is true for scalar argument types." "isnotequal returns 1 if one or both
+                // arguments are not a number (NaN) and the argument type is a scalar."
+                return (std::isnan(a) || std::isnan(b)) ? 1 : (a != b) ? 1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"isgreater_vector", relationalFlags, &BINARY_FUNCTION, "-DFUNC=isgreater", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] isgreater [...] shall return a [...] 0 if the specified relation is false and a -1
-            // (i.e. all bits set) if the specified relation is true for vector argument types."
-            // "The relational functions [...] isgreater [...] always return 0 if either argument is not a number
-            // (NaN)."
-            return (std::isnan(a) || std::isnan(b)) ? 0 : (a > b) ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "isgreater_vector", BINARY_FUNCTION, "test", "-DFUNC=isgreater");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size());
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] isgreater [...] shall return a [...] 0 if the specified relation is false and a -1
+                // (i.e. all bits set) if the specified relation is true for vector argument types."
+                // "The relational functions [...] isgreater [...] always return 0 if either argument is not a number
+                // (NaN)."
+                return (std::isnan(a) || std::isnan(b)) ? 0 : (a > b) ? -1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"isgreater_scalar", relationalFlags, &BINARY_FUNCTION_SCALAR, "-DFUNC=isgreater", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size(), 1),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] isgreater [...] shall return a 0 if the specified relation is false and a 1 if the
-            // specified relation is true for scalar argument types."
-            // "The relational functions [...] isgreater [...] always return 0 if either argument is not a number
-            // (NaN)."
-            return (std::isnan(a) || std::isnan(b)) ? 0 : (a > b) ? 1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "isgreater_scalar", BINARY_FUNCTION_SCALAR, "test", "-DFUNC=isgreater");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size(), 1);
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] isgreater [...] shall return a 0 if the specified relation is false and a 1 if the
+                // specified relation is true for scalar argument types."
+                // "The relational functions [...] isgreater [...] always return 0 if either argument is not a number
+                // (NaN)."
+                return (std::isnan(a) || std::isnan(b)) ? 0 : (a > b) ? 1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"isgreaterequal_vector", relationalFlags, &BINARY_FUNCTION, "-DFUNC=isgreaterequal", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] isgreaterequal [...] shall return a [...] 0 if the specified relation is false and a
-            // -1 (i.e. all bits set) if the specified relation is true for vector argument types."
-            // "The relational functions [...] isgreaterequal [...] always return 0 if either argument is not a number
-            // (NaN)."
-            return (std::isnan(a) || std::isnan(b)) ? 0 : (a >= b) ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "isgreaterequal_vector", BINARY_FUNCTION, "test", "-DFUNC=isgreaterequal");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size());
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] isgreaterequal [...] shall return a [...] 0 if the specified relation is false and
+                // a -1 (i.e. all bits set) if the specified relation is true for vector argument types." "The
+                // relational functions [...] isgreaterequal [...] always return 0 if either argument is not a number
+                // (NaN)."
+                return (std::isnan(a) || std::isnan(b)) ? 0 : (a >= b) ? -1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"isgreaterequal_scalar", relationalFlags, &BINARY_FUNCTION_SCALAR, "-DFUNC=isgreaterequal",
-        "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size(), 1),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] isgreaterequal [...] shall return a 0 if the specified relation is false and a 1 if
-            // the specified relation is true for scalar argument types."
-            // "The relational functions [...] isgreaterequal [...] always return 0 if either argument is not a number
-            // (NaN)."
-            return (std::isnan(a) || std::isnan(b)) ? 0 : (a >= b) ? 1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "isgreaterequal_scalar", BINARY_FUNCTION_SCALAR, "test", "-DFUNC=isgreaterequal");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size(), 1);
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] isgreaterequal [...] shall return a 0 if the specified relation is false and a 1
+                // if the specified relation is true for scalar argument types." "The relational functions [...]
+                // isgreaterequal [...] always return 0 if either argument is not a number (NaN)."
+                return (std::isnan(a) || std::isnan(b)) ? 0 : (a >= b) ? 1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"isless_vector", relationalFlags, &BINARY_FUNCTION, "-DFUNC=isless", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] isless [...] shall return a [...] 0 if the specified relation is false and a -1
-            // (i.e. all bits set) if the specified relation is true for vector argument types."
-            // "The relational functions [...] isless [...] always return 0 if either argument is not a number
-            // (NaN)."
-            return (std::isnan(a) || std::isnan(b)) ? 0 : (a < b) ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "isless_vector", BINARY_FUNCTION, "test", "-DFUNC=isless");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size());
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] isless [...] shall return a [...] 0 if the specified relation is false and a -1
+                // (i.e. all bits set) if the specified relation is true for vector argument types."
+                // "The relational functions [...] isless [...] always return 0 if either argument is not a number
+                // (NaN)."
+                return (std::isnan(a) || std::isnan(b)) ? 0 : (a < b) ? -1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"isless_scalar", relationalFlags, &BINARY_FUNCTION_SCALAR, "-DFUNC=isless", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size(), 1),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] isless [...] shall return a 0 if the specified relation is false and a 1 if the
-            // specified relation is true for scalar argument types."
-            // "The relational functions [...] isless [...] always return 0 if either argument is not a number
-            // (NaN)."
-            return (std::isnan(a) || std::isnan(b)) ? 0 : (a < b) ? 1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "isless_scalar", BINARY_FUNCTION_SCALAR, "test", "-DFUNC=isless");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size(), 1);
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] isless [...] shall return a 0 if the specified relation is false and a 1 if the
+                // specified relation is true for scalar argument types."
+                // "The relational functions [...] isless [...] always return 0 if either argument is not a number
+                // (NaN)."
+                return (std::isnan(a) || std::isnan(b)) ? 0 : (a < b) ? 1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"islessequal_vector", relationalFlags, &BINARY_FUNCTION, "-DFUNC=islessequal", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] islessequal [...] shall return a [...] 0 if the specified relation is false and a
-            // -1 (i.e. all bits set) if the specified relation is true for vector argument types."
-            // "The relational functions [...] islessequal [...] always return 0 if either argument is not a number
-            // (NaN)."
-            return (std::isnan(a) || std::isnan(b)) ? 0 : (a <= b) ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "islessequal_vector", BINARY_FUNCTION, "test", "-DFUNC=islessequal");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size());
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] islessequal [...] shall return a [...] 0 if the specified relation is false and a
+                // -1 (i.e. all bits set) if the specified relation is true for vector argument types."
+                // "The relational functions [...] islessequal [...] always return 0 if either argument is not a number
+                // (NaN)."
+                return (std::isnan(a) || std::isnan(b)) ? 0 : (a <= b) ? -1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"islessequal_scalar", relationalFlags, &BINARY_FUNCTION_SCALAR, "-DFUNC=islessequal", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size(), 1),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] islessequal [...] shall return a 0 if the specified relation is false and a 1 if
-            // the specified relation is true for scalar argument types."
-            // "The relational functions [...] islessequal [...] always return 0 if either argument is not a number
-            // (NaN)."
-            return (std::isnan(a) || std::isnan(b)) ? 0 : (a <= b) ? 1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "islessequal_scalar", BINARY_FUNCTION_SCALAR, "test", "-DFUNC=islessequal");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size(), 1);
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] islessequal [...] shall return a 0 if the specified relation is false and a 1 if
+                // the specified relation is true for scalar argument types."
+                // "The relational functions [...] islessequal [...] always return 0 if either argument is not a number
+                // (NaN)."
+                return (std::isnan(a) || std::isnan(b)) ? 0 : (a <= b) ? 1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"islessgreater_vector", relationalFlags, &BINARY_FUNCTION, "-DFUNC=islessgreater", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] islessgreater [...] shall return a [...] 0 if the specified relation is false and a
-            // -1 (i.e. all bits set) if the specified relation is true for vector argument types."
-            // "The relational functions [...] islessgreater [...] always return 0 if either argument is not a number
-            // (NaN)."
-            return (std::isnan(a) || std::isnan(b)) ? 0 : (a < b || a > b) ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "islessgreater_vector", BINARY_FUNCTION, "test", "-DFUNC=islessgreater");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size());
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] islessgreater [...] shall return a [...] 0 if the specified relation is false and
+                // a -1 (i.e. all bits set) if the specified relation is true for vector argument types." "The
+                // relational functions [...] islessgreater [...] always return 0 if either argument is not a number
+                // (NaN)."
+                return (std::isnan(a) || std::isnan(b)) ? 0 : (a < b || a > b) ? -1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"islessgreater_scalar", relationalFlags, &BINARY_FUNCTION_SCALAR, "-DFUNC=islessgreater",
-        "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size(), 1),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] islessgreater [...] shall return a 0 if the specified relation is false and a 1 if
-            // the specified relation is true for scalar argument types."
-            // "The relational functions [...] islessgreater [...] always return 0 if either argument is not a number
-            // (NaN)."
-            return (std::isnan(a) || std::isnan(b)) ? 0 : (a < b || a > b) ? 1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "islessgreater_scalar", BINARY_FUNCTION_SCALAR, "test", "-DFUNC=islessgreater");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size(), 1);
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] islessgreater [...] shall return a 0 if the specified relation is false and a 1 if
+                // the specified relation is true for scalar argument types."
+                // "The relational functions [...] islessgreater [...] always return 0 if either argument is not a
+                // number (NaN)."
+                return (std::isnan(a) || std::isnan(b)) ? 0 : (a < b || a > b) ? 1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"isordered_vector", relationalFlags, &BINARY_FUNCTION, "-DFUNC=isordered", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] isordered [...] shall return a [...] 0 if the specified relation is false and a -1
-            // (i.e. all bits set) if the specified relation is true for vector argument types."
-            // "Test if arguments are ordered. isordered() takes arguments x and y, and returns the result isequal(x, x)
-            // && isequal(y, y)."
-            return (std::isnan(a) || std::isnan(b)) ? 0 : (a == a && b == b) ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "isordered_vector", BINARY_FUNCTION, "test", "-DFUNC=isordered");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size());
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] isordered [...] shall return a [...] 0 if the specified relation is false and a -1
+                // (i.e. all bits set) if the specified relation is true for vector argument types."
+                // "Test if arguments are ordered. isordered() takes arguments x and y, and returns the result
+                // isequal(x, x)
+                // && isequal(y, y)."
+                return (std::isnan(a) || std::isnan(b)) ? 0 : (a == a && b == b) ? -1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"isordered_scalar", relationalFlags, &BINARY_FUNCTION_SCALAR, "-DFUNC=isordered", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size(), 1),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] isordered [...] shall return a 0 if the specified relation is false and a 1 if the
-            // specified relation is true for scalar argument types."
-            // "Test if arguments are ordered. isordered() takes arguments x and y, and returns the result isequal(x, x)
-            // && isequal(y, y)."
-            return (std::isnan(a) || std::isnan(b)) ? 0 : (a == a && b == b) ? 1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "isordered_scalar", BINARY_FUNCTION_SCALAR, "test", "-DFUNC=isordered");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size(), 1);
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] isordered [...] shall return a 0 if the specified relation is false and a 1 if the
+                // specified relation is true for scalar argument types."
+                // "Test if arguments are ordered. isordered() takes arguments x and y, and returns the result
+                // isequal(x, x)
+                // && isequal(y, y)."
+                return (std::isnan(a) || std::isnan(b)) ? 0 : (a == a && b == b) ? 1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"isunordered_vector", relationalFlags, &BINARY_FUNCTION, "-DFUNC=isunordered", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] isunordered [...] shall return a [...] 0 if the specified relation is false and a -1
-            // (i.e. all bits set) if the specified relation is true for vector argument types."
-            // "Test if arguments are unordered. isunordered() takes arguments x and y, returning non-zero if x or y is
-            // NaN, and zero otherwise."
-            return (std::isnan(a) || std::isnan(b)) ? -1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "isunordered_vector", BINARY_FUNCTION, "test", "-DFUNC=isunordered");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size());
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] isunordered [...] shall return a [...] 0 if the specified relation is false and a
+                // -1 (i.e. all bits set) if the specified relation is true for vector argument types." "Test if
+                // arguments are unordered. isunordered() takes arguments x and y, returning non-zero if x or y is NaN,
+                // and zero otherwise."
+                return (std::isnan(a) || std::isnan(b)) ? -1 : 0;
+            }));
+    }
 
-    registerTest(TestData{"isunordered_scalar", relationalFlags, &BINARY_FUNCTION_SCALAR, "-DFUNC=isunordered", "test",
-        {toBufferParameter(std::vector<int32_t>(productLeft.size(), 0x42)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size(), 1),
-        {checkParameterEquals(0, transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
-            // "The function[...] isunordered [...] shall return a 0 if the specified relation is false and a 1 if the
-            // specified relation is true for scalar argument types."
-            // "Test if arguments are unordered. isunordered() takes arguments x and y, returning non-zero if x or y is
-            // NaN, and zero otherwise."
-            return (std::isnan(a) || std::isnan(b)) ? 1 : 0;
-        }))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>, Buffer<float>> builder(
+            "isunordered_scalar", BINARY_FUNCTION_SCALAR, "test", "-DFUNC=isunordered");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(productLeft.size(), 1);
+        builder.allocateParameter<0>(productLeft.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<int32_t, float>(productLeft, productRight, [](float a, float b) -> int32_t {
+                // "The function[...] isunordered [...] shall return a 0 if the specified relation is false and a 1 if
+                // the specified relation is true for scalar argument types." "Test if arguments are unordered.
+                // isunordered() takes arguments x and y, returning non-zero if x or y is NaN, and zero otherwise."
+                return (std::isnan(a) || std::isnan(b)) ? 1 : 0;
+            }));
+    }
 
     ////
     // Unary predicates
     ////
 
-    registerTest(TestData{"isfinite_vector", relationalFlags, &UNARY_FUNCTION, "-DFUNC=isfinite", "test",
-        {toBufferParameter(std::vector<int32_t>(values.size(), 0x42)), toBufferParameter(std::vector<float>(values))},
-        calculateDimensions(values.size()),
-        {checkParameterEquals(0, transform<int32_t, float>(values, [](float val) -> int32_t {
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>> builder(
+            "isfinite_vector", UNARY_FUNCTION, "test", "-DFUNC=isfinite");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(values.size());
+        builder.allocateParameter<0>(values.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(values));
+        builder.checkParameterEquals<0>(transform<int32_t, float>(values, [](float val) -> int32_t {
             // "The function[...] isfinite [...] shall return a 0 if the specified relation is false and a
             // -1 (i.e. all bits set) if the specified relation is true for vector argument types."
             return std::isinf(val) || std::isnan(val) ? 0 : -1;
-        }))}});
+        }));
+    }
 
-    registerTest(TestData{"isfinite_scalar", relationalFlags, &UNARY_FUNCTION_SCALAR, "-DFUNC=isfinite", "test",
-        {toBufferParameter(std::vector<int32_t>(values.size(), 0x42)), toBufferParameter(std::vector<float>(values))},
-        calculateDimensions(values.size(), 1),
-        {checkParameterEquals(0, transform<int32_t, float>(values, [](float val) -> int32_t {
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>> builder(
+            "isfinite_scalar", UNARY_FUNCTION_SCALAR, "test", "-DFUNC=isfinite");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(values.size(), 1);
+        builder.allocateParameter<0>(values.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(values));
+        builder.checkParameterEquals<0>(transform<int32_t, float>(values, [](float val) -> int32_t {
             // "The function[...] isfinite [...] shall return a 0 if the specified relation is false and a 1 if the
             // specified relation is true for scalar argument types."
             return std::isinf(val) || std::isnan(val) ? 0 : 1;
-        }))}});
+        }));
+    }
 
-    registerTest(TestData{"isinf_vector", relationalFlags, &UNARY_FUNCTION, "-DFUNC=isinf", "test",
-        {toBufferParameter(std::vector<int32_t>(values.size(), 0x42)), toBufferParameter(std::vector<float>(values))},
-        calculateDimensions(values.size()),
-        {checkParameterEquals(0, transform<int32_t, float>(values, [](float val) -> int32_t {
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>> builder("isinf_vector", UNARY_FUNCTION, "test", "-DFUNC=isinf");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(values.size());
+        builder.allocateParameter<0>(values.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(values));
+        builder.checkParameterEquals<0>(transform<int32_t, float>(values, [](float val) -> int32_t {
             // "The function[...] isinf [...] shall return a 0 if the specified relation is false and a
             // -1 (i.e. all bits set) if the specified relation is true for vector argument types."
             return std::isinf(val) ? -1 : 0;
-        }))}});
+        }));
+    }
 
-    registerTest(TestData{"isinf_scalar", relationalFlags, &UNARY_FUNCTION_SCALAR, "-DFUNC=isinf", "test",
-        {toBufferParameter(std::vector<int32_t>(values.size(), 0x42)), toBufferParameter(std::vector<float>(values))},
-        calculateDimensions(values.size(), 1),
-        {checkParameterEquals(0, transform<int32_t, float>(values, [](float val) -> int32_t {
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>> builder(
+            "isinf_scalar", UNARY_FUNCTION_SCALAR, "test", "-DFUNC=isinf");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(values.size(), 1);
+        builder.allocateParameter<0>(values.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(values));
+        builder.checkParameterEquals<0>(transform<int32_t, float>(values, [](float val) -> int32_t {
             // "The function[...] isinf [...] shall return a 0 if the specified relation is false and a 1 if the
             // specified relation is true for scalar argument types."
             return std::isinf(val) ? 1 : 0;
-        }))}});
+        }));
+    }
 
-    registerTest(TestData{"isnan_vector", relationalFlags, &UNARY_FUNCTION, "-DFUNC=isnan", "test",
-        {toBufferParameter(std::vector<int32_t>(values.size(), 0x42)), toBufferParameter(std::vector<float>(values))},
-        calculateDimensions(values.size()),
-        {checkParameterEquals(0, transform<int32_t, float>(values, [](float val) -> int32_t {
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>> builder("isnan_vector", UNARY_FUNCTION, "test", "-DFUNC=isnan");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(values.size());
+        builder.allocateParameter<0>(values.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(values));
+        builder.checkParameterEquals<0>(transform<int32_t, float>(values, [](float val) -> int32_t {
             // "The function[...] isnan [...] shall return a 0 if the specified relation is false and a
             // -1 (i.e. all bits set) if the specified relation is true for vector argument types."
             return std::isnan(val) ? -1 : 0;
-        }))}});
+        }));
+    }
 
-    registerTest(TestData{"isnan_scalar", relationalFlags, &UNARY_FUNCTION_SCALAR, "-DFUNC=isnan", "test",
-        {toBufferParameter(std::vector<int32_t>(values.size(), 0x42)), toBufferParameter(std::vector<float>(values))},
-        calculateDimensions(values.size(), 1),
-        {checkParameterEquals(0, transform<int32_t, float>(values, [](float val) -> int32_t {
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>> builder(
+            "isnan_scalar", UNARY_FUNCTION_SCALAR, "test", "-DFUNC=isnan");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(values.size(), 1);
+        builder.allocateParameter<0>(values.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(values));
+        builder.checkParameterEquals<0>(transform<int32_t, float>(values, [](float val) -> int32_t {
             // "The function[...] isnan [...] shall return a 0 if the specified relation is false and a 1 if the
             // specified relation is true for scalar argument types."
             return std::isnan(val) ? 1 : 0;
-        }))}});
+        }));
+    }
 
-    registerTest(TestData{"isnormal_vector", relationalFlags, &UNARY_FUNCTION, "-DFUNC=isnormal", "test",
-        {toBufferParameter(std::vector<int32_t>(values.size(), 0x42)), toBufferParameter(std::vector<float>(values))},
-        calculateDimensions(values.size()),
-        {checkParameterEquals(0, transform<int32_t, float>(values, [](float val) -> int32_t {
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>> builder(
+            "isnormal_vector", UNARY_FUNCTION, "test", "-DFUNC=isnormal");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(values.size());
+        builder.allocateParameter<0>(values.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(values));
+        builder.checkParameterEquals<0>(transform<int32_t, float>(values, [](float val) -> int32_t {
             // "The function[...] isnormal [...] shall return a 0 if the specified relation is false and a
             // -1 (i.e. all bits set) if the specified relation is true for vector argument types."
             return std::isnormal(val) ? -1 : 0;
-        }))}});
+        }));
+    }
 
-    registerTest(TestData{"isnormal_scalar", relationalFlags, &UNARY_FUNCTION_SCALAR, "-DFUNC=isnormal", "test",
-        {toBufferParameter(std::vector<int32_t>(values.size(), 0x42)), toBufferParameter(std::vector<float>(values))},
-        calculateDimensions(values.size(), 1),
-        {checkParameterEquals(0, transform<int32_t, float>(values, [](float val) -> int32_t {
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>> builder(
+            "isnormal_scalar", UNARY_FUNCTION_SCALAR, "test", "-DFUNC=isnormal");
+        builder.setFlags(relationalFlags);
+        builder.calculateDimensions(values.size(), 1);
+        builder.allocateParameter<0>(values.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(values));
+        builder.checkParameterEquals<0>(transform<int32_t, float>(values, [](float val) -> int32_t {
             // "The function[...] isnormal [...] shall return a 0 if the specified relation is false and a 1 if the
             // specified relation is true for scalar argument types."
             return std::isnormal(val) ? 1 : 0;
-        }))}});
+        }));
+    }
 
     ////
     // Other unary functions
     ////
 
-    registerTest(TestData{"signbit_vector", generalFlags, &UNARY_FUNCTION, "-DFUNC=signbit", "test",
-        {toBufferParameter(std::vector<int32_t>(values.size(), 0x42)), toBufferParameter(std::vector<float>(values))},
-        calculateDimensions(values.size()),
-        {checkParameterEquals(0, transform<int32_t, float>(values, [](float val) -> int32_t {
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>> builder(
+            "signbit_vector", UNARY_FUNCTION, "test", "-DFUNC=signbit");
+        builder.setFlags(generalFlags);
+        builder.calculateDimensions(values.size());
+        builder.allocateParameter<0>(values.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(values));
+        builder.checkParameterEquals<0>(transform<int32_t, float>(values, [](float val) -> int32_t {
             // "The function[...] signbit [...] shall return a 0 if the specified relation is false and a
             // -1 (i.e. all bits set) if the specified relation is true for vector argument types."
             return std::signbit(val) ? -1 : 0;
-        }))}});
+        }));
+    }
 
-    registerTest(TestData{"signbit_scalar", generalFlags, &UNARY_FUNCTION_SCALAR, "-DFUNC=signbit", "test",
-        {toBufferParameter(std::vector<int32_t>(values.size(), 0x42)), toBufferParameter(std::vector<float>(values))},
-        calculateDimensions(values.size(), 1),
-        {checkParameterEquals(0, transform<int32_t, float>(values, [](float val) -> int32_t {
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<float>> builder(
+            "signbit_scalar", UNARY_FUNCTION_SCALAR, "test", "-DFUNC=signbit");
+        builder.setFlags(generalFlags);
+        builder.calculateDimensions(values.size(), 1);
+        builder.allocateParameter<0>(values.size(), 0x42);
+        builder.setParameter<1>(std::vector<float>(values));
+        builder.checkParameterEquals<0>(transform<int32_t, float>(values, [](float val) -> int32_t {
             // "The function[...] signbit [...] shall return a 0 if the specified relation is false and a 1 if the
             // specified relation is true for scalar argument types."
             return std::signbit(val) ? 1 : 0;
-        }))}});
+        }));
+    }
 
     ////
     // Grouping predicates
     ////
 
-    registerTest(TestData{"any_long", groupingFlags | DataFilter::USES_LONG, &UNARY_GROUPED_FUNCTION,
-        "-DTYPE=long16 -DFUNC=any", "test",
-        {toBufferParameter(std::vector<int32_t>(3, 0x42)), toBufferParameter(generateAnyAllInputs<int64_t, 16>())},
-        toDimensions(3), {checkParameterEquals(0, std::vector<int32_t>{0, 1, 1})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int64_t>> builder(
+            "any_long", UNARY_GROUPED_FUNCTION, "test", "-DTYPE=long16 -DFUNC=any");
+        builder.setFlags(groupingFlags | DataFilter::USES_LONG);
+        builder.setDimensions(3);
+        builder.allocateParameter<0>(3, 0x42);
+        builder.setParameter<1>(generateAnyAllInputs<int64_t, 16>());
+        builder.checkParameterEquals<0>({0, 1, 1});
+    }
 
-    registerTest(TestData{"any_int", groupingFlags, &UNARY_GROUPED_FUNCTION, "-DTYPE=int16 -DFUNC=any", "test",
-        {toBufferParameter(std::vector<int32_t>(3, 0x42)), toBufferParameter(generateAnyAllInputs<int32_t, 16>())},
-        toDimensions(3), {checkParameterEquals(0, std::vector<int32_t>{0, 1, 1})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
+            "any_int", UNARY_GROUPED_FUNCTION, "test", "-DTYPE=int16 -DFUNC=any");
+        builder.setFlags(groupingFlags);
+        builder.setDimensions(3);
+        builder.allocateParameter<0>(3, 0x42);
+        builder.setParameter<1>(generateAnyAllInputs<int32_t, 16>());
+        builder.checkParameterEquals<0>({0, 1, 1});
+    }
 
-    registerTest(TestData{"any_short", groupingFlags, &UNARY_GROUPED_FUNCTION, "-DTYPE=short16 -DFUNC=any", "test",
-        {toBufferParameter(std::vector<int32_t>(3, 0x42)), toBufferParameter(generateAnyAllInputs<int16_t, 16>())},
-        toDimensions(3), {checkParameterEquals(0, std::vector<int32_t>{0, 1, 1})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int16_t>> builder(
+            "any_short", UNARY_GROUPED_FUNCTION, "test", "-DTYPE=short16 -DFUNC=any");
+        builder.setFlags(groupingFlags);
+        builder.setDimensions(3);
+        builder.allocateParameter<0>(3, 0x42);
+        builder.setParameter<1>(generateAnyAllInputs<int16_t, 16>());
+        builder.checkParameterEquals<0>({0, 1, 1});
+    }
 
-    registerTest(TestData{"any_char", groupingFlags, &UNARY_GROUPED_FUNCTION, "-DTYPE=char16 -DFUNC=any", "test",
-        {toBufferParameter(std::vector<int32_t>(3, 0x42)), toBufferParameter(generateAnyAllInputs<int8_t, 16>())},
-        toDimensions(3), {checkParameterEquals(0, std::vector<int32_t>{0, 1, 1})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int8_t>> builder(
+            "any_char", UNARY_GROUPED_FUNCTION, "test", "-DTYPE=char16 -DFUNC=any");
+        builder.setFlags(groupingFlags);
+        builder.setDimensions(3);
+        builder.allocateParameter<0>(3, 0x42);
+        builder.setParameter<1>(generateAnyAllInputs<int8_t, 16>());
+        builder.checkParameterEquals<0>({0, 1, 1});
+    }
 
-    registerTest(TestData{"all_long", groupingFlags | DataFilter::USES_LONG, &UNARY_GROUPED_FUNCTION,
-        "-DTYPE=long16 -DFUNC=all", "test",
-        {toBufferParameter(std::vector<int32_t>(3, 0x42)), toBufferParameter(generateAnyAllInputs<int64_t, 16>())},
-        toDimensions(3), {checkParameterEquals(0, std::vector<int32_t>{0, 1, 0})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int64_t>> builder(
+            "all_long", UNARY_GROUPED_FUNCTION, "test", "-DTYPE=long16 -DFUNC=all");
+        builder.setFlags(groupingFlags | DataFilter::USES_LONG);
+        builder.setDimensions(3);
+        builder.allocateParameter<0>(3, 0x42);
+        builder.setParameter<1>(generateAnyAllInputs<int64_t, 16>());
+        builder.checkParameterEquals<0>({0, 1, 0});
+    }
 
-    registerTest(TestData{"all_int", groupingFlags, &UNARY_GROUPED_FUNCTION, "-DTYPE=int16 -DFUNC=all", "test",
-        {toBufferParameter(std::vector<int32_t>(3, 0x42)), toBufferParameter(generateAnyAllInputs<int32_t, 16>())},
-        toDimensions(3), {checkParameterEquals(0, std::vector<int32_t>{0, 1, 0})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
+            "all_int", UNARY_GROUPED_FUNCTION, "test", "-DTYPE=int16 -DFUNC=all");
+        builder.setFlags(groupingFlags);
+        builder.setDimensions(3);
+        builder.allocateParameter<0>(3, 0x42);
+        builder.setParameter<1>(generateAnyAllInputs<int32_t, 16>());
+        builder.checkParameterEquals<0>({0, 1, 0});
+    }
 
-    registerTest(TestData{"all_short", groupingFlags, &UNARY_GROUPED_FUNCTION, "-DTYPE=short16 -DFUNC=all", "test",
-        {toBufferParameter(std::vector<int32_t>(3, 0x42)), toBufferParameter(generateAnyAllInputs<int16_t, 16>())},
-        toDimensions(3), {checkParameterEquals(0, std::vector<int32_t>{0, 1, 0})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int16_t>> builder(
+            "all_short", UNARY_GROUPED_FUNCTION, "test", "-DTYPE=short16 -DFUNC=all");
+        builder.setFlags(groupingFlags);
+        builder.setDimensions(3);
+        builder.allocateParameter<0>(3, 0x42);
+        builder.setParameter<1>(generateAnyAllInputs<int16_t, 16>());
+        builder.checkParameterEquals<0>({0, 1, 0});
+    }
 
-    registerTest(TestData{"all_char", groupingFlags, &UNARY_GROUPED_FUNCTION, "-DTYPE=char16 -DFUNC=all", "test",
-        {toBufferParameter(std::vector<int32_t>(3, 0x42)), toBufferParameter(generateAnyAllInputs<int8_t, 16>())},
-        toDimensions(3), {checkParameterEquals(0, std::vector<int32_t>{0, 1, 0})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int8_t>> builder(
+            "all_char", UNARY_GROUPED_FUNCTION, "test", "-DTYPE=char16 -DFUNC=all");
+        builder.setFlags(groupingFlags);
+        builder.setDimensions(3);
+        builder.allocateParameter<0>(3, 0x42);
+        builder.setParameter<1>(generateAnyAllInputs<int8_t, 16>());
+        builder.checkParameterEquals<0>({0, 1, 0});
+    }
 
     ////
     // Ternary selections
@@ -465,173 +665,271 @@ void test_data::registerOpenCLRelationalFunctionTests()
     uint8_t bitselectSecond = 0b01010101;
     auto bitselectResult = static_cast<uint8_t>((~bitselectMask & bitselectFirst) | (bitselectMask & bitselectSecond));
 
-    registerTest(
-        TestData{"bitselect_long", DataFilter::USES_LONG, &TERNARY_FUNCTION, "-DTYPE=long -DFUNC=bitselect", "test",
-            {toBufferParameter(std::vector<int64_t>(1)), toBufferParameter(replicate<int64_t>(bitselectFirst)),
-                toBufferParameter(replicate<int64_t>(bitselectSecond)),
-                toBufferParameter(replicate<int64_t>(bitselectMask))},
-            toDimensions(1), {checkParameterEquals(0, replicate<int64_t>(bitselectResult))}});
+    {
+        TestDataBuilder<Buffer<int64_t>, Buffer<int64_t>, Buffer<int64_t>, Buffer<int64_t>> builder(
+            "bitselect_long", TERNARY_FUNCTION, "test", "-DTYPE=long -DFUNC=bitselect");
+        builder.setFlags(DataFilter::USES_LONG);
+        builder.allocateParameter<0>(1);
+        builder.setParameter<1>(replicate<int64_t>(bitselectFirst));
+        builder.setParameter<2>(replicate<int64_t>(bitselectSecond));
+        builder.setParameter<3>(replicate<int64_t>(bitselectMask));
+        builder.checkParameterEquals<0>(replicate<int64_t>(bitselectResult));
+    }
 
-    registerTest(
-        TestData{"bitselect_ulong", DataFilter::USES_LONG, &TERNARY_FUNCTION, "-DTYPE=ulong -DFUNC=bitselect", "test",
-            {toBufferParameter(std::vector<uint64_t>(1)), toBufferParameter(replicate<uint64_t>(bitselectFirst)),
-                toBufferParameter(replicate<uint64_t>(bitselectSecond)),
-                toBufferParameter(replicate<uint64_t>(bitselectMask))},
-            toDimensions(1), {checkParameterEquals(0, replicate<uint64_t>(bitselectResult))}});
+    {
+        TestDataBuilder<Buffer<uint64_t>, Buffer<uint64_t>, Buffer<uint64_t>, Buffer<uint64_t>> builder(
+            "bitselect_ulong", TERNARY_FUNCTION, "test", "-DTYPE=ulong -DFUNC=bitselect");
+        builder.setFlags(DataFilter::USES_LONG);
+        builder.allocateParameter<0>(1);
+        builder.setParameter<1>(replicate<uint64_t>(bitselectFirst));
+        builder.setParameter<2>(replicate<uint64_t>(bitselectSecond));
+        builder.setParameter<3>(replicate<uint64_t>(bitselectMask));
+        builder.checkParameterEquals<0>(replicate<uint64_t>(bitselectResult));
+    }
 
-    registerTest(TestData{"bitselect_int", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=int -DFUNC=bitselect", "test",
-        {toBufferParameter(std::vector<int32_t>(1)), toBufferParameter(replicate<int32_t>(bitselectFirst)),
-            toBufferParameter(replicate<int32_t>(bitselectSecond)),
-            toBufferParameter(replicate<int32_t>(bitselectMask))},
-        toDimensions(1), {checkParameterEquals(0, replicate<int32_t>(bitselectResult))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
+            "bitselect_int", TERNARY_FUNCTION, "test", "-DTYPE=int -DFUNC=bitselect");
+        builder.allocateParameter<0>(1);
+        builder.setParameter<1>(replicate<int32_t>(bitselectFirst));
+        builder.setParameter<2>(replicate<int32_t>(bitselectSecond));
+        builder.setParameter<3>(replicate<int32_t>(bitselectMask));
+        builder.checkParameterEquals<0>(replicate<int32_t>(bitselectResult));
+    }
 
-    registerTest(TestData{"bitselect_uint", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=uint -DFUNC=bitselect", "test",
-        {toBufferParameter(std::vector<uint32_t>(1)), toBufferParameter(replicate<uint32_t>(bitselectFirst)),
-            toBufferParameter(replicate<uint32_t>(bitselectSecond)),
-            toBufferParameter(replicate<uint32_t>(bitselectMask))},
-        toDimensions(1), {checkParameterEquals(0, replicate<uint32_t>(bitselectResult))}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "bitselect_uint", TERNARY_FUNCTION, "test", "-DTYPE=uint -DFUNC=bitselect");
+        builder.allocateParameter<0>(1);
+        builder.setParameter<1>(replicate<uint32_t>(bitselectFirst));
+        builder.setParameter<2>(replicate<uint32_t>(bitselectSecond));
+        builder.setParameter<3>(replicate<uint32_t>(bitselectMask));
+        builder.checkParameterEquals<0>(replicate<uint32_t>(bitselectResult));
+    }
 
-    registerTest(
-        TestData{"bitselect_float", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=float -DFUNC=bitselect", "test",
-            {toBufferParameter(std::vector<uint32_t>(1)), toBufferParameter(replicate<uint32_t>(bitselectFirst)),
-                toBufferParameter(replicate<uint32_t>(bitselectSecond)),
-                toBufferParameter(replicate<uint32_t>(bitselectMask))},
-            toDimensions(1), {checkParameterEquals(0, replicate<uint32_t>(bitselectResult))}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "bitselect_float", TERNARY_FUNCTION, "test", "-DTYPE=float -DFUNC=bitselect");
+        builder.allocateParameter<0>(1);
+        builder.setParameter<1>(replicate<uint32_t>(bitselectFirst));
+        builder.setParameter<2>(replicate<uint32_t>(bitselectSecond));
+        builder.setParameter<3>(replicate<uint32_t>(bitselectMask));
+        builder.checkParameterEquals<0>(replicate<uint32_t>(bitselectResult));
+    }
 
-    registerTest(
-        TestData{"bitselect_short", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=short -DFUNC=bitselect", "test",
-            {toBufferParameter(std::vector<int16_t>(1)), toBufferParameter(replicate<int16_t>(bitselectFirst)),
-                toBufferParameter(replicate<int16_t>(bitselectSecond)),
-                toBufferParameter(replicate<int16_t>(bitselectMask))},
-            toDimensions(1), {checkParameterEquals(0, replicate<int16_t>(bitselectResult))}});
+    {
+        TestDataBuilder<Buffer<int16_t>, Buffer<int16_t>, Buffer<int16_t>, Buffer<int16_t>> builder(
+            "bitselect_short", TERNARY_FUNCTION, "test", "-DTYPE=short -DFUNC=bitselect");
+        builder.allocateParameter<0>(1);
+        builder.setParameter<1>(replicate<int16_t>(bitselectFirst));
+        builder.setParameter<2>(replicate<int16_t>(bitselectSecond));
+        builder.setParameter<3>(replicate<int16_t>(bitselectMask));
+        builder.checkParameterEquals<0>(replicate<int16_t>(bitselectResult));
+    }
 
-    registerTest(
-        TestData{"bitselect_ushort", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=ushort -DFUNC=bitselect", "test",
-            {toBufferParameter(std::vector<uint16_t>(1)), toBufferParameter(replicate<uint16_t>(bitselectFirst)),
-                toBufferParameter(replicate<uint16_t>(bitselectSecond)),
-                toBufferParameter(replicate<uint16_t>(bitselectMask))},
-            toDimensions(1), {checkParameterEquals(0, replicate<uint16_t>(bitselectResult))}});
+    {
+        TestDataBuilder<Buffer<uint16_t>, Buffer<uint16_t>, Buffer<uint16_t>, Buffer<uint16_t>> builder(
+            "bitselect_ushort", TERNARY_FUNCTION, "test", "-DTYPE=ushort -DFUNC=bitselect");
+        builder.allocateParameter<0>(1);
+        builder.setParameter<1>(replicate<uint16_t>(bitselectFirst));
+        builder.setParameter<2>(replicate<uint16_t>(bitselectSecond));
+        builder.setParameter<3>(replicate<uint16_t>(bitselectMask));
+        builder.checkParameterEquals<0>(replicate<uint16_t>(bitselectResult));
+    }
 
-    registerTest(TestData{"bitselect_char", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=char -DFUNC=bitselect", "test",
-        {toBufferParameter(std::vector<int8_t>(1)), toBufferParameter(replicate<int8_t>(bitselectFirst)),
-            toBufferParameter(replicate<int8_t>(bitselectSecond)), toBufferParameter(replicate<int8_t>(bitselectMask))},
-        toDimensions(1), {checkParameterEquals(0, replicate<int8_t>(bitselectResult))}});
+    {
+        TestDataBuilder<Buffer<int8_t>, Buffer<int8_t>, Buffer<int8_t>, Buffer<int8_t>> builder(
+            "bitselect_char", TERNARY_FUNCTION, "test", "-DTYPE=char -DFUNC=bitselect");
+        builder.allocateParameter<0>(1);
+        builder.setParameter<1>(replicate<int8_t>(bitselectFirst));
+        builder.setParameter<2>(replicate<int8_t>(bitselectSecond));
+        builder.setParameter<3>(replicate<int8_t>(bitselectMask));
+        builder.checkParameterEquals<0>(replicate<int8_t>(bitselectResult));
+    }
 
-    registerTest(
-        TestData{"bitselect_uchar", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=uchar -DFUNC=bitselect", "test",
-            {toBufferParameter(std::vector<uint8_t>(1)), toBufferParameter(replicate<uint8_t>(bitselectFirst)),
-                toBufferParameter(replicate<uint8_t>(bitselectSecond)),
-                toBufferParameter(replicate<uint8_t>(bitselectMask))},
-            toDimensions(1), {checkParameterEquals(0, replicate<uint8_t>(bitselectResult))}});
+    {
+        TestDataBuilder<Buffer<uint8_t>, Buffer<uint8_t>, Buffer<uint8_t>, Buffer<uint8_t>> builder(
+            "bitselect_uchar", TERNARY_FUNCTION, "test", "-DTYPE=uchar -DFUNC=bitselect");
+        builder.allocateParameter<0>(1);
+        builder.setParameter<1>(replicate<uint8_t>(bitselectFirst));
+        builder.setParameter<2>(replicate<uint8_t>(bitselectSecond));
+        builder.setParameter<3>(replicate<uint8_t>(bitselectMask));
+        builder.checkParameterEquals<0>(replicate<uint8_t>(bitselectResult));
+    }
 
     // there are only 2 possibilities:
     // 1. condition is true (MSB in vector element set or scalar != 0) -> second value is selected
     // 2. condition is false (MSB in vector element clear or scalar == 0) -> first value is selected
 
-    registerTest(
-        TestData{"select_long_vector", DataFilter::USES_LONG, &TERNARY_FUNCTION, "-DTYPE=long2 -DFUNC=select", "test",
-            {toBufferParameter(std::vector<int64_t>(2)),
-                toBufferParameter(std::vector<int64_t>{0x4041424344454647, 0x4041424344454647}),
-                toBufferParameter(std::vector<int64_t>{0x1011121314151617, 0x1011121314151617}),
-                toBufferParameter(std::vector<int64_t>{-1, 1})},
-            toDimensions(1), {checkParameterEquals(0, std::vector<int64_t>{0x1011121314151617, 0x4041424344454647})}});
+    {
+        TestDataBuilder<Buffer<int64_t>, Buffer<int64_t>, Buffer<int64_t>, Buffer<int64_t>> builder(
+            "select_long_vector", TERNARY_FUNCTION, "test", "-DTYPE=long2 -DFUNC=select");
+        builder.setFlags(DataFilter::USES_LONG);
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x4041424344454647, 0x4041424344454647});
+        builder.setParameter<2>({0x1011121314151617, 0x1011121314151617});
+        builder.setParameter<3>({-1, 1});
+        builder.checkParameterEquals<0>({0x1011121314151617, 0x4041424344454647});
+    }
 
-    registerTest(
-        TestData{"select_long_scalar", DataFilter::USES_LONG, &TERNARY_FUNCTION, "-DTYPE=long -DFUNC=select", "test",
-            {toBufferParameter(std::vector<int64_t>(2)),
-                toBufferParameter(std::vector<int64_t>{0x4041424344454647, 0x4041424344454647}),
-                toBufferParameter(std::vector<int64_t>{0x1011121314151617, 0x1011121314151617}),
-                toBufferParameter(std::vector<int64_t>{1, 0})},
-            toDimensions(2), {checkParameterEquals(0, std::vector<int64_t>{0x1011121314151617, 0x4041424344454647})}});
+    {
+        TestDataBuilder<Buffer<int64_t>, Buffer<int64_t>, Buffer<int64_t>, Buffer<int64_t>> builder(
+            "select_long_scalar", TERNARY_FUNCTION, "test", "-DTYPE=long -DFUNC=select");
+        builder.setFlags(DataFilter::USES_LONG);
+        builder.setDimensions(2);
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x4041424344454647, 0x4041424344454647});
+        builder.setParameter<2>({0x1011121314151617, 0x1011121314151617});
+        builder.setParameter<3>({1, 0});
+        builder.checkParameterEquals<0>({0x1011121314151617, 0x4041424344454647});
+    }
 
-    registerTest(
-        TestData{"select_ulong_vector", DataFilter::USES_LONG, &TERNARY_FUNCTION, "-DTYPE=ulong2 -DFUNC=select", "test",
-            {toBufferParameter(std::vector<uint64_t>(2)),
-                toBufferParameter(std::vector<uint64_t>{0x4041424344454647, 0x4041424344454647}),
-                toBufferParameter(std::vector<uint64_t>{0x1011121314151617, 0x1011121314151617}),
-                toBufferParameter(std::vector<uint64_t>{0x80123456789ABCDE, 1})},
-            toDimensions(1), {checkParameterEquals(0, std::vector<uint64_t>{0x1011121314151617, 0x4041424344454647})}});
+    {
+        TestDataBuilder<Buffer<uint64_t>, Buffer<uint64_t>, Buffer<uint64_t>, Buffer<uint64_t>> builder(
+            "select_ulong_vector", TERNARY_FUNCTION, "test", "-DTYPE=ulong2 -DFUNC=select");
+        builder.setFlags(DataFilter::USES_LONG);
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x4041424344454647, 0x4041424344454647});
+        builder.setParameter<2>({0x1011121314151617, 0x1011121314151617});
+        builder.setParameter<3>({0x80123456789ABCDE, 1});
+        builder.checkParameterEquals<0>({0x1011121314151617, 0x4041424344454647});
+    }
 
-    registerTest(
-        TestData{"select_ulong_scalar", DataFilter::USES_LONG, &TERNARY_FUNCTION, "-DTYPE=ulong -DFUNC=select", "test",
-            {toBufferParameter(std::vector<uint64_t>(2)),
-                toBufferParameter(std::vector<uint64_t>{0x4041424344454647, 0x4041424344454647}),
-                toBufferParameter(std::vector<uint64_t>{0x1011121314151617, 0x1011121314151617}),
-                toBufferParameter(std::vector<uint64_t>{1, 0})},
-            toDimensions(2), {checkParameterEquals(0, std::vector<uint64_t>{0x1011121314151617, 0x4041424344454647})}});
+    {
+        TestDataBuilder<Buffer<uint64_t>, Buffer<uint64_t>, Buffer<uint64_t>, Buffer<uint64_t>> builder(
+            "select_ulong_scalar", TERNARY_FUNCTION, "test", "-DTYPE=ulong -DFUNC=select");
+        builder.setFlags(DataFilter::USES_LONG);
+        builder.setDimensions(2);
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x4041424344454647, 0x4041424344454647});
+        builder.setParameter<2>({0x1011121314151617, 0x1011121314151617});
+        builder.setParameter<3>({1, 0});
+        builder.checkParameterEquals<0>({0x1011121314151617, 0x4041424344454647});
+    }
 
-    registerTest(TestData{"select_int_vector", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=int2 -DFUNC=select", "test",
-        {toBufferParameter(std::vector<int32_t>(2)), toBufferParameter(std::vector<int32_t>{0x40414243, 0x40414243}),
-            toBufferParameter(std::vector<int32_t>{0x10111213, 0x10111213}),
-            toBufferParameter(std::vector<int32_t>{-1, 1})},
-        toDimensions(1), {checkParameterEquals(0, std::vector<int32_t>{0x10111213, 0x40414243})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
+            "select_int_vector", TERNARY_FUNCTION, "test", "-DTYPE=int2 -DFUNC=select");
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x40414243, 0x40414243});
+        builder.setParameter<2>({0x10111213, 0x10111213});
+        builder.setParameter<3>({-1, 1});
+        builder.checkParameterEquals<0>({0x10111213, 0x40414243});
+    }
 
-    registerTest(TestData{"select_int_scalar", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=int -DFUNC=select", "test",
-        {toBufferParameter(std::vector<int32_t>(2)), toBufferParameter(std::vector<int32_t>{0x40414243, 0x40414243}),
-            toBufferParameter(std::vector<int32_t>{0x10111213, 0x10111213}),
-            toBufferParameter(std::vector<int32_t>{1, 0})},
-        toDimensions(2), {checkParameterEquals(0, std::vector<int32_t>{0x10111213, 0x40414243})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
+            "select_int_scalar", TERNARY_FUNCTION, "test", "-DTYPE=int -DFUNC=select");
+        builder.setDimensions(2);
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x40414243, 0x40414243});
+        builder.setParameter<2>({0x10111213, 0x10111213});
+        builder.setParameter<3>({1, 0});
+        builder.checkParameterEquals<0>({0x10111213, 0x40414243});
+    }
 
-    registerTest(TestData{"select_uint_vector", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=uint2 -DFUNC=select",
-        "test",
-        {toBufferParameter(std::vector<uint32_t>(2)), toBufferParameter(std::vector<uint32_t>{0x40414243, 0x40414243}),
-            toBufferParameter(std::vector<uint32_t>{0x10111213, 0x10111213}),
-            toBufferParameter(std::vector<uint32_t>{0x80123456, 1})},
-        toDimensions(1), {checkParameterEquals(0, std::vector<uint32_t>{0x10111213, 0x40414243})}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "select_uint_vector", TERNARY_FUNCTION, "test", "-DTYPE=uint2 -DFUNC=select");
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x40414243, 0x40414243});
+        builder.setParameter<2>({0x10111213, 0x10111213});
+        builder.setParameter<3>({0x80123456, 1});
+        builder.checkParameterEquals<0>({0x10111213, 0x40414243});
+    }
 
-    registerTest(TestData{"select_uint_scalar", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=uint -DFUNC=select",
-        "test",
-        {toBufferParameter(std::vector<uint32_t>(2)), toBufferParameter(std::vector<uint32_t>{0x40414243, 0x40414243}),
-            toBufferParameter(std::vector<uint32_t>{0x10111213, 0x10111213}),
-            toBufferParameter(std::vector<uint32_t>{1, 0})},
-        toDimensions(2), {checkParameterEquals(0, std::vector<uint32_t>{0x10111213, 0x40414243})}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "select_uint_scalar", TERNARY_FUNCTION, "test", "-DTYPE=uint -DFUNC=select");
+        builder.setDimensions(2);
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x40414243, 0x40414243});
+        builder.setParameter<2>({0x10111213, 0x10111213});
+        builder.setParameter<3>({1, 0});
+        builder.checkParameterEquals<0>({0x10111213, 0x40414243});
+    }
 
-    registerTest(TestData{"select_short_vector", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=short2 -DFUNC=select",
-        "test",
-        {toBufferParameter(std::vector<int16_t>(2)), toBufferParameter(std::vector<int16_t>{0x4041, 0x4041}),
-            toBufferParameter(std::vector<int16_t>{0x1011, 0x1011}), toBufferParameter(std::vector<int16_t>{-1, 1})},
-        toDimensions(1), {checkParameterEquals(0, std::vector<int16_t>{0x1011, 0x4041})}});
+    {
+        TestDataBuilder<Buffer<int16_t>, Buffer<int16_t>, Buffer<int16_t>, Buffer<int16_t>> builder(
+            "select_short_vector", TERNARY_FUNCTION, "test", "-DTYPE=short2 -DFUNC=select");
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x4041, 0x4041});
+        builder.setParameter<2>({0x1011, 0x1011});
+        builder.setParameter<3>({-1, 1});
+        builder.checkParameterEquals<0>({0x1011, 0x4041});
+    }
 
-    registerTest(
-        TestData{"select_short_scalar", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=short -DFUNC=select", "test",
-            {toBufferParameter(std::vector<int16_t>(2)), toBufferParameter(std::vector<int16_t>{0x4041, 0x4041}),
-                toBufferParameter(std::vector<int16_t>{0x1011, 0x1011}), toBufferParameter(std::vector<int16_t>{1, 0})},
-            toDimensions(2), {checkParameterEquals(0, std::vector<int16_t>{0x1011, 0x4041})}});
+    {
+        TestDataBuilder<Buffer<int16_t>, Buffer<int16_t>, Buffer<int16_t>, Buffer<int16_t>> builder(
+            "select_short_scalar", TERNARY_FUNCTION, "test", "-DTYPE=short -DFUNC=select");
+        builder.setDimensions(2);
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x4041, 0x4041});
+        builder.setParameter<2>({0x1011, 0x1011});
+        builder.setParameter<3>({1, 0});
+        builder.checkParameterEquals<0>({0x1011, 0x4041});
+    }
 
-    registerTest(
-        TestData{"select_ushort_vector", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=ushort2 -DFUNC=select", "test",
-            {toBufferParameter(std::vector<uint16_t>(2)), toBufferParameter(std::vector<uint16_t>{0x4041, 0x4041}),
-                toBufferParameter(std::vector<uint16_t>{0x1011, 0x1011}),
-                toBufferParameter(std::vector<uint16_t>{0x8012, 1})},
-            toDimensions(1), {checkParameterEquals(0, std::vector<uint16_t>{0x1011, 0x4041})}});
+    {
+        TestDataBuilder<Buffer<uint16_t>, Buffer<uint16_t>, Buffer<uint16_t>, Buffer<uint16_t>> builder(
+            "select_ushort_vector", TERNARY_FUNCTION, "test", "-DTYPE=ushort2 -DFUNC=select");
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x4041, 0x4041});
+        builder.setParameter<2>({0x1011, 0x1011});
+        builder.setParameter<3>({0x8012, 1});
+        builder.checkParameterEquals<0>({0x1011, 0x4041});
+    }
 
-    registerTest(TestData{"select_ushort_scalar", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=ushort -DFUNC=select",
-        "test",
-        {toBufferParameter(std::vector<uint16_t>(2)), toBufferParameter(std::vector<uint16_t>{0x4041, 0x4041}),
-            toBufferParameter(std::vector<uint16_t>{0x1011, 0x1011}), toBufferParameter(std::vector<uint16_t>{1, 0})},
-        toDimensions(2), {checkParameterEquals(0, std::vector<uint16_t>{0x1011, 0x4041})}});
+    {
+        TestDataBuilder<Buffer<uint16_t>, Buffer<uint16_t>, Buffer<uint16_t>, Buffer<uint16_t>> builder(
+            "select_ushort_scalar", TERNARY_FUNCTION, "test", "-DTYPE=ushort -DFUNC=select");
+        builder.setDimensions(2);
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x4041, 0x4041});
+        builder.setParameter<2>({0x1011, 0x1011});
+        builder.setParameter<3>({1, 0});
+        builder.checkParameterEquals<0>({0x1011, 0x4041});
+    }
 
-    registerTest(
-        TestData{"select_char_vector", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=char2 -DFUNC=select", "test",
-            {toBufferParameter(std::vector<int8_t>(2)), toBufferParameter(std::vector<int8_t>{0x40, 0x40}),
-                toBufferParameter(std::vector<int8_t>{0x10, 0x10}), toBufferParameter(std::vector<int8_t>{-1, 1})},
-            toDimensions(1), {checkParameterEquals(0, std::vector<int8_t>{0x10, 0x40})}});
+    {
+        TestDataBuilder<Buffer<int8_t>, Buffer<int8_t>, Buffer<int8_t>, Buffer<int8_t>> builder(
+            "select_char_vector", TERNARY_FUNCTION, "test", "-DTYPE=char2 -DFUNC=select");
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x40, 0x40});
+        builder.setParameter<2>({0x10, 0x10});
+        builder.setParameter<3>({-1, 1});
+        builder.checkParameterEquals<0>({0x10, 0x40});
+    }
 
-    registerTest(
-        TestData{"select_char_scalar", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=char -DFUNC=select", "test",
-            {toBufferParameter(std::vector<int8_t>(2)), toBufferParameter(std::vector<int8_t>{0x40, 0x40}),
-                toBufferParameter(std::vector<int8_t>{0x10, 0x10}), toBufferParameter(std::vector<int8_t>{1, 0})},
-            toDimensions(2), {checkParameterEquals(0, std::vector<int8_t>{0x10, 0x40})}});
+    {
+        TestDataBuilder<Buffer<int8_t>, Buffer<int8_t>, Buffer<int8_t>, Buffer<int8_t>> builder(
+            "select_char_scalar", TERNARY_FUNCTION, "test", "-DTYPE=char -DFUNC=select");
+        builder.setDimensions(2);
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x40, 0x40});
+        builder.setParameter<2>({0x10, 0x10});
+        builder.setParameter<3>({1, 0});
+        builder.checkParameterEquals<0>({0x10, 0x40});
+    }
 
-    registerTest(
-        TestData{"select_uchar_vector", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=uchar2 -DFUNC=select", "test",
-            {toBufferParameter(std::vector<uint8_t>(2)), toBufferParameter(std::vector<uint8_t>{0x40, 0x40}),
-                toBufferParameter(std::vector<uint8_t>{0x10, 0x10}), toBufferParameter(std::vector<uint8_t>{0x80, 1})},
-            toDimensions(1), {checkParameterEquals(0, std::vector<uint8_t>{0x10, 0x40})}});
+    {
+        TestDataBuilder<Buffer<uint8_t>, Buffer<uint8_t>, Buffer<uint8_t>, Buffer<uint8_t>> builder(
+            "select_uchar_vector", TERNARY_FUNCTION, "test", "-DTYPE=uchar2 -DFUNC=select");
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x40, 0x40});
+        builder.setParameter<2>({0x10, 0x10});
+        builder.setParameter<3>({0x80, 1});
+        builder.checkParameterEquals<0>({0x10, 0x40});
+    }
 
-    registerTest(
-        TestData{"select_uchar_scalar", DataFilter::NONE, &TERNARY_FUNCTION, "-DTYPE=uchar -DFUNC=select", "test",
-            {toBufferParameter(std::vector<uint8_t>(2)), toBufferParameter(std::vector<uint8_t>{0x40, 0x40}),
-                toBufferParameter(std::vector<uint8_t>{0x10, 0x10}), toBufferParameter(std::vector<uint8_t>{1, 0})},
-            toDimensions(2), {checkParameterEquals(0, std::vector<uint8_t>{0x10, 0x40})}});
+    {
+        TestDataBuilder<Buffer<uint8_t>, Buffer<uint8_t>, Buffer<uint8_t>, Buffer<uint8_t>> builder(
+            "select_uchar_scalar", TERNARY_FUNCTION, "test", "-DTYPE=uchar -DFUNC=select");
+        builder.setDimensions(2);
+        builder.allocateParameter<0>(2);
+        builder.setParameter<1>({0x40, 0x40});
+        builder.setParameter<2>({0x10, 0x10});
+        builder.setParameter<3>({1, 0});
+        builder.checkParameterEquals<0>({0x10, 0x40});
+    }
 }

@@ -335,7 +335,7 @@ __kernel void test(__global TYPE* out) {
 }
 )";
 
-static std::unordered_map<std::string, std::array<uint32_t, 16>> assemblySources = {
+static const std::unordered_map<std::string, std::array<uint32_t, 16>> assemblySources = {
     {"random", {1, 15, 2, 3, 14, 4, 15, 7, 2, 8, 14, 15, 11, 14, 14, 3}},
     {"elem_num", {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}},
     {"constant", {42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42}},
@@ -409,15 +409,25 @@ static void registerTypeTests(const std::string& typeName)
 
     for(auto num : {2, 3, 4, 8, 16})
     {
-        registerTest(TestData{"vload" + std::to_string(num) + "_" + typeName, flags, &VECTOR_LOAD_FUNCTION,
-            "-DTYPE=" + typeName, "test" + std::to_string(num),
-            {toBufferParameter(std::vector<T>(values.size(), 0x42)), toBufferParameter(std::vector<T>(values))},
-            calculateDimensions(values.size(), num), {checkParameterEquals(0, std::vector<T>(values))}});
+        {
+            TestDataBuilder<Buffer<T>, Buffer<T>> builder("vload" + std::to_string(num) + "_" + typeName,
+                VECTOR_LOAD_FUNCTION, "test" + std::to_string(num), "-DTYPE=" + typeName);
+            builder.setFlags(flags);
+            builder.calculateDimensions(values.size(), num);
+            builder.template allocateParameter<0>(values.size(), 0x42);
+            builder.template setParameter<1>(std::vector<T>(values));
+            builder.template checkParameterEquals<0>(std::vector<T>(values));
+        }
 
-        registerTest(TestData{"vstore" + std::to_string(num) + "_" + typeName, flags, &VECTOR_STORE_FUNCTION,
-            "-DTYPE=" + typeName, "test" + std::to_string(num),
-            {toBufferParameter(std::vector<T>(values.size(), 0x42)), toBufferParameter(std::vector<T>(values))},
-            calculateDimensions(values.size(), num), {checkParameterEquals(0, std::vector<T>(values))}});
+        {
+            TestDataBuilder<Buffer<T>, Buffer<T>> builder("vstore" + std::to_string(num) + "_" + typeName,
+                VECTOR_STORE_FUNCTION, "test" + std::to_string(num), "-DTYPE=" + typeName);
+            builder.setFlags(flags);
+            builder.calculateDimensions(values.size(), num);
+            builder.template allocateParameter<0>(values.size(), 0x42);
+            builder.template setParameter<1>(Buffer<T>(values));
+            builder.template checkParameterEquals<0>(std::vector<T>(values));
+        }
 
         if(num != 3)
         {
@@ -425,37 +435,54 @@ static void registerTypeTests(const std::string& typeName)
             // also there is no 3-element mask shuffle
             auto mask = toRandom<T>(values.size(), true, 0, static_cast<T>(num - 1));
 
-            registerTest(
-                TestData{"shuffle_vector" + std::to_string(num) + "_" + typeName, flags | DataFilter::VECTOR_OPERATIONS,
-                    &VECTOR_SHUFFLE_FUNCTION, "-DTYPE=" + typeName, "test" + std::to_string(num),
-                    {toBufferParameter(std::vector<T>(values.size(), 0x42)), toBufferParameter(std::vector<T>(values)),
-                        toBufferParameter(std::vector<T>(mask))},
-                    calculateDimensions(values.size(), num), {checkParameterEquals(0, shuffle(num, values, mask))}});
+            {
+                TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>> builder(
+                    "shuffle_vector" + std::to_string(num) + "_" + typeName, VECTOR_SHUFFLE_FUNCTION,
+                    "test" + std::to_string(num), "-DTYPE=" + typeName);
+                builder.setFlags(flags | DataFilter::VECTOR_OPERATIONS);
+                builder.calculateDimensions(values.size(), num);
+                builder.template allocateParameter<0>(values.size(), 0x42);
+                builder.template setParameter<1>(std::vector<T>(values));
+                builder.template setParameter<2>(std::vector<T>(mask));
+                builder.template checkParameterEquals<0>(shuffle(num, values, mask));
+            }
 
             mask = toRandom<T>(values.size(), true, 0, static_cast<T>(num * 2 - 1));
 
-            registerTest(TestData{"shuffle2_vector" + std::to_string(num) + "_" + typeName,
-                flags | DataFilter::VECTOR_OPERATIONS, &VECTOR_SHUFFLE2_FUNCTION, "-DTYPE=" + typeName,
-                "test" + std::to_string(num),
-                {toBufferParameter(std::vector<T>(values.size(), 0x42)), toBufferParameter(std::vector<T>(values)),
-                    toBufferParameter(std::vector<T>(values)), toBufferParameter(std::vector<T>(mask))},
-                calculateDimensions(values.size(), num), {checkParameterEquals(0, shuffle2(num, values, mask))}});
+            {
+                TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>> builder(
+                    "shuffle2_vector" + std::to_string(num) + "_" + typeName, VECTOR_SHUFFLE2_FUNCTION,
+                    "test" + std::to_string(num), "-DTYPE=" + typeName);
+                builder.setFlags(flags | DataFilter::VECTOR_OPERATIONS);
+                builder.calculateDimensions(values.size(), num);
+                builder.template allocateParameter<0>(values.size(), 0x42);
+                builder.template setParameter<1>(std::vector<T>(values));
+                builder.template setParameter<2>(std::vector<T>(values));
+                builder.template setParameter<3>(std::vector<T>(mask));
+                builder.template checkParameterEquals<0>(shuffle2(num, values, mask));
+            }
 
-            registerTest(
-                TestData{"reorder_vector" + std::to_string(num) + "_" + typeName, flags | DataFilter::VECTOR_OPERATIONS,
-                    &VECTOR_REORDER_FUNCTION, "-DTYPE=" + typeName, "test" + std::to_string(num),
-                    {toBufferParameter(std::vector<T>(values.size(), 0x42)), toBufferParameter(std::vector<T>(values))},
-                    calculateDimensions(values.size(), num),
-                    {checkParameterEquals(
-                        0, reorder(num, values, {1, 0, 3, 2, 1, 3, 4, 2, 10, 3, 9, 11, 10, 15, 5, 12}))}});
+            {
+                TestDataBuilder<Buffer<T>, Buffer<T>> builder("reorder_vector" + std::to_string(num) + "_" + typeName,
+                    VECTOR_REORDER_FUNCTION, "test" + std::to_string(num), "-DTYPE=" + typeName);
+                builder.setFlags(flags | DataFilter::VECTOR_OPERATIONS);
+                builder.calculateDimensions(values.size(), num);
+                builder.template allocateParameter<0>(values.size(), 0x42);
+                builder.template setParameter<1>(std::vector<T>(values));
+                builder.template checkParameterEquals<0>(
+                    reorder(num, values, {1, 0, 3, 2, 1, 3, 4, 2, 10, 3, 9, 11, 10, 15, 5, 12}));
+            }
         }
     }
 
-    registerTest(TestData{"vload3_uneven_" + typeName, flags, &VECTOR_LOAD_FUNCTION, "-DTYPE=" + typeName,
-        "test3_uneven",
-        {toBufferParameter(std::vector<T>(values.size() * 4 / 3, 0x42)), toBufferParameter(std::vector<T>(values))},
-        calculateDimensions(values.size(), 3),
-        {checkParameter<T>(0, values.size() * 4 / 3, [values](const std::vector<T>& result) -> Result {
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>> builder(
+            "vload3_uneven_" + typeName, VECTOR_LOAD_FUNCTION, "test3_uneven", "-DTYPE=" + typeName);
+        builder.setFlags(flags);
+        builder.calculateDimensions(values.size(), 3);
+        builder.template allocateParameter<0>(values.size() * 4 / 3, 0x42);
+        builder.template setParameter<1>(std::vector<T>(values));
+        builder.template checkParameter<0>(values.size() * 4 / 3, [values](const std::vector<T>& result) -> Result {
             for(std::size_t i = 0; i < values.size() / 3; i += 3)
             {
                 auto k = (i / 3) * 4 + (i % 3);
@@ -467,13 +494,17 @@ static void registerTypeTests(const std::string& typeName)
                             std::to_string(i) + ", " + std::to_string(i + 1) + ", " + std::to_string(i + 2) + "}"};
             }
             return RESULT_OK;
-        })}});
+        });
+    }
 
-    registerTest(TestData{"vstore3_uneven_" + typeName, flags, &VECTOR_STORE_FUNCTION, "-DTYPE=" + typeName,
-        "test3_uneven",
-        {toBufferParameter(std::vector<T>(values.size() * 3 / 4, 0x42)), toBufferParameter(std::vector<T>(values))},
-        calculateDimensions(values.size(), 4),
-        {checkParameter<T>(0, values.size() * 3 / 4, [values](const std::vector<T>& result) -> Result {
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>> builder(
+            "vstore3_uneven_" + typeName, VECTOR_STORE_FUNCTION, "test3_uneven", "-DTYPE=" + typeName);
+        builder.setFlags(flags);
+        builder.calculateDimensions(values.size(), 3);
+        builder.template allocateParameter<0>(values.size() * 4 / 3, 0x42);
+        builder.template setParameter<1>(std::vector<T>(values));
+        builder.template checkParameter<0>(values.size() * 4 / 3, [values](const std::vector<T>& result) -> Result {
             for(std::size_t i = 0; i < values.size() / 4; i += 4)
             {
                 auto k = (i / 4) * 3 + (i % 4);
@@ -485,7 +516,8 @@ static void registerTypeTests(const std::string& typeName)
                             std::to_string(i) + ", " + std::to_string(i + 1) + ", " + std::to_string(i + 2) + "}"};
             }
             return RESULT_OK;
-        })}});
+        });
+    }
 }
 
 template <typename Mode>
@@ -732,18 +764,29 @@ static void registerHalfTests()
     for(auto vectorSize : {1u, 2u, 3u, 4u, 8u, 16u})
     {
         auto n = vectorSize == 1u ? "" : std::to_string(vectorSize);
+        auto numHalfElements = vectorSize == 3u ? (halfInputValues.size() / 3u) * 3u : halfInputValues.size();
+        auto numFloatElements = vectorSize == 3u ? (floatInputValues.size() / 3u) * 3u : floatInputValues.size();
 
-        registerTest(TestData{"vload_half" + n, flags, &VECTOR_LOAD_HALF_FUNCTION, "", "test" + n,
-            {toBufferParameter(std::vector<uint32_t>(halfInputValues.size(), 0x42)),
-                toBufferParameter(std::vector<uint16_t>{halfInputValues})},
-            calculateDimensions(halfInputValues.size(), vectorSize),
-            {checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(0, std::vector<uint32_t>{floatOutputValues})}});
+        {
+            TestDataBuilder<Buffer<uint32_t>, Buffer<uint16_t>> builder(
+                "vload_half" + n, VECTOR_LOAD_HALF_FUNCTION, "test" + n);
+            builder.setFlags(flags);
+            builder.calculateDimensions(numHalfElements, vectorSize);
+            builder.allocateParameter<0>(numHalfElements, 0x42);
+            builder.setParameter<1>(std::vector<uint16_t>(halfInputValues));
+            builder.checkParameterEquals<0, HexPrinter<uint32_t>>(
+                std::vector<uint32_t>(floatOutputValues.begin(), floatOutputValues.begin() + numHalfElements));
+        }
 
-        registerTest(TestData{"vloada_half" + n, flags, &VECTOR_LOAD_HALF_FUNCTION, "", "test_aligned" + n,
-            {toBufferParameter(std::vector<uint32_t>(halfInputValues.size(), 0x42)),
-                toBufferParameter(std::vector<uint16_t>{halfInputValues})},
-            calculateDimensions(halfInputValues.size(), vectorSize == 3 ? 4 : vectorSize),
-            {checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(0, std::vector<uint32_t>{floatOutputValues})}});
+        {
+            TestDataBuilder<Buffer<uint32_t>, Buffer<uint16_t>> builder(
+                "vloada_half" + n, VECTOR_LOAD_HALF_FUNCTION, "test_aligned" + n);
+            builder.setFlags(flags);
+            builder.calculateDimensions(halfInputValues.size(), vectorSize == 3 ? 4 : vectorSize);
+            builder.allocateParameter<0>(halfInputValues.size(), 0x42);
+            builder.setParameter<1>(std::vector<uint16_t>(halfInputValues));
+            builder.checkParameterEquals<0, HexPrinter<uint32_t>>(std::vector<uint32_t>(floatOutputValues));
+        }
 
         for(auto roundingMode : std::vector<std::pair<std::string, uint16_t (*)(uint32_t)>>{
                 {"" /* default rounding mode which is CL_FP_ROUND_TO_ZERO */, roundFloatToHalf<RoundToZero>},
@@ -753,13 +796,15 @@ static void registerHalfTests()
                 {"_rtn", roundFloatToHalf<RoundToNegativeInfinity>},
             })
         {
-            registerTest(TestData{"vstore_half" + n + roundingMode.first, flags, &VECTOR_STORE_HALF_FUNCTION,
-                "-DROUNDING=" + roundingMode.first, "test" + n,
-                {toBufferParameter(std::vector<uint16_t>(floatInputValues.size(), 0x42)),
-                    toBufferParameter(std::vector<uint32_t>{floatInputValues})},
-                calculateDimensions(floatInputValues.size(), vectorSize),
-                {checkParameterEquals<uint16_t, HexPrinter<uint16_t>>(
-                    0, transform<uint16_t>(floatInputValues, roundingMode.second))}});
+            TestDataBuilder<Buffer<uint16_t>, Buffer<uint32_t>> builder("vstore_half" + n + roundingMode.first,
+                VECTOR_STORE_HALF_FUNCTION, "test" + n, "-DROUNDING=" + roundingMode.first);
+            builder.setFlags(flags);
+            builder.calculateDimensions(numFloatElements, vectorSize);
+            builder.allocateParameter<0>(numFloatElements, 0x42);
+            builder.setParameter<1>(std::vector<uint32_t>(floatInputValues));
+            builder.checkParameterEquals<0, HexPrinter<uint16_t>>(transform<uint16_t>(
+                std::vector<uint32_t>(floatInputValues.begin(), floatInputValues.begin() + numFloatElements),
+                roundingMode.second));
         }
     }
 
@@ -768,18 +813,26 @@ static void registerHalfTests()
     while(vector3Result.size() % 3)
         vector3Result.pop_back();
 
-    registerTest(TestData{"vload_half_private", flags, &VECTOR_LOAD_HALF_FUNCTION, "", "test_vload_private",
-        {toBufferParameter(std::vector<uint16_t>{halfInputValues}), toBufferParameter(std::vector<uint32_t>(16, 0x42)),
-            toBufferParameter(std::vector<uint32_t>(16, 0x42)), toBufferParameter(std::vector<uint32_t>(16, 0x42)),
-            toBufferParameter(std::vector<uint32_t>(16, 0x42)), toBufferParameter(std::vector<uint32_t>(16, 0x42)),
-            toBufferParameter(std::vector<uint32_t>(16, 0x42))},
-        calculateDimensions(halfInputValues.size(), 16),
-        {checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(1, std::vector<uint32_t>{floatOutputValues}),
-            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(2, std::vector<uint32_t>{floatOutputValues}),
-            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(3, std::move(vector3Result)),
-            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(4, std::vector<uint32_t>{floatOutputValues}),
-            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(5, std::vector<uint32_t>{floatOutputValues}),
-            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(6, std::vector<uint32_t>{floatOutputValues})}});
+    {
+        TestDataBuilder<Buffer<uint16_t>, Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>,
+            Buffer<uint32_t>, Buffer<uint32_t>>
+            builder("vload_half_private", VECTOR_LOAD_HALF_FUNCTION, "test_vload_private");
+        builder.setFlags(flags);
+        builder.calculateDimensions(halfInputValues.size(), 16);
+        builder.setParameter<0>(std::vector<uint16_t>(halfInputValues));
+        builder.allocateParameter<1>(16, 0x42);
+        builder.allocateParameter<2>(16, 0x42);
+        builder.allocateParameter<3>(15, 0x42);
+        builder.allocateParameter<4>(16, 0x42);
+        builder.allocateParameter<5>(16, 0x42);
+        builder.allocateParameter<6>(16, 0x42);
+        builder.checkParameterEquals<1, HexPrinter<uint32_t>>(std::vector<uint32_t>(floatOutputValues));
+        builder.checkParameterEquals<2, HexPrinter<uint32_t>>(std::vector<uint32_t>(floatOutputValues));
+        builder.checkParameterEquals<3, HexPrinter<uint32_t>>(std::move(vector3Result));
+        builder.checkParameterEquals<4, HexPrinter<uint32_t>>(std::vector<uint32_t>(floatOutputValues));
+        builder.checkParameterEquals<5, HexPrinter<uint32_t>>(std::vector<uint32_t>(floatOutputValues));
+        builder.checkParameterEquals<6, HexPrinter<uint32_t>>(std::vector<uint32_t>(floatOutputValues));
+    }
 
     // vloada_half aligns to 4-elements, but only reads/writes 3 elements, so we do not convert every 4th value, but
     // write compacted
@@ -790,18 +843,26 @@ static void registerHalfTests()
             vector3Result.erase(vector3Result.begin() + static_cast<ssize_t>(i));
     }
 
-    registerTest(TestData{"vloada_half_private", flags, &VECTOR_LOAD_HALF_FUNCTION, "", "test_vloada_private",
-        {toBufferParameter(std::vector<uint16_t>{halfInputValues}), toBufferParameter(std::vector<uint32_t>(16, 0x42)),
-            toBufferParameter(std::vector<uint32_t>(16, 0x42)), toBufferParameter(std::vector<uint32_t>(16, 0x42)),
-            toBufferParameter(std::vector<uint32_t>(16, 0x42)), toBufferParameter(std::vector<uint32_t>(16, 0x42)),
-            toBufferParameter(std::vector<uint32_t>(16, 0x42))},
-        calculateDimensions(halfInputValues.size(), 16),
-        {checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(1, std::vector<uint32_t>{floatOutputValues}),
-            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(2, std::vector<uint32_t>{floatOutputValues}),
-            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(3, std::move(vector3Result)),
-            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(4, std::vector<uint32_t>{floatOutputValues}),
-            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(5, std::vector<uint32_t>{floatOutputValues}),
-            checkParameterEquals<uint32_t, HexPrinter<uint32_t>>(6, std::vector<uint32_t>{floatOutputValues})}});
+    {
+        TestDataBuilder<Buffer<uint16_t>, Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>,
+            Buffer<uint32_t>, Buffer<uint32_t>>
+            builder("vloada_half_private", VECTOR_LOAD_HALF_FUNCTION, "test_vloada_private");
+        builder.setFlags(flags);
+        builder.calculateDimensions(halfInputValues.size(), 16);
+        builder.setParameter<0>(std::move(halfInputValues));
+        builder.allocateParameter<1>(16, 0x42);
+        builder.allocateParameter<2>(16, 0x42);
+        builder.allocateParameter<3>(12, 0x42);
+        builder.allocateParameter<4>(16, 0x42);
+        builder.allocateParameter<5>(16, 0x42);
+        builder.allocateParameter<6>(16, 0x42);
+        builder.checkParameterEquals<1, HexPrinter<uint32_t>>(std::vector<uint32_t>(floatOutputValues));
+        builder.checkParameterEquals<2, HexPrinter<uint32_t>>(std::vector<uint32_t>(floatOutputValues));
+        builder.checkParameterEquals<3, HexPrinter<uint32_t>>(std::move(vector3Result));
+        builder.checkParameterEquals<4, HexPrinter<uint32_t>>(std::vector<uint32_t>(floatOutputValues));
+        builder.checkParameterEquals<5, HexPrinter<uint32_t>>(std::vector<uint32_t>(floatOutputValues));
+        builder.checkParameterEquals<6, HexPrinter<uint32_t>>(std::vector<uint32_t>(floatOutputValues));
+    }
 }
 
 template <typename T, std::size_t N>
@@ -833,11 +894,12 @@ void test_data::registerVectorTests()
     {
         for(auto num : {2u, 4u, 8u, 16u})
         {
-            registerTest(TestData{"vector_assembly_" + pair.first + std::to_string(num), DataFilter::VECTOR_OPERATIONS,
-                &VECTOR_ASSEMBLY_FUNCTION,
-                "-DTYPE=uint" + std::to_string(num) + " -DSOURCES=" + to_string(pair.second, num), "test",
-                {toBufferParameter(std::vector<uint32_t>(num, 0x42))}, toDimensions(1),
-                {checkParameterEquals(0, std::vector<uint32_t>(pair.second.begin(), pair.second.begin() + num))}});
+            TestDataBuilder<Buffer<uint32_t>> builder("vector_assembly_" + pair.first + std::to_string(num),
+                VECTOR_ASSEMBLY_FUNCTION, "test",
+                "-DTYPE=uint" + std::to_string(num) + " -DSOURCES=" + to_string(pair.second, num));
+            builder.setFlags(DataFilter::VECTOR_OPERATIONS);
+            builder.allocateParameter<0>(num, 0x42);
+            builder.checkParameterEquals<0>(std::vector<uint32_t>(pair.second.begin(), pair.second.begin() + num));
         }
     }
 }

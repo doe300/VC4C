@@ -193,106 +193,136 @@ void test_data::registerOpenCLCommonFunctionTests()
     auto smallRandomData1 = toRandom<float>(64, false, -128.0f, 128.0f);
     auto smallRandomData2 = toRandom<float>(64, true, -128.0f, 128.0f);
 
-    // maximum error of 0 ULP not in OpenCL 1.2 standard, but in latest
-    registerTest(TestData{"clamp", DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES, &TERNARY_FUNCTION,
-        "-DFUNC=clamp", "test",
-        {toBufferParameter(std::vector<float>(values.size(), 42.0f)), toBufferParameter(std::vector<float>(values)),
-            toBufferParameter(toRange<float>(-16.0f, 0.0f)), toBufferParameter(toRange<float>(0.0f, 16.0f))},
-        calculateDimensions(values.size()),
-        {checkParameterEquals(0,
-            std::vector<float>{0.0f, 0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 6.0f, -9.0f, limits::min(), -limits::min(), 10.0f,
-                -5.0f, 12.0f, -3.0f, -2.0f, -1.0f})}});
+    {
+        // maximum error of 0 ULP not in OpenCL 1.2 standard, but in latest
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            "clamp", TERNARY_FUNCTION, "test", "-DFUNC=clamp");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES);
+        builder.calculateDimensions(values.size());
+        builder.allocateParameter<0>(values.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(values));
+        builder.setParameter<2>(toRange<float>(-16.0f, 0.0f));
+        builder.setParameter<3>(toRange<float>(0.0f, 16.0f));
+        builder.checkParameterEquals<0>({0.0f, 0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 6.0f, -9.0f, limits::min(),
+            -limits::min(), 10.0f, -5.0f, 12.0f, -3.0f, -2.0f, -1.0f});
+    }
 
-    // maximum error of 2 ULP not in OpenCL 1.2 standard, but in latest
-    registerTest(TestData{"degrees", DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES | DataFilter::DISABLED,
-        &UNARY_FUNCTION, "-DFUNC=degrees", "test",
-        {toBufferParameter(std::vector<float>(values.size(), 42.0f)), toBufferParameter(std::vector<float>(values))},
-        calculateDimensions(values.size()),
-        {checkParameter<CompareULP<2>>(0, transform<float>(values, [](float val) -> float {
+    {
+        // maximum error of 2 ULP not in OpenCL 1.2 standard, but in latest
+        TestDataBuilder<Buffer<float>, Buffer<float>> builder("degrees", UNARY_FUNCTION, "test", "-DFUNC=degrees");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES | DataFilter::DISABLED);
+        builder.calculateDimensions(values.size());
+        builder.allocateParameter<0>(values.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(values));
+        builder.checkParameter<0, CompareULP<2>>(transform<float>(values, [](float val) -> float {
             // FIXME is not, C99 refers to IEEE 754 which states in section 6.2: "For an operation with quiet NaN
             // inputs, other than maximum and minimum operations,if a floating-point result is to be delivered the
             // result shall be a quiet NaN which should be one of the inputNaNs."
             return val * 57.295780181884765625f;
-        }))}});
+        }));
+    }
 
-    // maximum error of 0 ULP not in OpenCL 1.2 standard, but in latest
-    // NOTE: we do not check NaN behavior for max/min, since it is undefined
-    registerTest(TestData{"maxf", DataFilter::FLOAT_ARITHMETIC, &BINARY_FUNCTION, "-DFUNC=max", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size(), 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0)),
-            toBufferParameter(std::vector<float>(smallRandomData1))},
-        calculateDimensions(smallRandomData0.size()),
-        {checkParameterEquals(0, transform<float>(smallRandomData0, smallRandomData1, [](float a, float b) -> float {
-            return std::max(a, b);
-        }))}});
+    {
+        // maximum error of 0 ULP not in OpenCL 1.2 standard, but in latest
+        // NOTE: we do not check NaN behavior for max/min, since it is undefined
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            "maxf", BINARY_FUNCTION, "test", "-DFUNC=max");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size());
+        builder.allocateParameter<0>(smallRandomData0.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.setParameter<2>(std::vector<float>(smallRandomData1));
+        builder.checkParameterEquals<0>(transform<float>(
+            smallRandomData0, smallRandomData1, [](float a, float b) -> float { return std::max(a, b); }));
+    }
 
-    // maximum error of 0 ULP not in OpenCL 1.2 standard, but in latest
-    // NOTE: we do not check NaN behavior for max/min, since it is undefined
-    registerTest(TestData{"minf", DataFilter::FLOAT_ARITHMETIC, &BINARY_FUNCTION, "-DFUNC=min", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size(), 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0)),
-            toBufferParameter(std::vector<float>(smallRandomData1))},
-        calculateDimensions(smallRandomData0.size()),
-        {checkParameterEquals(0, transform<float>(smallRandomData0, smallRandomData1, [](float a, float b) -> float {
-            return std::min(a, b);
-        }))}});
+    {
+        // maximum error of 0 ULP not in OpenCL 1.2 standard, but in latest
+        // NOTE: we do not check NaN behavior for max/min, since it is undefined
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            "minf", BINARY_FUNCTION, "test", "-DFUNC=min");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size());
+        builder.allocateParameter<0>(smallRandomData0.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.setParameter<2>(std::vector<float>(smallRandomData1));
+        builder.checkParameterEquals<0>(transform<float>(
+            smallRandomData0, smallRandomData1, [](float a, float b) -> float { return std::min(a, b); }));
+    }
 
-    // maximum error not in OpenCL 1.2 standard, but in latest
-    // for "full profile" it states: absolute error tolerance of 1e-3, for "embedded profile", the allowed error is
-    // implementation defined
-    // the third parameter must be in the range [0.0, 1.0], otherwise the result is UB
-    auto normalizedValues = transform<float>(smallRandomData2, [](float f) { return std::abs(f) / 128.0f; });
-    registerTest(TestData{"mix", DataFilter::FLOAT_ARITHMETIC, &TERNARY_FUNCTION, "-DFUNC=mix", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size(), 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0)),
-            toBufferParameter(std::vector<float>(smallRandomData1)),
-            toBufferParameter(std::vector<float>(normalizedValues))},
-        calculateDimensions(smallRandomData0.size()),
-        {checkParameter<CompareAbsoluteError>(0,
+    {
+        // maximum error not in OpenCL 1.2 standard, but in latest
+        // for "full profile" it states: absolute error tolerance of 1e-3, for "embedded profile", the allowed error is
+        // implementation defined
+        // the third parameter must be in the range [0.0, 1.0], otherwise the result is UB
+        auto normalizedValues = transform<float>(smallRandomData2, [](float f) { return std::abs(f) / 128.0f; });
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            "mix", TERNARY_FUNCTION, "test", "-DFUNC=mix");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size());
+        builder.allocateParameter<0>(smallRandomData0.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.setParameter<2>(std::vector<float>(smallRandomData1));
+        builder.setParameter<3>(std::vector<float>(normalizedValues));
+        builder.checkParameter<0, CompareAbsoluteError>(
             transform<float>(smallRandomData0, smallRandomData1, normalizedValues,
                 [](float a, float b, float c) -> float { return a + (b - a) * c; }),
-            CompareAbsoluteError{1e-3f})}});
+            CompareAbsoluteError{1e-3f});
+    }
 
-    // maximum error of 2 ULP not in OpenCL 1.2 standard, but in latest
-    registerTest(TestData{"radians", DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES | DataFilter::DISABLED,
-        &UNARY_FUNCTION, "-DFUNC=radians", "test",
-        {toBufferParameter(std::vector<float>(values.size(), 42.0f)), toBufferParameter(std::vector<float>(values))},
-        calculateDimensions(values.size()),
-        {checkParameter<CompareULP<2>>(0,
-            transform<float>(values, [](float val) -> float { return val * (static_cast<float>(M_PI) / 180.f); }))}});
+    {
+        // maximum error of 2 ULP not in OpenCL 1.2 standard, but in latest
+        TestDataBuilder<Buffer<float>, Buffer<float>> builder("radians", UNARY_FUNCTION, "test", "-DFUNC=radians");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES | DataFilter::DISABLED);
+        builder.calculateDimensions(values.size());
+        builder.allocateParameter<0>(values.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(values));
+        builder.checkParameter<0, CompareULP<2>>(
+            transform<float>(values, [](float val) -> float { return val * (static_cast<float>(M_PI) / 180.f); }));
+    }
 
-    // maximum error of 0 ULP not in OpenCL 1.2 standard, but in latest
-    registerTest(TestData{"step", DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES, &BINARY_FUNCTION,
-        "-DFUNC=step", "test",
-        {toBufferParameter(std::vector<float>(productLeft.size(), 42.0f)),
-            toBufferParameter(std::vector<float>(productLeft)), toBufferParameter(std::vector<float>(productRight))},
-        calculateDimensions(productLeft.size()),
-        {checkParameterEquals(0, transform<float>(productLeft, productRight, [](float a, float b) -> float {
-            return b < a ? 0.0f : 1.0f;
-        }))}});
+    {
+        // maximum error of 0 ULP not in OpenCL 1.2 standard, but in latest
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            "step", BINARY_FUNCTION, "test", "-DFUNC=step");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES);
+        builder.calculateDimensions(productLeft.size());
+        builder.allocateParameter<0>(productLeft.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.checkParameterEquals<0>(
+            transform<float>(productLeft, productRight, [](float a, float b) -> float { return b < a ? 0.0f : 1.0f; }));
+    }
 
-    // TODO result mismatch (ULP)
-    // OpenCL 1.2 specification: "Results are undefined if edge0 >= edge1 or if x, edge0 or edge1 is a NaN."
-    auto minValues =
-        transform<float>(smallRandomData0, smallRandomData1, [](float a, float b) -> float { return std::min(a, b); });
-    auto maxValues =
-        transform<float>(smallRandomData0, smallRandomData1, [](float a, float b) -> float { return std::max(a, b); });
-    registerTest(TestData{"smoothstep", DataFilter::DISABLED | DataFilter::FLOAT_ARITHMETIC, &TERNARY_FUNCTION,
-        "-DFUNC=smoothstep", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size(), 42.0f)),
-            toBufferParameter(std::vector<float>(minValues)), toBufferParameter(std::vector<float>(maxValues)),
-            toBufferParameter(std::vector<float>(smallRandomData2))},
-        calculateDimensions(smallRandomData0.size()),
-        {checkParameter<CompareAbsoluteError>(
-            0, transform<float>(minValues, maxValues, values, smoothstep), CompareAbsoluteError{1e-5f})}});
+    {
+        // TODO result mismatch (ULP)
+        // OpenCL 1.2 specification: "Results are undefined if edge0 >= edge1 or if x, edge0 or edge1 is a NaN."
+        auto minValues = transform<float>(
+            smallRandomData0, smallRandomData1, [](float a, float b) -> float { return std::min(a, b); });
+        auto maxValues = transform<float>(
+            smallRandomData0, smallRandomData1, [](float a, float b) -> float { return std::max(a, b); });
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            "smoothstep", TERNARY_FUNCTION, "test", "-DFUNC=smoothstep");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC | DataFilter::DISABLED);
+        builder.calculateDimensions(smallRandomData0.size());
+        builder.allocateParameter<0>(smallRandomData0.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(minValues));
+        builder.setParameter<2>(std::vector<float>(maxValues));
+        builder.setParameter<3>(std::vector<float>(smallRandomData2));
+        builder.checkParameter<0, CompareAbsoluteError>(
+            transform<float>(minValues, maxValues, values, smoothstep), CompareAbsoluteError{1e-5f});
+    }
 
-    // maximum error of 0 ULP not in OpenCL 1.2 standard, but in latest
-    registerTest(TestData{"sign", DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES, &UNARY_FUNCTION,
-        "-DFUNC=sign", "test",
-        {toBufferParameter(std::vector<float>(values.size(), 42.0f)), toBufferParameter(std::vector<float>(values))},
-        calculateDimensions(values.size()), {checkParameterEquals(0, transform<float>(values, [](float a) -> float {
-            return (std::signbit(a) ? -1.0f : 1.0f) * (std::abs(a) > 0 ? 1.0f : 0.0f);
-        }))}});
+    {
+        // maximum error of 0 ULP not in OpenCL 1.2 standard, but in latest
+        TestDataBuilder<Buffer<float>, Buffer<float>> builder("sign", UNARY_FUNCTION, "test", "-DFUNC=sign");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC | DataFilter::CORNER_CASES);
+        builder.calculateDimensions(values.size());
+        builder.allocateParameter<0>(values.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(values));
+        builder.checkParameterEquals<0>(transform<float>(values,
+            [](float a) -> float { return (std::signbit(a) ? -1.0f : 1.0f) * (std::abs(a) > 0 ? 1.0f : 0.0f); }));
+    }
 }
 
 void test_data::registerOpenCLGeometricFunctionTests()
@@ -300,152 +330,210 @@ void test_data::registerOpenCLGeometricFunctionTests()
     // TODO add corner case/large value tests
     auto smallRandomData0 = toRandom<float>(64, true, -128.0f, 128.0f);
     auto smallRandomData1 = toRandom<float>(64, true, -128.0f, 128.0f);
+    auto vector3Size = smallRandomData0.size() / 3u * 3u;
+    std::vector<float> smallRandomData0AlignedTo3(
+        smallRandomData0.begin(), smallRandomData0.begin() + static_cast<std::ptrdiff_t>(vector3Size));
 
-    registerTest(TestData{"cross3", DataFilter::FLOAT_ARITHMETIC, &BINARY_GROUPED_FUNCTION,
-        "-DOUT=float3 -DIN0=float3 -DIN1=float3 -DFUNC=cross -DTRIPLE=3 -DTYPE=float", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size(), 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0)),
-            toBufferParameter(std::vector<float>(smallRandomData1))},
-        calculateDimensions(smallRandomData0.size(), 3),
-        {checkParameter<CompareDynamicError>(0, transform<float, 3>(smallRandomData0, smallRandomData1, cross3),
-            CompareDynamicError{calculateCrossAllowedErrors<3>(smallRandomData0, smallRandomData1)})}});
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>> builder("cross3", BINARY_GROUPED_FUNCTION, "test",
+            "-DOUT=float3 -DIN0=float3 -DIN1=float3 -DFUNC=cross -DTRIPLE=3 -DTYPE=float");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(vector3Size, 3);
+        builder.allocateParameter<0>(vector3Size, 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.setParameter<2>(std::vector<float>(smallRandomData1));
+        builder.checkParameter<0, CompareDynamicError>(
+            transform<float, 3>(smallRandomData0AlignedTo3, smallRandomData1, cross3),
+            CompareDynamicError{calculateCrossAllowedErrors<3>(smallRandomData0AlignedTo3, smallRandomData1)});
+    }
 
-    registerTest(TestData{"cross4", DataFilter::FLOAT_ARITHMETIC, &BINARY_GROUPED_FUNCTION,
-        "-DOUT=float4 -DIN0=float4 -DIN1=float4 -DFUNC=cross", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size(), 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0)),
-            toBufferParameter(std::vector<float>(smallRandomData1))},
-        calculateDimensions(smallRandomData0.size(), 4),
-        {checkParameter<CompareDynamicError>(0, transform<float, 4>(smallRandomData0, smallRandomData1, cross4),
-            CompareDynamicError{calculateCrossAllowedErrors<4>(smallRandomData0, smallRandomData1)})}});
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            "cross4", BINARY_GROUPED_FUNCTION, "test", "-DOUT=float4 -DIN0=float4 -DIN1=float4 -DFUNC=cross");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size(), 4);
+        builder.allocateParameter<0>(smallRandomData0.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.setParameter<2>(std::vector<float>(smallRandomData1));
+        builder.checkParameter<0, CompareDynamicError>(transform<float, 4>(smallRandomData0, smallRandomData1, cross4),
+            CompareDynamicError{calculateCrossAllowedErrors<4>(smallRandomData0, smallRandomData1)});
+    }
 
-    // for allowed error, see latest OpenCL C specification: max * max * (2 * |vector| - 1) * FLT_EPSILON
-    registerTest(TestData{"dot1", DataFilter::FLOAT_ARITHMETIC, &BINARY_GROUPED_FUNCTION,
-        "-DOUT=float -DIN0=float -DIN1=float -DFUNC=dot", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size(), 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0)),
-            toBufferParameter(std::vector<float>(smallRandomData1))},
-        calculateDimensions(smallRandomData0.size(), 1),
-        {checkParameter<CompareDynamicError>(0, reduce<float, 1>(smallRandomData0, smallRandomData1, dot),
-            CompareDynamicError{calculateDotAllowedErrors<1>(smallRandomData0, smallRandomData1)})}});
+    {
+        // for allowed error, see latest OpenCL C specification: max * max * (2 * |vector| - 1) * FLT_EPSILON
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            "dot1", BINARY_GROUPED_FUNCTION, "test", "-DOUT=float -DIN0=float -DIN1=float -DFUNC=dot");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size(), 1);
+        builder.allocateParameter<0>(smallRandomData0.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.setParameter<2>(std::vector<float>(smallRandomData1));
+        builder.checkParameter<0, CompareDynamicError>(reduce<float, 1>(smallRandomData0, smallRandomData1, dot),
+            CompareDynamicError{calculateDotAllowedErrors<1>(smallRandomData0, smallRandomData1)});
+    }
 
-    registerTest(TestData{"dot2", DataFilter::FLOAT_ARITHMETIC, &BINARY_GROUPED_FUNCTION,
-        "-DOUT=float -DIN0=float2 -DIN1=float2 -DFUNC=dot", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size() / 2, 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0)),
-            toBufferParameter(std::vector<float>(smallRandomData1))},
-        calculateDimensions(smallRandomData0.size(), 2),
-        {checkParameter<CompareDynamicError>(0, reduce<float, 2>(smallRandomData0, smallRandomData1, dot),
-            CompareDynamicError{calculateDotAllowedErrors<2>(smallRandomData0, smallRandomData1)})}});
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            "dot2", BINARY_GROUPED_FUNCTION, "test", "-DOUT=float -DIN0=float2 -DIN1=float2 -DFUNC=dot");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size(), 2);
+        builder.allocateParameter<0>(smallRandomData0.size() / 2, 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.setParameter<2>(std::vector<float>(smallRandomData1));
+        builder.checkParameter<0, CompareDynamicError>(reduce<float, 2>(smallRandomData0, smallRandomData1, dot),
+            CompareDynamicError{calculateDotAllowedErrors<2>(smallRandomData0, smallRandomData1)});
+    }
 
-    registerTest(TestData{"dot3", DataFilter::FLOAT_ARITHMETIC, &BINARY_GROUPED_FUNCTION,
-        "-DOUT=float -DIN0=float3 -DIN1=float3 -DFUNC=dot -DTRIPLE=1 -DTYPE=float", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size() / 3, 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0)),
-            toBufferParameter(std::vector<float>(smallRandomData1))},
-        calculateDimensions(smallRandomData0.size(), 3),
-        {checkParameter<CompareDynamicError>(0, reduce<float, 3>(smallRandomData0, smallRandomData1, dot),
-            CompareDynamicError{calculateDotAllowedErrors<3>(smallRandomData0, smallRandomData1)})}});
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>> builder("dot3", BINARY_GROUPED_FUNCTION, "test",
+            "-DOUT=float -DIN0=float3 -DIN1=float3 -DFUNC=dot -DTRIPLE=1 -DTYPE=float");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(vector3Size, 3);
+        builder.allocateParameter<0>(smallRandomData0.size() / 3, 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.setParameter<2>(std::vector<float>(smallRandomData1));
+        builder.checkParameter<0, CompareDynamicError>(reduce<float, 3>(smallRandomData0, smallRandomData1, dot),
+            CompareDynamicError{calculateDotAllowedErrors<3>(smallRandomData0, smallRandomData1)});
+    }
 
-    registerTest(TestData{"dot4", DataFilter::FLOAT_ARITHMETIC, &BINARY_GROUPED_FUNCTION,
-        "-DOUT=float -DIN0=float4 -DIN1=float4 -DFUNC=dot", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size() / 4, 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0)),
-            toBufferParameter(std::vector<float>(smallRandomData1))},
-        calculateDimensions(smallRandomData0.size(), 4),
-        {checkParameter<CompareDynamicError>(0, reduce<float, 4>(smallRandomData0, smallRandomData1, dot),
-            CompareDynamicError{calculateDotAllowedErrors<4>(smallRandomData0, smallRandomData1)})}});
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            "dot4", BINARY_GROUPED_FUNCTION, "test", "-DOUT=float -DIN0=float4 -DIN1=float4 -DFUNC=dot");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size(), 4);
+        builder.allocateParameter<0>(smallRandomData0.size() / 4, 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.setParameter<2>(std::vector<float>(smallRandomData1));
+        builder.checkParameter<0, CompareDynamicError>(reduce<float, 4>(smallRandomData0, smallRandomData1, dot),
+            CompareDynamicError{calculateDotAllowedErrors<4>(smallRandomData0, smallRandomData1)});
+    }
 
-    // for ULP, see latest OpenCL specification: 4 ("sqrt") + (1.5 * |vector|) + (0.5 * (|vector| - 1))
-    registerTest(TestData{"distance1", DataFilter::FLOAT_ARITHMETIC, &BINARY_GROUPED_FUNCTION,
-        "-DOUT=float -DIN0=float -DIN1=float -DFUNC=distance", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size(), 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0)),
-            toBufferParameter(std::vector<float>(smallRandomData1))},
-        calculateDimensions(smallRandomData0.size(), 1),
-        {checkParameter<CompareULP<5>>(0, reduce<float, 1>(smallRandomData0, smallRandomData1, distance))}});
+    {
+        // for ULP, see latest OpenCL specification: 4 ("sqrt") + (1.5 * |vector|) + (0.5 * (|vector| - 1))
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            "distance1", BINARY_GROUPED_FUNCTION, "test", "-DOUT=float -DIN0=float -DIN1=float -DFUNC=distance");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size(), 1);
+        builder.allocateParameter<0>(smallRandomData0.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.setParameter<2>(std::vector<float>(smallRandomData1));
+        builder.checkParameter<0, CompareULP<5>>(reduce<float, 1>(smallRandomData0, smallRandomData1, distance));
+    }
 
-    registerTest(TestData{"distance2", DataFilter::FLOAT_ARITHMETIC, &BINARY_GROUPED_FUNCTION,
-        "-DOUT=float -DIN0=float2 -DIN1=float2 -DFUNC=distance", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size() / 2, 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0)),
-            toBufferParameter(std::vector<float>(smallRandomData1))},
-        calculateDimensions(smallRandomData0.size(), 2),
-        {checkParameter<CompareULP<7>>(0, reduce<float, 2>(smallRandomData0, smallRandomData1, distance))}});
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            "distance2", BINARY_GROUPED_FUNCTION, "test", "-DOUT=float -DIN0=float2 -DIN1=float2 -DFUNC=distance");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size(), 2);
+        builder.allocateParameter<0>(smallRandomData0.size() / 2, 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.setParameter<2>(std::vector<float>(smallRandomData1));
+        builder.checkParameter<0, CompareULP<7>>(reduce<float, 2>(smallRandomData0, smallRandomData1, distance));
+    }
 
-    registerTest(TestData{"distance3", DataFilter::FLOAT_ARITHMETIC, &BINARY_GROUPED_FUNCTION,
-        "-DOUT=float -DIN0=float3 -DIN1=float3 -DFUNC=distance -DTRIPLE=1 -DTYPE=float", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size() / 3, 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0)),
-            toBufferParameter(std::vector<float>(smallRandomData1))},
-        calculateDimensions(smallRandomData0.size(), 3),
-        {checkParameter<CompareULP<9>>(0, reduce<float, 3>(smallRandomData0, smallRandomData1, distance))}});
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>> builder("distance3", BINARY_GROUPED_FUNCTION,
+            "test", "-DOUT=float -DIN0=float3 -DIN1=float3 -DFUNC=distance -DTRIPLE=1 -DTYPE=float");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(vector3Size, 3);
+        builder.allocateParameter<0>(smallRandomData0.size() / 3, 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.setParameter<2>(std::vector<float>(smallRandomData1));
+        builder.checkParameter<0, CompareULP<9>>(reduce<float, 3>(smallRandomData0, smallRandomData1, distance));
+    }
 
-    registerTest(TestData{"distance4", DataFilter::FLOAT_ARITHMETIC, &BINARY_GROUPED_FUNCTION,
-        "-DOUT=float -DIN0=float4 -DIN1=float4 -DFUNC=distance", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size() / 4, 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0)),
-            toBufferParameter(std::vector<float>(smallRandomData1))},
-        calculateDimensions(smallRandomData0.size(), 4),
-        {checkParameter<CompareULP<11>>(0, reduce<float, 4>(smallRandomData0, smallRandomData1, distance))}});
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            "distance4", BINARY_GROUPED_FUNCTION, "test", "-DOUT=float -DIN0=float4 -DIN1=float4 -DFUNC=distance");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size(), 4);
+        builder.allocateParameter<0>(smallRandomData0.size() / 4, 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.setParameter<2>(std::vector<float>(smallRandomData1));
+        builder.checkParameter<0, CompareULP<11>>(reduce<float, 4>(smallRandomData0, smallRandomData1, distance));
+    }
 
-    // for ULP, see latest OpenCL specification: 4 ("sqrt") + 0.5 * ((0.5 * |vector|) + (0.5 * (|vector| - 1)))
-    registerTest(TestData{"length1", DataFilter::FLOAT_ARITHMETIC, &UNARY_GROUPED_FUNCTION,
-        "-DOUT=float -DIN=float -DFUNC=length", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size(), 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0))},
-        calculateDimensions(smallRandomData0.size(), 1),
-        {checkParameter<CompareULP<4>>(0, reduce<float, 1>(smallRandomData0, length))}});
+    {
+        // for ULP, see latest OpenCL specification: 4 ("sqrt") + 0.5 * ((0.5 * |vector|) + (0.5 * (|vector| - 1)))
+        TestDataBuilder<Buffer<float>, Buffer<float>> builder(
+            "length1", UNARY_GROUPED_FUNCTION, "test", "-DOUT=float -DIN=float -DFUNC=length");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size(), 1);
+        builder.allocateParameter<0>(smallRandomData0.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.checkParameter<0, CompareULP<4>>(reduce<float, 1>(smallRandomData0, length));
+    }
 
-    registerTest(TestData{"length2", DataFilter::FLOAT_ARITHMETIC, &UNARY_GROUPED_FUNCTION,
-        "-DOUT=float -DIN=float2 -DFUNC=length", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size() / 2, 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0))},
-        calculateDimensions(smallRandomData0.size(), 2),
-        {checkParameter<CompareULP<5>>(0, reduce<float, 2>(smallRandomData0, length))}});
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>> builder(
+            "length2", UNARY_GROUPED_FUNCTION, "test", "-DOUT=float -DIN=float2 -DFUNC=length");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size(), 2);
+        builder.allocateParameter<0>(smallRandomData0.size() / 2, 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.checkParameter<0, CompareULP<5>>(reduce<float, 2>(smallRandomData0, length));
+    }
 
-    registerTest(TestData{"length3", DataFilter::FLOAT_ARITHMETIC, &UNARY_GROUPED_FUNCTION,
-        "-DOUT=float -DIN=float3 -DFUNC=length -DTRIPLE=1 -DTYPE=float", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size() / 3, 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0))},
-        calculateDimensions(smallRandomData0.size(), 3),
-        {checkParameter<CompareULP<5>>(0, reduce<float, 3>(smallRandomData0, length))}});
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>> builder(
+            "length3", UNARY_GROUPED_FUNCTION, "test", "-DOUT=float -DIN=float3 -DFUNC=length -DTRIPLE=1 -DTYPE=float");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(vector3Size, 3);
+        builder.allocateParameter<0>(smallRandomData0.size() / 3, 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.checkParameter<0, CompareULP<5>>(reduce<float, 3>(smallRandomData0, length));
+    }
 
-    registerTest(TestData{"length4", DataFilter::FLOAT_ARITHMETIC, &UNARY_GROUPED_FUNCTION,
-        "-DOUT=float -DIN=float4 -DFUNC=length", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size() / 4, 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0))},
-        calculateDimensions(smallRandomData0.size(), 4),
-        {checkParameter<CompareULP<6>>(0, reduce<float, 4>(smallRandomData0, length))}});
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>> builder(
+            "length4", UNARY_GROUPED_FUNCTION, "test", "-DOUT=float -DIN=float4 -DFUNC=length");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size(), 4);
+        builder.allocateParameter<0>(smallRandomData0.size() / 4, 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.checkParameter<0, CompareULP<6>>(reduce<float, 4>(smallRandomData0, length));
+    }
 
-    // ULP: sqrt + fdiv
-    // OpenCL specification, full profile: "2 + n ulp, for gentype with vector width n", embedded profile specifies
-    // "implementation defined"
-    registerTest(TestData{"normalize1", DataFilter::FLOAT_ARITHMETIC, &UNARY_GROUPED_FUNCTION,
-        "-DOUT=float -DIN=float -DFUNC=normalize", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size(), 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0))},
-        calculateDimensions(smallRandomData0.size(), 1),
-        {checkParameter<CompareULP<4>>(0, transform<float, 1>(smallRandomData0, normalize<1>))}});
+    {
+        // ULP: sqrt + fdiv
+        // OpenCL specification, full profile: "2 + n ulp, for gentype with vector width n", embedded profile specifies
+        // "implementation defined"
+        TestDataBuilder<Buffer<float>, Buffer<float>> builder(
+            "normalize1", UNARY_GROUPED_FUNCTION, "test", "-DOUT=float -DIN=float -DFUNC=normalize");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size(), 1);
+        builder.allocateParameter<0>(smallRandomData0.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.checkParameter<0, CompareULP<4>>(transform<float, 1>(smallRandomData0, normalize<1>));
+    }
 
-    registerTest(TestData{"normalize2", DataFilter::FLOAT_ARITHMETIC, &UNARY_GROUPED_FUNCTION,
-        "-DOUT=float2 -DIN=float2 -DFUNC=normalize", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size(), 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0))},
-        calculateDimensions(smallRandomData0.size(), 2),
-        {checkParameter<CompareULP<5>>(0, transform<float, 2>(smallRandomData0, normalize<2>))}});
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>> builder(
+            "normalize2", UNARY_GROUPED_FUNCTION, "test", "-DOUT=float2 -DIN=float2 -DFUNC=normalize");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size(), 2);
+        builder.allocateParameter<0>(smallRandomData0.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.checkParameter<0, CompareULP<5>>(transform<float, 2>(smallRandomData0, normalize<2>));
+    }
 
-    registerTest(TestData{"normalize3", DataFilter::FLOAT_ARITHMETIC, &UNARY_GROUPED_FUNCTION,
-        "-DOUT=float3 -DIN=float3 -DFUNC=normalize -DTRIPLE=3 -DTYPE=float", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size(), 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0))},
-        calculateDimensions(smallRandomData0.size(), 3),
-        {checkParameter<CompareULP<5>>(0, transform<float, 3>(smallRandomData0, normalize<3>))}});
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>> builder("normalize3", UNARY_GROUPED_FUNCTION, "test",
+            "-DOUT=float3 -DIN=float3 -DFUNC=normalize -DTRIPLE=3 -DTYPE=float");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(vector3Size, 3);
+        builder.allocateParameter<0>(vector3Size, 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.checkParameter<0, CompareULP<5>>(transform<float, 3>(smallRandomData0AlignedTo3, normalize<3>));
+    }
 
-    registerTest(TestData{"normalize4", DataFilter::FLOAT_ARITHMETIC, &UNARY_GROUPED_FUNCTION,
-        "-DOUT=float4 -DIN=float4 -DFUNC=normalize", "test",
-        {toBufferParameter(std::vector<float>(smallRandomData0.size(), 42.0f)),
-            toBufferParameter(std::vector<float>(smallRandomData0))},
-        calculateDimensions(smallRandomData0.size(), 4),
-        {checkParameter<CompareULP<6>>(0, transform<float, 4>(smallRandomData0, normalize<4>))}});
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>> builder(
+            "normalize4", UNARY_GROUPED_FUNCTION, "test", "-DOUT=float4 -DIN=float4 -DFUNC=normalize");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.calculateDimensions(smallRandomData0.size(), 4);
+        builder.allocateParameter<0>(smallRandomData0.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(smallRandomData0));
+        builder.checkParameter<0, CompareULP<6>>(transform<float, 4>(smallRandomData0, normalize<4>));
+    }
 }

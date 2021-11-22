@@ -279,505 +279,685 @@ static void registerPrivateAliasingTests(const std::string& typeName)
         auto bytesToRemove = (sizeof(T) * 16) % (accessType.second * 3);
         for(std::size_t i = 0; i < bytesToRemove; i += sizeof(T))
             vector3Result.pop_back();
-
-        std::vector<ResultVerification> loadChecks{
-            checkParameterEquals(1, std::vector<T>{result}),
-            checkParameterEquals(2, std::vector<T>{result}),
-        };
-        std::vector<ResultVerification> storeStridedChecks{
-            checkParameterEquals(1, maskOffOddEntries<T, 1>(data, accessType.second, T{0x42})),
-            checkParameterEquals(2, maskOffOddEntries<T, 2>(data, accessType.second, T{0x42})),
-        };
-        if(accessType.second <= sizeof(T) * 4)
-        {
-            auto vector3Size = vector3Result.size();
-            loadChecks.push_back(checkParameterEquals(3, std::move(vector3Result)));
-            storeStridedChecks.push_back(checkParameterEquals(3,
-                maskOffOddEntries<T, 3>(
-                    std::vector<T>(data.begin(), data.begin() + vector3Size), accessType.second, T{0x42})));
-            loadChecks.push_back(checkParameterEquals(4, std::vector<T>{result}));
-            storeStridedChecks.push_back(
-                checkParameterEquals(4, maskOffOddEntries<T, 4>(data, accessType.second, T{0x42})));
-        }
-        if(accessType.second <= sizeof(T) * 2)
-        {
-            loadChecks.push_back(checkParameterEquals(5, std::vector<T>{result}));
-            storeStridedChecks.push_back(
-                checkParameterEquals(5, maskOffOddEntries<T, 8>(data, accessType.second, T{0x42})));
-        }
-        if(accessType.second <= sizeof(T))
-        {
-            // we can't e.g. run the vload16 with 64-bit data type on 16 * 32-bit of data
-            loadChecks.push_back(checkParameterEquals(6, std::vector<T>{result}));
-            storeStridedChecks.push_back(
-                checkParameterEquals(6, maskOffOddEntries<T, 16>(data, accessType.second, T{0x42})));
-        }
-
-        auto storeChecks = loadChecks;
+        auto vector3Size = vector3Result.size();
 
         // XXX has compilation errors in llvm-spirv (on CI, newer local version compiles them correctly)
         auto flags = DataFilter::MEMORY_ACCESS | DataFilter::SPIRV_DISABLED;
 
-        registerTest(TestData{"vload_alias_private_register_" + typeName + "_to_" + accessType.first, flags,
-            &LOAD_PRIVATE_REGISTER_ALIAS, "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first, "test",
-            {toBufferParameter(std::vector<T>{data}), toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42))},
-            toDimensions(1), std::move(loadChecks)});
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>> loadBuilder(
+            "vload_alias_private_register_" + typeName + "_to_" + accessType.first, LOAD_PRIVATE_REGISTER_ALIAS, "test",
+            "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first);
+        loadBuilder.setFlags(flags);
+        loadBuilder.template setParameter<0>(std::vector<T>(data));
+        loadBuilder.template allocateParameter<1>(data.size(), 0x42);
+        loadBuilder.template allocateParameter<2>(data.size(), 0x42);
+        loadBuilder.template allocateParameter<3>(vector3Size, 0x42);
+        loadBuilder.template allocateParameter<4>(data.size(), 0x42);
+        loadBuilder.template allocateParameter<5>(data.size(), 0x42);
+        loadBuilder.template allocateParameter<6>(data.size(), 0x42);
 
-        registerTest(TestData{"vstore_alias_private_register_" + accessType.first + "_to_" + typeName, flags,
-            &STORE_PRIVATE_REGISTER_ALIAS, "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first, "test",
-            {toBufferParameter(std::vector<T>{data}), toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42))},
-            toDimensions(1), std::move(storeChecks)});
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>> storeBuilder(
+            "vstore_alias_private_register_" + accessType.first + "_to_" + typeName, STORE_PRIVATE_REGISTER_ALIAS,
+            "test", "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first);
+        storeBuilder.setFlags(flags);
+        storeBuilder.template setParameter<0>(std::vector<T>(data));
+        storeBuilder.template allocateParameter<1>(data.size(), 0x42);
+        storeBuilder.template allocateParameter<2>(data.size(), 0x42);
+        storeBuilder.template allocateParameter<3>(vector3Size, 0x42);
+        storeBuilder.template allocateParameter<4>(data.size(), 0x42);
+        storeBuilder.template allocateParameter<5>(data.size(), 0x42);
+        storeBuilder.template allocateParameter<6>(data.size(), 0x42);
 
-        // TODO fails for most 3-element vectors
-        registerTest(TestData{"vstore_alias_private_register_strided_" + accessType.first + "_to_" + typeName, flags,
-            &STORE_PRIVATE_REGISTER_ALIAS_STRIDED, "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first, "test",
-            {toBufferParameter(std::vector<T>{data}), toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42)),
-                toBufferParameter(std::vector<T>(data.size(), 0x42))},
-            toDimensions(1), std::move(storeStridedChecks)});
+        TestDataBuilder<Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>, Buffer<T>>
+            storeStridedBuilder("vstore_alias_private_register_strided_" + accessType.first + "_to_" + typeName,
+                STORE_PRIVATE_REGISTER_ALIAS_STRIDED, "test", "-DSTORAGE=" + typeName + " -DTYPE=" + accessType.first);
+        storeStridedBuilder.setFlags(flags);
+        storeStridedBuilder.template setParameter<0>(std::vector<T>(data));
+        storeStridedBuilder.template allocateParameter<1>(data.size(), 0x42);
+        storeStridedBuilder.template allocateParameter<2>(data.size(), 0x42);
+        storeStridedBuilder.template allocateParameter<3>(vector3Size, 0x42);
+        storeStridedBuilder.template allocateParameter<4>(data.size(), 0x42);
+        storeStridedBuilder.template allocateParameter<5>(data.size(), 0x42);
+        storeStridedBuilder.template allocateParameter<6>(data.size(), 0x42);
+
+        loadBuilder.template checkParameterEquals<1>(std::vector<T>{result});
+        loadBuilder.template checkParameterEquals<2>(std::vector<T>{result});
+        storeBuilder.template checkParameterEquals<1>(std::vector<T>{result});
+        storeBuilder.template checkParameterEquals<2>(std::vector<T>{result});
+        storeStridedBuilder.template checkParameterEquals<1>(maskOffOddEntries<T, 1>(data, accessType.second, T{0x42}));
+        storeStridedBuilder.template checkParameterEquals<2>(maskOffOddEntries<T, 2>(data, accessType.second, T{0x42}));
+
+        if(accessType.second <= sizeof(T) * 4)
+        {
+            loadBuilder.template checkParameterEquals<3>(std::vector<T>(vector3Result));
+            storeBuilder.template checkParameterEquals<3>(std::move(vector3Result));
+            storeStridedBuilder.template checkParameterEquals<3>(maskOffOddEntries<T, 3>(
+                std::vector<T>(data.begin(), data.begin() + vector3Size), accessType.second, T{0x42}));
+            loadBuilder.template checkParameterEquals<4>(std::vector<T>{result});
+            storeBuilder.template checkParameterEquals<4>(std::vector<T>{result});
+            storeStridedBuilder.template checkParameterEquals<4>(
+                maskOffOddEntries<T, 4>(data, accessType.second, T{0x42}));
+        }
+        if(accessType.second <= sizeof(T) * 2)
+        {
+            loadBuilder.template checkParameterEquals<5>(std::vector<T>{result});
+            storeBuilder.template checkParameterEquals<5>(std::vector<T>{result});
+            storeStridedBuilder.template checkParameterEquals<5>(
+                maskOffOddEntries<T, 8>(data, accessType.second, T{0x42}));
+        }
+        if(accessType.second <= sizeof(T))
+        {
+            // we can't e.g. run the vload16 with 64-bit data type on 16 * 32-bit of data
+            loadBuilder.template checkParameterEquals<6>(std::vector<T>{result});
+            storeBuilder.template checkParameterEquals<6>(std::vector<T>{result});
+            storeStridedBuilder.template checkParameterEquals<6>(
+                maskOffOddEntries<T, 16>(data, accessType.second, T{0x42}));
+        }
     }
 }
 
 void test_data::registerMemoryTests()
 {
-    registerTest(TestData{"pointer_cast", DataFilter::MEMORY_ACCESS, &CASTPOINTER, "-DTYPE=int16", "test",
-        {toBufferParameter(std::vector<uint32_t>(16 * 12, 0x42)), toBufferParameter(toRange<uint32_t>(0, 16 * 12))},
-        toDimensions(12), {checkParameterEquals(0, toRange<uint32_t>(0, 16 * 12))}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "pointer_cast", CASTPOINTER, "test", "-DTYPE=int16");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(12);
+        builder.allocateParameter<0>(16 * 12, 0x42);
+        builder.allocateParameterRange<1>(0, 16 * 12);
+        builder.checkParameterEquals<0>(toRange<uint32_t>(0, 16 * 12));
+    }
 
-    registerTest(TestData{"memory_copy_long", DataFilter::MEMORY_ACCESS, &COPY64BIT, "", "test_copy",
-        {toBufferParameter(std::vector<uint32_t>(16, 0x42)), toBufferParameter(toRange<uint32_t>(0, 16))},
-        toDimensions(8), {checkParameterEquals(0, toRange<uint32_t>(0, 16))}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>> builder("memory_copy_long", COPY64BIT, "test_copy");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(8);
+        builder.allocateParameter<0>(16, 0x42);
+        builder.setParameter<1>(toRange(0u, 16u));
+        builder.checkParameterEquals<0>(toRange(0u, 16u));
+    }
 
-    registerTest(TestData{"memory_read_write_long", DataFilter::MEMORY_ACCESS, &COPY64BIT, "", "test_load_store",
-        {toBufferParameter(std::vector<uint32_t>(16, 0x42)), toBufferParameter(toRange<uint32_t>(0, 16))},
-        toDimensions(8),
-        {checkParameterEquals(0, toRange<uint32_t>(0, 16)), checkParameterEquals(1, toRange<uint32_t>(0, 16))}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "memory_read_write_long", COPY64BIT, "test_load_store");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(8);
+        builder.allocateParameter<0>(16, 0x42);
+        builder.setParameter<1>(toRange(0u, 16u));
+        builder.checkParameterEquals<0>(toRange(0u, 16u));
+        builder.checkParameterEquals<1>(toRange(0u, 16u));
+    }
 
-    // covers 64-bit TMU read
-    registerTest(TestData{"memory_read_long_lower", DataFilter::MEMORY_ACCESS, &READ64BITSINGLEWORD, "", "test_lower",
-        {toBufferParameter(std::vector<uint32_t>(8, 0x42)), toBufferParameter(toRange<uint32_t>(0, 16)),
-            toBufferParameter(toRange<uint64_t>(0x0FF0000000000000, 0x0FF0000000000008))},
-        toDimensions(8), {checkParameterEquals(0, std::vector<uint32_t>{0, 3, 6, 9, 12, 15, 18, 21})}});
+    {
+        // covers 64-bit TMU read
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint64_t>> builder(
+            "memory_read_long_lower", READ64BITSINGLEWORD, "test_lower");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(8);
+        builder.allocateParameter<0>(8, 0x42);
+        builder.setParameter<1>(toRange(0u, 16u));
+        builder.setParameter<2>(toRange<uint64_t>(0x0FF0000000000000, 0x0FF0000000000008));
+        builder.checkParameterEquals<0>({0, 3, 6, 9, 12, 15, 18, 21});
+    }
 
-    // covers 64-bit TMU read as well as lshr %src.upper >> 32 into %dest.lower
-    registerTest(TestData{"memory_read_long_upper", DataFilter::MEMORY_ACCESS, &READ64BITSINGLEWORD, "", "test_upper",
-        {toBufferParameter(std::vector<uint32_t>(8, 0x42)), toBufferParameter(toRange<uint32_t>(0, 16)),
-            toBufferParameter(toRange<uint64_t>(0x0FF0000000000000, 0x0FF0000000000008))},
-        toDimensions(8),
-        {checkParameterEquals(0,
-            std::vector<uint32_t>{
-                0x0FF00001, 0x0FF00003, 0x0FF00005, 0x0FF00007, 0x0FF00009, 0x0FF0000B, 0x0FF0000D, 0x0FF0000F})}});
+    {
+        // covers 64-bit TMU read as well as lshr %src.upper >> 32 into %dest.lower
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint64_t>> builder(
+            "memory_read_long_upper", READ64BITSINGLEWORD, "test_upper");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(8);
+        builder.allocateParameter<0>(8, 0x42);
+        builder.setParameter<1>(toRange(0u, 16u));
+        builder.setParameter<2>(toRange<uint64_t>(0x0FF0000000000000, 0x0FF0000000000008));
+        builder.checkParameterEquals<0>(
+            {0x0FF00001, 0x0FF00003, 0x0FF00005, 0x0FF00007, 0x0FF00009, 0x0FF0000B, 0x0FF0000D, 0x0FF0000F});
+    }
 
-    registerTest(TestData{"select_write_address", DataFilter::MEMORY_ACCESS, &test_conditional_address_cl_string, "",
-        "test_select_write_address_simple",
-        {toBufferParameter(toRange<int32_t>(0, 30)), toBufferParameter(std::vector<int32_t>(30, 0x42)),
-            toBufferParameter(std::vector<int32_t>(30, 0x42))},
-        toDimensions(10, 1, 1, 3, 1, 1),
-        {checkParameterEquals(1,
-             std::vector<uint32_t>{17, 0x42, 19, 0x42, 21, 0x42, 23, 0x42, 25, 0x42, 27, 0x42, 29, 0x42, 31, 0x42, 33,
-                 0x42, 35, 0x42, 37, 0x42, 39, 0x42, 41, 0x42, 43, 0x42, 45, 0x42}),
-            checkParameterEquals(2,
-                std::vector<uint32_t>{0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26, 0x42, 28, 0x42, 30, 0x42, 32,
-                    0x42, 34, 0x42, 36, 0x42, 38, 0x42, 40, 0x42, 42, 0x42, 44, 0x42, 46})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
+            "select_write_address", test_conditional_address_cl_string, "test_select_write_address_simple");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(10, 1, 1, 3, 1, 1);
+        builder.setParameter<0>(toRange(0, 30));
+        builder.allocateParameter<1>(30, 0x42);
+        builder.allocateParameter<2>(30, 0x42);
+        builder.checkParameterEquals<1>({17, 0x42, 19, 0x42, 21, 0x42, 23, 0x42, 25, 0x42, 27, 0x42, 29, 0x42, 31, 0x42,
+            33, 0x42, 35, 0x42, 37, 0x42, 39, 0x42, 41, 0x42, 43, 0x42, 45, 0x42});
+        builder.checkParameterEquals<2>({0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26, 0x42, 28, 0x42, 30, 0x42, 32,
+            0x42, 34, 0x42, 36, 0x42, 38, 0x42, 40, 0x42, 42, 0x42, 44, 0x42, 46});
+    }
 
-    registerTest(TestData{"select_read_address", DataFilter::MEMORY_ACCESS, &test_conditional_address_cl_string, "",
-        "test_select_read_address_simple",
-        {toBufferParameter(toRange<int32_t>(0, 30)), toBufferParameter(toRange<int32_t>(100, 130)),
-            toBufferParameter(std::vector<int32_t>(30, 0x42))},
-        toDimensions(10, 1, 1, 3, 1, 1),
-        {checkParameterEquals(2,
-            std::vector<uint32_t>{17, 118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29, 130, 31, 132, 33, 134, 35,
-                136, 37, 138, 39, 140, 41, 142, 43, 144, 45, 146})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
+            "select_read_address", test_conditional_address_cl_string, "test_select_read_address_simple");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(10, 1, 1, 3, 1, 1);
+        builder.setParameter<0>(toRange(0, 30));
+        builder.setParameter<1>(toRange(100, 130));
+        builder.allocateParameter<2>(30, 0x42);
+        builder.checkParameterEquals<2>({17, 118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29, 130, 31, 132, 33,
+            134, 35, 136, 37, 138, 39, 140, 41, 142, 43, 144, 45, 146});
+    }
 
-    registerTest(TestData{"select_read_write_address", DataFilter::MEMORY_ACCESS, &test_conditional_address_cl_string,
-        "", "test_select_read_write_address_simple",
-        {toBufferParameter(toRange<int32_t>(0, 30)), toBufferParameter(toRange<int32_t>(100, 130))},
-        toDimensions(10, 1, 1, 3, 1, 1),
-        {checkParameterEquals(0,
-             std::vector<uint32_t>{117, 1, 119, 3, 121, 5, 123, 7, 125, 9, 127, 11, 129, 13, 131, 15, 133, 17, 135, 19,
-                 137, 21, 139, 23, 141, 25, 143, 27, 145, 29}),
-            checkParameterEquals(1,
-                std::vector<uint32_t>{100, 18, 102, 20, 104, 22, 106, 24, 108, 26, 110, 28, 112, 30, 114, 32, 116, 34,
-                    118, 36, 120, 38, 122, 40, 124, 42, 126, 44, 128, 46})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
+            "select_read_write_address", test_conditional_address_cl_string, "test_select_read_write_address_simple");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(10, 1, 1, 3, 1, 1);
+        builder.setParameter<0>(toRange(0, 30));
+        builder.setParameter<1>(toRange(100, 130));
+        builder.checkParameterEquals<0>({117, 1, 119, 3, 121, 5, 123, 7, 125, 9, 127, 11, 129, 13, 131, 15, 133, 17,
+            135, 19, 137, 21, 139, 23, 141, 25, 143, 27, 145, 29});
+        builder.checkParameterEquals<1>({100, 18, 102, 20, 104, 22, 106, 24, 108, 26, 110, 28, 112, 30, 114, 32, 116,
+            34, 118, 36, 120, 38, 122, 40, 124, 42, 126, 44, 128, 46});
+    }
 
-    registerTest(TestData{"select_copy_address", DataFilter::MEMORY_ACCESS, &test_conditional_address_cl_string, "",
-        "test_select_copy_address_simple",
-        {toBufferParameter(toRange<int32_t>(0, 30)), toBufferParameter(toRange<int32_t>(100, 130))},
-        toDimensions(10, 1, 1, 3, 1, 1),
-        {checkParameterEquals(0,
-             std::vector<uint32_t>{100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116, 17, 118, 19,
-                 120, 21, 122, 23, 124, 25, 126, 27, 128, 29}),
-            checkParameterEquals(1,
-                std::vector<uint32_t>{100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116, 17, 118,
-                    19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
+            "select_copy_address", test_conditional_address_cl_string, "test_select_copy_address_simple");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(10, 1, 1, 3, 1, 1);
+        builder.setParameter<0>(toRange(0, 30));
+        builder.setParameter<1>(toRange(100, 130));
+        builder.checkParameterEquals<0>({100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116, 17,
+            118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29});
+        builder.checkParameterEquals<1>({100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116, 17,
+            118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29});
+    }
 
-    registerTest(TestData{"phi_write_address", DataFilter::MEMORY_ACCESS, &test_conditional_address_cl_string, "",
-        "test_phi_write_address_simple",
-        {toBufferParameter(toRange<int32_t>(0, 30)), toBufferParameter(std::vector<int32_t>(30, 0x42)),
-            toBufferParameter(std::vector<int32_t>(30, 0x42)), toBufferParameter(std::vector<uint32_t>{3})},
-        toDimensions(5, 1, 1, 2, 1, 1),
-        {checkParameterEquals(1,
-             std::vector<uint32_t>{17, 0x42, 19, 0x42, 21, 0x42, 23, 0x42, 25, 0x42, 17, 0x42, 19, 0x42, 21, 0x42, 23,
-                 0x42, 25, 0x42, 17, 0x42, 19, 0x42, 21, 0x42, 23, 0x42, 25, 0x42}),
-            checkParameterEquals(2,
-                std::vector<uint32_t>{0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26, 0x42, 18, 0x42, 20, 0x42, 22,
-                    0x42, 24, 0x42, 26, 0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
+            "phi_write_address", test_conditional_address_cl_string, "test_phi_write_address_simple");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(5, 1, 1, 2, 1, 1);
+        builder.setParameter<0>(toRange(0, 30));
+        builder.allocateParameter<1>(30, 0x42);
+        builder.allocateParameter<2>(30, 0x42);
+        builder.setParameter<3>({3});
+        builder.checkParameterEquals<1>({17, 0x42, 19, 0x42, 21, 0x42, 23, 0x42, 25, 0x42, 17, 0x42, 19, 0x42, 21, 0x42,
+            23, 0x42, 25, 0x42, 17, 0x42, 19, 0x42, 21, 0x42, 23, 0x42, 25, 0x42});
+        builder.checkParameterEquals<2>({0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26, 0x42, 18, 0x42, 20, 0x42, 22,
+            0x42, 24, 0x42, 26, 0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26});
+    }
 
-    registerTest(TestData{"phi_read_address", DataFilter::MEMORY_ACCESS, &test_conditional_address_cl_string, "",
-        "test_phi_read_address_simple",
-        {toBufferParameter(toRange<int32_t>(0, 30)), toBufferParameter(toRange<int32_t>(100, 130)),
-            toBufferParameter(std::vector<int32_t>(30, 0x42)), toBufferParameter(std::vector<uint32_t>{3})},
-        toDimensions(5, 1, 1, 2, 1, 1),
-        {checkParameterEquals(2,
-            std::vector<uint32_t>{17, 118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29, 130, 31, 132, 33, 134, 35,
-                136, 37, 138, 39, 140, 41, 142, 43, 144, 45, 146})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
+            "phi_read_address", test_conditional_address_cl_string, "test_phi_read_address_simple");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(5, 1, 1, 2, 1, 1);
+        builder.setParameter<0>(toRange(0, 30));
+        builder.setParameter<1>(toRange(100, 130));
+        builder.allocateParameter<2>(30, 0x42);
+        builder.setParameter<3>({3});
+        builder.checkParameterEquals<2>({17, 118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29, 130, 31, 132, 33,
+            134, 35, 136, 37, 138, 39, 140, 41, 142, 43, 144, 45, 146});
+    }
 
-    registerTest(TestData{"phi_read_write_address", DataFilter::MEMORY_ACCESS, &test_conditional_address_cl_string, "",
-        "test_phi_read_write_address_simple",
-        {toBufferParameter(toRange<int32_t>(0, 30)), toBufferParameter(toRange<int32_t>(100, 130)),
-            toBufferParameter(std::vector<uint32_t>{3})},
-        toDimensions(5, 1, 1, 2, 1, 1),
-        {checkParameterEquals(0,
-             std::vector<uint32_t>{117, 1, 119, 3, 121, 5, 123, 7, 125, 9, 127, 11, 129, 13, 131, 15, 133, 17, 135, 19,
-                 137, 21, 139, 23, 141, 25, 143, 27, 145, 29}),
-            checkParameterEquals(1,
-                std::vector<uint32_t>{100, 18, 102, 20, 104, 22, 106, 24, 108, 26, 110, 28, 112, 30, 114, 32, 116, 34,
-                    118, 36, 120, 38, 122, 40, 124, 42, 126, 44, 128, 46})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
+            "phi_read_write_address", test_conditional_address_cl_string, "test_phi_read_write_address_simple");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(5, 1, 1, 2, 1, 1);
+        builder.setParameter<0>(toRange(0, 30));
+        builder.setParameter<1>(toRange(100, 130));
+        builder.setParameter<2>({3});
+        builder.checkParameterEquals<0>({117, 1, 119, 3, 121, 5, 123, 7, 125, 9, 127, 11, 129, 13, 131, 15, 133, 17,
+            135, 19, 137, 21, 139, 23, 141, 25, 143, 27, 145, 29});
+        builder.checkParameterEquals<1>({100, 18, 102, 20, 104, 22, 106, 24, 108, 26, 110, 28, 112, 30, 114, 32, 116,
+            34, 118, 36, 120, 38, 122, 40, 124, 42, 126, 44, 128, 46});
+    }
 
-    registerTest(TestData{"phi_copy_address", DataFilter::MEMORY_ACCESS, &test_conditional_address_cl_string, "",
-        "test_phi_copy_address_simple",
-        {toBufferParameter(toRange<int32_t>(0, 30)), toBufferParameter(toRange<int32_t>(100, 130)),
-            toBufferParameter(std::vector<uint32_t>{3})},
-        toDimensions(5, 1, 1, 2, 1, 1),
-        {checkParameterEquals(0,
-             std::vector<uint32_t>{100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116, 17, 118, 19,
-                 120, 21, 122, 23, 124, 25, 126, 27, 128, 29}),
-            checkParameterEquals(1,
-                std::vector<uint32_t>{100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116, 17, 118,
-                    19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
+            "phi_copy_address", test_conditional_address_cl_string, "test_phi_copy_address_simple");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(5, 1, 1, 2, 1, 1);
+        builder.setParameter<0>(toRange(0, 30));
+        builder.setParameter<1>(toRange(100, 130));
+        builder.setParameter<2>({3});
+        builder.checkParameterEquals<0>({100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116, 17,
+            118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29});
+        builder.checkParameterEquals<1>({100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116, 17,
+            118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29});
+    }
 
-    registerTest(TestData{"select_read_address_local", DataFilter::MEMORY_ACCESS, &test_conditional_address_cl_string,
-        "", "test_select_read_address_local",
-        {toBufferParameter(std::vector<int32_t>(30, 0x42)), toBufferParameter(std::vector<int32_t>(30, 0x42))},
-        toDimensions(10, 1, 1, 3, 1, 1), {checkParameterEquals(1, toRange<uint32_t>(0 + 17, 30 + 17))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
+            "select_read_address_local", test_conditional_address_cl_string, "test_select_read_address_local");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(10, 1, 1, 3, 1, 1);
+        builder.allocateParameter<0>(30, 0x42);
+        builder.allocateParameter<1>(30, 0x42);
+        builder.checkParameterEquals<1>(toRange(0 + 17, 30 + 17));
+    }
 
-    registerTest(TestData{"select_read_address_private", DataFilter::MEMORY_ACCESS, &test_conditional_address_cl_string,
-        "", "test_select_read_address_private",
-        {toBufferParameter(toRange<int32_t>(0, 16)), toBufferParameter(std::vector<int32_t>(16, 0x42))},
-        toDimensions(8, 1, 1, 2, 1, 1),
-        {checkParameterEquals(
-            1, std::vector<uint32_t>{17, 18, 19, 20, 21, 22, 23, 24, 59, 34, 59, 34, 59, 34, 59, 34})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
+            "select_read_address_private", test_conditional_address_cl_string, "test_select_read_address_private");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(8, 1, 1, 2, 1, 1);
+        builder.setParameter<0>(toRange(0, 16));
+        builder.allocateParameter<1>(16, 0x42);
+        builder.checkParameterEquals<1>({17, 18, 19, 20, 21, 22, 23, 24, 59, 34, 59, 34, 59, 34, 59, 34});
+    }
 
-    registerTest(
-        TestData{"constant_load", DataFilter::MEMORY_ACCESS, &test_constant_load_cl_string, "", "test_constant_load",
-            {toBufferParameter(std::vector<uint32_t>(2)), toBufferParameter(std::vector<uint16_t>(2)),
-                toBufferParameter(std::vector<uint8_t>(2)), toScalarParameter(0)},
-            toDimensions(1),
-            {
-                checkParameterEquals(0, std::vector<uint32_t>{0x42, 0x17 + 42}),
-                checkParameterEquals(1, std::vector<uint16_t>{0x42, 0x17 + 42}),
-                checkParameterEquals(2, std::vector<uint8_t>{0x42, 0x17 + 42}),
-            }});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint16_t>, Buffer<uint8_t>, uint32_t> builder(
+            "constant_load", test_constant_load_cl_string, "test_constant_load");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(2);
+        builder.allocateParameter<1>(2);
+        builder.allocateParameter<2>(2);
+        builder.setParameter<3>(0);
+        builder.checkParameterEquals<0>({0x42, 0x17 + 42});
+        builder.checkParameterEquals<1>({0x42, 0x17 + 42});
+        builder.checkParameterEquals<2>({0x42, 0x17 + 42});
+    }
 
-    registerTest(TestData{"global_data", DataFilter::MEMORY_ACCESS | DataFilter::ASYNC_BARRIER, &test_other_cl_string,
-        "", "test_global_data", {toScalarParameter(1), toBufferParameter(std::vector<int32_t>(2))}, toDimensions(1),
-        {checkParameterEquals(1, std::vector<uint32_t>{2, 21})}});
+    {
+        TestDataBuilder<int32_t, Buffer<int32_t>> builder("global_data", test_other_cl_string, "test_global_data");
+        builder.setFlags(DataFilter::MEMORY_ACCESS | DataFilter::ASYNC_BARRIER);
+        builder.setParameter<0>(1);
+        builder.allocateParameter<1>(2);
+        builder.checkParameterEquals<1>({2, 21});
+    }
 
-    registerTest(TestData{"constant_storage_small", DataFilter::MEMORY_ACCESS, &local_private_storage_cl_string, "",
-        "test_constant_storage", {toBufferParameter(std::vector<uint8_t>(12, 0x42))}, toDimensions(12),
-        {checkParameterEquals(0, std::vector<uint8_t>{'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '\0'})}});
+    {
+        TestDataBuilder<Buffer<uint8_t>> builder(
+            "constant_storage_small", local_private_storage_cl_string, "test_constant_storage");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(12);
+        builder.allocateParameter<0>(12, 0x42);
+        builder.checkParameterEquals<0>({'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '\0'});
+    }
 
-    registerTest(TestData{"constant_storage_large", DataFilter::MEMORY_ACCESS, &local_private_storage_cl_string, "",
-        "test_constant_storage2", {toBufferParameter(std::vector<uint8_t>(12, 0x42))}, toDimensions(12),
-        {checkParameterEquals(0, std::vector<uint8_t>{'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '!'})}});
+    {
+        TestDataBuilder<Buffer<uint8_t>> builder(
+            "constant_storage_large", local_private_storage_cl_string, "test_constant_storage2");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(12);
+        builder.allocateParameter<0>(12, 0x42);
+        builder.checkParameterEquals<0>({'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '!'});
+    }
 
-    registerTest(
-        TestData{"local_storage", DataFilter::MEMORY_ACCESS, &local_private_storage_cl_string, "", "test_local_storage",
-            {toBufferParameter(std::vector<uint32_t>(24, 7)), toBufferParameter(std::vector<uint32_t>(24, 0x42))},
-            toDimensions(12, 1, 1, 2, 1, 1),
-            {checkParameterMatches<uint32_t>(1, 24, checkIsMultipleOf<uint32_t, 7u>, "7 divides value")}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "local_storage", local_private_storage_cl_string, "test_local_storage");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(12, 1, 1, 2, 1, 1);
+        builder.allocateParameter<0>(24, 7);
+        builder.allocateParameter<1>(24, 0x42);
+        builder.checkParameterMatches<1>(24, checkIsMultipleOf<uint32_t, 7u>, "7 divides value");
+    }
 
-    registerTest(TestData{"private_storage", DataFilter::MEMORY_ACCESS, &local_private_storage_cl_string, "",
-        "test_private_storage",
-        {toBufferParameter(std::vector<uint32_t>(24, 7)), toBufferParameter(std::vector<uint32_t>(24, 0x42))},
-        toDimensions(12, 1, 1, 2, 1, 1),
-        {checkParameterEquals(1,
-            std::vector<uint32_t>{
-                14, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 14, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28})}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "private_storage", local_private_storage_cl_string, "test_private_storage");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(12, 1, 1, 2, 1, 1);
+        builder.allocateParameter<0>(24, 7);
+        builder.allocateParameter<1>(24, 0x42);
+        builder.checkParameterEquals<1>(
+            {14, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 14, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28});
+    }
 
-    registerTest(TestData{"register_storage", DataFilter::MEMORY_ACCESS, &local_private_storage_cl_string, "",
-        "test_register_storage", {toBufferParameter(std::vector<uint8_t>(12, 0x42))}, toDimensions(12),
-        {checkParameterEquals(0, std::vector<uint8_t>{'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '\0'})}});
+    {
+        TestDataBuilder<Buffer<uint8_t>> builder(
+            "register_storage", local_private_storage_cl_string, "test_register_storage");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(12);
+        builder.allocateParameter<0>(12, 0x42);
+        builder.checkParameterEquals<0>({'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '\0'});
+    }
 
-    registerTest(TestData{"storage_private_char", DataFilter::MEMORY_ACCESS, &test_storage_cl_string,
-        "-DTYPE=char -DSTORAGE=__private", "test",
-        {toBufferParameter(std::vector<int8_t>(16)), toBufferParameter(toRange<int8_t>(-6, 10))}, toDimensions(1),
-        {checkParameterEquals(0, toStorageTestResult(toRange<int8_t>(-6, 10)))}});
+    {
+        TestDataBuilder<Buffer<int8_t>, Buffer<int8_t>> builder(
+            "storage_private_char", test_storage_cl_string, "test", "-DTYPE=char -DSTORAGE=__private");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(16);
+        builder.setParameter<1>(toRange<int8_t>(-6, 10));
+        builder.checkParameterEquals<0>(toStorageTestResult(toRange<int8_t>(-6, 10)));
+    }
 
-    registerTest(TestData{"storage_local_char", DataFilter::MEMORY_ACCESS, &test_storage_cl_string,
-        "-DTYPE=char -DSTORAGE=__local", "test",
-        {toBufferParameter(std::vector<int8_t>(16)), toBufferParameter(toRange<int8_t>(-6, 10))}, toDimensions(1),
-        {checkParameterEquals(0, toStorageTestResult(toRange<int8_t>(-6, 10)))}});
+    {
+        TestDataBuilder<Buffer<int8_t>, Buffer<int8_t>> builder(
+            "storage_local_char", test_storage_cl_string, "test", "-DTYPE=char -DSTORAGE=__local");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(16);
+        builder.setParameter<1>(toRange<int8_t>(-6, 10));
+        builder.checkParameterEquals<0>(toStorageTestResult(toRange<int8_t>(-6, 10)));
+    }
 
-    registerTest(
-        TestData{"storage_global_char", DataFilter::MEMORY_ACCESS, &test_storage_cl_string, "-DTYPE=char", "test",
-            {toBufferParameter(std::vector<int8_t>(16)), toBufferParameter(toRange<int8_t>(-6, 10)),
-                toBufferParameter(std::vector<int8_t>(16)), toBufferParameter(std::vector<int8_t>(16)),
-                toBufferParameter(std::vector<int8_t>(16)), toBufferParameter(std::vector<int8_t>(16)),
-                toBufferParameter(std::vector<int8_t>(16)), toBufferParameter(std::vector<int8_t>(16))},
-            toDimensions(1), {checkParameterEquals(0, toStorageTestResult(toRange<int8_t>(-6, 10)))}});
+    {
+        TestDataBuilder<Buffer<int8_t>, Buffer<int8_t>, Buffer<int8_t>, Buffer<int8_t>, Buffer<int8_t>, Buffer<int8_t>,
+            Buffer<int8_t>, Buffer<int8_t>>
+            builder("storage_global_char", test_storage_cl_string, "test", "-DTYPE=char");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(16);
+        builder.setParameter<1>(toRange<int8_t>(-6, 10));
+        builder.allocateParameter<2>(16);
+        builder.allocateParameter<3>(16);
+        builder.allocateParameter<4>(16);
+        builder.allocateParameter<5>(16);
+        builder.allocateParameter<6>(16);
+        builder.allocateParameter<7>(16);
+        builder.checkParameterEquals<0>(toStorageTestResult(toRange<int8_t>(-6, 10)));
+    }
 
-    registerTest(TestData{"storage_private_short", DataFilter::MEMORY_ACCESS, &test_storage_cl_string,
-        "-DTYPE=short -DSTORAGE=__private", "test",
-        {toBufferParameter(std::vector<int16_t>(16)), toBufferParameter(toRange<int16_t>(-6, 10))}, toDimensions(1),
-        {checkParameterEquals(0, toStorageTestResult(toRange<int16_t>(-6, 10)))}});
+    {
+        TestDataBuilder<Buffer<int16_t>, Buffer<int16_t>> builder(
+            "storage_private_short", test_storage_cl_string, "test", "-DTYPE=short -DSTORAGE=__private");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(16);
+        builder.setParameter<1>(toRange<int16_t>(-6, 10));
+        builder.checkParameterEquals<0>(toStorageTestResult(toRange<int16_t>(-6, 10)));
+    }
 
-    registerTest(TestData{"storage_local_short", DataFilter::MEMORY_ACCESS, &test_storage_cl_string,
-        "-DTYPE=short -DSTORAGE=__local", "test",
-        {toBufferParameter(std::vector<int16_t>(16)), toBufferParameter(toRange<int16_t>(-6, 10))}, toDimensions(1),
-        {checkParameterEquals(0, toStorageTestResult(toRange<int16_t>(-6, 10)))}});
+    {
+        TestDataBuilder<Buffer<int16_t>, Buffer<int16_t>> builder(
+            "storage_local_short", test_storage_cl_string, "test", "-DTYPE=short -DSTORAGE=__local");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(16);
+        builder.setParameter<1>(toRange<int16_t>(-6, 10));
+        builder.checkParameterEquals<0>(toStorageTestResult(toRange<int16_t>(-6, 10)));
+    }
 
-    registerTest(
-        TestData{"storage_global_short", DataFilter::MEMORY_ACCESS, &test_storage_cl_string, "-DTYPE=short", "test",
-            {toBufferParameter(std::vector<int16_t>(16)), toBufferParameter(toRange<int16_t>(-6, 10)),
-                toBufferParameter(std::vector<int16_t>(16)), toBufferParameter(std::vector<int16_t>(16)),
-                toBufferParameter(std::vector<int16_t>(16)), toBufferParameter(std::vector<int16_t>(16)),
-                toBufferParameter(std::vector<int16_t>(16)), toBufferParameter(std::vector<int16_t>(16))},
-            toDimensions(1), {checkParameterEquals(0, toStorageTestResult(toRange<int16_t>(-6, 10)))}});
+    {
+        TestDataBuilder<Buffer<int16_t>, Buffer<int16_t>, Buffer<int16_t>, Buffer<int16_t>, Buffer<int16_t>,
+            Buffer<int16_t>, Buffer<int16_t>, Buffer<int16_t>>
+            builder("storage_global_short", test_storage_cl_string, "test", "-DTYPE=short");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(16);
+        builder.setParameter<1>(toRange<int16_t>(-6, 10));
+        builder.allocateParameter<2>(16);
+        builder.allocateParameter<3>(16);
+        builder.allocateParameter<4>(16);
+        builder.allocateParameter<5>(16);
+        builder.allocateParameter<6>(16);
+        builder.allocateParameter<7>(16);
+        builder.checkParameterEquals<0>(toStorageTestResult(toRange<int16_t>(-6, 10)));
+    }
 
-    registerTest(TestData{"storage_private_int", DataFilter::MEMORY_ACCESS, &test_storage_cl_string,
-        "-DTYPE=int -DSTORAGE=__private", "test",
-        {toBufferParameter(std::vector<int32_t>(16)), toBufferParameter(toRange<int32_t>(-6, 10))}, toDimensions(1),
-        {checkParameterEquals(0, toStorageTestResult(toRange<int32_t>(-6, 10)))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
+            "storage_private_int", test_storage_cl_string, "test", "-DTYPE=int -DSTORAGE=__private");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(16);
+        builder.setParameter<1>(toRange<int32_t>(-6, 10));
+        builder.checkParameterEquals<0>(toStorageTestResult(toRange<int32_t>(-6, 10)));
+    }
 
-    registerTest(TestData{"storage_local_int", DataFilter::MEMORY_ACCESS, &test_storage_cl_string,
-        "-DTYPE=int -DSTORAGE=__local", "test",
-        {toBufferParameter(std::vector<int32_t>(16)), toBufferParameter(toRange<int32_t>(-6, 10))}, toDimensions(1),
-        {checkParameterEquals(0, toStorageTestResult(toRange<int32_t>(-6, 10)))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
+            "storage_local_int", test_storage_cl_string, "test", "-DTYPE=int -DSTORAGE=__local");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(16);
+        builder.setParameter<1>(toRange<int32_t>(-6, 10));
+        builder.checkParameterEquals<0>(toStorageTestResult(toRange<int32_t>(-6, 10)));
+    }
 
-    registerTest(
-        TestData{"storage_global_int", DataFilter::MEMORY_ACCESS, &test_storage_cl_string, "-DTYPE=int", "test",
-            {toBufferParameter(std::vector<int32_t>(16)), toBufferParameter(toRange<int32_t>(-6, 10)),
-                toBufferParameter(std::vector<int32_t>(16)), toBufferParameter(std::vector<int32_t>(16)),
-                toBufferParameter(std::vector<int32_t>(16)), toBufferParameter(std::vector<int32_t>(16)),
-                toBufferParameter(std::vector<int32_t>(16)), toBufferParameter(std::vector<int32_t>(16))},
-            toDimensions(1), {checkParameterEquals(0, toStorageTestResult(toRange<int32_t>(-6, 10)))}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>,
+            Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>>
+            builder("storage_global_int", test_storage_cl_string, "test", "-DTYPE=int");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(16);
+        builder.setParameter<1>(toRange<int32_t>(-6, 10));
+        builder.allocateParameter<2>(16);
+        builder.allocateParameter<3>(16);
+        builder.allocateParameter<4>(16);
+        builder.allocateParameter<5>(16);
+        builder.allocateParameter<6>(16);
+        builder.allocateParameter<7>(16);
+        builder.checkParameterEquals<0>(toStorageTestResult(toRange<int32_t>(-6, 10)));
+    }
 
-    // TODO result mismatch on actual hardware
-    // Got 0x0000'000E'0000'000F instead of 0x0F for 0st element, rest is correct (independent of initial values of
-    // result buffer)
-    // TODO code generated on RPi and host is mostly identical -> buffer/parameter or code + emulator error
-    registerTest(TestData{"storage_private_long", DataFilter::MEMORY_ACCESS | DataFilter::DISABLED,
-        &test_storage_cl_string, "-DTYPE=long -DSTORAGE=__private", "test",
-        {toBufferParameter(std::vector<int64_t>(16, 0x42)), toBufferParameter(toRange<int64_t>(-6, 10))},
-        toDimensions(1), {checkParameterEquals(0, toStorageTestResult(toRange<int64_t>(-6, 10)))}});
+    {
+        // TODO result mismatch on actual hardware
+        // Got 0x0000'000E'0000'000F instead of 0x0F for 0st element, rest is correct (independent of initial values of
+        // result buffer)
+        // TODO code generated on RPi and host is mostly identical -> buffer/parameter or code + emulator error
+        TestDataBuilder<Buffer<int64_t>, Buffer<int64_t>> builder(
+            "storage_private_long", test_storage_cl_string, "test", "-DTYPE=long -DSTORAGE=__private");
+        builder.setFlags(DataFilter::MEMORY_ACCESS | DataFilter::USES_LONG | DataFilter::DISABLED);
+        builder.allocateParameter<0>(16);
+        builder.setParameter<1>(toRange<int64_t>(-6, 10));
+        builder.checkParameterEquals<0>(toStorageTestResult(toRange<int64_t>(-6, 10)));
+    }
 
-    // TODO hangs/takes long in Normalization step! Is long/a lot in LongOperations.cpp:431
-    registerTest(TestData{"storage_local_long", DataFilter::DISABLED | DataFilter::MEMORY_ACCESS,
-        &test_storage_cl_string, "-DTYPE=long -DSTORAGE=__local", "test",
-        {toBufferParameter(std::vector<int64_t>(16)), toBufferParameter(toRange<int64_t>(-6, 10))}, toDimensions(1),
-        {checkParameterEquals(0, toStorageTestResult(toRange<int64_t>(-6, 10)))}});
+    {
+        // TODO hangs/takes long in Normalization step! Is long/a lot in LongOperations.cpp:431
+        TestDataBuilder<Buffer<int64_t>, Buffer<int64_t>> builder(
+            "storage_local_long", test_storage_cl_string, "test", "-DTYPE=long -DSTORAGE=__local");
+        builder.setFlags(DataFilter::MEMORY_ACCESS | DataFilter::USES_LONG | DataFilter::DISABLED);
+        builder.allocateParameter<0>(16);
+        builder.setParameter<1>(toRange<int64_t>(-6, 10));
+        builder.checkParameterEquals<0>(toStorageTestResult(toRange<int64_t>(-6, 10)));
+    }
 
-    // TODO result mismatch on actual hardware, all other values are wrong too
-    // Got 0x0000'0011'0000'000F instead of 0xF for first element, also is off by +17 for remainder elements
-    // (independent of initial values of buffers)
-    // TODO code generated on RPi and host is mostly identical -> buffer/parameter or code + emulator error
-    registerTest(
-        TestData{"storage_global_long", DataFilter::MEMORY_ACCESS, &test_storage_cl_string, "-DTYPE=long", "test",
-            {toBufferParameter(std::vector<int64_t>(16, 0x40)), toBufferParameter(toRange<int64_t>(-6, 10)),
-                toBufferParameter(std::vector<int64_t>(16, 0x41)), toBufferParameter(std::vector<int64_t>(16, 0x42)),
-                toBufferParameter(std::vector<int64_t>(16, 0x43)), toBufferParameter(std::vector<int64_t>(16, 0x44)),
-                toBufferParameter(std::vector<int64_t>(16, 0x45)), toBufferParameter(std::vector<int64_t>(16, 0x46))},
-            toDimensions(1), {checkParameterEquals(0, toStorageTestResult(toRange<int64_t>(-6, 10)))}});
+    {
+        // TODO result mismatch on actual hardware, all other values are wrong too
+        // Got 0x0000'0011'0000'000F instead of 0xF for first element, also is off by +17 for remainder elements
+        // (independent of initial values of buffers)
+        // TODO code generated on RPi and host is mostly identical -> buffer/parameter or code + emulator error
+        TestDataBuilder<Buffer<int64_t>, Buffer<int64_t>, Buffer<int64_t>, Buffer<int64_t>, Buffer<int64_t>,
+            Buffer<int64_t>, Buffer<int64_t>, Buffer<int64_t>>
+            builder("storage_global_long", test_storage_cl_string, "test", "-DTYPE=long");
+        builder.setFlags(DataFilter::MEMORY_ACCESS | DataFilter::USES_LONG);
+        builder.allocateParameter<0>(16, 0x40);
+        builder.setParameter<1>(toRange<int64_t>(-6, 10));
+        builder.allocateParameter<2>(16, 0x41);
+        builder.allocateParameter<3>(16, 0x42);
+        builder.allocateParameter<4>(16, 0x43);
+        builder.allocateParameter<5>(16, 0x44);
+        builder.allocateParameter<6>(16, 0x45);
+        builder.allocateParameter<7>(16, 0x46);
+        builder.checkParameterEquals<0>(toStorageTestResult(toRange<int64_t>(-6, 10)));
+    }
 
-    registerTest(TestData{"global_parameter_unaligned", DataFilter::MEMORY_ACCESS, &unaligned_memory_access_cl_string,
-        "", "test_global",
-        {toBufferParameter(std::vector<uint32_t>(5 * 8, 0x42)), toBufferParameter(toRange<uint32_t>(0, 32)),
-            toBufferParameter(std::vector<uint32_t>{0, 1, 2, 3, 11}), toBufferParameter(std::vector<uint32_t>(2 * 16))},
-        toDimensions(1),
-        {checkParameterEquals(0,
-            std::vector<uint32_t>{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1a,
-                0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
-                0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f})}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "global_parameter_unaligned", unaligned_memory_access_cl_string, "test_global");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(5 * 8, 0x42);
+        builder.setParameter<1>(toRange(0u, 32u));
+        builder.setParameter<2>({0, 1, 2, 3, 11});
+        builder.allocateParameter<3>(2 * 16);
+        builder.checkParameterEquals<0>({0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19,
+            0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+            0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f});
+    }
 
-    registerTest(TestData{"local_parameter_unaligned", DataFilter::MEMORY_ACCESS, &unaligned_memory_access_cl_string,
-        "", "test_local_parameter",
-        {toBufferParameter(std::vector<uint32_t>(5 * 8, 0x42)), toBufferParameter(toRange<uint32_t>(0, 32)),
-            toBufferParameter(std::vector<uint32_t>{0, 1, 2, 3, 11}), toBufferParameter(std::vector<uint32_t>(2 * 16))},
-        toDimensions(1),
-        {checkParameterEquals(0,
-            std::vector<uint32_t>{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1a,
-                0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
-                0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f})}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "local_parameter_unaligned", unaligned_memory_access_cl_string, "test_local_parameter");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(5 * 8, 0x42);
+        builder.setParameter<1>(toRange(0u, 32u));
+        builder.setParameter<2>({0, 1, 2, 3, 11});
+        builder.allocateParameter<3>(2 * 16);
+        builder.checkParameterEquals<0>({0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19,
+            0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+            0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f});
+    }
 
-    registerTest(TestData{"local_vpm_full_row_unaligned", DataFilter::DISABLED | DataFilter::MEMORY_ACCESS,
-        &unaligned_memory_access_cl_string, "", "test_local_vpm_full_row",
-        {toBufferParameter(std::vector<uint32_t>(5 * 8, 0x42)), toBufferParameter(toRange<uint32_t>(0, 32)),
-            toBufferParameter(std::vector<uint32_t>{0, 1, 2, 3, 11})},
-        toDimensions(1),
-        {checkParameterEquals(0,
-            std::vector<uint32_t>{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1a,
-                0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
-                0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f})}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "local_vpm_full_row_unaligned", unaligned_memory_access_cl_string, "test_local_vpm_full_row");
+        builder.setFlags(DataFilter::MEMORY_ACCESS | DataFilter::DISABLED);
+        builder.allocateParameter<0>(5 * 8, 0x42);
+        builder.setParameter<1>(toRange(0u, 32u));
+        builder.setParameter<2>({0, 1, 2, 3, 11});
+        builder.allocateParameter<3>(2 * 16);
+        builder.checkParameterEquals<0>({0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19,
+            0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+            0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f});
+    }
 
-    registerTest(TestData{"local_vpm_partial_row_unaligned", DataFilter::DISABLED | DataFilter::MEMORY_ACCESS,
-        &unaligned_memory_access_cl_string, "", "test_local_vpm_partial_row",
-        {toBufferParameter(std::vector<uint32_t>(5 * 8, 0x42)), toBufferParameter(toRange<uint32_t>(0, 32)),
-            toBufferParameter(std::vector<uint32_t>{0, 1, 2, 3, 11})},
-        toDimensions(1),
-        {checkParameterEquals(0,
-            std::vector<uint32_t>{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1a,
-                0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
-                0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f})}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "local_vpm_partial_row_unaligned", unaligned_memory_access_cl_string, "test_local_vpm_partial_row");
+        builder.setFlags(DataFilter::MEMORY_ACCESS | DataFilter::DISABLED);
+        builder.allocateParameter<0>(5 * 8, 0x42);
+        builder.setParameter<1>(toRange(0u, 32u));
+        builder.setParameter<2>({0, 1, 2, 3, 11});
+        builder.checkParameterEquals<0>({0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19,
+            0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+            0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f});
+    }
 
-    registerTest(TestData{"private_register_unaligned", DataFilter::MEMORY_ACCESS, &unaligned_memory_access_cl_string,
-        "", "test_private_register",
-        {toBufferParameter(std::vector<uint32_t>(5 * 8, 0x42)), toBufferParameter(toRange<uint32_t>(0, 16)),
-            toBufferParameter(toRange<uint32_t>(0, 5))},
-        toDimensions(1),
-        {checkParameterEquals(0,
-            std::vector<uint32_t>{0x0, 0x1, 0xc, 0xd, 0xe, 0xf, 0x6, 0x7, 0x8, 0x9, 0xa, 0xc, 0xd, 0xe, 0xf, 0x0, 0x8,
-                0x9, 0xa, 0xc, 0xd, 0xe, 0xf, 0x0, 0xf, 0x6, 0x7, 0x8, 0x9, 0xa, 0xc, 0xd, 0xd, 0xe, 0xf, 0x6, 0x7, 0x8,
-                0x9, 0xa})}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "private_register_unaligned", unaligned_memory_access_cl_string, "test_private_register");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(5 * 8, 0x42);
+        builder.setParameter<1>(toRange(0u, 16u));
+        builder.setParameter<2>(toRange(0u, 5u));
+        builder.checkParameterEquals<0>(
+            {0x0, 0x1, 0xc, 0xd, 0xe, 0xf, 0x6, 0x7, 0x8, 0x9, 0xa, 0xc, 0xd, 0xe, 0xf, 0x0, 0x8, 0x9, 0xa, 0xc, 0xd,
+                0xe, 0xf, 0x0, 0xf, 0x6, 0x7, 0x8, 0x9, 0xa, 0xc, 0xd, 0xd, 0xe, 0xf, 0x6, 0x7, 0x8, 0x9, 0xa});
+    }
 
-    registerTest(TestData{"private_vpm_full_row_unaligned", DataFilter::MEMORY_ACCESS,
-        &unaligned_memory_access_cl_string, "", "test_private_vpm_full_row",
-        {toBufferParameter(std::vector<uint32_t>(5 * 8, 0x42)), toBufferParameter(toRange<uint32_t>(0, 32)),
-            toBufferParameter(std::vector<uint32_t>{0, 1, 2, 3, 11})},
-        toDimensions(1),
-        {checkParameterEquals(0,
-            std::vector<uint32_t>{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1a,
-                0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
-                0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f})}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "private_vpm_full_row_unaligned", unaligned_memory_access_cl_string, "test_private_vpm_full_row");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(5 * 8, 0x42);
+        builder.setParameter<1>(toRange(0u, 32u));
+        builder.setParameter<2>({0, 1, 2, 3, 11});
+        builder.checkParameterEquals<0>({0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19,
+            0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+            0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f});
+    }
 
-    registerTest(TestData{"private_vpm_partial_row_unaligned", DataFilter::MEMORY_ACCESS,
-        &unaligned_memory_access_cl_string, "", "test_private_vpm_partial_row",
-        {toBufferParameter(std::vector<uint32_t>(5 * 8, 0x42)), toBufferParameter(toRange<uint32_t>(0, 32)),
-            toBufferParameter(std::vector<uint32_t>{0, 1, 2, 3, 11})},
-        toDimensions(1),
-        {checkParameterEquals(0,
-            std::vector<uint32_t>{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1a,
-                0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
-                0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f})}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "private_vpm_partial_row_unaligned", unaligned_memory_access_cl_string, "test_private_vpm_partial_row");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.allocateParameter<0>(5 * 8, 0x42);
+        builder.setParameter<1>(toRange(0u, 32u));
+        builder.setParameter<2>({0, 1, 2, 3, 11});
+        builder.checkParameterEquals<0>({0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19,
+            0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x13, 0x18, 0x19, 0x1a, 0x1b, 0x0a, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+            0x1e, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f});
+    }
 
-    registerTest(TestData{"vpm_read", DataFilter::MEMORY_ACCESS, &test_vpm_read_cl_string, "", "test_vpm_read",
-        {toBufferParameter(toRange<int32_t>(0, 4 * 10)), toBufferParameter(toRange<int32_t>(100, 100 + 4 * 10 * 3))},
-        toDimensions(1),
-        {checkParameterEquals(0,
-             std::vector<uint32_t>{100, 101, 102, 103, 112, 113, 114, 115, 124, 125, 126, 127, 136, 137, 138, 139, 148,
-                 149, 150, 151, 160, 161, 162, 163, 172, 173, 174, 175, 184, 185, 186, 187, 196, 197, 198, 199}),
-            checkParameterEquals(1,
-                std::vector<uint32_t>{100, 101, 102, 103, 112, 113, 114, 115, 124, 125, 126, 127, 136, 137, 138, 139,
-                    148, 149, 150, 151, 160, 161, 162, 163, 172, 173, 174, 175, 184, 185, 186, 187, 196, 197, 198,
-                    199})}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder("vpm_read", test_vpm_read_cl_string, "test_vpm_read");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setParameter<0>(toRange(0, 4 * 10));
+        builder.setParameter<1>(toRange(100, 100 + 4 * 10 * 3));
+        builder.checkParameterEquals<0>(
+            {100, 101, 102, 103, 112, 113, 114, 115, 124, 125, 126, 127, 136, 137, 138, 139, 148, 149, 150, 151, 160,
+                161, 162, 163, 172, 173, 174, 175, 184, 185, 186, 187, 196, 197, 198, 199, 208, 209, 210, 211});
+        builder.checkParameterPartialEquals<1>(
+            {100, 101, 102, 103, 112, 113, 114, 115, 124, 125, 126, 127, 136, 137, 138, 139, 148, 149, 150, 151, 160,
+                161, 162, 163, 172, 173, 174, 175, 184, 185, 186, 187, 196, 197, 198, 199});
+    }
 
-    registerTest(TestData{"vpm_write", DataFilter::MEMORY_ACCESS, &test_vpm_write_cl_string, "", "test_vpm_write",
-        {toBufferParameter(toRange(0, 16)), toBufferParameter(std::vector<uint32_t>(10 * 16)),
-            toBufferParameter(std::vector<uint16_t>(10 * 16)), toBufferParameter(std::vector<uint8_t>(10 * 16)),
-            toBufferParameter(std::vector<uint32_t>(10 * 16 * 4, 0x42))},
-        toDimensions(1),
-        {checkParameterEquals(1,
-             std::vector<uint32_t>{
-                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 1. iteration
-                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 2. iteration
-                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 3. iteration
-                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 4. iteration
-                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 5. iteration
-                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 6. iteration
-                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 7. iteration
-                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 8. iteration
-                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 9. iteration
-                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15  // 10. iteration
-             }),
-            checkParameterEquals(2,
-                std::vector<uint16_t>{
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 1. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 2. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 3. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 4. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 5. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 6. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 7. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 8. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 9. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15  // 10. iteration
-                }),
-            checkParameterEquals(3,
-                std::vector<uint8_t>{
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 1. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 2. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 3. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 4. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 5. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 6. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 7. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 8. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 9. iteration
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15  // 10. iteration
-                }),
-            checkParameterEquals(4,
-                std::vector<uint32_t>{
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 1. iteration
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 2. iteration
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 3. iteration
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 4. iteration
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 5. iteration
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 6. iteration
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 7. iteration
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 8. iteration
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 9. iteration
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 // 10. iteration
-                })}});
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int16_t>, Buffer<int8_t>, Buffer<int32_t>> builder(
+            "vpm_write", test_vpm_write_cl_string, "test_vpm_write");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setParameter<0>(toRange(0, 16));
+        builder.allocateParameter<1>(10 * 16);
+        builder.allocateParameter<2>(10 * 16);
+        builder.allocateParameter<3>(10 * 16);
+        builder.allocateParameter<4>(10 * 16 * 3, 0x42);
+        builder.checkParameterEquals<1>({
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 1. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 2. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 3. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 4. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 5. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 6. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 7. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 8. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 9. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15  // 10. iteration
+        });
+        builder.checkParameterEquals<2>({
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 1. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 2. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 3. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 4. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 5. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 6. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 7. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 8. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 9. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15  // 10. iteration
+        });
+        builder.checkParameterEquals<3>({
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 1. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 2. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 3. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 4. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 5. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 6. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 7. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 8. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 9. iteration
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15  // 10. iteration
+        });
+        builder.checkParameterEquals<4>({
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 1. iteration
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 2. iteration
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 3. iteration
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 4. iteration
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 5. iteration
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 6. iteration
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 7. iteration
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 8. iteration
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 9. iteration
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 10. iteration
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+            0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, //
+        });
+    }
 
-    registerTest(
-        TestData{"cross_group_memory_access_simple", DataFilter::MEMORY_ACCESS, &test_cross_group_access_cl_string, "",
-            "test_cross_write_simple", {toBufferParameter(std::vector<uint32_t>(40, 0x42))}, toDimensions(10, 1, 1, 4),
-            {checkParameterEquals(0,
-                std::vector<uint32_t>{45, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, // sum([0, 9])
-                    145, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42,                  // sum([10, 19])
-                    245, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42,                  //
-                    345, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42})}});
+    {
+        TestDataBuilder<Buffer<uint32_t>> builder(
+            "cross_group_memory_access_simple", test_cross_group_access_cl_string, "test_cross_write_simple");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(10, 1, 1, 4, 1, 1);
+        builder.allocateParameter<0>(40, 0x42);
+        builder.checkParameterEquals<0>({45, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, // sum([0, 9])
+            145, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42,                             // sum([10, 19])
+            245, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42,                             //
+            345, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42});
+    }
 
-    registerTest(TestData{"cross_group_memory_access_advanced", DataFilter::MEMORY_ACCESS,
-        &test_cross_group_access_cl_string, "", "test_cross_write_advanced",
-        {toBufferParameter(std::vector<uint32_t>(40, 0x42)), toBufferParameter(std::vector<uint32_t>(16, 0x42))},
-        toDimensions(10, 1, 1, 4),
-        {checkParameterEquals(0,
-            std::vector<uint32_t>{28, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, // sum([0, 7])
-                108, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42,                  // sum([10, 17])
-                188, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42,                  //
-                268, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42})}});
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>> builder(
+            "cross_group_memory_access_advanced", test_cross_group_access_cl_string, "test_cross_write_advanced");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(10, 1, 1, 4, 1, 1);
+        builder.allocateParameter<0>(40, 0x42);
+        builder.allocateParameter<1>(16, 0x42);
+        builder.checkParameterEquals<0>({28, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, // sum([0, 7])
+            108, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42,                             // sum([10, 17])
+            188, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42,                             //
+            268, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42});
+    }
 
     registerPrivateAliasingTests<int8_t>("char");
     registerPrivateAliasingTests<int16_t>("short");
