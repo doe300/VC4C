@@ -17,6 +17,7 @@
 #include "normalization/Normalizer.h"
 #include "optimization/Optimizer.h"
 #include "spirv/SPIRVLexer.h"
+#include "tool_paths.h"
 
 #include <fstream>
 #include <map>
@@ -49,11 +50,13 @@ protected:
         std::unique_ptr<vc4c::Parser> parser;
         switch(vc4c::Precompiler::getSourceType(*precompiled))
         {
-#ifdef USE_LLVM_LIBRARY
         case vc4c::SourceType::LLVM_IR_BIN:
-            parser = std::make_unique<vc4c::llvm2qasm::BitcodeReader>(*precompiled, vc4c::SourceType::LLVM_IR_BIN);
-            break;
-#endif
+            if(vc4c::hasLLVMFrontend())
+            {
+                parser = std::make_unique<vc4c::llvm2qasm::BitcodeReader>(*precompiled, vc4c::SourceType::LLVM_IR_BIN);
+                break;
+            }
+            FALL_THROUGH
         case vc4c::SourceType::SPIRV_BIN:
             parser = std::make_unique<vc4c::spirv::SPIRVLexer>(*precompiled);
             break;
@@ -73,11 +76,13 @@ protected:
         std::unique_ptr<vc4c::Parser> parser;
         switch(vc4c::Precompiler::getSourceType(*precompiled))
         {
-#ifdef USE_LLVM_LIBRARY
         case vc4c::SourceType::LLVM_IR_BIN:
-            parser = std::make_unique<vc4c::llvm2qasm::BitcodeReader>(*precompiled, vc4c::SourceType::LLVM_IR_BIN);
-            break;
-#endif
+            if(vc4c::hasLLVMFrontend())
+            {
+                parser = std::make_unique<vc4c::llvm2qasm::BitcodeReader>(*precompiled, vc4c::SourceType::LLVM_IR_BIN);
+                break;
+            }
+            FALL_THROUGH
         case vc4c::SourceType::SPIRV_BIN:
             parser = std::make_unique<vc4c::spirv::SPIRVLexer>(*precompiled);
             break;

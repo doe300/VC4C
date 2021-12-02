@@ -7,6 +7,7 @@
 #ifndef VC4C_FRONTEND_COMPILER
 #define VC4C_FRONTEND_COMPILER
 
+#include "CompilationData.h"
 #include "CompilationError.h"
 #include "Optional.h"
 #include "Precompiler.h"
@@ -24,93 +25,167 @@ namespace vc4c
     namespace precompilation
     {
         template <SourceType Type>
-        struct PrecompilationResult : private NonCopyable
+        struct SourceTypeToRepresentation
         {
-            explicit PrecompilationResult(const std::string& file) : file(file) {}
-            virtual ~PrecompilationResult() noexcept = default;
-
-            std::string file;
+            using type = std::string;
         };
 
-        /**
-         * Wrapper to allow writing to a temporary file which will then read into the given output stream on scope exit.
-         */
-        template <SourceType Type>
-        struct TemporaryPrecompilationResult : public PrecompilationResult<Type>
+        template <>
+        struct SourceTypeToRepresentation<SourceType::LLVM_IR_BIN>
         {
-            explicit TemporaryPrecompilationResult(std::ostream* s = nullptr) :
-                PrecompilationResult<Type>(""), tmpFile(), stream(s)
-            {
-                this->file = tmpFile.fileName;
-            }
+            using type = llvm::Module;
+        };
 
-            ~TemporaryPrecompilationResult() noexcept override
-            {
-                if(stream)
-                {
-                    std::unique_ptr<std::istream> tmpStream;
-                    tmpFile.openInputStream(tmpStream);
-                    *stream << tmpStream->rdbuf();
-                }
-            }
-
-            TemporaryFile tmpFile;
-            std::ostream* stream;
+        template <>
+        struct SourceTypeToRepresentation<SourceType::SPIRV_BIN>
+        {
+            using type = std::vector<uint32_t>;
         };
 
         template <SourceType Type>
-        inline std::unique_ptr<PrecompilationResult<Type>> createResult(
-            std::ostream& stream, Optional<std::string> outputFile)
-        {
-            if(outputFile)
-                return std::make_unique<PrecompilationResult<Type>>(*outputFile);
-            return std::make_unique<TemporaryPrecompilationResult<Type>>(&stream);
-        }
+        class PrecompilationSource;
 
         template <SourceType Type>
-        struct PrecompilationSource : private NonCopyable
+        class PrecompilationResult : private NonCopyable
         {
-            // XXX this is actually a variant between the members
-            Optional<std::string> file;
-            std::istream* stream;
+        public:
+            explicit PrecompilationResult() : data(nullptr) {}
 
-            explicit PrecompilationSource(std::istream& s) : stream(&s) {}
-            explicit PrecompilationSource(const std::string& file) : file(file), stream(nullptr) {}
-            explicit PrecompilationSource(PrecompilationResult<Type>& res) : file(res.file)
+            explicit PrecompilationResult(std::unique_ptr<TypedCompilationData<Type>>&& data) : data(std::move(data))
             {
-                if(!file && !stream)
-                    throw CompilationError(
-                        CompilationStep::PRECOMPILATION, "Source has neither source file nor source stream!");
+                if(!this->data)
+                    throw CompilationError(CompilationStep::PRECOMPILATION, "Result has no data!");
             }
+
+            explicit PrecompilationResult(const std::string& file) :
+                PrecompilationResult(std::make_unique<FileCompilationData<Type>>(file))
+            {
+            }
+
+            explicit PrecompilationResult(TemporaryFile&& file) :
+                PrecompilationResult(std::make_unique<TemporaryFileCompilationData<Type>>(std::move(file)))
+            {
+            }
+
+            PrecompilationResult(const PrecompilationResult&) = delete;
+            PrecompilationResult(PrecompilationResult&&) noexcept = default;
+
+            PrecompilationResult& operator=(const PrecompilationResult&) = delete;
+            PrecompilationResult& operator=(PrecompilationResult&&) noexcept = default;
+
+            std::string getOutputPath(const std::string& defaultPath) const noexcept
+            {
+                return getFilePath().value_or(defaultPath);
+            }
+
+            Optional<std::string> getFilePath() const noexcept
+            {
+                return data ? data->getFilePath() : Optional<std::string>{};
+            }
+
+            std::unique_ptr<std::ostream> getBufferWriter(bool force = false)
+            {
+                if(!force && dynamic_cast<const FileCompilationData<Type>*>(data.get()))
+                    // prefer using the file instead of writing via a file stream
+                    return nullptr;
+                return data ? data->writeStream() : nullptr;
+            }
+
+            TypedCompilationData<Type>& inner() noexcept
+            {
+                return *data;
+            }
+
+            std::unique_ptr<TypedCompilationData<Type>> release() noexcept
+            {
+                return std::move(data);
+            }
+
+            std::string to_string() const
+            {
+                return data ? data->to_string() : "(empty)";
+            }
+
+            operator bool() const noexcept
+            {
+                return data != nullptr;
+            }
+
+        protected:
+            std::unique_ptr<TypedCompilationData<Type>> data;
+
+            friend class PrecompilationSource<Type>;
         };
 
-        template <SourceType OutType, SourceType InType>
-        using PrecompilationStep =
-            std::function<void(PrecompilationSource<InType>&&, const std::string&, PrecompilationResult<OutType>&)>;
+        template <SourceType Type>
+        class PrecompilationSource : private NonCopyable
+        {
+        public:
+            explicit PrecompilationSource(std::shared_ptr<TypedCompilationData<Type>>&& data) : data(std::move(data))
+            {
+                if(!this->data)
+                    throw CompilationError(CompilationStep::PRECOMPILATION, "Source has no data!");
+            }
+
+            explicit PrecompilationSource(std::istream& s) :
+                PrecompilationSource(std::make_unique<RawCompilationData<Type>>(s))
+            {
+            }
+
+            explicit PrecompilationSource(const std::string& file) :
+                PrecompilationSource(std::make_unique<FileCompilationData<Type>>(file))
+            {
+            }
+
+            explicit PrecompilationSource(PrecompilationResult<Type>&& res) : PrecompilationSource(std::move(res.data))
+            {
+            }
+
+            PrecompilationSource(const PrecompilationSource&) = delete;
+            PrecompilationSource(PrecompilationSource&&) noexcept = default;
+
+            PrecompilationSource& operator=(const PrecompilationSource&) = delete;
+            PrecompilationSource& operator=(PrecompilationSource&&) noexcept = default;
+
+            std::string getInputPath(const std::string& defaultPath) const noexcept
+            {
+                return getFilePath().value_or(defaultPath);
+            }
+
+            Optional<std::string> getFilePath() const noexcept
+            {
+                return data->getFilePath();
+            }
+
+            std::unique_ptr<std::istream> getBufferReader(bool force = false) const
+            {
+                if(!force && dynamic_cast<const FileCompilationData<Type>*>(data.get()))
+                    // prefer using the file instead of reading it into memory here
+                    return nullptr;
+                return data->readStream();
+            }
+
+            const TypedCompilationData<Type>& inner() const noexcept
+            {
+                return *data;
+            }
+
+            std::string to_string() const
+            {
+                return data ? data->to_string() : "(empty)";
+            }
+
+        private:
+            std::shared_ptr<TypedCompilationData<Type>> data;
+        };
+
+        template <SourceType InType, SourceType OutType>
+        using PrecompilationStep = std::function<PrecompilationResult<OutType>(
+            PrecompilationSource<InType>&&, const std::string&, PrecompilationResult<OutType>&&)>;
 
         template <SourceType Type>
-        using LinkStep = std::function<void(
-            std::vector<PrecompilationSource<Type>>&&, const std::string&, PrecompilationResult<Type>&)>;
-
-        template <SourceType OutType, SourceType InType, SourceType IntermediateType>
-        constexpr PrecompilationStep<OutType, InType> chainSteps(
-            const PrecompilationStep<IntermediateType, InType>& step1,
-            const PrecompilationStep<OutType, IntermediateType>& step2)
-        {
-            return [step1, step2](PrecompilationSource<InType>&& in, const std::string& userOptions,
-                       PrecompilationResult<OutType>& result) {
-                TemporaryFile f;
-                PrecompilationResult<IntermediateType> intermediateResult(f.fileName);
-                step1(std::forward<PrecompilationSource<InType>>(in), userOptions, intermediateResult);
-                return step2(PrecompilationSource<IntermediateType>(intermediateResult), userOptions, result);
-            };
-        }
-
-        template <SourceType OutType, SourceType InType, typename FirstStep, typename... Steps>
-        constexpr PrecompilationStep<OutType, InType> chainSteps(FirstStep step1, Steps... steps)
-        {
-            return chainSteps(step1, chainSteps(steps...));
-        }
+        using LinkStep = std::function<PrecompilationResult<Type>(
+            std::vector<PrecompilationSource<Type>>&&, const std::string&, PrecompilationResult<Type>&&)>;
 
         using OpenCLSource = PrecompilationSource<SourceType::OPENCL_C>;
         using LLVMIRSource = PrecompilationSource<SourceType::LLVM_IR_BIN>;
@@ -122,51 +197,46 @@ namespace vc4c
         using SPIRVResult = PrecompilationResult<SourceType::SPIRV_BIN>;
         using SPIRVTextResult = PrecompilationResult<SourceType::SPIRV_TEXT>;
 
-        void compileOpenCLWithPCH(OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result);
-        void compileOpenCLWithDefaultHeader(
-            OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result);
-        void linkInStdlibModule(LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult& result);
-        void compileOpenCLToLLVMText(OpenCLSource&& source, const std::string& userOptions, LLVMIRTextResult& result);
-        void compileLLVMToSPIRV(LLVMIRSource&& source, const std::string& userOptions, SPIRVResult& result);
-        void assembleSPIRV(SPIRVTextSource&& source, const std::string& userOptions, SPIRVResult& result);
-        void compileLLVMToSPIRVText(LLVMIRSource&& source, const std::string& userOptions, SPIRVTextResult& result);
-        void disassembleSPIRV(SPIRVSource&& source, const std::string& userOptions, SPIRVTextResult& result);
-        void disassembleLLVM(LLVMIRSource&& source, const std::string& userOptions, LLVMIRTextResult& result);
-        void assembleLLVM(LLVMIRTextSource&& source, const std::string& userOptions, LLVMIRResult& result);
-        void linkLLVMModules(std::vector<LLVMIRSource>&& sources, const std::string& userOptions, LLVMIRResult& result);
-        void linkSPIRVModules(std::vector<SPIRVSource>&& sources, const std::string& userOptions, SPIRVResult& result);
-        void optimizeLLVMIR(LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult& result);
-        void optimizeLLVMText(LLVMIRTextSource&& source, const std::string& userOptions, LLVMIRTextResult& result);
-
-        static const auto compileOpenCLAndLinkModule =
-            chainSteps<SourceType::LLVM_IR_BIN, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
-                compileOpenCLWithDefaultHeader, linkInStdlibModule);
-
-#ifdef SPIRV_LINK_MODULES
-        //  Use LLVM linker instead of PCH for faster compilation
-        static const auto compileOpenCLToSPIRV =
-            chainSteps<SourceType::SPIRV_BIN, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
-                compileOpenCLAndLinkModule, compileLLVMToSPIRV);
-
-        static const auto compileOpenCLToSPIRVText =
-            chainSteps<SourceType::SPIRV_TEXT, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
-                compileOpenCLAndLinkModule, compileLLVMToSPIRVText);
-#else
-        static const auto compileOpenCLToSPIRV =
-            chainSteps<SourceType::SPIRV_BIN, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
-                compileOpenCLWithPCH, compileLLVMToSPIRV);
-
-        static const auto compileOpenCLToSPIRVText =
-            chainSteps<SourceType::SPIRV_TEXT, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
-                compileOpenCLWithPCH, compileLLVMToSPIRVText);
-#endif
+        LLVMIRResult compileOpenCLWithPCH(
+            OpenCLSource&& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
+        LLVMIRResult compileOpenCLWithDefaultHeader(
+            OpenCLSource&& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
+        LLVMIRResult linkInStdlibModule(
+            LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
+        LLVMIRTextResult compileOpenCLToLLVMText(OpenCLSource&& source, const std::string& userOptions,
+            LLVMIRTextResult&& desiredOutput = LLVMIRTextResult{});
+        SPIRVResult compileLLVMToSPIRV(
+            LLVMIRSource&& source, const std::string& userOptions, SPIRVResult&& desiredOutput = SPIRVResult{});
+        SPIRVResult assembleSPIRV(
+            SPIRVTextSource&& source, const std::string& userOptions, SPIRVResult&& desiredOutput = SPIRVResult{});
+        SPIRVTextResult compileLLVMToSPIRVText(
+            LLVMIRSource&& source, const std::string& userOptions, SPIRVTextResult&& desiredOutput = SPIRVTextResult{});
+        SPIRVTextResult disassembleSPIRV(
+            SPIRVSource&& source, const std::string& userOptions, SPIRVTextResult&& desiredOutput = SPIRVTextResult{});
+        LLVMIRTextResult disassembleLLVM(LLVMIRSource&& source, const std::string& userOptions,
+            LLVMIRTextResult&& desiredOutput = LLVMIRTextResult{});
+        LLVMIRResult assembleLLVM(
+            LLVMIRTextSource&& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
+        LLVMIRResult linkLLVMModules(std::vector<LLVMIRSource>&& sources, const std::string& userOptions,
+            LLVMIRResult&& desiredOutput = LLVMIRResult{});
+        SPIRVResult linkSPIRVModules(std::vector<SPIRVSource>&& sources, const std::string& userOptions,
+            SPIRVResult&& desiredOutput = SPIRVResult{});
+        LLVMIRResult optimizeLLVMIR(
+            LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
+        LLVMIRResult compileOpenCLAndLinkModule(
+            OpenCLSource&& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
+        SPIRVResult compileOpenCLToSPIRV(
+            OpenCLSource&& source, const std::string& userOptions, SPIRVResult&& desiredOutput = SPIRVResult{});
+        SPIRVTextResult compileOpenCLToSPIRVText(
+            OpenCLSource&& source, const std::string& userOptions, SPIRVTextResult&& desiredOutput = SPIRVTextResult{});
 
         /*
          * General version of compiling OpenCL C source to to LLVM binary module with the standard-library included.
          * Depending on the compilation options, the standard-library PCH is included or the standard-library module is
          * linked in.
          */
-        void compileOpenCLToLLVMIR(OpenCLSource&& source, const std::string& userOptions, LLVMIRResult& result);
+        LLVMIRResult compileOpenCLToLLVMIR(
+            OpenCLSource&& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
 
         /**
          * Tries to find the location of the tool executable with the given name.
@@ -176,12 +246,6 @@ namespace vc4c
          */
         Optional<std::string> findToolLocation(
             const std::string& name, const std::string& preferredPath = "", bool skipPathLookup = false);
-
-        /**
-         * Runs the given precompilation command, automatically captures the error stream and logs any errors as well as
-         * aborts on execution failure.
-         */
-        void runPrecompiler(const std::string& command, std::istream* inputStream, std::ostream* outputStream);
 
         /*
          * Container for the paths used to look up the VC4CL OpenCL C standard-library implementation files

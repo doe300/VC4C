@@ -23,7 +23,12 @@ using namespace vc4c::spirv;
 ParsedInstruction::~ParsedInstruction() noexcept = default;
 
 SPIRVParserBase::SPIRVParserBase(std::istream& input, const bool isSPIRVText) :
-    isTextInput(isSPIRVText), input(input), currentMethod(nullptr), module(nullptr)
+    isTextInput(isSPIRVText), inputWords(readStreamOfWords(input)), currentMethod(nullptr), module(nullptr)
+{
+}
+
+SPIRVParserBase::SPIRVParserBase(std::vector<uint32_t>&& input, bool isSPIRVText) :
+    isTextInput(isSPIRVText), inputWords(std::move(input)), currentMethod(nullptr), module(nullptr)
 {
 }
 
@@ -33,23 +38,20 @@ void SPIRVParserBase::parse(Module& module)
 {
     this->module = &module;
 
-    // read input and map into buffer
-    std::vector<uint32_t> words = readStreamOfWords(input);
-
     // if input is SPIR-V text, convert to binary representation
     if(isTextInput)
     {
-        words = assembleTextToBinary(words);
+        inputWords = assembleTextToBinary(inputWords);
     }
     else
     {
         CPPLOG_LAZY(
-            logging::Level::DEBUG, log << "Read SPIR-V binary with " << words.size() << " words" << logging::endl);
+            logging::Level::DEBUG, log << "Read SPIR-V binary with " << inputWords.size() << " words" << logging::endl);
     }
 
     // parse input
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Starting parsing..." << logging::endl);
-    doParse(words);
+    doParse(inputWords);
     CPPLOG_LAZY(logging::Level::DEBUG, log << "SPIR-V binary successfully parsed" << logging::endl);
 
     // resolve method parameters

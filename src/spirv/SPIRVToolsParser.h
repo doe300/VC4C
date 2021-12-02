@@ -43,6 +43,10 @@ namespace vc4c
                 SPIRVParserBase(input, isSPIRVText)
             {
             }
+            explicit SPIRVToolsParser(std::vector<uint32_t>&& input, bool isSPIRVText = false) :
+                SPIRVParserBase(std::move(input), isSPIRVText)
+            {
+            }
             ~SPIRVToolsParser() override;
 
         protected:
@@ -62,7 +66,12 @@ namespace vc4c
         class SPIRVToolsParser final : public SPIRVParserBase
         {
         public:
-            ~SPIRVToolsParser() override;
+            explicit SPIRVToolsParser(std::istream& input = std::cin, bool isSPIRVText = false)
+            {
+                throw CompilationError(CompilationStep::GENERAL, "SPIR-V Tools is not available!");
+            }
+
+            ~SPIRVToolsParser() override = default;
 
         protected:
             void doParse(const std::vector<uint32_t>& module) override

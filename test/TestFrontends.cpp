@@ -11,6 +11,7 @@
 #include "asm/Instruction.h"
 #include "asm/KernelInfo.h"
 #include "spirv/SPIRVHelper.h"
+#include "tool_paths.h"
 #include "tools.h"
 
 using namespace vc4c::spirv;
@@ -31,17 +32,20 @@ extern void extractBinary(std::istream& binary, ModuleHeader& module, StableList
 TestFrontends::TestFrontends()
 {
     TEST_ADD(TestFrontends::testSPIRVCapabilitiesSupport);
-#ifdef USE_LLVM_LIBRARY
-    // FIXME this SEGFAULTs in llvm-spirv translator
-    TEST_ADD(TestFrontends::testLinking);
-#endif
+    if(hasLLVMFrontend())
+    {
+        // FIXME this SEGFAULTs in llvm-spirv translator
+        TEST_ADD(TestFrontends::testLinking);
+    }
+
     TEST_ADD(TestFrontends::testSourceTypeDetection);
     TEST_ADD(TestFrontends::testDisassembler);
 
     TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::OPENCL_C);
-#ifdef USE_LLVM_LIBRARY
-    TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::LLVM_IR_TEXT);
-#endif
+    if(hasLLVMFrontend())
+    {
+        TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::LLVM_IR_TEXT);
+    }
     TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::LLVM_IR_BIN);
 
     TEST_ADD(TestFrontends::testKernelAttributes);
@@ -93,9 +97,9 @@ void TestFrontends::testLinking()
     TEST_ASSERT(type == SourceType::LLVM_IR_BIN || type == SourceType::SPIRV_BIN)
 
     std::stringstream out;
-    Compiler comp(tmp, out);
-    comp.getConfiguration().outputMode = OutputMode::BINARY;
-    comp.convert();
+    Configuration config{};
+    config.outputMode = OutputMode::BINARY;
+    Compiler::compile(tmp, out, config);
 
     std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>> params;
     params.push_back(std::make_pair(0, Optional<std::vector<uint32_t>>{std::vector<uint32_t>{0}}));
@@ -182,18 +186,16 @@ static std::pair<std::stringstream, SourceType> compile(
 {
     // pre-compile to given type and check result type
     Configuration precompConfig{};
-    Precompiler precomp{precompConfig, source, Precompiler::getSourceType(source)};
-
-    std::unique_ptr<std::istream> tmp;
-    precomp.run(tmp, intermediateType, options);
-    auto realIntermediateType = Precompiler::getSourceType(*tmp);
+    CompilationData srcData{source, Precompiler::getSourceType(source)};
+    auto tmp = Precompiler::precompile(srcData, intermediateType, precompConfig, options);
 
     // compile from given type and emulate code
     std::stringstream out;
     Configuration config;
     config.outputMode = OutputMode::BINARY;
-    Compiler::compile(*tmp, out, config, options);
-    return std::make_pair(std::move(out), realIntermediateType);
+    auto result = Compiler::compile(tmp, config, options);
+    result.first.readInto(out);
+    return std::make_pair(std::move(out), tmp.getType());
 }
 
 void TestFrontends::testCompilation(vc4c::SourceType type)

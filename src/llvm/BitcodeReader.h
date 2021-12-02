@@ -31,6 +31,11 @@ namespace llvm
 
 namespace vc4c
 {
+    namespace precompilation
+    {
+        struct LLVMModuleWithContext;
+    } /* namespace precompilation */
+
     namespace llvm2qasm
     {
         // This list is only ever appended to the end and the size can be pre-calculated, so use a vector
@@ -40,14 +45,15 @@ namespace vc4c
         class BitcodeReader final : public Parser
         {
         public:
-            explicit BitcodeReader(std::istream& stream, SourceType sourceType);
+            BitcodeReader(std::istream& stream, SourceType sourceType);
+            BitcodeReader(precompilation::LLVMModuleWithContext&& llvmModule);
             ~BitcodeReader() override = default;
 
             void parse(Module& module) override;
 
         private:
             //"the lifetime of the LLVMContext needs to outlast the module"
-            llvm::LLVMContext context;
+            std::shared_ptr<llvm::LLVMContext> context;
             std::unique_ptr<llvm::Module> llvmModule;
             FastMap<const llvm::Function*, std::pair<Method*, LLVMInstructionList>> parsedFunctions;
             FastMap<const llvm::Value*, const Local*> localMap;

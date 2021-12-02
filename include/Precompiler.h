@@ -99,6 +99,51 @@ namespace vc4c
         bool isStaticTemporary;
     };
 
+    // forward reference to the actual compilation data implementation
+    class CompilationDataPrivate;
+
+    /**
+     * Handle for compilation input and output data.
+     *
+     * Abstracts whether the data is located in a (temporary) file or in-memory as well as the actual in-memory storage
+     * format.
+     */
+    class CompilationData
+    {
+    public:
+        /**
+         * Creates an empty object. This should e.g. be used for compilation output.
+         */
+        explicit CompilationData();
+
+        /**
+         * Sets the given type and file path as data. This should e.g. be used to compile from files or to compile into
+         * a specific file.
+         */
+        CompilationData(const std::string& fileName, SourceType type);
+
+        /**
+         * Sets the given type and raw data. This should e.g. be used to compile from an on-memory data buffer.
+         */
+        CompilationData(std::istream& rawData, SourceType type);
+
+        explicit CompilationData(std::shared_ptr<CompilationDataPrivate>&& data);
+        ~CompilationData();
+
+        SourceType getType() const noexcept;
+        Optional<std::string> getFilePath() const;
+        std::vector<uint8_t> getRawData() const;
+
+        void readInto(std::ostream& out) const;
+        void writeFrom(std::istream& in);
+
+        operator bool() const noexcept;
+        const std::shared_ptr<CompilationDataPrivate>& inner() const noexcept;
+
+    private:
+        std::shared_ptr<CompilationDataPrivate> data;
+    };
+
     /*
      * The pre-compiler manages and executes the conversion of the input from a various of supported types to a type
      * which can be read by one of the configured compiler front-ends.
@@ -106,16 +151,7 @@ namespace vc4c
     class Precompiler
     {
     public:
-        Precompiler(Configuration& config, std::istream& input, SourceType inputType,
-            const Optional<std::string>& inputFile = {});
-
-        /*
-         * Runs the pre-compilation from the source-type passed to the constructor to the output-type specified.
-         */
-        void run(std::unique_ptr<std::istream>& output, SourceType outputType, const std::string& options = "",
-            Optional<std::string> outputFile = {});
-
-        /*
+        /**
          * Helper-function to easily pre-compile a single input with the given configuration into the given output.
          *
          * \param input The input stream
@@ -123,13 +159,17 @@ namespace vc4c
          * \param config The configuration to use for compilation
          * \param options Specify additional compiler-options to pass onto the pre-compiler
          * \param inputFile Can be used by the compiler to speed-up compilation (e.g. by running the pre-compiler with
-         * these files instead of needing to write input to a temporary file) \param outputFile The optional output-file
-         * to write the pre-compiled code into. If this is specified, the code is compiled into the file, otherwise the
-         * output stream is filled with the compiled code
+         * these files instead of needing to write input to a temporary file)
+         * \param outputFile The optional output-file to write the pre-compiled code into. If this is specified, the
+         * code is compiled into the file, otherwise the output stream is filled with the compiled code
          */
-        static void precompile(std::istream& input, std::unique_ptr<std::istream>& output, Configuration config = {},
-            const std::string& options = "", const Optional<std::string>& inputFile = {},
+        [[deprecated]] static void precompile(std::istream& input, std::unique_ptr<std::istream>& output,
+            Configuration config = {}, const std::string& options = "", const Optional<std::string>& inputFile = {},
             const Optional<std::string>& outputFile = {});
+        static CompilationData precompile(
+            const CompilationData& input, Configuration config = {}, const std::string& options = "");
+        static CompilationData precompile(const CompilationData& input, SourceType outputType,
+            Configuration config = {}, const std::string& options = "");
 
         /*
          * Determines the type of code stored in the given stream.
@@ -143,8 +183,11 @@ namespace vc4c
          *
          * Returns the SourceType of the linked module
          */
-        static SourceType linkSourceCode(const std::unordered_map<std::istream*, Optional<std::string>>& inputs,
-            std::ostream& output, bool includeStandardLibrary = false);
+        [[deprecated]] static SourceType linkSourceCode(
+            const std::unordered_map<std::istream*, Optional<std::string>>& inputs, std::ostream& output,
+            bool includeStandardLibrary = false);
+        static CompilationData linkSourceCode(
+            const std::vector<CompilationData>& inputs, bool includeStandardLibrary = false);
 
         /*
          * Returns whether there is a linker available that can link the given input modules
@@ -154,13 +197,6 @@ namespace vc4c
          * Returns whether a linker is available at all in the compiler
          */
         static bool isLinkerAvailable();
-
-        const SourceType inputType;
-        const Optional<std::string> inputFile;
-        const Configuration config;
-
-    private:
-        std::istream& input;
     };
 } // namespace vc4c
 

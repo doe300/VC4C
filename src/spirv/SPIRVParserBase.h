@@ -44,6 +44,7 @@ namespace vc4c
         {
         public:
             explicit SPIRVParserBase(std::istream& input = std::cin, bool isSPIRVText = false);
+            explicit SPIRVParserBase(std::vector<uint32_t>&& input, bool isSPIRVText = false);
             ~SPIRVParserBase() override;
 
             void parse(Module& module) override;
@@ -76,8 +77,8 @@ namespace vc4c
             const bool isTextInput;
             // all global methods in the module
             MethodMapping methods;
-            // the input stream
-            std::istream& input;
+            // the input words
+            std::vector<uint32_t> inputWords;
             // the currently processed method, only valid while parsing
             SPIRVMethod* currentMethod;
             // the global mapping of ID -> constants

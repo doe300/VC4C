@@ -124,8 +124,8 @@ static void printInfo()
 #ifdef VERIFIER_HEADER
         "vc4asm verification",
 #endif
-#ifdef USE_LIBCLANG
-        "compilation with libClang"
+#ifdef USE_CLANG_LIBRARY
+        "compilation with clang library"
 #endif
     };
     std::cout << vc4c::to_string<std::string>(infoString, std::string{"; "}) << '\n' << std::endl;

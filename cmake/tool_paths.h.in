@@ -101,9 +101,58 @@ namespace vc4c
 
 #cmakedefine VC4C_ENABLE_LIBCLANG
 #ifdef VC4C_ENABLE_LIBCLANG
-#define USE_LIBCLANG
+#define USE_CLANG_LIBRARY
 #undef VC4C_ENABLE_LIBCLANG
 #endif
+
+#cmakedefine LLVM_LIBS_PATH "@LLVM_LIBS_PATH@"
+#cmakedefine LLVM_LIB_VERSION "@LLVM_LIB_VERSION@"
+#if defined(LLVM_LIBS_PATH) && defined(LLVM_LIB_VERSION)
+    static const std::string CLANG_RESOURCE_DIR = LLVM_LIBS_PATH "/clang/" LLVM_LIB_VERSION "/include";
+#undef LLVM_LIBS_PATH
+#undef LLVM_LIB_VERSION
+#else
+    static const std::string CLANG_RESOURCE_DIR = "";
+#endif
+
+    // The below functions are helpers to turn compile-time macro into run-time condition for unified compilation to
+    // also check for syntax-errors in paths not configured
+
+    constexpr bool hasSPIRVToolsFrontend() noexcept
+    {
+#ifdef SPIRV_TOOLS_FRONTEND
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    constexpr bool hasLLVMFrontend() noexcept
+    {
+#ifdef USE_LLVM_LIBRARY
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    constexpr bool hasClangLibrary() noexcept
+    {
+#ifdef USE_CLANG_LIBRARY
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    constexpr bool linkLLVMModulesForSPIRVCompilation() noexcept
+    {
+#if defined(SPIRV_LINK_MODULES) && SPIRV_LINK_MODULES
+        return true;
+#else
+        return false;
+#endif
+    }
 
 } // namespace vc4c
 

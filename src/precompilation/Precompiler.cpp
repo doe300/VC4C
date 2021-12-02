@@ -48,29 +48,180 @@ bool vc4c::isSupportedByFrontend(SourceType inputType, Frontend frontend)
     }
 }
 
+CompilationData::CompilationData() = default;
+
+CompilationData::CompilationData(const std::string& fileName, SourceType type)
+{
+    switch(type)
+    {
+    case SourceType::OPENCL_C:
+        data = std::make_unique<FileCompilationData<SourceType::OPENCL_C>>(fileName);
+        break;
+    case SourceType::LLVM_IR_BIN:
+        data = std::make_unique<FileCompilationData<SourceType::LLVM_IR_BIN>>(fileName);
+        break;
+    case SourceType::LLVM_IR_TEXT:
+        data = std::make_unique<FileCompilationData<SourceType::LLVM_IR_TEXT>>(fileName);
+        break;
+    case SourceType::SPIRV_BIN:
+        data = std::make_unique<FileCompilationData<SourceType::SPIRV_BIN>>(fileName);
+        break;
+    case SourceType::SPIRV_TEXT:
+        data = std::make_unique<FileCompilationData<SourceType::SPIRV_TEXT>>(fileName);
+        break;
+    case SourceType::QPUASM_BIN:
+        data = std::make_unique<FileCompilationData<SourceType::QPUASM_BIN>>(fileName);
+        break;
+    case SourceType::QPUASM_HEX:
+        data = std::make_unique<FileCompilationData<SourceType::QPUASM_HEX>>(fileName);
+        break;
+    case SourceType::UNKNOWN:
+        data = std::make_unique<FileCompilationData<SourceType::UNKNOWN>>(fileName);
+        break;
+    }
+}
+
+CompilationData::CompilationData(std::istream& rawData, SourceType type)
+{
+    switch(type)
+    {
+    case SourceType::OPENCL_C:
+        data = std::make_unique<RawCompilationData<SourceType::OPENCL_C>>(rawData);
+        break;
+    case SourceType::LLVM_IR_BIN:
+        data = std::make_unique<RawCompilationData<SourceType::LLVM_IR_BIN>>(rawData);
+        break;
+    case SourceType::LLVM_IR_TEXT:
+        data = std::make_unique<RawCompilationData<SourceType::LLVM_IR_TEXT>>(rawData);
+        break;
+    case SourceType::SPIRV_BIN:
+        data = std::make_unique<RawCompilationData<SourceType::SPIRV_BIN>>(rawData);
+        break;
+    case SourceType::SPIRV_TEXT:
+        data = std::make_unique<RawCompilationData<SourceType::SPIRV_TEXT>>(rawData);
+        break;
+    case SourceType::QPUASM_BIN:
+        data = std::make_unique<RawCompilationData<SourceType::QPUASM_BIN>>(rawData);
+        break;
+    case SourceType::QPUASM_HEX:
+        data = std::make_unique<RawCompilationData<SourceType::QPUASM_HEX>>(rawData);
+        break;
+    case SourceType::UNKNOWN:
+        data = std::make_unique<RawCompilationData<SourceType::UNKNOWN>>(rawData);
+        break;
+    }
+}
+
+CompilationData::CompilationData(std::shared_ptr<CompilationDataPrivate>&& data) : data(std::move(data)) {}
+
+CompilationData::~CompilationData() = default;
+
+SourceType CompilationData::getType() const noexcept
+{
+    return data ? data->getType() : SourceType::UNKNOWN;
+}
+
+Optional<std::string> CompilationData::getFilePath() const
+{
+    return data ? data->getFilePath() : Optional<std::string>{};
+}
+
+void CompilationData::readInto(std::ostream& out) const
+{
+    if(data)
+        data->readInto(out);
+}
+
+void CompilationData::writeFrom(std::istream& in) {}
+
+CompilationData::operator bool() const noexcept
+{
+    return data != nullptr;
+}
+
+const std::shared_ptr<CompilationDataPrivate>& CompilationData::inner() const noexcept
+{
+    return data;
+}
+
+static NODISCARD CompilationData runPrecompiler(const CompilationData& input, const Configuration& config,
+    SourceType outputType, const std::string& options, std::unique_ptr<CompilationDataPrivate>&& desiredOutput);
+
 void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>& output, Configuration config,
     const std::string& options, const Optional<std::string>& inputFile, const Optional<std::string>& outputFile)
 {
     PROFILE_SCOPE(Precompile);
-    Precompiler precompiler(config, input, Precompiler::getSourceType(input), inputFile);
+
+    auto inputType = Precompiler::getSourceType(input);
+    if(inputType == SourceType::QPUASM_BIN || inputType == SourceType::QPUASM_HEX || inputType == SourceType::UNKNOWN)
+        throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid input-type for pre-compilation",
+            std::to_string(static_cast<unsigned>(inputType)));
+
+    auto inputData = inputFile ? CompilationData(*inputFile, inputType) : CompilationData(input, inputType);
+
+    CompilationData outputData{};
     if(config.frontend != Frontend::DEFAULT)
-        precompiler.run(output, config.frontend == Frontend::LLVM_IR ? SourceType::LLVM_IR_BIN : SourceType::SPIRV_BIN,
-            options, outputFile);
-    else
     {
-#if defined USE_LLVM_LIBRARY
-        // we have both front-ends, select the front-end which can handle the input type
-        if(isSupportedByFrontend(precompiler.inputType, Frontend::LLVM_IR))
-            // prefer LLVM library front-end
-            precompiler.run(output, SourceType::LLVM_IR_BIN, options, outputFile);
-        else if(findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
-            precompiler.run(output, SourceType::SPIRV_BIN, options, outputFile);
-#else
-        if(findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
-            precompiler.run(output, SourceType::SPIRV_BIN, options, outputFile);
-        throw CompilationError(CompilationStep::PRECOMPILATION, "No matching precompiler available!");
-#endif
+        auto outputType = config.frontend == Frontend::LLVM_IR ? SourceType::LLVM_IR_BIN : SourceType::SPIRV_BIN;
+        std::unique_ptr<CompilationDataPrivate> desiredOutput = nullptr;
+        if(outputFile && outputType == SourceType::LLVM_IR_BIN)
+            desiredOutput = std::make_unique<FileCompilationData<SourceType::LLVM_IR_BIN>>(*outputFile);
+        if(outputFile && outputType == SourceType::SPIRV_BIN)
+            desiredOutput = std::make_unique<FileCompilationData<SourceType::SPIRV_BIN>>(*outputFile);
+        outputData = runPrecompiler(inputData, config, outputType, options, std::move(desiredOutput));
     }
+    // we have both front-ends, select the front-end which can handle the input type
+    else if(hasLLVMFrontend() && isSupportedByFrontend(inputType, Frontend::LLVM_IR))
+    {
+        // prefer LLVM library front-end
+        auto desiredOutput =
+            outputFile ? std::make_unique<FileCompilationData<SourceType::LLVM_IR_BIN>>(*outputFile) : nullptr;
+        outputData = runPrecompiler(inputData, config, SourceType::LLVM_IR_BIN, options, std::move(desiredOutput));
+    }
+    else if(findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
+    {
+        auto desiredOutput =
+            outputFile ? std::make_unique<FileCompilationData<SourceType::SPIRV_BIN>>(*outputFile) : nullptr;
+        outputData = runPrecompiler(inputData, config, SourceType::SPIRV_BIN, options, std::move(desiredOutput));
+    }
+    else
+        throw CompilationError(CompilationStep::PRECOMPILATION, "No matching precompiler available!");
+
+    // write back to the desired output, if it was not already used
+    if(outputFile && outputData.getFilePath() != outputFile)
+    {
+        std::ofstream fos(*outputFile);
+        outputData.readInto(fos);
+    }
+    else if(!outputFile)
+    {
+        auto tmp = std::make_unique<std::stringstream>();
+        outputData.readInto(*tmp);
+        output = std::move(tmp);
+    }
+}
+
+CompilationData Precompiler::precompile(const CompilationData& input, Configuration config, const std::string& options)
+{
+    if(config.frontend != Frontend::DEFAULT)
+    {
+        auto outputType = config.frontend == Frontend::LLVM_IR ? SourceType::LLVM_IR_BIN : SourceType::SPIRV_BIN;
+        return runPrecompiler(input, config, outputType, options, nullptr);
+    }
+    // we have both front-ends, select the front-end which can handle the input type
+    else if(hasLLVMFrontend() && isSupportedByFrontend(input.getType(), Frontend::LLVM_IR))
+        // prefer LLVM library front-end
+        return runPrecompiler(input, config, SourceType::LLVM_IR_BIN, options, nullptr);
+    else if(findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
+        return runPrecompiler(input, config, SourceType::SPIRV_BIN, options, nullptr);
+    else
+        throw CompilationError(CompilationStep::PRECOMPILATION, "No matching precompiler available!");
+}
+
+CompilationData Precompiler::precompile(
+    const CompilationData& input, SourceType outputType, Configuration config, const std::string& options)
+{
+    return runPrecompiler(input, config, outputType, options, nullptr);
 }
 
 SourceType Precompiler::getSourceType(std::istream& stream)
@@ -122,101 +273,98 @@ SourceType Precompiler::getSourceType(std::istream& stream)
     return type;
 }
 
-static std::pair<bool, bool> determinePossibleLinkers(
-    const std::unordered_map<std::istream*, Optional<std::string>>& inputs)
+static std::pair<bool, bool> determinePossibleLinkers(const std::vector<CompilationData>& inputs)
 {
     bool llvmLinkerPossible = findToolLocation("llvm-link", LLVM_LINK_PATH).has_value();
-#ifdef SPIRV_TOOLS_FRONTEND
-    bool spirvLinkerPossible = true;
-#else
-    bool spirvLinkerPossible = findToolLocation("spirv-link", SPIRV_LINK_PATH).has_value();
-#endif
+    bool spirvLinkerPossible = hasSPIRVToolsFrontend() || findToolLocation("spirv-link", SPIRV_LINK_PATH);
 
     for(const auto& input : inputs)
     {
-        auto type = Precompiler::getSourceType(*input.first);
-        if(type > SourceType::LLVM_IR_BIN)
+        if(input.getType() > SourceType::LLVM_IR_BIN)
             llvmLinkerPossible = false;
-        if(type > SourceType::SPIRV_TEXT)
+        if(input.getType() > SourceType::SPIRV_TEXT)
             spirvLinkerPossible = false;
     }
 
     return std::make_pair(llvmLinkerPossible, spirvLinkerPossible);
 }
 
-static NODISCARD Optional<TemporaryFile> compileToSPIRV(const std::pair<std::istream*, Optional<std::string>>& source)
+template <SourceType Type>
+static PrecompilationSource<Type> assertSource(const CompilationData& source)
 {
-    auto type = Precompiler::getSourceType(*source.first);
-    if(type == SourceType::OPENCL_C)
+    if(auto ptr = std::dynamic_pointer_cast<TypedCompilationData<Type>>(source.inner()))
+        return PrecompilationSource<Type>{std::move(ptr)};
+    throw CompilationError(CompilationStep::PRECOMPILATION, "Compilation data is of wrong type");
+}
+
+static NODISCARD SPIRVSource compileToSPIRV(const CompilationData& source)
+{
+    if(source.getType() == SourceType::OPENCL_C)
     {
-        TemporaryFile f;
-        SPIRVResult res(f.fileName);
-        compileOpenCLToSPIRV(
-            source.second ? OpenCLSource(source.second.value()) : OpenCLSource(*source.first), "", res);
-        return f;
+        return SPIRVSource(compileOpenCLToSPIRV(assertSource<SourceType::OPENCL_C>(source), ""));
     }
-    else if(type == SourceType::LLVM_IR_BIN)
+    else if(source.getType() == SourceType::LLVM_IR_BIN)
     {
-        TemporaryFile f;
-        SPIRVResult res(f.fileName);
-        compileLLVMToSPIRV(source.second ? LLVMIRSource(source.second.value()) : LLVMIRSource(*source.first), "", res);
-        return f;
+        return SPIRVSource(compileLLVMToSPIRV(assertSource<SourceType::LLVM_IR_BIN>(source), ""));
     }
-    else if(type == SourceType::SPIRV_TEXT)
+    else if(source.getType() == SourceType::SPIRV_TEXT)
     {
-        TemporaryFile f;
-        SPIRVResult res(f.fileName);
-        assembleSPIRV(source.second ? SPIRVTextSource(source.second.value()) : SPIRVTextSource(*source.first), "", res);
-        return f;
+        return SPIRVSource(assembleSPIRV(assertSource<SourceType::SPIRV_TEXT>(source), ""));
     }
-    else if(type == SourceType::SPIRV_BIN)
+    else if(source.getType() == SourceType::SPIRV_BIN)
     {
-        return {};
+        return assertSource<SourceType::SPIRV_BIN>(source);
     }
     else
         throw CompilationError(CompilationStep::LINKER, "No known conversion from source-code type to SPIR-V binary",
-            std::to_string(static_cast<unsigned>(type)));
+            std::to_string(static_cast<unsigned>(source.getType())));
 }
 
-static NODISCARD Optional<TemporaryFile> compileToLLVM(const std::pair<std::istream*, Optional<std::string>>& source)
+static NODISCARD LLVMIRSource compileToLLVM(const CompilationData& source)
 {
-    auto type = Precompiler::getSourceType(*source.first);
-    if(type == SourceType::OPENCL_C)
+    if(source.getType() == SourceType::OPENCL_C)
     {
-        TemporaryFile f;
-        LLVMIRResult res(f.fileName);
-        compileOpenCLToLLVMIR(
-            source.second ? OpenCLSource(source.second.value()) : OpenCLSource(*source.first), "", res);
-        return f;
+        return LLVMIRSource(compileOpenCLToLLVMIR(assertSource<SourceType::OPENCL_C>(source), ""));
     }
-    else if(type == SourceType::LLVM_IR_TEXT && findToolLocation("llvm-as", LLVM_AS_PATH))
+    else if(source.getType() == SourceType::LLVM_IR_TEXT && findToolLocation("llvm-as", LLVM_AS_PATH))
     {
-        TemporaryFile f;
-        LLVMIRResult res(f.fileName);
-        assembleLLVM(
-            source.second ? LLVMIRTextSource(source.second.value()) : LLVMIRTextSource(*source.first), "", res);
-        return f;
+        return LLVMIRSource(assembleLLVM(assertSource<SourceType::LLVM_IR_TEXT>(source), ""));
     }
-    else if(type == SourceType::LLVM_IR_BIN)
+    else if(source.getType() == SourceType::LLVM_IR_BIN)
     {
-        return {};
+        return assertSource<SourceType::LLVM_IR_BIN>(source);
     }
     else
         throw CompilationError(CompilationStep::LINKER, "No known conversion from source-code type to LLVM IR binary",
-            std::to_string(static_cast<unsigned>(type)));
-}
-
-static void copyToOutputStream(std::ostream& output, TemporaryFile& tmpFile)
-{
-    std::unique_ptr<std::istream> tmpStream;
-    tmpFile.openInputStream(tmpStream);
-    output << tmpStream->rdbuf();
+            std::to_string(static_cast<unsigned>(source.getType())));
 }
 
 SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, Optional<std::string>>& inputs,
     std::ostream& output, bool includeStandardLibrary)
 {
-    // XXX the inputs is actually a variant of file and stream
+    std::vector<CompilationData> sources;
+    sources.reserve(inputs.size());
+    for(auto& input : inputs)
+    {
+        if(input.second)
+        {
+            std::ifstream fis(*input.second);
+            auto type = getSourceType(fis);
+            sources.emplace_back(*input.second, type);
+        }
+        else
+        {
+            auto type = getSourceType(*input.first);
+            sources.emplace_back(*input.first, type);
+        }
+    }
+    auto result = linkSourceCode(sources, includeStandardLibrary);
+    result.readInto(output);
+    return result.getType();
+}
+
+CompilationData Precompiler::linkSourceCode(const std::vector<CompilationData>& inputs, bool includeStandardLibrary)
+{
     PROFILE_SCOPE(linkSourceCode);
 
     bool llvmLinkerPossible = false;
@@ -230,72 +378,34 @@ SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, O
     {
         std::vector<LLVMIRSource> sources;
         sources.reserve(inputs.size());
-        std::transform(
-            inputs.begin(), inputs.end(), std::back_inserter(sources), [&](const auto& pair) -> LLVMIRSource {
-                if(auto temp = compileToLLVM(pair))
-                {
-                    tempFiles.emplace_back(std::make_unique<TemporaryFile>(std::move(temp.value())));
-                    return LLVMIRSource(tempFiles.back()->fileName);
-                }
-                if(pair.second)
-                    return LLVMIRSource(pair.second.value());
-                return LLVMIRSource(*pair.first);
-            });
+        std::transform(inputs.begin(), inputs.end(), std::back_inserter(sources), compileToLLVM);
         if(includeStandardLibrary)
         {
             // need to link the std-lib module with the special function to set the correct flags (e.g. to not fail if
             // std-lib module was already linked into one of the sources)
-            auto tmpFile = std::make_unique<TemporaryFile>();
-            LLVMIRResult tmp(tmpFile->fileName);
-            linkLLVMModules(std::move(sources), "", tmp);
-
-            TemporaryPrecompilationResult<SourceType::LLVM_IR_BIN> result{};
-            linkInStdlibModule(LLVMIRSource(tmp), "", result);
-            copyToOutputStream(output, result.tmpFile);
+            auto tmp = linkLLVMModules(std::move(sources), "");
+            return CompilationData(linkInStdlibModule(LLVMIRSource(std::move(tmp)), "").release());
         }
-        else
-        {
-            TemporaryPrecompilationResult<SourceType::LLVM_IR_BIN> result{};
-            linkLLVMModules(std::move(sources), "", result);
-            copyToOutputStream(output, result.tmpFile);
-        }
-        return SourceType::LLVM_IR_BIN;
+        return CompilationData(linkLLVMModules(std::move(sources), "").release());
     }
     else if(spirvLinkerPossible)
     {
         std::vector<SPIRVSource> sources;
         sources.reserve(inputs.size());
-        std::transform(inputs.begin(), inputs.end(), std::back_inserter(sources), [&](const auto& pair) -> SPIRVSource {
-            if(auto temp = compileToSPIRV(pair))
-            {
-                tempFiles.emplace_back(std::make_unique<TemporaryFile>(std::move(temp.value())));
-                return SPIRVSource(tempFiles.back()->fileName);
-            }
-            if(pair.second)
-                return SPIRVSource(pair.second.value());
-            return SPIRVSource(*pair.first);
-        });
+        std::transform(inputs.begin(), inputs.end(), std::back_inserter(sources), compileToSPIRV);
 
         if(includeStandardLibrary)
         {
             if(!findStandardLibraryFiles().spirvModule.empty())
                 sources.emplace_back(SPIRVSource(findStandardLibraryFiles().spirvModule));
             else if(auto llvm_spirv = findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
-            {
-                tempFiles.emplace_back(std::make_unique<TemporaryFile>());
-                SPIRVResult stdLib(tempFiles.back()->fileName);
-                compileLLVMToSPIRV(LLVMIRSource(findStandardLibraryFiles().llvmModule), "", stdLib);
-                sources.emplace_back(stdLib);
-            }
+                sources.emplace_back(compileLLVMToSPIRV(LLVMIRSource(findStandardLibraryFiles().llvmModule), ""));
             else
                 throw CompilationError(
                     CompilationStep::LINKER, "Neither SPIR-V module nor llvm-spirv executable found!");
         }
 
-        TemporaryPrecompilationResult<SourceType::SPIRV_BIN> result{};
-        linkSPIRVModules(std::move(sources), "", result);
-        copyToOutputStream(output, result.tmpFile);
-        return SourceType::SPIRV_BIN;
+        return CompilationData(linkSPIRVModules(std::move(sources), "").release());
     }
     throw CompilationError(CompilationStep::LINKER, "Cannot find a linker which can be used for all inputs!");
 }
@@ -313,11 +423,7 @@ bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Opti
         case SourceType::LLVM_IR_TEXT:
         case SourceType::SPIRV_BIN:
         case SourceType::SPIRV_TEXT:
-#ifdef SPIRV_TOOLS_FRONTEND
-            return true;
-#else
-            return findToolLocation("spirv-link", SPIRV_LINK_PATH).has_value();
-#endif
+            return hasSPIRVToolsFrontend() || findToolLocation("spirv-link", SPIRV_LINK_PATH);
         default:
             return false;
         }
@@ -326,9 +432,8 @@ bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Opti
 
 bool Precompiler::isLinkerAvailable()
 {
-#if defined(SPIRV_TOOLS_FRONTEND)
-    return true;
-#endif
+    if(hasSPIRVToolsFrontend())
+        return true;
     if(findToolLocation("llvm-link", LLVM_LINK_PATH))
         return true;
     if(findToolLocation("spirv-link", SPIRV_LINK_PATH))
@@ -336,18 +441,19 @@ bool Precompiler::isLinkerAvailable()
     return false;
 }
 
-Precompiler::Precompiler(
-    Configuration& config, std::istream& input, const SourceType inputType, const Optional<std::string>& inputFile) :
-    inputType(inputType),
-    inputFile(inputFile), config(config), input(input)
+template <SourceType Type>
+static PrecompilationResult<Type> getResult(std::unique_ptr<CompilationDataPrivate>&& result)
 {
-    if(inputType == SourceType::QPUASM_BIN || inputType == SourceType::QPUASM_HEX || inputType == SourceType::UNKNOWN)
-        throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid input-type for pre-compilation",
-            std::to_string(static_cast<unsigned>(inputType)));
+    if(auto ptr = dynamic_cast<TypedCompilationData<Type>*>(result.get()))
+    {
+        result.release();
+        return PrecompilationResult<Type>{std::unique_ptr<TypedCompilationData<Type>>{ptr}};
+    }
+    return PrecompilationResult<Type>{};
 }
 
-void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType outputType, const std::string& options,
-    Optional<std::string> outputFile)
+static CompilationData runPrecompiler(const CompilationData& input, const Configuration& config, SourceType outputType,
+    const std::string& options, std::unique_ptr<CompilationDataPrivate>&& desiredOutput)
 {
     if(outputType == SourceType::QPUASM_BIN || outputType == SourceType::QPUASM_HEX ||
         outputType == SourceType::UNKNOWN)
@@ -355,7 +461,7 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
             std::to_string(static_cast<unsigned>(outputType)));
 
     std::string extendedOptions = options;
-    if(inputFile)
+    if(auto inputFile = input.getFilePath())
     {
         // for resolving relative includes
         std::array<char, 1024> buffer{};
@@ -365,111 +471,104 @@ void Precompiler::run(std::unique_ptr<std::istream>& output, const SourceType ou
         extendedOptions.append(" -I ").append(tmp);
     }
 
-    if(inputType == outputType)
+    if(input.getType() == outputType)
     {
-        auto tmp = std::make_unique<std::stringstream>();
-        *tmp << input.rdbuf();
-        output = std::move(tmp);
-        return;
+        if(desiredOutput)
+        {
+            std::stringstream ss;
+            input.readInto(ss);
+            desiredOutput->writeFrom(ss);
+            return CompilationData{std::move(desiredOutput)};
+        }
+        else
+            return input;
     }
 
-    std::ostringstream tempStream;
-
-    if(inputType == SourceType::OPENCL_C)
+    if(input.getType() == SourceType::OPENCL_C)
     {
-        OpenCLSource src = inputFile ? OpenCLSource(inputFile.value()) : OpenCLSource(input);
         if(outputType == SourceType::LLVM_IR_TEXT)
         {
-            auto res = createResult<SourceType::LLVM_IR_TEXT>(tempStream, outputFile);
-            if(config.useOpt)
-            {
-                auto steps = chainSteps<SourceType::LLVM_IR_TEXT, SourceType::OPENCL_C, SourceType::LLVM_IR_TEXT>(
-                    compileOpenCLToLLVMText, optimizeLLVMText);
-                steps(std::move(src), extendedOptions, *res);
-            }
-            else
-            {
-                compileOpenCLToLLVMText(std::move(src), extendedOptions, *res);
-            }
+            return CompilationData(compileOpenCLToLLVMText(assertSource<SourceType::OPENCL_C>(input), extendedOptions,
+                getResult<SourceType::LLVM_IR_TEXT>(std::move(desiredOutput)))
+                                       .release());
         }
         else if(outputType == SourceType::LLVM_IR_BIN)
         {
-            auto res = createResult<SourceType::LLVM_IR_BIN>(tempStream, outputFile);
             if(config.useOpt)
             {
-                auto steps = chainSteps<SourceType::LLVM_IR_BIN, SourceType::OPENCL_C, SourceType::LLVM_IR_BIN>(
-                    compileOpenCLToLLVMIR, optimizeLLVMIR);
-                steps(std::move(src), extendedOptions, *res);
+                auto tmp = compileOpenCLToLLVMIR(assertSource<SourceType::OPENCL_C>(input), extendedOptions);
+                return CompilationData(optimizeLLVMIR(LLVMIRSource(std::move(tmp)), extendedOptions,
+                    getResult<SourceType::LLVM_IR_BIN>(std::move(desiredOutput)))
+                                           .release());
             }
             else
             {
-                compileOpenCLToLLVMIR(std::move(src), extendedOptions, *res);
+                return CompilationData(compileOpenCLToLLVMIR(assertSource<SourceType::OPENCL_C>(input), extendedOptions,
+                    getResult<SourceType::LLVM_IR_BIN>(std::move(desiredOutput)))
+                                           .release());
             }
         }
         else if(outputType == SourceType::SPIRV_BIN)
         {
-            auto res = createResult<SourceType::SPIRV_BIN>(tempStream, outputFile);
-            compileOpenCLToSPIRV(std::move(src), extendedOptions, *res);
+            return CompilationData(compileOpenCLToSPIRV(assertSource<SourceType::OPENCL_C>(input), extendedOptions,
+                getResult<SourceType::SPIRV_BIN>(std::move(desiredOutput)))
+                                       .release());
         }
         else if(outputType == SourceType::SPIRV_TEXT)
         {
-            auto res = createResult<SourceType::SPIRV_TEXT>(tempStream, outputFile);
-            compileOpenCLToSPIRVText(std::move(src), extendedOptions, *res);
+            return CompilationData(compileOpenCLToSPIRVText(assertSource<SourceType::OPENCL_C>(input), extendedOptions,
+                getResult<SourceType::SPIRV_TEXT>(std::move(desiredOutput)))
+                                       .release());
         }
     }
-    else if(inputType == SourceType::LLVM_IR_TEXT)
+    else if(input.getType() == SourceType::LLVM_IR_TEXT)
     {
-        LLVMIRTextSource src = inputFile ? LLVMIRTextSource(inputFile.value()) : LLVMIRTextSource(input);
         if(outputType == SourceType::SPIRV_BIN && findToolLocation("llvm-as", LLVM_AS_PATH))
         {
-            TemporaryFile tmpFile;
-            LLVMIRResult tmpResult(tmpFile.fileName);
-            assembleLLVM(std::move(src), extendedOptions, tmpResult);
-            auto res = createResult<SourceType::SPIRV_BIN>(tempStream, outputFile);
-            LLVMIRSource tmpSource(tmpResult);
-            compileLLVMToSPIRV(std::move(tmpSource), extendedOptions, *res);
+            auto tmp = assembleLLVM(assertSource<SourceType::LLVM_IR_TEXT>(input), extendedOptions);
+            return CompilationData(compileLLVMToSPIRV(LLVMIRSource(std::move(tmp)), extendedOptions,
+                getResult<SourceType::SPIRV_BIN>(std::move(desiredOutput)))
+                                       .release());
         }
         else if(outputType == SourceType::LLVM_IR_BIN && findToolLocation("llvm-as", LLVM_AS_PATH))
         {
-            auto res = createResult<SourceType::LLVM_IR_BIN>(tempStream, outputFile);
-            assembleLLVM(std::move(src), extendedOptions, *res);
+            return CompilationData(assembleLLVM(assertSource<SourceType::LLVM_IR_TEXT>(input), extendedOptions,
+                getResult<SourceType::LLVM_IR_BIN>(std::move(desiredOutput)))
+                                       .release());
         }
     }
-    else if(inputType == SourceType::LLVM_IR_BIN)
+    else if(input.getType() == SourceType::LLVM_IR_BIN)
     {
-        LLVMIRSource src = inputFile ? LLVMIRSource(inputFile.value()) : LLVMIRSource(input);
         if(outputType == SourceType::SPIRV_BIN)
         {
-            auto res = createResult<SourceType::SPIRV_BIN>(tempStream, outputFile);
-            compileLLVMToSPIRV(std::move(src), extendedOptions, *res);
+            return CompilationData(compileLLVMToSPIRV(assertSource<SourceType::LLVM_IR_BIN>(input), extendedOptions,
+                getResult<SourceType::SPIRV_BIN>(std::move(desiredOutput)))
+                                       .release());
         }
         else if(outputType == SourceType::SPIRV_TEXT)
         {
-            auto res = createResult<SourceType::SPIRV_TEXT>(tempStream, outputFile);
-            compileLLVMToSPIRVText(std::move(src), extendedOptions, *res);
+            return CompilationData(compileLLVMToSPIRVText(assertSource<SourceType::LLVM_IR_BIN>(input), extendedOptions,
+                getResult<SourceType::SPIRV_TEXT>(std::move(desiredOutput)))
+                                       .release());
         }
         else if(outputType == SourceType::LLVM_IR_TEXT && findToolLocation("llvm-dis", LLVM_DIS_PATH))
         {
-            auto res = createResult<SourceType::LLVM_IR_TEXT>(tempStream, outputFile);
-            disassembleLLVM(std::move(src), extendedOptions, *res);
+            return CompilationData(disassembleLLVM(assertSource<SourceType::LLVM_IR_BIN>(input), extendedOptions,
+                getResult<SourceType::LLVM_IR_TEXT>(std::move(desiredOutput)))
+                                       .release());
         }
     }
-    else if(inputType == SourceType::SPIRV_BIN && outputType == SourceType::SPIRV_TEXT)
+    else if(input.getType() == SourceType::SPIRV_BIN && outputType == SourceType::SPIRV_TEXT)
     {
-        SPIRVSource src = inputFile ? SPIRVSource(inputFile.value()) : SPIRVSource(input);
-        auto res = createResult<SourceType::SPIRV_TEXT>(tempStream, outputFile);
-        disassembleSPIRV(std::move(src), extendedOptions, *res);
+        return CompilationData(disassembleSPIRV(assertSource<SourceType::SPIRV_BIN>(input), extendedOptions,
+            getResult<SourceType::SPIRV_TEXT>(std::move(desiredOutput)))
+                                   .release());
     }
-    else if(inputType == SourceType::SPIRV_TEXT && outputType == SourceType::SPIRV_BIN)
+    else if(input.getType() == SourceType::SPIRV_TEXT && outputType == SourceType::SPIRV_BIN)
     {
-        SPIRVTextSource src = inputFile ? SPIRVTextSource(inputFile.value()) : SPIRVTextSource(input);
-        auto res = createResult<SourceType::SPIRV_BIN>(tempStream, outputFile);
-        assembleSPIRV(std::move(src), extendedOptions, *res);
+        return CompilationData(assembleSPIRV(assertSource<SourceType::SPIRV_TEXT>(input), extendedOptions,
+            getResult<SourceType::SPIRV_BIN>(std::move(desiredOutput)))
+                                   .release());
     }
-    else
-        throw CompilationError(CompilationStep::PRECOMPILATION, "Unhandled pre-compilation");
-
-    CPPLOG_LAZY(logging::Level::INFO, log << "Compilation complete!" << logging::endl);
-
-    output = std::make_unique<std::istringstream>(tempStream.str());
+    throw CompilationError(CompilationStep::PRECOMPILATION, "Unhandled pre-compilation");
 }

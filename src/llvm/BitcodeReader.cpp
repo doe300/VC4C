@@ -10,6 +10,7 @@
 
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intrinsics/Images.h"
+#include "../precompilation/LLVMLibrary.h"
 #include "log.h"
 
 #include "llvm-c/Core.h"
@@ -21,8 +22,6 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Operator.h"
-#include "llvm/IRReader/IRReader.h"
-#include "llvm/Support/SourceMgr.h"
 
 #include <limits>
 #include <regex>
@@ -30,24 +29,6 @@
 
 using namespace vc4c;
 using namespace vc4c::llvm2qasm;
-
-// also used by LibClang
-// NOTE: The buffer string needs to outlive the MemoryBuffer object!
-std::unique_ptr<llvm::MemoryBuffer> fromInputStream(std::istream& stream, std::string& buffer)
-{
-    // required, since LLVM cannot read from std::istreams
-    if(auto sstream = dynamic_cast<std::istringstream*>(&stream))
-        buffer = sstream->str();
-    else if(auto sstream = dynamic_cast<std::stringstream*>(&stream))
-        buffer = sstream->str();
-    else
-    {
-        std::stringstream ss;
-        ss << stream.rdbuf();
-        buffer = ss.str();
-    }
-    return std::unique_ptr<llvm::MemoryBuffer>(llvm::MemoryBuffer::getMemBufferCopy(llvm::StringRef(buffer)));
-}
 
 static AddressSpace toAddressSpace(int num)
 {
@@ -94,44 +75,19 @@ static void dumpLLVM(const T* val)
 }
 LCOV_EXCL_STOP
 
-BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType) : context()
+BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType)
 {
-    std::string tmp;
-    auto buf = fromInputStream(stream, tmp);
-    if(sourceType == SourceType::LLVM_IR_BIN)
-    {
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading LLVM module from bit-code..." << logging::endl);
-        auto expected = llvm::parseBitcodeFile(buf->getMemBufferRef(), context);
-        if(!expected)
-        {
-#if LLVM_LIBRARY_VERSION >= 40
-            std::string error = "";
-            llvm::handleAllErrors(
-                expected.takeError(), [&error](const llvm::ErrorInfoBase& base) { error = base.message(); });
-            throw std::runtime_error("Error parsing LLVM module" + error);
-#else
-            throw std::system_error(expected.getError(), "Error parsing LLVM module");
-#endif
-        }
-        else
-        {
-            // expected.get() is either std::unique_ptr<llvm::Module> or llvm::Module*
-            std::unique_ptr<llvm::Module> tmp(std::move(expected.get()));
-            llvmModule.swap(tmp);
-        }
-    }
-    else if(sourceType == SourceType::LLVM_IR_TEXT)
-    {
-        CPPLOG_LAZY(logging::Level::DEBUG, log << "Reading LLVM module from IR..." << logging::endl);
-        llvm::SMDiagnostic error;
-        llvmModule = llvm::parseIR(buf->getMemBufferRef(), error, context);
-        if(!llvmModule)
-            throw CompilationError(
-                CompilationStep::PARSER, "Error parsing LLVM IR module", static_cast<std::string>(error.getMessage()));
-    }
-    else
-        throw CompilationError(CompilationStep::PARSER, "Unhandled source-type for LLVM bitcode reader",
-            std::to_string(static_cast<unsigned>(sourceType)));
+    auto buf = precompilation::loadLLVMBuffer(stream);
+    auto tmp = precompilation::loadLLVMModule(*buf, sourceType, context);
+    context = std::move(tmp.context);
+    llvmModule = std::move(tmp.module);
+}
+
+BitcodeReader::BitcodeReader(precompilation::LLVMModuleWithContext&& llvmModule) :
+    context(llvmModule.context), llvmModule(std::move(llvmModule.module))
+{
+    if(!context || !this->llvmModule)
+        throw CompilationError(CompilationStep::PARSER, "Cannot parse LLVM bitcode from invalid input module");
 }
 
 void BitcodeReader::extractKernelMetadata(Module& module, Method& kernel, const llvm::Function& func)

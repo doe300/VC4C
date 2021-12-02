@@ -17,6 +17,7 @@
 #include "logger.h"
 #include "normalization/Normalizer.h"
 #include "optimization/Optimizer.h"
+#include "precompilation/FrontendCompiler.h"
 #include "spirv/SPIRVLexer.h"
 #include "spirv/SPIRVToolsParser.h"
 #include "llvm/BitcodeReader.h"
@@ -36,48 +37,45 @@ using namespace vc4c;
 // out-of-line virtual method definition
 Parser::~Parser() noexcept = default;
 
-Compiler::Compiler(std::istream& stream, std::ostream& output) : input(stream), output(output), config()
-{
-    if(!input)
-        // e.g. if pre-compilation failed
-        throw CompilationError(CompilationStep::GENERAL, "Invalid input");
-}
-
-static std::unique_ptr<Parser> getParser(std::istream& stream)
+static std::unique_ptr<Parser> getParser(const CompilationData& source)
 {
     // determine which parser to use in which settings
-    SourceType type = Precompiler::getSourceType(stream);
-    switch(type)
+    std::stringstream stream;
+    source.readInto(stream);
+    switch(source.getType())
     {
     case SourceType::LLVM_IR_TEXT:
         logging::info() << "Using LLVM-IR frontend..." << logging::endl;
-#ifdef USE_LLVM_LIBRARY
-        return std::unique_ptr<Parser>(new llvm2qasm::BitcodeReader(stream, SourceType::LLVM_IR_TEXT));
-#else
-        throw CompilationError(CompilationStep::GENERAL, "No LLVM IR text front-end available!");
-#endif
+        if(hasLLVMFrontend())
+            return std::unique_ptr<Parser>(new llvm2qasm::BitcodeReader(stream, SourceType::LLVM_IR_TEXT));
+        else
+            throw CompilationError(CompilationStep::GENERAL, "No LLVM IR text front-end available!");
     case SourceType::LLVM_IR_BIN:
         logging::info() << "Using LLVM module frontend..." << logging::endl;
-#ifdef USE_LLVM_LIBRARY
-        return std::unique_ptr<Parser>(new llvm2qasm::BitcodeReader(stream, SourceType::LLVM_IR_BIN));
-#else
-        throw CompilationError(CompilationStep::GENERAL, "No LLVM IR module front-end available!");
-#endif
+        if(hasLLVMFrontend())
+            return std::unique_ptr<Parser>(new llvm2qasm::BitcodeReader(stream, source.getType()));
+        else
+            throw CompilationError(CompilationStep::GENERAL, "No LLVM IR module front-end available!");
     case SourceType::SPIRV_TEXT:
-#ifdef SPIRV_TOOLS_FRONTEND
-        logging::info() << "Using SPIR-V Tools frontend..." << logging::endl;
-        return std::unique_ptr<Parser>(new spirv::SPIRVToolsParser(stream, true));
-#else
-        throw CompilationError(CompilationStep::GENERAL, "SPIR-V text needs to be first converted to SPIR-V binary!");
-#endif
+        if(hasSPIRVToolsFrontend())
+        {
+            logging::info() << "Using SPIR-V Tools frontend..." << logging::endl;
+            return std::unique_ptr<Parser>(new spirv::SPIRVToolsParser(stream, true));
+        }
+        else
+            throw CompilationError(
+                CompilationStep::GENERAL, "SPIR-V text needs to be first converted to SPIR-V binary!");
     case SourceType::SPIRV_BIN:
-#ifdef SPIRV_TOOLS_FRONTEND
-        logging::info() << "Using SPIR-V Tools frontend..." << logging::endl;
-        return std::unique_ptr<Parser>(new spirv::SPIRVToolsParser(stream, false));
-#else
-        logging::info() << "Using builtin SPIR-V frontend..." << logging::endl;
-        return std::unique_ptr<Parser>(new spirv::SPIRVLexer(stream));
-#endif
+        if(hasSPIRVToolsFrontend())
+        {
+            logging::info() << "Using SPIR-V Tools frontend..." << logging::endl;
+            return std::unique_ptr<Parser>(new spirv::SPIRVToolsParser(stream, false));
+        }
+        else
+        {
+            logging::info() << "Using builtin SPIR-V frontend..." << logging::endl;
+            return std::unique_ptr<Parser>(new spirv::SPIRVLexer(stream));
+        }
     case SourceType::OPENCL_C:
         throw CompilationError(CompilationStep::GENERAL, "OpenCL code needs to be first compiled with CLang!");
     case SourceType::QPUASM_BIN:
@@ -89,7 +87,7 @@ static std::unique_ptr<Parser> getParser(std::istream& stream)
     return nullptr;
 }
 
-std::size_t Compiler::convert()
+static std::pair<CompilationData, std::size_t> runCompiler(const CompilationData& input, const Configuration& config)
 {
     Module module(config);
 
@@ -127,51 +125,42 @@ std::size_t Compiler::convert()
     // since they are exported, they are still in the intermediate code, even if not used (e.g. optimized away)
 
     // code generation
+    std::stringstream output;
     std::size_t bytesWritten = codeGen.writeOutput(output);
     output.flush();
 
-    return bytesWritten;
-}
-
-Configuration& Compiler::getConfiguration()
-{
-    return config;
-}
-
-const Configuration& Compiler::getConfiguration() const
-{
-    return config;
+    CompilationData result{
+        output, config.outputMode == OutputMode::HEX ? SourceType::QPUASM_HEX : SourceType::QPUASM_BIN};
+    return std::make_pair(std::move(result), bytesWritten);
 }
 
 std::size_t Compiler::compile(std::istream& input, std::ostream& output, const Configuration& config,
     const std::string& options, const Optional<std::string>& inputFile)
 {
+    auto inputData = inputFile ? CompilationData{*inputFile, Precompiler::getSourceType(input)} :
+                                 CompilationData{input, Precompiler::getSourceType(input)};
+    auto out = compile(inputData, config, options);
+    out.first.readInto(output);
+    return out.second;
+}
+
+std::pair<CompilationData, std::size_t> Compiler::compile(
+    const CompilationData& input, const Configuration& config, const std::string& options)
+{
     try
     {
         // pre-compilation
-        TemporaryFile tmpFile;
-        std::unique_ptr<std::istream> in;
-        Precompiler::precompile(input, in, config, options, inputFile, tmpFile.fileName);
-
-        if(in == nullptr ||
-            (dynamic_cast<std::istringstream*>(in.get()) != nullptr &&
-                dynamic_cast<std::istringstream*>(in.get())->str().empty()))
-            // replace only when pre-compiled (and not just linked output to input, e.g. if source-type is output-type)
-            tmpFile.openInputStream(in);
+        auto intermediate = Precompiler::precompile(input, config, options);
 
         // compilation
-        Compiler conv(*in, output);
-
-        conv.getConfiguration() = config;
-        std::size_t result = conv.convert();
+        auto result = runCompiler(intermediate, config);
 
         // clean-up
         std::wcout.flush();
         std::wcerr.flush();
-        output.flush();
 
-        CPPLOG_LAZY(
-            logging::Level::DEBUG, log << "Compilation complete: " << result << " bytes written" << logging::endl);
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Compilation complete: " << result.second << " bytes written" << logging::endl);
 
         return result;
     }
