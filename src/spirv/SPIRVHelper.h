@@ -18,6 +18,8 @@ namespace vc4c
 {
     class Module;
 
+    class CompilationDataPrivate;
+
     namespace spirv
     {
         enum class ParseResultCode
@@ -41,6 +43,7 @@ namespace vc4c
         AddressSpace toAddressSpace(spv::StorageClass storageClass);
 
         std::vector<uint32_t> readStreamOfWords(std::istream& in);
+        std::vector<uint32_t> readStreamOfWords(const CompilationDataPrivate& in);
 
         std::string demangleFunctionName(const std::string& name);
 

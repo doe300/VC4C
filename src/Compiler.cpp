@@ -26,6 +26,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fcntl.h>
+#include <fstream>
 #include <iterator>
 #include <memory>
 #include <sstream>
@@ -39,28 +40,28 @@ Parser::~Parser() noexcept = default;
 
 static std::unique_ptr<Parser> getParser(const CompilationData& source)
 {
-    // determine which parser to use in which settings
-    std::stringstream stream;
-    source.readInto(stream);
     switch(source.getType())
     {
     case SourceType::LLVM_IR_TEXT:
         logging::info() << "Using LLVM-IR frontend..." << logging::endl;
         if(hasLLVMFrontend())
-            return std::unique_ptr<Parser>(new llvm2qasm::BitcodeReader(stream, SourceType::LLVM_IR_TEXT));
+            return std::unique_ptr<Parser>(
+                new llvm2qasm::BitcodeReader(dynamic_cast<const precompilation::LLVMIRTextData&>(*source.inner())));
         else
             throw CompilationError(CompilationStep::GENERAL, "No LLVM IR text front-end available!");
     case SourceType::LLVM_IR_BIN:
         logging::info() << "Using LLVM module frontend..." << logging::endl;
         if(hasLLVMFrontend())
-            return std::unique_ptr<Parser>(new llvm2qasm::BitcodeReader(stream, source.getType()));
+            return std::unique_ptr<Parser>(
+                new llvm2qasm::BitcodeReader(dynamic_cast<const precompilation::LLVMIRData&>(*source.inner())));
         else
             throw CompilationError(CompilationStep::GENERAL, "No LLVM IR module front-end available!");
     case SourceType::SPIRV_TEXT:
         if(hasSPIRVToolsFrontend())
         {
             logging::info() << "Using SPIR-V Tools frontend..." << logging::endl;
-            return std::unique_ptr<Parser>(new spirv::SPIRVToolsParser(stream, true));
+            return std::unique_ptr<Parser>(
+                new spirv::SPIRVToolsParser(dynamic_cast<const precompilation::SPIRVTextData&>(*source.inner())));
         }
         else
             throw CompilationError(
@@ -69,12 +70,14 @@ static std::unique_ptr<Parser> getParser(const CompilationData& source)
         if(hasSPIRVToolsFrontend())
         {
             logging::info() << "Using SPIR-V Tools frontend..." << logging::endl;
-            return std::unique_ptr<Parser>(new spirv::SPIRVToolsParser(stream, false));
+            return std::unique_ptr<Parser>(
+                new spirv::SPIRVToolsParser(dynamic_cast<const precompilation::SPIRVData&>(*source.inner())));
         }
         else
         {
             logging::info() << "Using builtin SPIR-V frontend..." << logging::endl;
-            return std::unique_ptr<Parser>(new spirv::SPIRVLexer(stream));
+            return std::unique_ptr<Parser>(
+                new spirv::SPIRVLexer(dynamic_cast<const precompilation::SPIRVData&>(*source.inner())));
         }
     case SourceType::OPENCL_C:
         throw CompilationError(CompilationStep::GENERAL, "OpenCL code needs to be first compiled with CLang!");
@@ -87,7 +90,8 @@ static std::unique_ptr<Parser> getParser(const CompilationData& source)
     return nullptr;
 }
 
-static std::pair<CompilationData, std::size_t> runCompiler(const CompilationData& input, const Configuration& config)
+static std::pair<CompilationData, std::size_t> runCompiler(
+    const CompilationData& input, const Configuration& config, const Optional<std::string>& outputFile)
 {
     Module module(config);
 
@@ -125,12 +129,28 @@ static std::pair<CompilationData, std::size_t> runCompiler(const CompilationData
     // since they are exported, they are still in the intermediate code, even if not used (e.g. optimized away)
 
     // code generation
-    std::stringstream output;
-    std::size_t bytesWritten = codeGen.writeOutput(output);
-    output.flush();
+    CompilationData result{};
+    std::size_t bytesWritten = 0;
+    if(outputFile)
+    {
+        std::ofstream fos{*outputFile};
+        bytesWritten = codeGen.writeOutput(fos);
+        fos.flush();
 
-    CompilationData result{
-        output, config.outputMode == OutputMode::HEX ? SourceType::QPUASM_HEX : SourceType::QPUASM_BIN};
+        result = CompilationData{
+            *outputFile, config.outputMode == OutputMode::HEX ? SourceType::QPUASM_HEX : SourceType::QPUASM_BIN};
+    }
+    else
+    {
+        std::stringstream output;
+        bytesWritten = codeGen.writeOutput(output);
+        output.flush();
+
+        result = CompilationData{output,
+            config.outputMode == OutputMode::HEX ? SourceType::QPUASM_HEX : SourceType::QPUASM_BIN,
+            "compilation result"};
+    }
+
     return std::make_pair(std::move(result), bytesWritten);
 }
 
@@ -138,14 +158,14 @@ std::size_t Compiler::compile(std::istream& input, std::ostream& output, const C
     const std::string& options, const Optional<std::string>& inputFile)
 {
     auto inputData = inputFile ? CompilationData{*inputFile, Precompiler::getSourceType(input)} :
-                                 CompilationData{input, Precompiler::getSourceType(input)};
+                                 CompilationData{input, Precompiler::getSourceType(input), "compilation source"};
     auto out = compile(inputData, config, options);
     out.first.readInto(output);
     return out.second;
 }
 
-std::pair<CompilationData, std::size_t> Compiler::compile(
-    const CompilationData& input, const Configuration& config, const std::string& options)
+std::pair<CompilationData, std::size_t> Compiler::compile(const CompilationData& input, const Configuration& config,
+    const std::string& options, const Optional<std::string>& outputFile)
 {
     try
     {
@@ -153,7 +173,7 @@ std::pair<CompilationData, std::size_t> Compiler::compile(
         auto intermediate = Precompiler::precompile(input, config, options);
 
         // compilation
-        auto result = runCompiler(intermediate, config);
+        auto result = runCompiler(intermediate, config, outputFile);
 
         // clean-up
         std::wcout.flush();

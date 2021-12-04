@@ -23,9 +23,10 @@ public:
     void testDisassembler();
     void testCompilation(vc4c::SourceType type);
     void testKernelAttributes();
+    void testFrontendConversions(std::string sourceFile, vc4c::SourceType destType);
 
 private:
-    void testEmulation(std::stringstream& binary);
+    void testEmulation(const vc4c::CompilationData& binary);
 };
 
 #endif /* TEST_SPIRVFRONTEND_H */

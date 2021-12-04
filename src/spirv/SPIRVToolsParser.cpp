@@ -6,6 +6,7 @@
 
 #include "SPIRVToolsParser.h"
 
+#include "../precompilation/CompilationData.h"
 #include "SPIRVHelper.h"
 #include "log.h"
 
@@ -226,12 +227,13 @@ void SPIRVToolsParser::doParse(const std::vector<uint32_t>& module)
     spvContextDestroy(context);
 }
 
-void spirv::linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output)
+void spirv::linkSPIRVModules(const std::vector<std::reference_wrapper<const precompilation::SPIRVData>>& sources,
+    precompilation::SPIRVData& output)
 {
     std::vector<std::vector<uint32_t>> binaries;
-    binaries.reserve(inputModules.size());
-    std::transform(inputModules.begin(), inputModules.end(), std::back_inserter(binaries),
-        [](std::istream* stream) { readStreamOfWords(*stream); });
+    binaries.reserve(sources.size());
+    std::transform(sources.begin(), sources.end(), std::back_inserter(binaries),
+        [](const auto& source) { return readStreamOfWords(source.get()); });
 
     spvtools::LinkerOptions options;
     options.SetCreateLibrary(false);
@@ -247,12 +249,16 @@ void spirv::linkSPIRVModules(const std::vector<std::istream*>& inputModules, std
     if(result != SPV_SUCCESS)
         throw CompilationError(CompilationStep::PARSER, getErrorMessage(result));
 
-    for(const uint32_t u : linkedModules)
+    if(auto stream = output.writeStream())
     {
-        output.write(reinterpret_cast<const char*>(&u), sizeof(uint32_t));
+        for(uint32_t u : linkedModules)
+            stream->write(reinterpret_cast<const char*>(&u), sizeof(uint32_t));
     }
+    else
+        throw CompilationError(CompilationStep::PRECOMPILATION, "Unhandled output data type for writing LLVM bitcode");
+
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Linked " << inputModules.size() << " modules into a single module with " << linkedModules.size()
+        log << "Linked " << sources.size() << " modules into a single module with " << linkedModules.size()
             << " words of data." << logging::endl);
 }
 

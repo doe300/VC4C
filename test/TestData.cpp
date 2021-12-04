@@ -1499,7 +1499,7 @@ bool test_data::parseTestDataParameter(const std::string& param, std::vector<std
 Result test_data::execute(const TestData* data, TestRunner& runner)
 try
 {
-    auto result = runner.compile(*data->sources, data->compilationOptions);
+    auto result = runner.compile(*data->sources, data->compilationOptions, data->uniqueName);
     if(!result)
         return result;
     result = runner.selectKernel(data->kernelName);

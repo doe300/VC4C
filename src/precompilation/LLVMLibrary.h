@@ -10,6 +10,7 @@
 #include "CompilationData.h"
 #include "Optional.h"
 
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -32,49 +33,52 @@ namespace vc4c
         {
             // NOTE: the reference to the context needs to be stable
             std::shared_ptr<llvm::LLVMContext> context;
-            std::unique_ptr<llvm::Module> module;
+            std::shared_ptr<llvm::Module> module;
         };
 
         std::shared_ptr<llvm::LLVMContext> initializeLLVMContext();
 
-        struct OutputPCHTag
+        struct LLVMPCHTag
         {
             static constexpr auto argument = "-emit-pch";
+            static constexpr auto TYPE = SourceType::LLVM_IR_BIN; // TODO not actually true
         };
 
-        struct OutputLLVMModuleTag
+        struct LLVMModuleTag
         {
             static constexpr auto argument = "-emit-llvm-bc";
+            static constexpr auto TYPE = SourceType::LLVM_IR_BIN;
         };
 
-        struct OutputLLVMTextTag
+        struct LLVMTextTag
         {
             static constexpr auto argument = "-emit-llvm";
+            static constexpr auto TYPE = SourceType::LLVM_IR_TEXT;
         };
 
         // NOTE: Requires clang library build option, implemented in ClangLibrary.cpp
-        void compileClangLibrary(const std::vector<std::string>& command,
-            const TypedCompilationData<SourceType::OPENCL_C>& inputData,
-            PrecompilationResult<SourceType::LLVM_IR_BIN>& output, OutputPCHTag tag);
-        void compileClangLibrary(const std::vector<std::string>& command,
-            const TypedCompilationData<SourceType::OPENCL_C>& inputData,
-            PrecompilationResult<SourceType::LLVM_IR_BIN>& output, OutputLLVMModuleTag tag);
-        void compileClangLibrary(const std::vector<std::string>& command,
-            const TypedCompilationData<SourceType::OPENCL_C>& inputData,
-            PrecompilationResult<SourceType::LLVM_IR_TEXT>& output, OutputLLVMTextTag tag);
+        void compileClangLibrary(const std::vector<std::string>& command, const OpenCLData& inputData,
+            PrecompilationResult<SourceType::LLVM_IR_BIN>& output, LLVMPCHTag tag);
+        void compileClangLibrary(const std::vector<std::string>& command, const OpenCLData& inputData,
+            PrecompilationResult<SourceType::LLVM_IR_BIN>& output, LLVMModuleTag tag);
+        void compileClangLibrary(const std::vector<std::string>& command, const OpenCLData& inputData,
+            PrecompilationResult<SourceType::LLVM_IR_TEXT>& output, LLVMTextTag tag);
 
-        std::unique_ptr<llvm::MemoryBuffer> loadLLVMBuffer(std::istream& stream);
+        std::unique_ptr<llvm::MemoryBuffer> loadLLVMBuffer(const CompilationDataPrivate& data);
         LLVMModuleWithContext loadLLVMModule(
-            llvm::MemoryBuffer& buffer, SourceType sourceType, const std::shared_ptr<llvm::LLVMContext>& context);
+            const llvm::MemoryBuffer& buffer, const std::shared_ptr<llvm::LLVMContext>& context, LLVMModuleTag tag);
         LLVMModuleWithContext loadLLVMModule(
-            TypedCompilationData<SourceType::LLVM_IR_BIN>&& data, const std::shared_ptr<llvm::LLVMContext>& context);
+            const llvm::MemoryBuffer& buffer, const std::shared_ptr<llvm::LLVMContext>& context, LLVMTextTag tag);
+        LLVMModuleWithContext loadLLVMModule(const LLVMIRData& data, const std::shared_ptr<llvm::LLVMContext>& context);
+        LLVMModuleWithContext loadLLVMModule(
+            const LLVMIRTextData& data, const std::shared_ptr<llvm::LLVMContext>& context);
         void storeLLVMModule(std::unique_ptr<llvm::Module>&& module, const std::shared_ptr<llvm::LLVMContext>& context,
-            TypedCompilationData<SourceType::LLVM_IR_BIN>& data);
+            LLVMIRData& data);
 
-        void linkLLVMLibrary(std::vector<std::unique_ptr<TypedCompilationData<SourceType::LLVM_IR_BIN>>>&& sources,
-            const std::string& userOptions, TypedCompilationData<SourceType::LLVM_IR_BIN>& output);
+        void linkLLVMLibrary(const std::vector<std::shared_ptr<LLVMIRData>>& sources, const std::string& userOptions,
+            LLVMIRData& output);
 
-        struct LLVMCompilationData : public TypedCompilationData<SourceType::LLVM_IR_BIN>
+        struct LLVMCompilationData : public LLVMIRData
         {
             explicit LLVMCompilationData(LLVMModuleWithContext&& data);
             ~LLVMCompilationData() override;
@@ -88,6 +92,16 @@ namespace vc4c
         };
 
         std::unique_ptr<LLVMCompilationData> createLLVMCompilationData();
+
+        /**
+         * RAII wrapper around LLVM's internal profiling, allowing for easier usage.
+         */
+        struct LLVMProfilerWrapper
+        {
+            explicit LLVMProfilerWrapper(const std::string& command = CLANG_PATH,
+                std::chrono::microseconds granularity = std::chrono::microseconds{500});
+            ~LLVMProfilerWrapper();
+        };
     } // namespace precompilation
 } // namespace vc4c
 

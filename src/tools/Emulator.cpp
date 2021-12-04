@@ -28,6 +28,7 @@
 #include <memory>
 #include <numeric>
 #include <random>
+#include <sstream>
 
 using namespace vc4c;
 using namespace vc4c::tools;
@@ -36,7 +37,7 @@ static std::mutex instrumentationLock;
 
 static constexpr MemoryAddress INSTRUCTION_BASE_ADDRESS{0x10000000};
 
-extern void extractBinary(std::istream& binary, ModuleHeader& module, StableList<Global>& globals,
+extern void extractBinary(const CompilationData& binary, ModuleHeader& module, StableList<Global>& globals,
     std::vector<qpu_asm::Instruction>& instructions);
 
 // Base type for type erasure of called object type
@@ -2524,7 +2525,8 @@ static void emulateStep(std::vector<QPU>& qpus, std::bitset<NATIVE_VECTOR_SIZE>&
 }
 
 bool tools::emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction, Memory& memory,
-    const std::vector<MemoryAddress>& uniformAddresses, InstrumentationResults& instrumentation, uint32_t maxCycles)
+    const std::vector<MemoryAddress>& uniformAddresses, InstrumentationResults& instrumentation,
+    const std::string& name, uint32_t maxCycles)
 {
     if(uniformAddresses.size() > NUM_QPUS)
         throw CompilationError(CompilationStep::GENERAL, "Cannot use more than 12 QPUs!");
@@ -2640,7 +2642,7 @@ bool tools::emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstr
 bool tools::emulateTask(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction,
     const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress,
     MemoryAddress globalData, const KernelUniforms& uniformsUsed, InstrumentationResults& instrumentation,
-    uint32_t maxCycles)
+    const std::string& name, uint32_t maxCycles)
 {
     WorkGroupConfig config;
     config.dimensions = 1;
@@ -2649,7 +2651,7 @@ bool tools::emulateTask(std::vector<qpu_asm::Instruction>::const_iterator firstI
     config.numGroups = {1, 1, 1};
     const auto uniformAddresses =
         buildUniforms(memory, uniformBaseAddress, parameter, config, globalData, uniformsUsed);
-    return emulate(firstInstruction, memory, uniformAddresses, instrumentation, maxCycles);
+    return emulate(firstInstruction, memory, uniformAddresses, instrumentation, name, maxCycles);
 }
 
 static Memory fillMemory(const StableList<Global>& globalData, const EmulationData& settings,
@@ -2797,13 +2799,7 @@ EmulationResult tools::emulate(const EmulationData& data)
     ModuleHeader module;
     StableList<Global> globals;
     std::vector<qpu_asm::Instruction> instructions;
-    if(data.module.second != nullptr)
-        extractBinary(*data.module.second, module, globals, instructions);
-    else
-    {
-        std::ifstream f(data.module.first, std::ios_base::in | std::ios_base::binary);
-        extractBinary(f, module, globals, instructions);
-    }
+    extractBinary(data.module, module, globals, instructions);
     if(instructions.empty())
         throw CompilationError(CompilationStep::GENERAL, "Extracted module has no instructions!");
     if(module.kernels.empty())
@@ -2840,7 +2836,7 @@ EmulationResult tools::emulate(const EmulationData& data)
     bool status = emulate(instructions.begin() +
             static_cast<std::vector<qpu_asm::Instruction>::difference_type>(
                 (kernel->getOffset() - module.kernels.front().getOffset())),
-        mem, uniformAddresses, instrumentation, data.maxEmulationCycles);
+        mem, uniformAddresses, instrumentation, data.kernelName, data.maxEmulationCycles);
 
     if(!data.memoryDump.empty())
         dumpMemory(mem, data.memoryDump, uniformAddress, false);
@@ -2906,7 +2902,8 @@ LowLevelEmulationResult tools::emulate(const LowLevelEmulationData& data)
     Memory mem(data.buffers);
 
     InstrumentationResults instrumentation(instructions.size());
-    bool status = emulate(instructions.begin(), mem, data.uniformAddresses, instrumentation, data.maxEmulationCycles);
+    bool status =
+        emulate(instructions.begin(), mem, data.uniformAddresses, instrumentation, "", data.maxEmulationCycles);
 
     LowLevelEmulationResult result{data};
     result.executionSuccessful = status;

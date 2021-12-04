@@ -44,14 +44,6 @@ namespace vc4c
     static const std::string LLVM_LINK_PATH = "";
 #endif
 
-#cmakedefine OPT_FOUND "@OPT_FOUND@"
-#ifdef OPT_FOUND
-    static const std::string OPT_PATH = OPT_FOUND;
-#undef OPT_FOUND
-#else
-    static const std::string OPT_PATH = "";
-#endif
-
 #cmakedefine LLVM_DIS_FOUND "@LLVM_DIS_FOUND@"
 #ifdef LLVM_DIS_FOUND
     static const std::string LLVM_DIS_PATH = LLVM_DIS_FOUND;

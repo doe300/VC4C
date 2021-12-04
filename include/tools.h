@@ -10,6 +10,7 @@
 #define VC4C_TOOLS_H
 
 #include "Optional.h"
+#include "Precompiler.h"
 #include "config.h"
 
 #include <array>
@@ -42,7 +43,7 @@ namespace vc4c
              * The module to use, either the path to the compiled module-file (in binary format!) or the module-data
              * itself
              */
-            std::pair<std::string, std::istream*> module;
+            CompilationData module;
             /*
              * The name of the kernel to execute
              */
@@ -74,18 +75,10 @@ namespace vc4c
 
             explicit EmulationData() = default;
 
-            EmulationData(const std::string& moduleFile, const std::string& kernelName,
+            EmulationData(const CompilationData& moduleData, const std::string& kernelName,
                 const std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>>& parameter,
                 const WorkGroupConfig& config = {}, uint32_t maxCycles = std::numeric_limits<uint32_t>::max()) :
-                module(std::make_pair(moduleFile, nullptr)),
-                kernelName(kernelName), parameter(parameter), workGroup(config), maxEmulationCycles(maxCycles)
-            {
-            }
-
-            EmulationData(std::istream& moduleData, const std::string& kernelName,
-                const std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>>& parameter,
-                const WorkGroupConfig& config = {}, uint32_t maxCycles = std::numeric_limits<uint32_t>::max()) :
-                module(std::make_pair("", &moduleData)),
+                module(moduleData),
                 kernelName(kernelName), parameter(parameter), workGroup(config), maxEmulationCycles(maxCycles)
             {
             }

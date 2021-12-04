@@ -133,6 +133,21 @@ namespace vc4c
     }
     LCOV_EXCL_STOP
 
+    inline std::string trim(std::string&& text)
+    {
+        text.erase(0, text.find_first_not_of(' '));
+        if(!text.empty())
+            text.erase(text.find_last_not_of(' ') + 1);
+        return std::move(text);
+    }
+
+    inline void trim(std::string& text)
+    {
+        text.erase(0, text.find_first_not_of(' '));
+        if(!text.empty())
+            text.erase(text.find_last_not_of(' ') + 1);
+    }
+
     /*
      * Asserts a pointer to be non-null
      */

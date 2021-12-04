@@ -55,7 +55,8 @@ namespace test_data
          *
          * NOTE: Implementations should cache the results of previous (successful) compilations for better performance.
          */
-        NODISCARD virtual Result compile(const std::string& sourceCode, const std::string& options) = 0;
+        NODISCARD virtual Result compile(
+            const std::string& sourceCode, const std::string& options, const std::string& name) = 0;
 
         /**
          * Selects the kernel with the given name as the "active" kernel to be used for all successive kernel-specific

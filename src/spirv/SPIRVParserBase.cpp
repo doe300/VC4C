@@ -8,6 +8,7 @@
 
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intrinsics/Images.h"
+#include "../precompilation/CompilationData.h"
 #include "SPIRVBuiltins.h"
 #include "SPIRVHelper.h"
 #include "log.h"
@@ -22,13 +23,13 @@ using namespace vc4c::spirv;
 // out-of-line destructor
 ParsedInstruction::~ParsedInstruction() noexcept = default;
 
-SPIRVParserBase::SPIRVParserBase(std::istream& input, const bool isSPIRVText) :
-    isTextInput(isSPIRVText), inputWords(readStreamOfWords(input)), currentMethod(nullptr), module(nullptr)
+SPIRVParserBase::SPIRVParserBase(const precompilation::TypedCompilationData<SourceType::SPIRV_BIN>& input) :
+    isTextInput(false), inputWords(readStreamOfWords(input)), currentMethod(nullptr), module(nullptr)
 {
 }
 
-SPIRVParserBase::SPIRVParserBase(std::vector<uint32_t>&& input, bool isSPIRVText) :
-    isTextInput(isSPIRVText), inputWords(std::move(input)), currentMethod(nullptr), module(nullptr)
+SPIRVParserBase::SPIRVParserBase(const precompilation::TypedCompilationData<SourceType::SPIRV_TEXT>& input) :
+    isTextInput(true), inputWords(readStreamOfWords(input)), currentMethod(nullptr), module(nullptr)
 {
 }
 

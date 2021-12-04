@@ -61,27 +61,25 @@ void TestEmulator::printProfilingInfo()
 
 struct EmulationRunner final : public test_data::TestRunner, protected TestCompilationHelper
 {
-    explicit EmulationRunner(const Configuration& config, FastMap<std::string, std::string>& cache) :
+    explicit EmulationRunner(const Configuration& config, FastMap<std::string, CompilationData>& cache) :
         TestCompilationHelper(config), compilationCache(cache)
     {
     }
 
     ~EmulationRunner() noexcept override;
 
-    test_data::Result compile(const std::string& sourceCode, const std::string& options) override
+    test_data::Result compile(
+        const std::string& sourceCode, const std::string& options, const std::string& name) override
     try
     {
-        currentBinary = std::stringstream{};
         auto it = compilationCache.find(sourceCode + options);
+        CompilationData currentBinary{};
         if(it != compilationCache.end())
-            currentBinary.str(it->second);
+            currentBinary = it->second;
         else
-        {
-            std::istringstream source(sourceCode);
-            compileStream(currentBinary, source, options);
-        }
-        currentData.module = std::make_pair("", &currentBinary);
-        compilationCache.emplace(sourceCode + options, currentBinary.str());
+            currentBinary = compileString(sourceCode, options, name);
+        currentData.module = currentBinary;
+        compilationCache.emplace(sourceCode + options, currentBinary);
         return test_data::RESULT_OK;
     }
     catch(const std::exception& err)
@@ -168,18 +166,18 @@ struct EmulationRunner final : public test_data::TestRunner, protected TestCompi
     std::stringstream currentBinary;
     EmulationData currentData;
     std::unique_ptr<EmulationResult> currentResult;
-    FastMap<std::string, std::string>& compilationCache;
+    FastMap<std::string, CompilationData>& compilationCache;
 };
 
 EmulationRunner::~EmulationRunner() noexcept = default;
 
 void TestEmulator::runTestData(std::string dataName, bool useCompilationCache)
 {
-    std::unordered_map<std::string, std::string> dummyCache;
+    std::unordered_map<std::string, vc4c::CompilationData> dummyCache;
     runTestData(dataName, useCompilationCache ? compilationCache : dummyCache);
 }
 
-void TestEmulator::runTestData(std::string dataName, vc4c::FastMap<std::string, std::string>& cache)
+void TestEmulator::runTestData(std::string dataName, vc4c::FastMap<std::string, vc4c::CompilationData>& cache)
 {
     EmulationRunner runner(config, cache);
     auto test = test_data::getTest(dataName);

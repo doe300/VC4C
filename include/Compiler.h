@@ -57,8 +57,9 @@ namespace vc4c
         [[deprecated]] static std::size_t compile(std::istream& input, std::ostream& output,
             const Configuration& config = {}, const std::string& options = "",
             const Optional<std::string>& inputFile = {});
-        static std::pair<CompilationData, std::size_t> compile(
-            const CompilationData& input, const Configuration& config = {}, const std::string& options = "");
+        static std::pair<CompilationData, std::size_t> compile(const CompilationData& input,
+            const Configuration& config = {}, const std::string& options = "",
+            const Optional<std::string>& outputFile = {});
     };
 
     /*

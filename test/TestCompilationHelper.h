@@ -16,6 +16,7 @@
 #include "asm/CodeGenerator.h"
 #include "normalization/Normalizer.h"
 #include "optimization/Optimizer.h"
+#include "precompilation/FrontendCompiler.h"
 #include "spirv/SPIRVLexer.h"
 #include "tool_paths.h"
 
@@ -32,33 +33,34 @@ class TestCompilationHelper
 {
 protected:
     vc4c::Configuration config;
-    std::map<std::string, vc4c::TemporaryFile> cachedPrecompilations;
+    std::map<std::string, vc4c::CompilationData> cachedPrecompilations;
 
     TestCompilationHelper(const vc4c::Configuration& config) : config(config) {}
 
     void precompileAndParse(
         vc4c::Module& module, const std::string& fileName, const std::string& options, bool cachePrecompilation)
     {
-        std::ifstream input(fileName);
-        std::unique_ptr<std::istream> precompiled;
         auto tmpIt = cachedPrecompilations.find(fileName);
         if(tmpIt == cachedPrecompilations.end())
         {
-            tmpIt = cachedPrecompilations.emplace(std::make_pair(fileName, vc4c::TemporaryFile{})).first;
-            vc4c::Precompiler::precompile(input, precompiled, config, options, fileName, tmpIt->second.fileName);
+            auto result = vc4c::Precompiler::precompile(vc4c::CompilationData{fileName}, config, options);
+            tmpIt = cachedPrecompilations.emplace(fileName, result).first;
         }
         std::unique_ptr<vc4c::Parser> parser;
-        switch(vc4c::Precompiler::getSourceType(*precompiled))
+        switch(tmpIt->second.getType())
         {
         case vc4c::SourceType::LLVM_IR_BIN:
             if(vc4c::hasLLVMFrontend())
             {
-                parser = std::make_unique<vc4c::llvm2qasm::BitcodeReader>(*precompiled, vc4c::SourceType::LLVM_IR_BIN);
+                parser = std::make_unique<vc4c::llvm2qasm::BitcodeReader>(
+                    dynamic_cast<const vc4c::precompilation::LLVMIRData&>(*tmpIt->second.inner()));
                 break;
             }
-            FALL_THROUGH
+            throw vc4c::CompilationError(vc4c::CompilationStep::GENERAL,
+                "Unhandled source type for partial compilation for input file", fileName);
         case vc4c::SourceType::SPIRV_BIN:
-            parser = std::make_unique<vc4c::spirv::SPIRVLexer>(*precompiled);
+            parser = std::make_unique<vc4c::spirv::SPIRVLexer>(
+                dynamic_cast<const vc4c::precompilation::SPIRVData&>(*tmpIt->second.inner()));
             break;
         default:
             throw vc4c::CompilationError(vc4c::CompilationStep::GENERAL,
@@ -71,20 +73,22 @@ protected:
 
     void precompileAndParse(vc4c::Module& module, std::istream& input, const std::string& options)
     {
-        std::unique_ptr<std::istream> precompiled;
-        vc4c::Precompiler::precompile(input, precompiled, config, options);
+        auto precompiled = vc4c::Precompiler::precompile(vc4c::CompilationData{input}, config, options);
         std::unique_ptr<vc4c::Parser> parser;
-        switch(vc4c::Precompiler::getSourceType(*precompiled))
+        switch(precompiled.getType())
         {
         case vc4c::SourceType::LLVM_IR_BIN:
             if(vc4c::hasLLVMFrontend())
             {
-                parser = std::make_unique<vc4c::llvm2qasm::BitcodeReader>(*precompiled, vc4c::SourceType::LLVM_IR_BIN);
+                parser = std::make_unique<vc4c::llvm2qasm::BitcodeReader>(
+                    dynamic_cast<const vc4c::precompilation::LLVMIRData&>(*precompiled.inner()));
                 break;
             }
-            FALL_THROUGH
+            throw vc4c::CompilationError(
+                vc4c::CompilationStep::GENERAL, "Unhandled source type for partial compilation for input");
         case vc4c::SourceType::SPIRV_BIN:
-            parser = std::make_unique<vc4c::spirv::SPIRVLexer>(*precompiled);
+            parser = std::make_unique<vc4c::spirv::SPIRVLexer>(
+                dynamic_cast<const vc4c::precompilation::SPIRVData&>(*precompiled.inner()));
             break;
         default:
             throw vc4c::CompilationError(
@@ -122,33 +126,30 @@ protected:
         return codeGen.writeOutput(buffer);
     }
 
-    void compileFile(
-        std::stringstream& buffer, const std::string& fileName, const std::string& options, bool cachePrecompilation)
+    vc4c::CompilationData compileFile(const std::string& fileName, const std::string& options, bool cachePrecompilation)
     {
         config.outputMode = vc4c::OutputMode::BINARY;
         config.writeKernelInfo = true;
-        std::ifstream input(fileName);
-        std::unique_ptr<std::istream> precompiled;
-        std::string precompiledFile;
         auto tmpIt = cachedPrecompilations.find(fileName);
         if(tmpIt == cachedPrecompilations.end())
         {
-            tmpIt = cachedPrecompilations.emplace(std::make_pair(fileName, vc4c::TemporaryFile{})).first;
-            vc4c::Precompiler::precompile(input, precompiled, config, options, fileName, tmpIt->second.fileName);
+            auto result = vc4c::Precompiler::precompile(vc4c::CompilationData{fileName}, config, options);
+            tmpIt = cachedPrecompilations.emplace(fileName, result).first;
         }
-        tmpIt->second.openInputStream(precompiled);
-        vc4c::Compiler::compile(*precompiled, buffer, config, "", tmpIt->second.fileName);
+        auto result = vc4c::Compiler::compile(tmpIt->second, config, "");
         if(!cachePrecompilation)
             cachedPrecompilations.erase(tmpIt);
+        return result.first;
     }
 
-    void compileStream(std::stringstream& buffer, std::istream& input, const std::string& options)
+    vc4c::CompilationData compileString(
+        const std::string& input, const std::string& options, const std::string& name = "")
     {
         config.outputMode = vc4c::OutputMode::BINARY;
         config.writeKernelInfo = true;
-        std::unique_ptr<std::istream> precompiled;
-        vc4c::Precompiler::precompile(input, precompiled, config, options);
-        vc4c::Compiler::compile(*precompiled, buffer, config, "");
+        auto precompiled = vc4c::Precompiler::precompile(
+            vc4c::CompilationData{input.begin(), input.end(), vc4c::SourceType::OPENCL_C, name}, config, options);
+        return vc4c::Compiler::compile(precompiled, config, "").first;
     }
 };
 

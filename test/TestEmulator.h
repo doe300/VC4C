@@ -38,13 +38,13 @@ public:
 
     void printProfilingInfo();
     void runTestData(std::string dataName, bool useCompilationCache);
-    void runTestData(std::string dataName, vc4c::FastMap<std::string, std::string>& cache);
+    void runTestData(std::string dataName, vc4c::FastMap<std::string, vc4c::CompilationData>& cache);
     void runNoSuchTestData(std::string dataName);
 
     static std::map<std::string, const test_data::TestData*> getAllTestData();
 
 protected:
-    std::unordered_map<std::string, std::string> compilationCache;
+    std::unordered_map<std::string, vc4c::CompilationData> compilationCache;
 };
 
 #endif /* TEST_EMULATOR_H */

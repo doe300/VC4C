@@ -50,8 +50,11 @@ namespace vc4c
         class SPIRVLexer final : public SPIRVParserBase
         {
         public:
-            explicit SPIRVLexer(std::istream& source) : SPIRVParserBase(source, false) {}
-            explicit SPIRVLexer(std::vector<uint32_t>&& input) : SPIRVParserBase(std::move(input), false) {}
+            explicit SPIRVLexer(const precompilation::TypedCompilationData<SourceType::SPIRV_BIN>& input) :
+                SPIRVParserBase(input)
+            {
+            }
+
             ~SPIRVLexer() override;
 
         private:

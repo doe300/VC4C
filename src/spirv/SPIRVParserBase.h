@@ -10,6 +10,7 @@
 #include "../Parser.h"
 #include "../performance.h"
 #include "CompilationError.h"
+#include "Precompiler.h"
 #include "SPIRVOperation.h"
 
 #include "spirv/unified1/spirv.hpp11"
@@ -22,6 +23,12 @@
 
 namespace vc4c
 {
+    namespace precompilation
+    {
+        template <SourceType Type>
+        struct TypedCompilationData;
+    } // namespace precompilation
+
     namespace spirv
     {
         enum class ParseResultCode;
@@ -43,8 +50,8 @@ namespace vc4c
         class SPIRVParserBase : public Parser
         {
         public:
-            explicit SPIRVParserBase(std::istream& input = std::cin, bool isSPIRVText = false);
-            explicit SPIRVParserBase(std::vector<uint32_t>&& input, bool isSPIRVText = false);
+            explicit SPIRVParserBase(const precompilation::TypedCompilationData<SourceType::SPIRV_BIN>& input);
+            explicit SPIRVParserBase(const precompilation::TypedCompilationData<SourceType::SPIRV_TEXT>& input);
             ~SPIRVParserBase() override;
 
             void parse(Module& module) override;

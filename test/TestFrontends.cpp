@@ -10,6 +10,7 @@
 #include "VC4C.h"
 #include "asm/Instruction.h"
 #include "asm/KernelInfo.h"
+#include "precompilation/FrontendCompiler.h"
 #include "spirv/SPIRVHelper.h"
 #include "tool_paths.h"
 #include "tools.h"
@@ -26,7 +27,7 @@ using namespace vc4c;
 // TODO add some tests for the different types of (pre) compilation (module, PCH, etc., compile LLVM bin/text)
 
 extern void disassemble(const std::string& input, const std::string& output, const vc4c::OutputMode outputMode);
-extern void extractBinary(std::istream& binary, ModuleHeader& module, StableList<Global>& globals,
+extern void extractBinary(const CompilationData& binary, ModuleHeader& module, StableList<Global>& globals,
     std::vector<qpu_asm::Instruction>& instructions);
 
 TestFrontends::TestFrontends()
@@ -47,8 +48,19 @@ TestFrontends::TestFrontends()
         TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::LLVM_IR_TEXT);
     }
     TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::LLVM_IR_BIN);
+    if(precompilation::findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
+    {
+        TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::SPIRV_BIN);
+        TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::SPIRV_TEXT);
+    }
 
     TEST_ADD(TestFrontends::testKernelAttributes);
+
+    // OpenCL -> XYZ conversions are already tested with #testCompilation, so don't run them again here
+    TEST_ADD_TWO_ARGUMENTS(
+        TestFrontends::testFrontendConversions, std::string{"./example/fibonacci.ir"}, SourceType::LLVM_IR_BIN);
+    TEST_ADD_TWO_ARGUMENTS(
+        TestFrontends::testFrontendConversions, std::string{"./testing/formats/test.bc"}, SourceType::LLVM_IR_TEXT);
 }
 
 // out-of-line virtual destructor
@@ -82,29 +94,26 @@ void TestFrontends::testLinking()
         return;
     }
 
-    std::unique_ptr<std::istream> file0(new std::ifstream("./testing/test_linking_0.cl"));
-    std::unique_ptr<std::istream> file1(new std::ifstream("./testing/test_linking_1.cl"));
-    std::unique_ptr<std::istream> file2(new std::ifstream("./testing/test_linking_2.cl"));
-    std::unordered_map<std::istream*, Optional<std::string>> inputs{
-        {file0.get(), Optional<std::string>{"./testing/test_linking_0.cl"}},
-        {file1.get(), Optional<std::string>{"./testing/test_linking_1.cl"}},
-        {file2.get(), Optional<std::string>{"./testing/test_linking_2.cl"}}};
+    std::vector<CompilationData> inputs{
+        CompilationData{"./testing/test_linking_0.cl"},
+        CompilationData{"./testing/test_linking_1.cl"},
+        CompilationData{"./testing/test_linking_2.cl"},
+    };
 
-    std::stringstream tmp;
     // extra linking in std-lib tests handling of multiple times linking std-lib, since it will also be linked in for
     // the OpenCL C -> LLVM IR compilation
-    auto type = Precompiler::linkSourceCode(inputs, tmp, true);
-    TEST_ASSERT(type == SourceType::LLVM_IR_BIN || type == SourceType::SPIRV_BIN)
+    auto intermediate = Precompiler::linkSourceCode(inputs, true);
+    TEST_ASSERT(intermediate.getType() == SourceType::LLVM_IR_BIN || intermediate.getType() == SourceType::SPIRV_BIN)
 
-    std::stringstream out;
     Configuration config{};
     config.outputMode = OutputMode::BINARY;
-    Compiler::compile(tmp, out, config);
+    auto out = Compiler::compile(intermediate, config);
+    TEST_ASSERT_EQUALS(SourceType::QPUASM_BIN, out.first.getType());
 
     std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>> params;
     params.push_back(std::make_pair(0, Optional<std::vector<uint32_t>>{std::vector<uint32_t>{0}}));
     params.push_back(std::make_pair(0, Optional<std::vector<uint32_t>>{std::vector<uint32_t>{42}}));
-    tools::EmulationData data(out, "test_linker", params);
+    tools::EmulationData data(out.first, "test_linker", params);
     auto res = tools::emulate(data);
 
     TEST_ASSERT(res.executionSuccessful)
@@ -181,33 +190,28 @@ void TestFrontends::testDisassembler()
     TEST_ASSERT_EQUALS(originalContent, disassembledContent)
 }
 
-static std::pair<std::stringstream, SourceType> compile(
-    std::istream& source, SourceType intermediateType, const std::string& options = "")
+static std::pair<CompilationData, SourceType> compile(
+    const CompilationData& source, SourceType intermediateType, const std::string& options = "")
 {
     // pre-compile to given type and check result type
     Configuration precompConfig{};
-    CompilationData srcData{source, Precompiler::getSourceType(source)};
-    auto tmp = Precompiler::precompile(srcData, intermediateType, precompConfig, options);
+    auto tmp = Precompiler::precompile(source, intermediateType, precompConfig, options);
 
     // compile from given type and emulate code
-    std::stringstream out;
     Configuration config;
     config.outputMode = OutputMode::BINARY;
     auto result = Compiler::compile(tmp, config, options);
-    result.first.readInto(out);
-    return std::make_pair(std::move(out), tmp.getType());
+    return std::make_pair(result.first, tmp.getType());
 }
 
 void TestFrontends::testCompilation(vc4c::SourceType type)
 {
-    std::ifstream in("./example/fibonacci.cl");
-
-    auto res = compile(in, type);
+    auto res = compile(CompilationData{"./example/fibonacci.cl", SourceType::OPENCL_C}, type);
     TEST_ASSERT_EQUALS(type, res.second)
     testEmulation(res.first);
 }
 
-void TestFrontends::testEmulation(std::stringstream& binary)
+void TestFrontends::testEmulation(const vc4c::CompilationData& binary)
 {
     std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>> params;
     params.push_back(std::make_pair(1, Optional<std::vector<uint32_t>>{}));
@@ -231,7 +235,7 @@ void TestFrontends::testEmulation(std::stringstream& binary)
     TEST_ASSERT_EQUALS(144u, out.at(9))
 }
 
-static constexpr char* ATTRIBUTE_KERNEL = R"(
+static const std::string ATTRIBUTE_KERNEL = R"(
 __attribute__((vec_type_hint(int4)))
 __attribute__((work_group_size_hint(2, 2, 3)))
 __attribute__((reqd_work_group_size(2, 2, 3)))
@@ -240,8 +244,8 @@ __kernel void test() { }
 
 void TestFrontends::testKernelAttributes()
 {
-    std::stringstream ss(ATTRIBUTE_KERNEL);
-    auto res = compile(ss, SourceType::OPENCL_C);
+    auto res = compile(
+        CompilationData{ATTRIBUTE_KERNEL.begin(), ATTRIBUTE_KERNEL.end(), SourceType::OPENCL_C}, SourceType::OPENCL_C);
     // don't do anything here, just make sure it compiles
     ModuleHeader module;
     StableList<Global> globals;
@@ -260,4 +264,30 @@ void TestFrontends::testKernelAttributes()
         [](const MetaData& meta) { return meta.to_string(false) == "work_group_size_hint(2, 2, 3)"; }))
     TEST_ASSERT(std::any_of(kernel.metaData.begin(), kernel.metaData.end(),
         [](const MetaData& meta) { return meta.to_string(false) == "reqd_work_group_size(2, 2, 3)"; }))
+}
+
+void TestFrontends::testFrontendConversions(std::string sourceFile, vc4c::SourceType destType)
+{
+    Configuration precompConfig{};
+    std::ifstream fis{sourceFile};
+
+    // 1. check for file path
+    {
+        auto tmp = Precompiler::precompile(CompilationData{sourceFile}, destType, precompConfig, "");
+        TEST_ASSERT(tmp);
+        TEST_ASSERT_EQUALS(destType, tmp.getType());
+        std::stringstream ss;
+        tmp.readInto(ss);
+        TEST_ASSERT_EQUALS(destType, Precompiler::getSourceType(ss));
+    }
+
+    // 2. check for in-memory source
+    {
+        auto tmp = Precompiler::precompile(CompilationData{fis}, destType, precompConfig, "");
+        TEST_ASSERT(tmp);
+        TEST_ASSERT_EQUALS(destType, tmp.getType());
+        std::stringstream ss;
+        tmp.readInto(ss);
+        TEST_ASSERT_EQUALS(destType, Precompiler::getSourceType(ss));
+    }
 }

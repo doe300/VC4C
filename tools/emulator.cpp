@@ -297,8 +297,7 @@ int main(int argc, char** argv)
                 static_cast<tools::Word>(std::strtol(argv[i], nullptr, 0)), Optional<std::vector<uint32_t>>{});
     }
 
-    std::ifstream input(argv[argc - 1]);
-    data.module = std::make_pair("", &input);
+    data.module = CompilationData{argv[argc - 1]};
 
     logging::info() << "Running emulator with " << data.parameter.size() << " parameters on kernel " << data.kernelName
                     << logging::endl;

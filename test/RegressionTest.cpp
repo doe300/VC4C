@@ -7,8 +7,7 @@
 #include "RegressionTest.h"
 #include "../src/Profiler.h"
 #include "../src/helper.h"
-
-#include <fstream>
+#include "Precompiler.h"
 
 using namespace vc4c;
 
@@ -484,12 +483,10 @@ void RegressionTest::testRegression(std::string clFile, std::string options, vc4
 {
     if(frontend != Frontend::DEFAULT)
         config.frontend = frontend;
-    std::ostringstream out;
-    std::ifstream in(clFile);
+    CompilationData in(clFile, SourceType::OPENCL_C);
     printf("%s\n", clFile.data());
 
-    const std::size_t numBytes = Compiler::compile(in, out, config, options, clFile);
-
+    const std::size_t numBytes = Compiler::compile(in, config, options, clFile).second;
     TEST_ASSERT(numBytes > 0)
 }
 

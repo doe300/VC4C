@@ -17,31 +17,12 @@
 #include <functional>
 #include <iostream>
 #include <memory>
-#include <sstream>
 #include <vector>
 
 namespace vc4c
 {
     namespace precompilation
     {
-        template <SourceType Type>
-        struct SourceTypeToRepresentation
-        {
-            using type = std::string;
-        };
-
-        template <>
-        struct SourceTypeToRepresentation<SourceType::LLVM_IR_BIN>
-        {
-            using type = llvm::Module;
-        };
-
-        template <>
-        struct SourceTypeToRepresentation<SourceType::SPIRV_BIN>
-        {
-            using type = std::vector<uint32_t>;
-        };
-
         template <SourceType Type>
         class PrecompilationSource;
 
@@ -96,9 +77,9 @@ namespace vc4c
                 return *data;
             }
 
-            std::unique_ptr<TypedCompilationData<Type>> release() noexcept
+            CompilationData publish() && noexcept
             {
-                return std::move(data);
+                return CompilationData{std::move(data)};
             }
 
             std::string to_string() const
@@ -118,17 +99,17 @@ namespace vc4c
         };
 
         template <SourceType Type>
-        class PrecompilationSource : private NonCopyable
+        class PrecompilationSource
         {
         public:
             explicit PrecompilationSource(std::shared_ptr<TypedCompilationData<Type>>&& data) : data(std::move(data))
             {
                 if(!this->data)
-                    throw CompilationError(CompilationStep::PRECOMPILATION, "Source has no data!");
+                    throw CompilationError(CompilationStep::PRECOMPILATION, "Source has no data");
             }
 
-            explicit PrecompilationSource(std::istream& s) :
-                PrecompilationSource(std::make_unique<RawCompilationData<Type>>(s))
+            explicit PrecompilationSource(std::istream& s, const std::string& name = "") :
+                PrecompilationSource(std::make_unique<RawCompilationData<Type>>(s, name))
             {
             }
 
@@ -141,12 +122,6 @@ namespace vc4c
             {
             }
 
-            PrecompilationSource(const PrecompilationSource&) = delete;
-            PrecompilationSource(PrecompilationSource&&) noexcept = default;
-
-            PrecompilationSource& operator=(const PrecompilationSource&) = delete;
-            PrecompilationSource& operator=(PrecompilationSource&&) noexcept = default;
-
             std::string getInputPath(const std::string& defaultPath) const noexcept
             {
                 return getFilePath().value_or(defaultPath);
@@ -154,7 +129,7 @@ namespace vc4c
 
             Optional<std::string> getFilePath() const noexcept
             {
-                return data->getFilePath();
+                return data ? data->getFilePath() : Optional<std::string>{};
             }
 
             std::unique_ptr<std::istream> getBufferReader(bool force = false) const
@@ -162,7 +137,7 @@ namespace vc4c
                 if(!force && dynamic_cast<const FileCompilationData<Type>*>(data.get()))
                     // prefer using the file instead of reading it into memory here
                     return nullptr;
-                return data->readStream();
+                return data ? data->readStream() : nullptr;
             }
 
             const TypedCompilationData<Type>& inner() const noexcept
@@ -179,14 +154,6 @@ namespace vc4c
             std::shared_ptr<TypedCompilationData<Type>> data;
         };
 
-        template <SourceType InType, SourceType OutType>
-        using PrecompilationStep = std::function<PrecompilationResult<OutType>(
-            PrecompilationSource<InType>&&, const std::string&, PrecompilationResult<OutType>&&)>;
-
-        template <SourceType Type>
-        using LinkStep = std::function<PrecompilationResult<Type>(
-            std::vector<PrecompilationSource<Type>>&&, const std::string&, PrecompilationResult<Type>&&)>;
-
         using OpenCLSource = PrecompilationSource<SourceType::OPENCL_C>;
         using LLVMIRSource = PrecompilationSource<SourceType::LLVM_IR_BIN>;
         using LLVMIRTextSource = PrecompilationSource<SourceType::LLVM_IR_TEXT>;
@@ -197,38 +164,30 @@ namespace vc4c
         using SPIRVResult = PrecompilationResult<SourceType::SPIRV_BIN>;
         using SPIRVTextResult = PrecompilationResult<SourceType::SPIRV_TEXT>;
 
-        LLVMIRResult compileOpenCLWithPCH(
-            OpenCLSource&& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
-        LLVMIRResult compileOpenCLWithDefaultHeader(
-            OpenCLSource&& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
         LLVMIRResult linkInStdlibModule(
-            LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
-        LLVMIRTextResult compileOpenCLToLLVMText(OpenCLSource&& source, const std::string& userOptions,
+            const LLVMIRSource& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
+        LLVMIRTextResult compileOpenCLToLLVMText(const OpenCLSource& source, const std::string& userOptions,
             LLVMIRTextResult&& desiredOutput = LLVMIRTextResult{});
         SPIRVResult compileLLVMToSPIRV(
-            LLVMIRSource&& source, const std::string& userOptions, SPIRVResult&& desiredOutput = SPIRVResult{});
+            const LLVMIRSource& source, const std::string& userOptions, SPIRVResult&& desiredOutput = SPIRVResult{});
         SPIRVResult assembleSPIRV(
-            SPIRVTextSource&& source, const std::string& userOptions, SPIRVResult&& desiredOutput = SPIRVResult{});
-        SPIRVTextResult compileLLVMToSPIRVText(
-            LLVMIRSource&& source, const std::string& userOptions, SPIRVTextResult&& desiredOutput = SPIRVTextResult{});
-        SPIRVTextResult disassembleSPIRV(
-            SPIRVSource&& source, const std::string& userOptions, SPIRVTextResult&& desiredOutput = SPIRVTextResult{});
-        LLVMIRTextResult disassembleLLVM(LLVMIRSource&& source, const std::string& userOptions,
+            const SPIRVTextSource& source, const std::string& userOptions, SPIRVResult&& desiredOutput = SPIRVResult{});
+        SPIRVTextResult compileLLVMToSPIRVText(const LLVMIRSource& source, const std::string& userOptions,
+            SPIRVTextResult&& desiredOutput = SPIRVTextResult{});
+        SPIRVTextResult disassembleSPIRV(const SPIRVSource& source, const std::string& userOptions,
+            SPIRVTextResult&& desiredOutput = SPIRVTextResult{});
+        LLVMIRTextResult disassembleLLVM(const LLVMIRSource& source, const std::string& userOptions,
             LLVMIRTextResult&& desiredOutput = LLVMIRTextResult{});
-        LLVMIRResult assembleLLVM(
-            LLVMIRTextSource&& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
-        LLVMIRResult linkLLVMModules(std::vector<LLVMIRSource>&& sources, const std::string& userOptions,
+        LLVMIRResult assembleLLVM(const LLVMIRTextSource& source, const std::string& userOptions,
             LLVMIRResult&& desiredOutput = LLVMIRResult{});
-        SPIRVResult linkSPIRVModules(std::vector<SPIRVSource>&& sources, const std::string& userOptions,
+        LLVMIRResult linkLLVMModules(const std::vector<LLVMIRSource>& sources, const std::string& userOptions,
+            LLVMIRResult&& desiredOutput = LLVMIRResult{});
+        SPIRVResult linkSPIRVModules(const std::vector<SPIRVSource>& sources, const std::string& userOptions,
             SPIRVResult&& desiredOutput = SPIRVResult{});
-        LLVMIRResult optimizeLLVMIR(
-            LLVMIRSource&& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
-        LLVMIRResult compileOpenCLAndLinkModule(
-            OpenCLSource&& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
         SPIRVResult compileOpenCLToSPIRV(
-            OpenCLSource&& source, const std::string& userOptions, SPIRVResult&& desiredOutput = SPIRVResult{});
-        SPIRVTextResult compileOpenCLToSPIRVText(
-            OpenCLSource&& source, const std::string& userOptions, SPIRVTextResult&& desiredOutput = SPIRVTextResult{});
+            const OpenCLSource& source, const std::string& userOptions, SPIRVResult&& desiredOutput = SPIRVResult{});
+        SPIRVTextResult compileOpenCLToSPIRVText(const OpenCLSource& source, const std::string& userOptions,
+            SPIRVTextResult&& desiredOutput = SPIRVTextResult{});
 
         /*
          * General version of compiling OpenCL C source to to LLVM binary module with the standard-library included.
@@ -236,7 +195,7 @@ namespace vc4c
          * linked in.
          */
         LLVMIRResult compileOpenCLToLLVMIR(
-            OpenCLSource&& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
+            const OpenCLSource& source, const std::string& userOptions, LLVMIRResult&& desiredOutput = LLVMIRResult{});
 
         /**
          * Tries to find the location of the tool executable with the given name.

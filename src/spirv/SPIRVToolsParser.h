@@ -17,6 +17,12 @@
 
 namespace vc4c
 {
+    namespace precompilation
+    {
+        template <SourceType Type>
+        struct TypedCompilationData;
+    } // namespace precompilation
+
     namespace spirv
     {
         struct SPIRVToolsInstruction final : ParsedInstruction
@@ -39,14 +45,16 @@ namespace vc4c
         class SPIRVToolsParser final : public SPIRVParserBase
         {
         public:
-            explicit SPIRVToolsParser(std::istream& input = std::cin, bool isSPIRVText = false) :
-                SPIRVParserBase(input, isSPIRVText)
+            explicit SPIRVToolsParser(const precompilation::TypedCompilationData<SourceType::SPIRV_BIN>& input) :
+                SPIRVParserBase(input)
             {
             }
-            explicit SPIRVToolsParser(std::vector<uint32_t>&& input, bool isSPIRVText = false) :
-                SPIRVParserBase(std::move(input), isSPIRVText)
+
+            explicit SPIRVToolsParser(const precompilation::TypedCompilationData<SourceType::SPIRV_TEXT>& input) :
+                SPIRVParserBase(input)
             {
             }
+
             ~SPIRVToolsParser() override;
 
         protected:
@@ -54,19 +62,35 @@ namespace vc4c
             void doParse(const std::vector<uint32_t>& module) override;
         };
 
-        void linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output);
+        void linkSPIRVModules(
+            const std::vector<
+                std::reference_wrapper<const precompilation::TypedCompilationData<SourceType::SPIRV_BIN>>>& sources,
+            precompilation::TypedCompilationData<SourceType::SPIRV_BIN>& output);
 
     } // namespace spirv
 } // namespace vc4c
 #else
 namespace vc4c
 {
+    namespace precompilation
+    {
+        template <SourceType Type>
+        struct TypedCompilationData;
+    } // namespace precompilation
+
     namespace spirv
     {
         class SPIRVToolsParser final : public SPIRVParserBase
         {
         public:
-            explicit SPIRVToolsParser(std::istream& input = std::cin, bool isSPIRVText = false)
+            explicit SPIRVToolsParser(const precompilation::TypedCompilationData<SourceType::SPIRV_BIN>& input) :
+                SPIRVParserBase(input)
+            {
+                throw CompilationError(CompilationStep::GENERAL, "SPIR-V Tools is not available!");
+            }
+
+            explicit SPIRVToolsParser(const precompilation::TypedCompilationData<SourceType::SPIRV_TEXT>& input) :
+                SPIRVParserBase(input)
             {
                 throw CompilationError(CompilationStep::GENERAL, "SPIR-V Tools is not available!");
             }
@@ -85,7 +109,10 @@ namespace vc4c
             }
         };
 
-        inline void linkSPIRVModules(const std::vector<std::istream*>& inputModules, std::ostream& output)
+        inline void void linkSPIRVModules(
+            const std::vector<
+                std::reference_wrapper<const precompilation::TypedCompilationData<SourceType::SPIRV_BIN>>>& sources,
+            precompilation::TypedCompilationData<SourceType::SPIRV_BIN>& output)
         {
             throw CompilationError(CompilationStep::LINKER, "SPIRV-Tools linker is not available!");
         }

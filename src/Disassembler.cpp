@@ -214,20 +214,29 @@ static std::string annotateRegisters(const qpu_asm::Instruction& instr, std::siz
 }
 LCOV_EXCL_STOP
 
-void extractBinary(std::istream& binary, ModuleHeader& module, StableList<Global>& globals,
+void extractBinary(const CompilationData& binary, ModuleHeader& module, StableList<Global>& globals,
     std::vector<qpu_asm::Instruction>& instructions)
 {
-    // read whole stream into 64-bit words
-    binary.seekg(0, binary.end);
-    auto numBytes = static_cast<std::size_t>(std::max(binary.tellg(), std::streampos{8192}));
-    binary.seekg(0);
-    binary.clear();
-
     std::vector<uint64_t> binaryData;
-    binaryData.reserve(numBytes / sizeof(uint64_t));
-    uint64_t tmp = 0;
-    while(binary.read(reinterpret_cast<char*>(&tmp), sizeof(tmp)))
-        binaryData.push_back(tmp);
+    if(auto rawData = binary.getRawData())
+    {
+        binaryData.resize(rawData->size() / sizeof(uint64_t));
+        std::memcpy(binaryData.data(), rawData->data(), (rawData->size() / sizeof(uint64_t)) * sizeof(uint64_t));
+    }
+    else
+    {
+        // read whole stream into 64-bit words
+        std::stringstream binaryStream;
+        binary.readInto(binaryStream);
+        binaryStream.seekg(0, binaryStream.end);
+        auto numBytes = static_cast<std::size_t>(std::max(binaryStream.tellg(), std::streampos{8192}));
+        binaryStream.seekg(0);
+        binaryStream.clear();
+        binaryData.reserve(numBytes / sizeof(uint64_t));
+        uint64_t tmp = 0;
+        while(binaryStream.read(reinterpret_cast<char*>(&tmp), sizeof(tmp)))
+            binaryData.push_back(tmp);
+    }
 
     module = ModuleHeader::fromBinaryData(binaryData);
 
@@ -324,18 +333,23 @@ static std::size_t generateOutput(std::ostream& stream, ModuleHeader& module, co
 
 std::size_t vc4c::disassembleModule(std::istream& binary, std::ostream& output, const OutputMode outputMode)
 {
-    if(Precompiler::getSourceType(binary) != SourceType::QPUASM_BIN)
+    return disassembleModule(CompilationData(binary), output, outputMode);
+}
+
+std::size_t vc4c::disassembleModule(const CompilationData& binaryData, std::ostream& output, OutputMode outputMode)
+{
+    if(binaryData.getType() != SourceType::QPUASM_BIN)
         throw CompilationError(CompilationStep::GENERAL, "Invalid input binary for disassembling!");
     if(outputMode == OutputMode::BINARY)
     {
-        output << binary.rdbuf();
+        binaryData.readInto(output);
         return 0;
     }
 
     ModuleHeader module;
     StableList<Global> globals;
     std::vector<qpu_asm::Instruction> instructions;
-    extractBinary(binary, module, globals, instructions);
+    extractBinary(binaryData, module, globals, instructions);
 
     return generateOutput(output, module, globals, instructions, outputMode);
 }
@@ -372,18 +386,14 @@ std::size_t vc4c::disassembleCodeOnly(
 // command-line version
 void disassemble(const std::string& input, const std::string& output, const OutputMode outputMode)
 {
-    std::unique_ptr<std::istream> inputFile;
+    CompilationData inputData{};
     std::unique_ptr<std::ostream> outputFile;
-    std::istream* is = nullptr;
     std::ostream* os = nullptr;
 
     if(input == "-" || input == "/dev/stdin")
-        is = &std::cin;
+        inputData = CompilationData{std::cin, SourceType::UNKNOWN, "stdin"};
     else
-    {
-        inputFile = std::make_unique<std::ifstream>(input, std::ios_base::in | std::ios_base::binary);
-        is = inputFile.get();
-    }
+        inputData = CompilationData{input};
 
     if(output.empty() || output == "-" || output == "/dev/stdout")
         os = &std::cout;
@@ -393,5 +403,5 @@ void disassemble(const std::string& input, const std::string& output, const Outp
         os = outputFile.get();
     }
 
-    disassembleModule(*is, *os, outputMode);
+    disassembleModule(inputData, *os, outputMode);
 }

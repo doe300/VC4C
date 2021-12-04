@@ -12,7 +12,6 @@
 #include "Precompiler.h"
 #include "tool_paths.h"
 
-#include <iostream>
 #include <memory>
 
 #ifdef USE_LLVM_LIBRARY
@@ -33,7 +32,8 @@ namespace vc4c
 {
     namespace precompilation
     {
-        struct LLVMModuleWithContext;
+        template <SourceType Type>
+        struct TypedCompilationData;
     } /* namespace precompilation */
 
     namespace llvm2qasm
@@ -45,8 +45,8 @@ namespace vc4c
         class BitcodeReader final : public Parser
         {
         public:
-            BitcodeReader(std::istream& stream, SourceType sourceType);
-            BitcodeReader(precompilation::LLVMModuleWithContext&& llvmModule);
+            BitcodeReader(const precompilation::TypedCompilationData<SourceType::LLVM_IR_BIN>& inputData);
+            BitcodeReader(const precompilation::TypedCompilationData<SourceType::LLVM_IR_TEXT>& inputData);
             ~BitcodeReader() override = default;
 
             void parse(Module& module) override;
@@ -54,7 +54,7 @@ namespace vc4c
         private:
             //"the lifetime of the LLVMContext needs to outlast the module"
             std::shared_ptr<llvm::LLVMContext> context;
-            std::unique_ptr<llvm::Module> llvmModule;
+            std::shared_ptr<llvm::Module> llvmModule;
             FastMap<const llvm::Function*, std::pair<Method*, LLVMInstructionList>> parsedFunctions;
             FastMap<const llvm::Value*, const Local*> localMap;
             // required to support recursive types

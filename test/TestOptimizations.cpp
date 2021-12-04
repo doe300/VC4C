@@ -175,7 +175,7 @@ void TestOptimizations::testBarrier(std::string passParamName)
     config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
-    FastMap<std::string, std::string> cache{};
+    FastMap<std::string, CompilationData> cache{};
     TestEmulator::runTestData("barrier_dynamic_work_size", cache);
     TestEmulator::runTestData("barrier_fix_work_size", cache);
 }
@@ -193,7 +193,7 @@ void TestOptimizations::testWorkItem(std::string passParamName)
     config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
-    FastMap<std::string, std::string> cache{};
+    FastMap<std::string, CompilationData> cache{};
     TestEmulator::runTestData("work_item", cache);
     TestEmulator::runTestData("work_item_global_offset", cache);
 }
@@ -315,13 +315,12 @@ void TestOptimizations::testSHA1()
     const std::string sample("Hello World!");
     const std::vector<uint32_t> digest = {0x2ef7bde6, 0x08ce5404, 0xe97d5f04, 0x2f95f89f, 0x1c232871};
 
-    std::stringstream buffer;
-    compileFile(buffer, "./example/md5.cl", "", true);
+    auto module = compileFile("./example/md5.cl", "", true);
 
     EmulationData data;
     data.kernelName = "sha1_crypt_kernel";
     data.maxEmulationCycles = maxExecutionCycles;
-    data.module = std::make_pair("", &buffer);
+    data.module = module;
 
     // parameter 0 is the control data
     data.parameter.emplace_back(0, std::vector<uint32_t>{0 /* padding*/, 1 /* number of keys */});
@@ -357,13 +356,12 @@ void TestOptimizations::testSHA256()
     const std::vector<uint32_t> digest = {
         0xf90a1ef4, 0x422350ca, 0x8c448530, 0xa7d5d0b2, 0x35054803, 0xf7b2a73d, 0x86f4b639, 0x4b1329a5};
 
-    std::stringstream buffer;
-    compileFile(buffer, "./example/SHA-256.cl", "", true);
+    auto module = compileFile("./example/SHA-256.cl", "", true);
 
     EmulationData data;
     data.kernelName = "execute_sha256_cpu";
     data.maxEmulationCycles = maxExecutionCycles * 4;
-    data.module = std::make_pair("", &buffer);
+    data.module = module;
 
     // parameter 0 is the input with a block-size of 16 words
     data.parameter.emplace_back(0, std::vector<uint32_t>(16));
@@ -468,7 +466,7 @@ void TestOptimizations::testVectorizations(std::string passParamName)
     config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
     config.optimizationLevel = OptimizationLevel::NONE;
 
-    FastMap<std::string, std::string> cache{};
+    FastMap<std::string, CompilationData> cache{};
     TestEmulator::runTestData("vectorization1", cache);
     TestEmulator::runTestData("vectorization2", cache);
     TestEmulator::runTestData("vectorization3", cache);

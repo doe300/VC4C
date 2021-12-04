@@ -119,16 +119,6 @@ bool tools::parseConfigurationParameter(Configuration& config, const std::string
         config.optimizationLevel = OptimizationLevel::FULL;
         return true;
     }
-    if(arg == "--use-opt")
-    {
-        config.useOpt = true;
-        return true;
-    }
-    if(arg == "--no-opt")
-    {
-        config.useOpt = false;
-        return true;
-    }
     if(arg == "--verification-error")
     {
         config.stopWhenVerificationFailed = true;

@@ -363,13 +363,14 @@ void checkUnaryGroupedUnevenResults(const std::array<Input, GroupSize * NumGroup
     }
 }
 
-inline void compileBuffer(
-    vc4c::Configuration& config, std::stringstream& buffer, const std::string& source, const std::string& options)
+inline vc4c::CompilationData compileBuffer(
+    vc4c::Configuration& config, const std::string& source, const std::string& options, const std::string& name = "")
 {
     config.outputMode = vc4c::OutputMode::BINARY;
     config.writeKernelInfo = true;
-    std::istringstream input(source);
-    vc4c::Compiler::compile(input, buffer, config, options);
+    auto result = vc4c::Compiler::compile(
+        vc4c::CompilationData{source.begin(), source.end(), vc4c::SourceType::OPENCL_C, name}, config, options);
+    return result.first;
 }
 
 template <std::size_t N, typename In, typename Out>
@@ -399,7 +400,7 @@ constexpr std::size_t minBufferSize() noexcept
 }
 
 template <typename Input, typename Result, std::size_t VectorWidth, std::size_t LocalSize, std::size_t NumGroups = 1>
-std::array<Result, VectorWidth * LocalSize * NumGroups> runEmulation(std::stringstream& codeBuffer,
+std::array<Result, VectorWidth * LocalSize * NumGroups> runEmulation(const vc4c::CompilationData& codeBuffer,
     const std::vector<std::array<Input, VectorWidth * LocalSize * NumGroups>>& inputs,
     const std::string& kernelName = "test")
 {

@@ -128,8 +128,7 @@ static void testUnaryFunction(vc4c::Configuration& config, const std::string& op
     const std::function<float(float)>& op, const std::function<void(const std::string&, const std::string&)>& onError,
     float min = std::numeric_limits<float>::lowest(), float max = std::numeric_limits<float>::max())
 {
-    std::stringstream code;
-    compileBuffer(config, code, UNARY_FUNCTION, options);
+    auto code = compileBuffer(config, UNARY_FUNCTION, options);
 
     auto in = generateInput<float, 16 * 12, float, Distribution>(true, min, max);
 
@@ -146,8 +145,7 @@ static void testBinaryFunction(vc4c::Configuration& config, const std::string& o
     const std::function<void(const std::string&, const std::string&)>& onError,
     float min = std::numeric_limits<float>::lowest(), float max = std::numeric_limits<float>::max())
 {
-    std::stringstream code;
-    compileBuffer(config, code, BINARY_FUNCTION, options);
+    auto code = compileBuffer(config, BINARY_FUNCTION, options);
 
     auto in0 = generateInput<float, 16 * 12, float, Distribution>(true, min, max);
     auto in1 = generateInput<SecondType, 16 * 12, float, SecondDistribution>(true, min, max);
@@ -168,8 +166,7 @@ static void testTernaryFunction(vc4c::Configuration& config, const std::string& 
     const std::function<void(const std::string&, const std::string&)>& onError,
     float min = std::numeric_limits<float>::lowest(), float max = std::numeric_limits<float>::max())
 {
-    std::stringstream code;
-    compileBuffer(config, code, TERNARY_FUNCTION, options);
+    auto code = compileBuffer(config, TERNARY_FUNCTION, options);
 
     auto in0 = generateInput<float, 16 * 12, float, Distribution>(true, min, max);
     auto in1 = generateInput<SecondType, 16 * 12, float, SecondDistribution>(true, min, max);

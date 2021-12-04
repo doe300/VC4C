@@ -75,17 +75,22 @@ static void dumpLLVM(const T* val)
 }
 LCOV_EXCL_STOP
 
-BitcodeReader::BitcodeReader(std::istream& stream, SourceType sourceType)
+BitcodeReader::BitcodeReader(const precompilation::TypedCompilationData<SourceType::LLVM_IR_BIN>& inputData)
 {
-    auto buf = precompilation::loadLLVMBuffer(stream);
-    auto tmp = precompilation::loadLLVMModule(*buf, sourceType, context);
+    auto tmp = precompilation::loadLLVMModule(inputData, nullptr);
     context = std::move(tmp.context);
     llvmModule = std::move(tmp.module);
+
+    if(!context || !this->llvmModule)
+        throw CompilationError(CompilationStep::PARSER, "Cannot parse LLVM bitcode from invalid input module");
 }
 
-BitcodeReader::BitcodeReader(precompilation::LLVMModuleWithContext&& llvmModule) :
-    context(llvmModule.context), llvmModule(std::move(llvmModule.module))
+BitcodeReader::BitcodeReader(const precompilation::TypedCompilationData<SourceType::LLVM_IR_TEXT>& inputData)
 {
+    auto tmp = precompilation::loadLLVMModule(inputData, nullptr);
+    context = std::move(tmp.context);
+    llvmModule = std::move(tmp.module);
+
     if(!context || !this->llvmModule)
         throw CompilationError(CompilationStep::PARSER, "Cannot parse LLVM bitcode from invalid input module");
 }

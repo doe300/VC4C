@@ -400,11 +400,11 @@ namespace vc4c
             const KernelUniforms& uniformsUsed, uint8_t workItemMergeFactor = 1);
         bool emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction, Memory& memory,
             const std::vector<MemoryAddress>& uniformAddresses, InstrumentationResults& instrumentation,
-            uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
+            const std::string& name = "", uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
         bool emulateTask(std::vector<qpu_asm::Instruction>::const_iterator firstInstruction,
             const std::vector<MemoryAddress>& parameter, Memory& memory, MemoryAddress uniformBaseAddress,
             MemoryAddress globalData, const KernelUniforms& uniformsUsed, InstrumentationResults& instrumentation,
-            uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
+            const std::string& name = "", uint32_t maxCycles = std::numeric_limits<uint32_t>::max());
     } // namespace tools
 } // namespace vc4c
 

@@ -23,6 +23,8 @@ namespace llvm
 
 namespace vc4c
 {
+    std::string readIntoString(std::istream& stream);
+
     class CompilationDataPrivate : private NonCopyable
     {
     public:
@@ -34,13 +36,6 @@ namespace vc4c
 
         virtual void readInto(std::ostream& out) const = 0;
         virtual void writeFrom(std::istream& in) = 0;
-
-        virtual std::string readText() const
-        {
-            std::stringstream ss;
-            readInto(ss);
-            return ss.str();
-        }
 
         /**
          * Returns a stream reading from the underlying buffer or a copy of it.
@@ -58,6 +53,11 @@ namespace vc4c
         virtual std::unique_ptr<std::ostream> writeStream()
         {
             return nullptr;
+        }
+
+        virtual Optional<std::vector<uint8_t>> getRawData() const
+        {
+            return {};
         }
     };
 
@@ -137,8 +137,12 @@ namespace vc4c
         template <SourceType Type>
         struct RawCompilationData : TypedCompilationData<Type>
         {
-            explicit RawCompilationData(std::vector<uint8_t>&& data = {}) : data(std::move(data)) {}
-            explicit RawCompilationData(std::istream& s)
+            explicit RawCompilationData(const std::string& name) : name(name) {}
+            explicit RawCompilationData(std::vector<uint8_t>&& data, const std::string& name = "") :
+                data(std::move(data)), name(name)
+            {
+            }
+            explicit RawCompilationData(std::istream& s, const std::string& name = "") : name(name)
             {
                 writeFrom(s);
             }
@@ -151,6 +155,8 @@ namespace vc4c
 
             std::string to_string() const override
             {
+                if(!name.empty())
+                    return "(buffer '" + name + "')";
                 return "(buffer of " + std::to_string(data.size()) + " bytes)";
             }
 
@@ -161,25 +167,17 @@ namespace vc4c
 
             void writeFrom(std::istream& in) override
             {
-                data.clear();
-                std::array<uint8_t, 4096> tmp{};
-                while(in.read(reinterpret_cast<char*>(tmp.data()), static_cast<std::streamsize>(tmp.size())))
-                {
-                    data.insert(data.end(), tmp.begin(), tmp.begin() + in.gcount());
-                }
+                std::string tmp = readIntoString(in);
+                data.assign(tmp.begin(), tmp.end());
             }
 
-            std::string readText() const override
+            Optional<std::vector<uint8_t>> getRawData() const override
             {
-                return std::string{reinterpret_cast<const char*>(data.data()), data.size()};
-            }
-
-            std::unique_ptr<std::istream> readStream() const override
-            {
-                return std::make_unique<std::istringstream>(readText());
+                return data;
             }
 
             std::vector<uint8_t> data;
+            std::string name;
         };
 
     } /* namespace precompilation */

@@ -13,7 +13,6 @@ if(SPIRV_TRANSLATOR_ROOT)
 	message(STATUS "Khronos OpenCL toolkit: ${SPIRV_TRANSLATOR_ROOT}")
 	# The translator uses the built-in clang
 	find_program(SPIRV_CLANG_FOUND clang NAMES clang clang-3.9 clang-4.0 clang-5.0 clang-6.0 clang-7 clang-8 clang-9 clang-10)
-	find_program(OPT_FOUND opt NAMES opt opt-3.9 opt-4.0 opt-5.0 opt-6.0 opt-7 opt-8 opt-9 opt-10)
 	find_program(LLVM_DIS_FOUND llvm-dis NAMES llvm-dis llvm-dis-3.9 llvm-dis-4.0 llvm-dis-5.0 llvm-dis-6.0 llvm-dis-7 llvm-dis-8 llvm-dis-9 llvm-dis-10)
 	find_program(LLVM_AS_FOUND llvm-as NAMES llvm-as llvm-as-3.9 llvm-as-4.0 llvm-as-5.0 llvm-as-6.0 llvm-as-7 llvm-as-8 llvm-as-9 llvm-as-10)
 	find_program(LLVM_LINK_FOUND llvm-link NAMES llvm-link llvm-link-3.9 llvm-link-4.0 llvm-link-5.0 llvm-link-6.0 llvm-link-7 llvm-link-8 llvm-link-9 llvm-link-10)

@@ -120,19 +120,28 @@ namespace vc4c
          * Sets the given type and file path as data. This should e.g. be used to compile from files or to compile into
          * a specific file.
          */
-        CompilationData(const std::string& fileName, SourceType type);
+        explicit CompilationData(const std::string& fileName, SourceType type = SourceType::UNKNOWN);
 
         /**
          * Sets the given type and raw data. This should e.g. be used to compile from an on-memory data buffer.
          */
-        CompilationData(std::istream& rawData, SourceType type);
+        explicit CompilationData(
+            std::istream& rawData, SourceType type = SourceType::UNKNOWN, const std::string& name = "");
+        explicit CompilationData(
+            std::vector<uint8_t>&& rawData, SourceType type = SourceType::UNKNOWN, const std::string& name = "");
+        template <typename Iterator>
+        explicit CompilationData(
+            Iterator begin, Iterator end, SourceType type = SourceType::UNKNOWN, const std::string& name = "") :
+            CompilationData(
+                {reinterpret_cast<const uint8_t*>(&*begin), reinterpret_cast<const uint8_t*>(&*end)}, type, name)
+        {
+        }
 
         explicit CompilationData(std::shared_ptr<CompilationDataPrivate>&& data);
-        ~CompilationData();
 
         SourceType getType() const noexcept;
         Optional<std::string> getFilePath() const;
-        std::vector<uint8_t> getRawData() const;
+        Optional<std::vector<uint8_t>> getRawData() const;
 
         void readInto(std::ostream& out) const;
         void writeFrom(std::istream& in);
@@ -171,14 +180,14 @@ namespace vc4c
         static CompilationData precompile(const CompilationData& input, SourceType outputType,
             Configuration config = {}, const std::string& options = "");
 
-        /*
+        /**
          * Determines the type of code stored in the given stream.
          *
          * NOTE: This function reads from the stream but resets the cursor back to the beginning.
          */
         static SourceType getSourceType(std::istream& stream);
 
-        /*
+        /**
          * Links multiple source-code files using a linker provided by the pre-compilers.
          *
          * Returns the SourceType of the linked module
@@ -189,10 +198,12 @@ namespace vc4c
         static CompilationData linkSourceCode(
             const std::vector<CompilationData>& inputs, bool includeStandardLibrary = false);
 
-        /*
+        /**
          * Returns whether there is a linker available that can link the given input modules
          */
-        static bool isLinkerAvailable(const std::unordered_map<std::istream*, Optional<std::string>>& inputs);
+        [[deprecated]] static bool isLinkerAvailable(
+            const std::unordered_map<std::istream*, Optional<std::string>>& inputs);
+        static bool isLinkerAvailable(const std::vector<CompilationData>& inputs);
         /*
          * Returns whether a linker is available at all in the compiler
          */

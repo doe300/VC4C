@@ -8,6 +8,7 @@
 
 #include "../Module.h"
 #include "../performance.h"
+#include "../precompilation/CompilationData.h"
 #include "CompilationError.h"
 #include "log.h"
 
@@ -728,6 +729,28 @@ std::vector<uint32_t> spirv::readStreamOfWords(std::istream& in)
     }
 
     return words;
+}
+
+std::vector<uint32_t> spirv::readStreamOfWords(const CompilationDataPrivate& in)
+{
+    if(auto rawData = in.getRawData())
+    {
+        if((rawData->size() % sizeof(uint32_t)) != 0)
+            throw CompilationError(CompilationStep::PARSER, "SPIR-V input data size is not a multiple of 32-bit",
+                std::to_string(rawData->size()));
+
+        std::vector<uint32_t> words(rawData->size() / sizeof(uint32_t));
+        std::memcpy(words.data(), rawData->data(), rawData->size());
+        return words;
+    }
+    if(auto filePath = in.getFilePath())
+    {
+        std::ifstream fis{*filePath};
+        return readStreamOfWords(fis);
+    }
+    std::stringstream ss;
+    in.readInto(ss);
+    return readStreamOfWords(ss);
 }
 
 std::string spirv::demangleFunctionName(const std::string& name)
