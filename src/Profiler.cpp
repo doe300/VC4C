@@ -32,6 +32,41 @@ using namespace vc4c;
 using Clock = std::chrono::system_clock;
 using Duration = std::chrono::microseconds;
 
+template <typename Counter>
+struct ExtremeValue
+{
+    std::atomic<Counter> value{0};
+    std::string message = "";
+
+    ExtremeValue() = default;
+    ExtremeValue(Counter counter, const std::string& msg) : value(counter), message(msg) {}
+    ExtremeValue(const ExtremeValue&) = delete;
+    ExtremeValue(ExtremeValue&& other) noexcept : value(other.value.load()), message(std::move(other.message)) {}
+
+    ~ExtremeValue() noexcept = default;
+
+    ExtremeValue& operator=(const ExtremeValue&) = delete;
+    ExtremeValue& operator=(ExtremeValue&& other) noexcept
+    {
+        if(&other != this)
+        {
+            value = other.value.load();
+            message = std::move(other.message);
+        }
+        return *this;
+    }
+
+    operator bool() const noexcept
+    {
+        return value != 0;
+    }
+
+    bool operator<(const ExtremeValue& other) const noexcept
+    {
+        return value.load() < other.value.load();
+    }
+};
+
 struct profiler::Entry
 {
     std::string name;
@@ -39,12 +74,13 @@ struct profiler::Entry
     std::atomic<uint64_t> invocations;
     std::string fileName;
     std::size_t lineNumber;
+    ExtremeValue<Duration::rep> extremeValue;
 
     Entry() = default;
     Entry(const Entry&) = delete;
     Entry(Entry&& other) noexcept :
         name(std::move(other.name)), duration(other.duration.load()), invocations(other.invocations.load()),
-        fileName(std::move(other.fileName)), lineNumber(other.lineNumber)
+        fileName(std::move(other.fileName)), lineNumber(other.lineNumber), extremeValue(std::move(other.extremeValue))
     {
     }
     ~Entry() noexcept = default;
@@ -59,6 +95,7 @@ struct profiler::Entry
             invocations = other.invocations.load();
             fileName = std::move(other.fileName);
             lineNumber = other.lineNumber;
+            extremeValue = std::move(other.extremeValue);
         }
         return *this;
     }
@@ -141,6 +178,8 @@ struct ThreadResultCache
                 auto it = times.find(entry.first);
                 if(it != times.end())
                 {
+                    if(it->second.extremeValue < entry.second.extremeValue)
+                        it->second.extremeValue = std::move(entry.second.extremeValue);
                     it->second.duration += entry.second.duration;
                     it->second.invocations += entry.second.invocations;
                 }
@@ -198,6 +237,21 @@ void profiler::endFunctionCall(Entry* entry, Clock::time_point startTime)
 {
     entry->duration += std::chrono::duration_cast<Duration>(Clock::now() - startTime).count();
     ++entry->invocations;
+}
+
+void profiler::endFunctionCall(Entry* entry, Clock::time_point startTime, const std::string& message)
+{
+    endFunctionCall(entry, startTime);
+    if(message.empty())
+        return;
+
+    auto duration = std::chrono::duration_cast<Duration>(Clock::now() - startTime).count();
+    if(entry->extremeValue.value < duration)
+    {
+        ExtremeValue<Duration::rep> extrema{duration, message};
+        if(entry->extremeValue < extrema)
+            entry->extremeValue = std::move(extrema);
+    }
 }
 
 static void printResourceUsage(bool writeAsWarning)
@@ -301,7 +355,13 @@ void profiler::dumpProfileResults(bool writeAsWarning)
                       << " ms" << std::setw(12) << entry->duration << " us" << std::setw(10) << entry->invocations
                       << " calls" << std::setw(12)
                       << static_cast<uint64_t>(entry->duration) / std::max(entry->invocations.load(), uint64_t{1})
-                      << " us/call" << std::setw(64) << entry->fileName << "#" << entry->lineNumber << logging::endl;
+                      << " us/call" << std::setw(64) << entry->fileName << "#" << entry->lineNumber;
+            if(entry->extremeValue && entry->extremeValue.value.load() != entry->duration)
+                logFunc() << std::setw(16) << "(maximum with " << std::setw(4)
+                          << std::chrono::duration_cast<std::chrono::milliseconds>(Duration{entry->extremeValue.value})
+                                 .count()
+                          << " ms for '" << entry->extremeValue.message << "')";
+            logFunc() << logging::endl;
         }
 
         logFunc() << logging::endl;
@@ -331,6 +391,7 @@ void profiler::dumpProfileResults(bool writeAsWarning)
     {
         entry.second.duration = {};
         entry.second.invocations = 0;
+        entry.second.extremeValue = {};
     }
     for(auto& entry : counters)
     {

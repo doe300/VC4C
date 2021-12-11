@@ -11,9 +11,15 @@
 #include "asm/Instruction.h"
 #include "asm/KernelInfo.h"
 #include "precompilation/FrontendCompiler.h"
+#include "precompilation/LLVMLibrary.h"
 #include "spirv/SPIRVHelper.h"
 #include "tool_paths.h"
 #include "tools.h"
+
+#ifdef USE_LLVM_LIBRARY
+#include "llvm/IR/Module.h"
+#include "llvm/Support/MemoryBuffer.h"
+#endif
 
 using namespace vc4c::spirv;
 
@@ -61,6 +67,23 @@ TestFrontends::TestFrontends()
         TestFrontends::testFrontendConversions, std::string{"./example/fibonacci.ir"}, SourceType::LLVM_IR_BIN);
     TEST_ADD_TWO_ARGUMENTS(
         TestFrontends::testFrontendConversions, std::string{"./testing/formats/test.bc"}, SourceType::LLVM_IR_TEXT);
+    if(precompilation::findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
+    {
+        TEST_ADD_TWO_ARGUMENTS(
+            TestFrontends::testFrontendConversions, std::string{"./example/fibonacci.ir"}, SourceType::SPIRV_BIN);
+        TEST_ADD_TWO_ARGUMENTS(
+            TestFrontends::testFrontendConversions, std::string{"./example/fibonacci.ir"}, SourceType::SPIRV_TEXT);
+        TEST_ADD_TWO_ARGUMENTS(
+            TestFrontends::testFrontendConversions, std::string{"./testing/formats/test.bc"}, SourceType::SPIRV_BIN);
+        TEST_ADD_TWO_ARGUMENTS(
+            TestFrontends::testFrontendConversions, std::string{"./testing/formats/test.bc"}, SourceType::SPIRV_TEXT);
+        TEST_ADD_TWO_ARGUMENTS(
+            TestFrontends::testFrontendConversions, std::string{"./example/fibonacci.spt"}, SourceType::SPIRV_BIN);
+        TEST_ADD_TWO_ARGUMENTS(
+            TestFrontends::testFrontendConversions, std::string{"./testing/formats/test.spv"}, SourceType::SPIRV_TEXT);
+    }
+
+    TEST_ADD(TestFrontends::testCompilationDataSerialization);
 }
 
 // out-of-line virtual destructor
@@ -290,4 +313,71 @@ void TestFrontends::testFrontendConversions(std::string sourceFile, vc4c::Source
         tmp.readInto(ss);
         TEST_ASSERT_EQUALS(destType, Precompiler::getSourceType(ss));
     }
+}
+
+void TestFrontends::testCompilationDataSerialization()
+{
+    // Test serialization/deserialization round-trip for all compilation data types
+    {
+        precompilation::FileCompilationData<SourceType::LLVM_IR_BIN> inData{"./testing/formats/test.bc"};
+        precompilation::TemporaryFileCompilationData<SourceType::LLVM_IR_BIN> outData{};
+
+        std::stringstream serializer;
+        inData.readInto(serializer);
+        outData.writeFrom(serializer);
+
+        std::stringstream ssIn;
+        inData.readInto(ssIn);
+        std::stringstream ssOut;
+        outData.readInto(ssOut);
+        TEST_ASSERT_EQUALS(ssIn.str(), ssOut.str());
+    }
+
+    {
+        std::ifstream sourceStream{"./testing/formats/test.bc"};
+        precompilation::RawCompilationData<SourceType::LLVM_IR_BIN> inData{sourceStream, "inData"};
+        TEST_ASSERT_EQUALS(4900U, inData.data.size());
+        precompilation::RawCompilationData<SourceType::LLVM_IR_BIN> outData{"outData"};
+
+        std::stringstream serializer;
+        inData.readInto(serializer);
+        outData.writeFrom(serializer);
+
+        TEST_ASSERT_EQUALS(inData.data.size(), outData.data.size());
+        TEST_ASSERT_EQUALS(inData.data.front(), outData.data.front());
+        TEST_ASSERT_EQUALS(inData.data.back(), outData.data.back());
+        std::stringstream ssIn;
+        inData.readInto(ssIn);
+        std::stringstream ssOut;
+        outData.readInto(ssOut);
+        TEST_ASSERT_EQUALS(ssIn.str(), ssOut.str());
+    }
+
+#ifdef USE_LLVM_LIBRARY
+    {
+        std::ifstream sourceStream{"./testing/formats/test.bc"};
+        auto memoryBuffer = llvm::MemoryBuffer::getMemBufferCopy(readIntoString(sourceStream));
+        auto inModule = precompilation::loadLLVMModule(*memoryBuffer, nullptr, precompilation::LLVMModuleTag{});
+
+        precompilation::LLVMCompilationData inData{std::move(inModule)};
+        TEST_ASSERT(inData.data.context && inData.data.module);
+        precompilation::LLVMCompilationData outData{{}};
+        TEST_ASSERT(!outData.data.context && !outData.data.module);
+
+        std::stringstream serializer;
+        inData.readInto(serializer);
+        outData.writeFrom(serializer);
+
+        TEST_ASSERT(outData.data.context && outData.data.module);
+        TEST_ASSERT(inData.data.context != outData.data.context);
+        TEST_ASSERT(inData.data.module != outData.data.module);
+        TEST_ASSERT_EQUALS(inData.data.module->size(), outData.data.module->size());
+
+        std::stringstream ssIn;
+        inData.readInto(ssIn);
+        std::stringstream ssOut;
+        outData.readInto(ssOut);
+        TEST_ASSERT_EQUALS(ssIn.str().size(), ssOut.str().size());
+    }
+#endif
 }

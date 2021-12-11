@@ -6,6 +6,7 @@
 
 #include "Precompiler.h"
 
+#include "../Profiler.h"
 #include "log.h"
 
 #include <cerrno>
@@ -21,6 +22,7 @@ static const std::string TEMP_FILE_TEMPLATE = "XXXXXX";
 TemporaryFile::TemporaryFile(const std::string& fileTemplate, bool hasStaticLifetime) :
     fileName(fileTemplate), isStaticTemporary(hasStaticLifetime)
 {
+    PROFILE_COUNTER(profiler::COUNTER_FRONTEND, "TemporaryFile created", 1);
     // make sure, the format is as expected by mkstemp()
     // taken from: https://stackoverflow.com/questions/20446201/how-to-check-if-string-ends-with-txt#20446239
     if(fileName.size() < TEMP_FILE_TEMPLATE.size() ||
@@ -44,6 +46,7 @@ TemporaryFile::TemporaryFile(const std::string& fileTemplate, bool hasStaticLife
 TemporaryFile::TemporaryFile(const std::string& fileName, std::istream& data, bool hasStaticLifetime) :
     fileName(fileName), isStaticTemporary(hasStaticLifetime)
 {
+    PROFILE_COUNTER(profiler::COUNTER_FRONTEND, "TemporaryFile created", 1);
     if(fileName.find("/tmp/") != 0)
         CPPLOG_LAZY(
             logging::Level::WARNING, log << "Temporary file is not created in /tmp/: " << fileName << logging::endl);
@@ -55,6 +58,7 @@ TemporaryFile::TemporaryFile(const std::string& fileName, std::istream& data, bo
 
 TemporaryFile::TemporaryFile(const std::string& fileName, const std::vector<char>& data) : fileName(fileName)
 {
+    PROFILE_COUNTER(profiler::COUNTER_FRONTEND, "TemporaryFile created", 1);
     if(fileName.find("/tmp/") != 0)
         CPPLOG_LAZY(
             logging::Level::WARNING, log << "Temporary file is not created in /tmp/: " << fileName << logging::endl);

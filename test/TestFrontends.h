@@ -24,6 +24,7 @@ public:
     void testCompilation(vc4c::SourceType type);
     void testKernelAttributes();
     void testFrontendConversions(std::string sourceFile, vc4c::SourceType destType);
+    void testCompilationDataSerialization();
 
 private:
     void testEmulation(const vc4c::CompilationData& binary);

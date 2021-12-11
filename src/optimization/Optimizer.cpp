@@ -97,7 +97,7 @@ static bool runSingleSteps(const Module& module, Method& method, const Configura
             // it, the iterators are still the same, even if we emplace instructions before
             if(newIt.copy().previousInMethod() != prevIt || newIt != it)
                 it = prevIt;
-            PROFILE_END_DYNAMIC(step.name);
+            PROFILE_END_DYNAMIC_EXTREMA(step.name, method.name);
         }
         it.nextInMethod();
         prevIt = it.copy().previousInMethod();

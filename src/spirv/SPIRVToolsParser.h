@@ -109,7 +109,7 @@ namespace vc4c
             }
         };
 
-        inline void void linkSPIRVModules(
+        inline void linkSPIRVModules(
             const std::vector<
                 std::reference_wrapper<const precompilation::TypedCompilationData<SourceType::SPIRV_BIN>>>& sources,
             precompilation::TypedCompilationData<SourceType::SPIRV_BIN>& output)

@@ -30,17 +30,27 @@ namespace vc4c
 
 #define PROFILE_END(name) profiler::endFunctionCall(profileEntry##name, profileStart##name)
 
+#define PROFILE_END_EXTREMA(name, msg) profiler::endFunctionCall(profileEntry##name, profileStart##name, msg)
+
 #define PROFILE_START_DYNAMIC(name)                                                                                    \
     auto profileEntryDynamic = profiler::createEntry(std::hash<std::string>{}(name), name, __FILE__, __LINE__);        \
     auto profileStartDynamic = profiler::Clock::now()
 
 #define PROFILE_END_DYNAMIC(name) profiler::endFunctionCall(profileEntryDynamic, profileStartDynamic)
 
+#define PROFILE_END_DYNAMIC_EXTREMA(name, msg) profiler::endFunctionCall(profileEntryDynamic, profileStartDynamic, msg)
+
 #define PROFILE_SCOPE(name)                                                                                            \
     static_assert(__builtin_constant_p(#name), "");                                                                    \
     static thread_local auto profileEntry##name =                                                                      \
         profiler::createEntry(reinterpret_cast<std::uintptr_t>(std::addressof(#name[0])), #name, __FILE__, __LINE__);  \
     profiler::ProfilingScope profile##name(profileEntry##name)
+
+#define PROFILE_SCOPE_EXTREMA(name, msg)                                                                               \
+    static_assert(__builtin_constant_p(#name), "");                                                                    \
+    static thread_local auto profileEntry##name =                                                                      \
+        profiler::createEntry(reinterpret_cast<std::uintptr_t>(std::addressof(#name[0])), #name, __FILE__, __LINE__);  \
+    profiler::ProfilingScope profile##name(profileEntry##name, msg)
 
 #define PROFILE_COUNTER(base, name, value)                                                                             \
     static_assert(__builtin_constant_p(name), "");                                                                     \
@@ -106,6 +116,7 @@ namespace vc4c
         struct Entry;
         Entry* createEntry(HashKey key, std::string name, std::string fileName, std::size_t lineNumber);
         void endFunctionCall(Entry* entry, Clock::time_point startTime);
+        void endFunctionCall(Entry* entry, Clock::time_point startTime, const std::string& message);
 
         void dumpProfileResults(bool writeAsWarning = false);
 
@@ -117,14 +128,16 @@ namespace vc4c
         struct ProfilingScope
         {
             explicit ProfilingScope(Entry* entry) : entry(entry), start(Clock::now()) {}
+            ProfilingScope(Entry* entry, const std::string& msg) : entry(entry), start(Clock::now()), message(msg) {}
 
             ~ProfilingScope()
             {
-                endFunctionCall(entry, start);
+                endFunctionCall(entry, start, message);
             }
 
             Entry* entry;
             Clock::time_point start;
+            std::string message;
         };
 
         /*

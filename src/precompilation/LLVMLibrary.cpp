@@ -23,8 +23,11 @@
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/raw_os_ostream.h"
+#include "llvm/Transforms/Utils/Cloning.h"
+#if LLVM_LIBRARY_VERSION >= 90
+#include "llvm/Support/TimeProfiler.h"
+#endif
 
 #include <memory>
 #include <sstream>
@@ -169,7 +172,11 @@ void precompilation::storeLLVMModule(
     else if(auto stream = data.writeStream())
     {
         llvm::raw_os_ostream out(*stream);
+#if LLVM_LIBRARY_VERSION >= 70
         llvm::WriteBitcodeToFile(*module, out);
+#else
+        llvm::WriteBitcodeToFile(module.get(), out);
+#endif
     }
     else
         throw CompilationError(CompilationStep::PRECOMPILATION, "Unhandled output data type for writing LLVM bitcode");
@@ -197,12 +204,16 @@ void LLVMCompilationData::readInto(std::ostream& out) const
     if(!data.module)
         throw CompilationError(CompilationStep::PRECOMPILATION, "Cannot serialize NULL LLVM module");
     llvm::raw_os_ostream stream(out);
+#if LLVM_LIBRARY_VERSION >= 70
     llvm::WriteBitcodeToFile(*data.module, stream);
+#else
+    llvm::WriteBitcodeToFile(data.module.get(), stream);
+#endif
 }
 
 void LLVMCompilationData::writeFrom(std::istream& in)
 {
-    auto buffer = loadLLVMBuffer(in);
+    auto buffer = ::loadLLVMBuffer(in);
     data = loadLLVMModule(*buffer, data.context, LLVMModuleTag{});
 }
 
@@ -215,13 +226,16 @@ std::unique_ptr<LLVMCompilationData> precompilation::createLLVMCompilationData()
 
 LLVMProfilerWrapper::LLVMProfilerWrapper(const std::string& command, std::chrono::microseconds granularity)
 {
-    // FIXME crashes after clang finished (and printed this), works for llvm library linking...
-    // CPPLOG_LAZY_BLOCK(logging::Level::DEBUG,
-    //     { llvm::timeTraceProfilerInitialize(static_cast<unsigned>(granularity.count()), command); });
+#if LLVM_LIBRARY_VERSION >= 90
+// FIXME crashes after clang finished (and printed this), works for llvm library linking...
+// CPPLOG_LAZY_BLOCK(logging::Level::DEBUG,
+//     { llvm::timeTraceProfilerInitialize(static_cast<unsigned>(granularity.count()), command); });
+#endif
 }
 
 LLVMProfilerWrapper::~LLVMProfilerWrapper()
 {
+#if LLVM_LIBRARY_VERSION >= 90
     if(llvm::timeTraceProfilerEnabled())
     {
         CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
@@ -233,5 +247,6 @@ LLVMProfilerWrapper::~LLVMProfilerWrapper()
         });
         llvm::timeTraceProfilerCleanup();
     }
+#endif
 }
 #endif /* USE_LLVM_LIBRARY */

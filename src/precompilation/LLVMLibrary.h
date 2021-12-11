@@ -29,6 +29,8 @@ namespace vc4c
         template <SourceType Type>
         class PrecompilationResult;
 
+        struct PrecompilationConfig;
+
         struct LLVMModuleWithContext
         {
             // NOTE: the reference to the context needs to be stable
@@ -58,11 +60,11 @@ namespace vc4c
 
         // NOTE: Requires clang library build option, implemented in ClangLibrary.cpp
         void compileClangLibrary(const std::vector<std::string>& command, const OpenCLData& inputData,
-            PrecompilationResult<SourceType::LLVM_IR_BIN>& output, LLVMPCHTag tag);
+            PrecompilationResult<SourceType::LLVM_IR_BIN>& output, PrecompilationConfig& config, LLVMPCHTag tag);
         void compileClangLibrary(const std::vector<std::string>& command, const OpenCLData& inputData,
-            PrecompilationResult<SourceType::LLVM_IR_BIN>& output, LLVMModuleTag tag);
+            PrecompilationResult<SourceType::LLVM_IR_BIN>& output, PrecompilationConfig& config, LLVMModuleTag tag);
         void compileClangLibrary(const std::vector<std::string>& command, const OpenCLData& inputData,
-            PrecompilationResult<SourceType::LLVM_IR_TEXT>& output, LLVMTextTag tag);
+            PrecompilationResult<SourceType::LLVM_IR_TEXT>& output, PrecompilationConfig& config, LLVMTextTag tag);
 
         std::unique_ptr<llvm::MemoryBuffer> loadLLVMBuffer(const CompilationDataPrivate& data);
         LLVMModuleWithContext loadLLVMModule(

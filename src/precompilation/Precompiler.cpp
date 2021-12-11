@@ -182,8 +182,6 @@ void CompilationData::readInto(std::ostream& out) const
         data->readInto(out);
 }
 
-void CompilationData::writeFrom(std::istream& in) {}
-
 CompilationData::operator bool() const noexcept
 {
     return data != nullptr;
@@ -584,6 +582,13 @@ static CompilationData runPrecompiler(const CompilationData& input, const Config
             auto tmp = assembleLLVM(assertSource<SourceType::LLVM_IR_TEXT>(input), extendedOptions);
             return compileLLVMToSPIRV(LLVMIRSource(std::move(tmp)), extendedOptions,
                 getResult<SourceType::SPIRV_BIN>(std::move(desiredOutput)))
+                .publish();
+        }
+        else if(outputType == SourceType::SPIRV_TEXT && findToolLocation("llvm-as", LLVM_AS_PATH))
+        {
+            auto tmp = assembleLLVM(assertSource<SourceType::LLVM_IR_TEXT>(input), extendedOptions);
+            return compileLLVMToSPIRVText(LLVMIRSource(std::move(tmp)), extendedOptions,
+                getResult<SourceType::SPIRV_TEXT>(std::move(desiredOutput)))
                 .publish();
         }
         else if(outputType == SourceType::LLVM_IR_BIN && findToolLocation("llvm-as", LLVM_AS_PATH))

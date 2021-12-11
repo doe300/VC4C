@@ -31,31 +31,3 @@ if(LLVMLIB_FRONTEND AND NOT CROSS_COMPILE AND NOT SPIRV_CLANG_FOUND)
 		message(STATUS "LLVM-link found: " ${LLVM_LINK_FOUND})
 	endif()
 endif()
-
-####
-# Find libClang when front-end is enabled
-####
-if(CLANG_LIBRARY)
-	if(NOT LIBCLANG_LIBRARIES)
-		find_library(LIBCLANG_LIBRARY_FRONTEND NAMES clangFrontend libclangFrontend)
-		find_library(LIBCLANG_LIBRARY_CODEGEN NAMES clangCodeGen libclangCodeGen)
-
-		if(LIBCLANG_LIBRARY_FRONTEND AND LIBCLANG_LIBRARY_CODEGEN)
-			set(LIBCLANG_LIBRARIES ${LIBCLANG_LIBRARY_FRONTEND} ${LIBCLANG_LIBRARY_CODEGEN})
-		else()
-			# Try shared libclang-cpp.so
-			find_library(LIBCLANG_LIBRARIES NAMES clang-cpp libclang-cpp)
-		endif()
-	endif()
-	if(NOT LIBCLANG_INCLUDE_PATH)
-		find_path(LIBCLANG_INCLUDE_PATH clang-c/Index.h)
-	endif()
-	if(LIBCLANG_LIBRARIES AND LIBCLANG_INCLUDE_PATH)
-		message(STATUS "Using LibClang libraries: ${LIBCLANG_LIBRARIES}")
-		message(STATUS "Using LibClang headers: ${LIBCLANG_INCLUDE_PATH}")
-		set(VC4C_ENABLE_LIBCLANG ON)
-	else()
-		message(WARNING "LibClang enabled, but no libClang libraries were found")
-		set(VC4C_ENABLE_LIBCLANG OFF)
-	endif()
-endif()

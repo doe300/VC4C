@@ -124,6 +124,10 @@ include(cmake/clang.cmake)
 if(LLVMLIB_FRONTEND)
 	include(cmake/libllvm.cmake)
 endif()
+# Load this after the LLVM front-end, since it reuses some variables
+if(CLANG_LIBRARY)
+	include(cmake/libclang.cmake)
+endif()
 
 if(NOT ((SPIRV_LLVM_SPIR_FOUND AND SPIRV_FRONTEND) OR (LLVMLIB_FRONTEND AND LLVM_LIBS_PATH)))
 	message(WARNING " Neither SPIR-V nor LLVM library front-end are configured!")

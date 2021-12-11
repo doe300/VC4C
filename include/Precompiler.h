@@ -144,7 +144,6 @@ namespace vc4c
         Optional<std::vector<uint8_t>> getRawData() const;
 
         void readInto(std::ostream& out) const;
-        void writeFrom(std::istream& in);
 
         operator bool() const noexcept;
         const std::shared_ptr<CompilationDataPrivate>& inner() const noexcept;

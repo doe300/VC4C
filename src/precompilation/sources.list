@@ -1,5 +1,6 @@
 target_sources(${VC4C_LIBRARY_NAME}
   PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/ClangLibrary.cpp
     ${CMAKE_CURRENT_LIST_DIR}/FrontendCompiler.cpp
     ${CMAKE_CURRENT_LIST_DIR}/LLVMLibrary.cpp
     ${CMAKE_CURRENT_LIST_DIR}/Precompiler.cpp

@@ -2621,7 +2621,7 @@ bool tools::emulate(std::vector<qpu_asm::Instruction>::const_iterator firstInstr
         else
             lastInstructionHadNoAsynchronousExecutions = false;
     }
-    PROFILE_END(Emulation);
+    PROFILE_END_EXTREMA(Emulation, name);
 
     // Run some sanity checks
     semaphores.checkAllZero();

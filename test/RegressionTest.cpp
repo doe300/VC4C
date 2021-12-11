@@ -486,7 +486,7 @@ void RegressionTest::testRegression(std::string clFile, std::string options, vc4
     CompilationData in(clFile, SourceType::OPENCL_C);
     printf("%s\n", clFile.data());
 
-    const std::size_t numBytes = Compiler::compile(in, config, options, clFile).second;
+    const std::size_t numBytes = Compiler::compile(in, config, options).second;
     TEST_ASSERT(numBytes > 0)
 }
 

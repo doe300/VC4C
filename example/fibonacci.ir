@@ -1,6 +1,6 @@
 ; ModuleID = './fibonacci.cl'
 target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
-target triple = "x86_64-unknown-linux-gnu"
+target triple = "spir-unknown-unknown"
 
 ; Function Attrs: norecurse nounwind uwtable
 define void @fibonacci(i32 %start0, i32 %start1, i32* nocapture %out) #0 {

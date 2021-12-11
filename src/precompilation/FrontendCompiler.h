@@ -23,6 +23,19 @@ namespace vc4c
 {
     namespace precompilation
     {
+        /**
+         * Abstract options for the different precompilation steps and backends.
+         */
+        struct PrecompilationConfig
+        {
+            unsigned optimizationLevel = 3;
+            bool linkStdlibModule = false;
+            bool includeStdlibPCH = false;
+
+            bool optimized = false;
+            bool linkedStandardLibrary = false;
+        };
+
         template <SourceType Type>
         class PrecompilationSource;
 
@@ -62,14 +75,6 @@ namespace vc4c
             Optional<std::string> getFilePath() const noexcept
             {
                 return data ? data->getFilePath() : Optional<std::string>{};
-            }
-
-            std::unique_ptr<std::ostream> getBufferWriter(bool force = false)
-            {
-                if(!force && dynamic_cast<const FileCompilationData<Type>*>(data.get()))
-                    // prefer using the file instead of writing via a file stream
-                    return nullptr;
-                return data ? data->writeStream() : nullptr;
             }
 
             TypedCompilationData<Type>& inner() noexcept

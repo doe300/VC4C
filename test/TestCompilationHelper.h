@@ -136,7 +136,7 @@ protected:
             auto result = vc4c::Precompiler::precompile(vc4c::CompilationData{fileName}, config, options);
             tmpIt = cachedPrecompilations.emplace(fileName, result).first;
         }
-        auto result = vc4c::Compiler::compile(tmpIt->second, config, "");
+        auto result = vc4c::Compiler::compile(tmpIt->second, config);
         if(!cachePrecompilation)
             cachedPrecompilations.erase(tmpIt);
         return result.first;
@@ -149,7 +149,7 @@ protected:
         config.writeKernelInfo = true;
         auto precompiled = vc4c::Precompiler::precompile(
             vc4c::CompilationData{input.begin(), input.end(), vc4c::SourceType::OPENCL_C, name}, config, options);
-        return vc4c::Compiler::compile(precompiled, config, "").first;
+        return vc4c::Compiler::compile(precompiled, config).first;
     }
 };
 
