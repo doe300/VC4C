@@ -13,11 +13,9 @@
 
 #include <map>
 #include <memory>
+#include <mutex>
 #include <ostream>
 #include <vector>
-#ifdef MULTI_THREADED
-#include <mutex>
-#endif
 
 namespace vc4c
 {
@@ -38,9 +36,7 @@ namespace vc4c
             Configuration config;
             const Module& module;
             std::map<Method*, FastAccessList<qpu_asm::DecoratedInstruction>> allInstructions;
-#ifdef MULTI_THREADED
             std::mutex instructionsLock;
-#endif
 
             /*
              * NOTE: Instruction to Assembler mapping can be run in parallel for different methods,

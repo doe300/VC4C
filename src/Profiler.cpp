@@ -15,15 +15,12 @@
 #include <iomanip>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <sys/resource.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <unordered_map>
-
-#ifdef MULTI_THREADED
-#include <mutex>
-#endif
 
 // LCOV_EXCL_START
 
@@ -156,7 +153,6 @@ struct profiler::Counter
 
 static std::unordered_map<profiler::HashKey, profiler::Entry> times;
 static std::map<std::size_t, profiler::Counter> counters;
-#ifdef MULTI_THREADED
 static std::mutex lockTimes;
 static std::mutex lockCounters;
 
@@ -211,11 +207,9 @@ struct ThreadResultCache
 };
 
 static thread_local std::unique_ptr<ThreadResultCache> threadCache;
-#endif
 
 profiler::Entry* profiler::createEntry(HashKey key, std::string name, std::string fileName, std::size_t lineNumber)
 {
-#ifdef MULTI_THREADED
     if(threadCache)
     {
         auto& entry = threadCache->localTimes[key];
@@ -225,7 +219,6 @@ profiler::Entry* profiler::createEntry(HashKey key, std::string name, std::strin
         return &entry;
     }
     std::lock_guard<std::mutex> guard(lockTimes);
-#endif
     auto& entry = times[key];
     entry.name = std::move(name);
     entry.fileName = std::move(fileName);
@@ -321,11 +314,9 @@ struct SortPointerTarget
 
 void profiler::dumpProfileResults(bool writeAsWarning)
 {
-#ifdef MULTI_THREADED
     std::unique_lock<std::mutex> timesGuard(lockTimes, std::defer_lock);
     std::unique_lock<std::mutex> countersGuard(lockCounters, std::defer_lock);
     std::lock(timesGuard, countersGuard);
-#endif
     logging::logLazy(writeAsWarning ? logging::Level::WARNING : logging::Level::DEBUG, [&]() {
         std::set<const Entry*, SortPointerTarget<const Entry>> entries;
         std::set<const Counter*, SortPointerTarget<const Counter>> counts;
@@ -418,7 +409,6 @@ static profiler::Counter& allocateCounter(
 profiler::Counter* profiler::createCounter(HashKey key, std::size_t baseIndex, std::string name, std::string file,
     std::size_t line, const Counter* prevCounter)
 {
-#ifdef MULTI_THREADED
     if(threadCache)
     {
         auto& entry = allocateCounter(key, threadCache->localCounters, baseIndex);
@@ -430,7 +420,6 @@ profiler::Counter* profiler::createCounter(HashKey key, std::size_t baseIndex, s
         return &entry;
     }
     std::lock_guard<std::mutex> guard(lockCounters);
-#endif
     auto& entry = allocateCounter(key, counters, baseIndex);
     entry.key = key;
     entry.name = std::move(name);
@@ -448,16 +437,12 @@ void profiler::increaseCounter(Counter* counter, std::size_t value)
 
 void profiler::startThreadCache()
 {
-#ifdef MULTI_THREADED
     threadCache = std::make_unique<ThreadResultCache>();
-#endif
 }
 
 void profiler::flushThreadCache()
 {
-#ifdef MULTI_THREADED
     threadCache.reset();
-#endif
 }
 
 // LCOV_EXCL_STOP

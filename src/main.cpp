@@ -107,9 +107,6 @@ static void printInfo()
 #ifdef DEBUG_MODE
         "debug mode",
 #endif
-#ifdef MULTI_THREADED
-        "multi-threaded optimization",
-#endif
 #ifdef SPIRV_TOOLS_FRONTEND
         "SPIR-V Tools front-end",
 #else

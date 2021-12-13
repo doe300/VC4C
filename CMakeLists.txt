@@ -8,8 +8,6 @@ cmake_policy(SET CMP0026 OLD)
 ####
 # Option to enable/disable test-program
 option(BUILD_TESTING "Build testing program" ON)
-# Option to enable/disable multi-threaded compilation
-option(MULTI_THREADED "Runs the optimization steps multi-threaded" ON)
 # Option whether to verify the output (using vc4asm)
 option(VERIFY_OUTPUT "uses the external library vc4asm to verify the output" ON)
 # Option to enable/disable cross compilation
@@ -74,11 +72,6 @@ endif()
 
 # Set optimization and warning flags for the build types
 include(cmake/flags.cmake)
-
-if(MULTI_THREADED)
-	message(STATUS "Enabling multi-threaded optimizations")
-	find_package(Threads)
-endif()
 
 # clang-tidy
 find_program(CLANG_TIDY NAMES clang-tidy clang-tidy-5.0 clang-tidy-6.0 clang-tidy-7 clang-tidy-8 clang-tidy-9 clang-tidy-10)

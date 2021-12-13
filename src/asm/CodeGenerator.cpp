@@ -85,13 +85,9 @@ static FixupResult runRegisterFixupStep(const std::pair<std::string, RegisterFix
 const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(Method& method)
 {
     PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND, "CodeGeneration (before)", method.countInstructions());
-#ifdef MULTI_THREADED
     instructionsLock.lock();
-#endif
     auto& generatedInstructions = allInstructions[&method];
-#ifdef MULTI_THREADED
     instructionsLock.unlock();
-#endif
 
     // check and fix possible errors with register-association
     std::unique_ptr<GraphColoring> coloredGraph;

@@ -61,11 +61,8 @@ add_dependencies(${VC4C_LIBRARY_NAME} SPIRV-Dependencies)
 target_include_directories(${VC4C_LIBRARY_NAME} SYSTEM PRIVATE ${SPIRV_Headers_HEADERS})
 
 # threading library
-if(MULTI_THREADED)
-	target_link_libraries(${VC4C_LIBRARY_NAME} ${CMAKE_THREAD_LIBS_INIT})
-	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE MULTI_THREADED=1)
-	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE MULTI_THREADED=1)
-endif(MULTI_THREADED)
+find_package(Threads)
+target_link_libraries(${VC4C_LIBRARY_NAME} ${CMAKE_THREAD_LIBS_INIT})
 
 # SPIR-V Tools
 if(VC4C_ENABLE_SPIRV_TOOLS_FRONTEND)
