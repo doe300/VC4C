@@ -178,6 +178,7 @@ static int runWriteOnlySubprocess(const std::string& command, std::istream* inpu
 
 int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostream* stdout, std::ostream* stderr)
 {
+    PROFILE_COUNTER(profiler::COUNTER_FRONTEND, "Run child process", 1);
     /*
      * Make sure we only run a single child process at once.
      *

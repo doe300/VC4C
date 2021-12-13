@@ -7,6 +7,7 @@
 #include "TestFrontends.h"
 
 #include "GlobalValues.h"
+#include "Profiler.h"
 #include "VC4C.h"
 #include "asm/Instruction.h"
 #include "asm/KernelInfo.h"
@@ -84,6 +85,7 @@ TestFrontends::TestFrontends()
     }
 
     TEST_ADD(TestFrontends::testCompilationDataSerialization);
+    TEST_ADD(TestFrontends::printProfilingInfo);
 }
 
 // out-of-line virtual destructor
@@ -379,5 +381,12 @@ void TestFrontends::testCompilationDataSerialization()
         outData.readInto(ssOut);
         TEST_ASSERT_EQUALS(ssIn.str().size(), ssOut.str().size());
     }
+#endif
+}
+
+void TestFrontends::printProfilingInfo()
+{
+#if DEBUG_MODE
+    vc4c::profiler::dumpProfileResults(true);
 #endif
 }

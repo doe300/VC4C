@@ -74,11 +74,9 @@ namespace vc4c
         LLVMModuleWithContext loadLLVMModule(const LLVMIRData& data, const std::shared_ptr<llvm::LLVMContext>& context);
         LLVMModuleWithContext loadLLVMModule(
             const LLVMIRTextData& data, const std::shared_ptr<llvm::LLVMContext>& context);
-        void storeLLVMModule(std::unique_ptr<llvm::Module>&& module, const std::shared_ptr<llvm::LLVMContext>& context,
-            LLVMIRData& data);
 
-        void linkLLVMLibrary(const std::vector<std::shared_ptr<LLVMIRData>>& sources, const std::string& userOptions,
-            LLVMIRData& output);
+        void disassembleLLVMLibrary(const LLVMIRData& input, LLVMIRTextData& output);
+        void assembleLLVMLibrary(const LLVMIRTextData& input, LLVMIRData& output);
 
         struct LLVMCompilationData : public LLVMIRData
         {

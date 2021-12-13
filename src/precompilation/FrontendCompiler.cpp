@@ -529,11 +529,20 @@ LLVMIRTextResult precompilation::disassembleLLVM(
     const LLVMIRSource& source, const std::string& userOptions, LLVMIRTextResult&& desiredOutput)
 {
     PROFILE_SCOPE_EXTREMA(DisassembleLLVM, source.to_string());
+    auto result = forwardOrCreateFileResult(std::move(desiredOutput));
+
+    if(hasLLVMFrontend())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Disassembling LLVM IR '" << source.to_string() << "' to LLVM IR text '" << result.to_string()
+                << "' with LLVM library..." << logging::endl);
+        disassembleLLVMLibrary(source.inner(), result.inner());
+        return result;
+    }
     auto llvm_dis = findToolLocation("llvm-dis", LLVM_DIS_PATH);
     if(!llvm_dis)
         throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-dis not found, can't disassemble LLVM IR!");
 
-    auto result = forwardOrCreateFileResult(std::move(desiredOutput));
     std::string command = *llvm_dis;
     command.append(" -o ").append(result.getFilePath().value()).append(" ");
     command.append(source.getInputPath("/dev/stdin"));
@@ -548,11 +557,19 @@ LLVMIRResult precompilation::assembleLLVM(
     const LLVMIRTextSource& source, const std::string& userOptions, LLVMIRResult&& desiredOutput)
 {
     PROFILE_SCOPE_EXTREMA(AssembleLLVM, source.to_string());
+    auto result = forwardOrCreateResult(std::move(desiredOutput));
+    if(hasLLVMFrontend())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Assembling LLVM IR text '" << source.to_string() << "' to LLVM IR '" << result.to_string()
+                << "' with LLVM library..." << logging::endl);
+        assembleLLVMLibrary(source.inner(), result.inner());
+        return result;
+    }
     auto llvm_as = findToolLocation("llvm-as", LLVM_AS_PATH);
     if(!llvm_as)
         throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-as not found, can't assemble LLVM IR!");
 
-    auto result = forwardOrCreateFileResult(std::move(desiredOutput));
     std::string command = *llvm_as;
     command.append(" -o ").append(result.getFilePath().value()).append(" ");
     command.append(source.getInputPath("/dev/stdin"));

@@ -162,8 +162,8 @@ LLVMModuleWithContext precompilation::loadLLVMModule(
     return loadLLVMModuleDispatch<LLVMTextTag>(data, context);
 }
 
-void precompilation::storeLLVMModule(
-    std::unique_ptr<llvm::Module>&& module, const std::shared_ptr<llvm::LLVMContext>& context, LLVMIRData& data)
+static void storeLLVMModule(
+    const std::shared_ptr<llvm::Module>& module, const std::shared_ptr<llvm::LLVMContext>& context, LLVMIRData& data)
 {
     if(auto llvmData = dynamic_cast<LLVMCompilationData*>(&data))
     {
@@ -179,7 +179,27 @@ void precompilation::storeLLVMModule(
 #endif
     }
     else
-        throw CompilationError(CompilationStep::PRECOMPILATION, "Unhandled output data type for writing LLVM bitcode");
+        throw CompilationError(
+            CompilationStep::PRECOMPILATION, "Unhandled output data type for writing LLVM bitcode", data.to_string());
+}
+
+void precompilation::disassembleLLVMLibrary(const LLVMIRData& input, LLVMIRTextData& output)
+{
+    auto module = loadLLVMModule(input, nullptr);
+    if(auto stream = output.writeStream())
+    {
+        llvm::raw_os_ostream out(*stream);
+        module.module->print(out, nullptr);
+    }
+    else
+        throw CompilationError(
+            CompilationStep::PRECOMPILATION, "Unhandled output data type for writing LLVM IR", output.to_string());
+}
+
+void precompilation::assembleLLVMLibrary(const LLVMIRTextData& input, LLVMIRData& output)
+{
+    auto module = loadLLVMModule(input, nullptr);
+    storeLLVMModule(module.module, module.context, output);
 }
 
 LLVMCompilationData::LLVMCompilationData(LLVMModuleWithContext&& data) : data(std::move(data)) {}
