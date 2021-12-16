@@ -465,9 +465,7 @@ static UnaryInstruction calculateIntrinsic(DataType resultBaseType, Func&& func)
             return Value(func(*lit), resultType);
         else if(auto vec = val.checkVector())
         {
-            SIMDVector resultVector{UNDEFINED_LITERAL};
-            for(uint8_t i = 0; i < resultVector.size(); ++i)
-                resultVector[i] = func((*vec)[i]);
+            auto resultVector = vec->transform(func);
             return SIMDVectorHolder::storeVector(std::move(resultVector), resultType, vec->getStorage());
         }
         throw CompilationError(

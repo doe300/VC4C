@@ -94,11 +94,11 @@ static std::unique_ptr<clang::CompilerInstance> createInstance(
     instance->getTargetOpts().Triple = "spir-unknown-unknown";
 
 #if LLVM_LIBRARY_VERSION >= 120
-    instance->getInvocation().setLangDefaults(instance->getLangOpts(), INPUT_LANGUAGE,
+    clang::CompilerInvocation::setLangDefaults(instance->getLangOpts(), INPUT_LANGUAGE,
         llvm::Triple("spir-unknown-unknown"), instance->getPreprocessorOpts().Includes,
         clang::LangStandard::lang_opencl12);
 #else
-    instance->getInvocation().setLangDefaults(instance->getLangOpts(), INPUT_LANGUAGE,
+    clang::CompilerInvocation::setLangDefaults(instance->getLangOpts(), INPUT_LANGUAGE,
         llvm::Triple("spir-unknown-unknown"), instance->getPreprocessorOpts(), clang::LangStandard::lang_opencl12);
 #endif
 
@@ -155,6 +155,10 @@ static Optional<std::string> runClangLibraryCompilation(const std::vector<std::s
         // FIXME how to set the PCH path? Or is it already set via command line options?
         instance->getFrontendOpts().ASTMergeFiles.emplace_back(findStandardLibraryFiles().precompiledHeader);
     }
+
+    if(std::find(command.begin(), command.end(), "-ffp-contract=off") != command.end())
+        // Is overwritten by CompilerInvocation::setLangDefaults, so set again explicitly
+        instance->getLangOpts().setDefaultFPContractMode(clang::LangOptions::FPM_Off);
 
     std::unique_ptr<llvm::MemoryBuffer> sourceBuffer;
     for(auto& input : instance->getFrontendOpts().Inputs)

@@ -123,7 +123,7 @@ __kernel void test(const __global TYPE* in, __global STORAGE* out, __global STOR
 
     for(int k = 0; k < (int)(factor * 5); ++k)
         vstore3(vload3(k, in), k, data_out);
-    for(int k = 0; k < 16; ++k)
+    for(int k = 0; k < 15; ++k)
         out3[i + k] = data[k] + 1;
 
     for(int k = 0; k < (int)(factor * 4); ++k)
@@ -175,7 +175,7 @@ __kernel void test(const __global TYPE* in, __global STORAGE* out, __global STOR
         data[k] = 0x42;
     for(int k = 0; k < (int)(factor * 5); k += 2)
         vstore3(vload3(k, in), k, data_out);
-    for(int k = 0; k < 16; ++k)
+    for(int k = 0; k < 15; ++k)
         out3[i + k] = data[k] + 1;
 
     for(int k = 0; k < 16; ++k)
@@ -329,9 +329,9 @@ static void registerPrivateAliasingTests(const std::string& typeName)
 
         if(accessType.second <= sizeof(T) * 4)
         {
-            loadBuilder.template checkParameterEquals<3>(std::vector<T>(vector3Result));
-            storeBuilder.template checkParameterEquals<3>(std::move(vector3Result));
-            storeStridedBuilder.template checkParameterEquals<3>(maskOffOddEntries<T, 3>(
+            loadBuilder.template checkParameterPartialEquals<3>(std::vector<T>(vector3Result));
+            storeBuilder.template checkParameterPartialEquals<3>(std::move(vector3Result));
+            storeStridedBuilder.template checkParameterPartialEquals<3>(maskOffOddEntries<T, 3>(
                 std::vector<T>(data.begin(), data.begin() + vector3Size), accessType.second, T{0x42}));
             loadBuilder.template checkParameterEquals<4>(std::vector<T>{result});
             storeBuilder.template checkParameterEquals<4>(std::vector<T>{result});
@@ -726,7 +726,7 @@ void test_data::registerMemoryTests()
     }
 
     {
-        // TODO hangs/takes long in Normalization step! Is long/a lot in LongOperations.cpp:431
+        // TODO result mismatch on actual hardware for all values, random result mismatches on emulator
         TestDataBuilder<Buffer<int64_t>, Buffer<int64_t>> builder(
             "storage_local_long", test_storage_cl_string, "test", "-DTYPE=long -DSTORAGE=__local");
         builder.setFlags(DataFilter::MEMORY_ACCESS | DataFilter::USES_LONG | DataFilter::DISABLED);

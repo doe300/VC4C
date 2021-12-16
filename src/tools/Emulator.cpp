@@ -194,8 +194,8 @@ tools::Word* Memory::getWordAddress(MemoryAddress address)
     {
         if(address >= direct->size() * sizeof(Word))
         {
-            logging::warn() << "Buffer: [" << toAddressString(0) << ", " << toAddressString(direct->size()) << ")"
-                            << logging::endl;
+            logging::warn() << "Buffer: [" << toAddressString(0) << ", "
+                            << toAddressString(direct->size() * sizeof(Word)) << ")" << logging::endl;
             throw CompilationError(CompilationStep::GENERAL,
                 "Memory address is out of bounds, consider using larger buffer", toAddressString(address));
         }
@@ -224,8 +224,8 @@ const tools::Word* Memory::getWordAddress(MemoryAddress address) const
     {
         if(address >= direct->size() * sizeof(Word))
         {
-            logging::warn() << "Buffer: [" << toAddressString(0) << ", " << toAddressString(direct->size()) << ")"
-                            << logging::endl;
+            logging::warn() << "Buffer: [" << toAddressString(0) << ", "
+                            << toAddressString(direct->size() * sizeof(Word)) << ")" << logging::endl;
             throw CompilationError(CompilationStep::GENERAL,
                 "Memory address is out of bounds, consider using larger buffer", toAddressString(address));
         }
@@ -279,8 +279,8 @@ void Memory::assertAddressInMemory(MemoryAddress address, std::size_t numBytes) 
     {
         if((address + numBytes) > (direct->size() * sizeof(Word)))
         {
-            logging::warn() << "Buffer: [" << toAddressString(0) << ", " << toAddressString(direct->size()) << ")"
-                            << logging::endl;
+            logging::warn() << "Buffer: [" << toAddressString(0) << ", "
+                            << toAddressString(direct->size() * sizeof(Word)) << ")" << logging::endl;
             throw CompilationError(CompilationStep::GENERAL,
                 "Memory address is out of bounds, consider using larger buffer",
                 "(" + toAddressString(address) + ", " + std::to_string(numBytes) + ")");

@@ -26,6 +26,8 @@ namespace vc4c
     /**
      * Additional metadata to be stored (e.g. OpenCL C attributes).
      *
+     * NOTE: Metadata must not have any semantic meaning effecting the kernel execution itself!
+     *
      * Binary layout (64-bit rows, item lengths not to scale):
      *
      * | number of bytes | type | data bytes ... |
