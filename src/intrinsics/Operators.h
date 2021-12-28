@@ -8,6 +8,7 @@
 #define OPERATORS_H
 
 #include "../InstructionWalker.h"
+#include "../intermediate/IntermediateInstruction.h"
 
 #include <cfenv>
 #include <cmath>
@@ -45,6 +46,14 @@ namespace vc4c
 
         NODISCARD InstructionWalker intrinsifyFloatingDivision(
             Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool fullRangeDivision = true);
+
+        /**
+         * Helper function to insert general multiplication, to be mapped and optimized according to the argument types
+         * and values.
+         */
+        NODISCARD InstructionWalker insertMultiplication(InstructionWalker it, Method& method, const Value& arg0,
+            const Value& arg1, Value& dest,
+            intermediate::InstructionDecorations decorations = intermediate::InstructionDecorations::NONE);
 
         /*
          * Implementations for on-host calculations

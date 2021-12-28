@@ -145,7 +145,7 @@ static void intrinsifyIntegerRelation(Method& method, InstructionWalker it, cons
         if(comp->getFirstArg().getConstantValue() == INT_ZERO)
         {
             // 0 < b <=> b != 0
-            cond = assignNop(it) = (as_unsigned{comp->assertArgument(1)} != as_unsigned{INT_ZERO});
+            cond = assignNop(it) = isnonzero(as_unsigned{comp->assertArgument(1)});
         }
         else if(comp->getFirstArg().type.getScalarBitCount() == 32 ||
             comp->assertArgument(1).type.getScalarBitCount() == 32)
@@ -339,7 +339,7 @@ static void intrinsifyFloatingRelation(Method& method, InstructionWalker it, con
         assign(it, res) = (BOOL_FALSE, cond);
         auto tmpZero = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getOutput()->type.getVectorWidth()), "%iszero");
         it = insertCheckFloatZero(it, tmpZero, comp);
-        cond = assignNop(it) = as_unsigned{tmpZero} != as_unsigned{INT_ZERO};
+        cond = assignNop(it) = isnonzero(as_unsigned{tmpZero});
         assign(it, res) = (BOOL_FALSE, cond);
         it.erase();
     }

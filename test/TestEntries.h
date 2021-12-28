@@ -669,7 +669,8 @@ namespace test_data
         template <std::size_t N>
         std::enable_if_t<is_vector<ParameterType<N>>::value> setParameter(ParameterType<N>&& param)
         {
-            data.kernelArguments[N] = toBufferParameter(canaries(std::move(param)));
+            data.kernelArguments[N] = toBufferParameter(
+                canaries(std::move(param), static_cast<typename ParameterType<N>::value_type>(17 * (N + 1))));
         }
 
         template <std::size_t N>
@@ -696,14 +697,15 @@ namespace test_data
         {
             data.verifications.emplace_back(
                 test_data::checkParameterEquals<typename ParameterType<N>::value_type, Printer>(
-                    N, canaries(std::move(param))));
+                    N, canaries(std::move(param), static_cast<typename ParameterType<N>::value_type>(17 * (N + 1)))));
         }
 
         template <std::size_t N, typename Comparison, typename Printer = DefaultPrinter<typename Comparison::type>>
         void checkParameter(ParameterType<N>&& param, Comparison comp = {})
         {
-            data.verifications.emplace_back(test_data::checkParameter<Comparison, typename Comparison::type, Printer>(
-                N, canaries(std::move(param)), std::move(comp)));
+            data.verifications.emplace_back(test_data::checkParameter<Comparison, typename Comparison::type, Printer>(N,
+                canaries(std::move(param), static_cast<typename ParameterType<N>::value_type>(17 * (N + 1))),
+                std::move(comp)));
         }
 
         template <std::size_t N, typename Printer = DefaultPrinter<typename ParameterType<N>::value_type>>

@@ -6,7 +6,10 @@
 #include "TestEntries.h"
 
 #include <limits>
+#include <random>
+#include <set>
 #include <unordered_map>
+#include <vector>
 
 static const std::string VECTOR_LOAD_FUNCTION = R"(
 #define CONCAT(a,b) a ## b
@@ -335,6 +338,104 @@ __kernel void test(__global TYPE* out) {
 }
 )";
 
+static const std::string VECTOR_SHUFFLE_ASSIGN_1_TO_X_FUNCTION = R"(
+#define CONCAT(a,b) a ## b
+#define CAT(a,b) CONCAT(a,b)
+__kernel void test1to2(__global CAT(TYPE, 2)* out, __global TYPE* in) {
+  size_t gid = get_global_id(0);
+  CAT(TYPE, 2) tmp = (CAT(TYPE, 2)) PLACEHOLDER;
+  tmp.MASK2 = in[gid];
+  out[gid] = tmp;
+}
+
+__kernel void test1to3(__global TYPE* out, __global TYPE* in) {
+  size_t gid = get_global_id(0);
+  CAT(TYPE, 3) tmp = (CAT(TYPE, 3)) PLACEHOLDER;
+  tmp.MASK3 = in[gid];
+  vstore3(tmp, gid, out);
+}
+
+__kernel void test1to4(__global CAT(TYPE, 4)* out, __global TYPE* in) {
+  size_t gid = get_global_id(0);
+  CAT(TYPE, 4) tmp = (CAT(TYPE, 4)) PLACEHOLDER;
+  tmp.MASK4 = in[gid];
+  out[gid] = tmp;
+}
+
+__kernel void test1to8(__global CAT(TYPE, 8)* out, __global TYPE* in) {
+  size_t gid = get_global_id(0);
+  CAT(TYPE, 8) tmp = (CAT(TYPE, 8)) PLACEHOLDER;
+  tmp.MASK8 = in[gid];
+  out[gid] = tmp;
+}
+
+__kernel void test1to16(__global CAT(TYPE, 16)* out, __global TYPE* in) {
+  size_t gid = get_global_id(0);
+  CAT(TYPE, 16) tmp = (CAT(TYPE, 16)) PLACEHOLDER;
+  tmp.MASK16 = in[gid];
+  out[gid] = tmp;
+}
+)";
+
+static const std::string VECTOR_SHUFFLE_ASSIGN_X_TO_1_FUNCTION = R"(
+#define CONCAT(a,b) a ## b
+#define CAT(a,b) CONCAT(a,b)
+__kernel void test2to1(__global TYPE* out, __global CAT(TYPE, 2)* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = in[gid].MASK2;
+}
+
+__kernel void test3to1(__global TYPE* out, __global TYPE* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = vload3(gid, in).MASK3;
+}
+
+__kernel void test4to1(__global TYPE* out, __global CAT(TYPE, 4)* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = in[gid].MASK4;
+}
+
+__kernel void test8to1(__global TYPE* out, __global CAT(TYPE, 8)* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = in[gid].MASK8;
+}
+
+__kernel void test16to1(__global TYPE* out, __global CAT(TYPE, 16)* in) {
+  size_t gid = get_global_id(0);
+  out[gid] = in[gid].MASK16;
+}
+)";
+
+static const std::string VECTOR_SHUFFLE_ASSIGN_X_TO_X_FUNCTION = R"(
+#define CONCAT(a,b) a ## b
+#define CAT(a,b) CONCAT(a,b)
+__kernel void test(
+#if OUT == 3
+  __global TYPE* out,
+#else
+  __global CAT(TYPE, OUT)* out,
+#endif
+#if IN == 3
+  __global TYPE* in
+#else
+  __global CAT(TYPE, IN)* in
+#endif
+) {
+  size_t gid = get_global_id(0);
+  CAT(TYPE, OUT) tmp = (CAT(TYPE, OUT)) PLACEHOLDER;
+#if IN == 3
+  tmp.OUTMASK = vload3(gid, in).INMASK;
+#else
+  tmp.OUTMASK = in[gid].INMASK;
+#endif
+#if OUT == 3
+  vstore3(tmp, gid, out);
+#else
+  out[gid] = tmp;
+#endif
+}
+)";
+
 static const std::unordered_map<std::string, std::array<uint32_t, 16>> assemblySources = {
     {"random", {1, 15, 2, 3, 14, 4, 15, 7, 2, 8, 14, 15, 11, 14, 14, 3}},
     {"elem_num", {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}},
@@ -394,6 +495,27 @@ std::vector<T> reorder(std::size_t vectorSize, const std::vector<T>& in, const s
     return result;
 }
 
+static std::vector<uint8_t> generateMask(uint8_t numElements, uint8_t maxValue, bool allowDuplicates)
+{
+    static std::default_random_engine generator;
+    static std::uniform_real_distribution<float> distribution;
+
+    std::set<uint8_t> usedValues;
+    std::vector<uint8_t> mask(std::min(numElements, maxValue), maxValue);
+    for(auto& entry : mask)
+    {
+        do
+        {
+            entry = static_cast<uint8_t>(std::round(distribution(generator) * static_cast<float>(maxValue)));
+        } while(!allowDuplicates && usedValues.find(entry) != usedValues.end());
+        usedValues.emplace(entry);
+    }
+    return mask;
+}
+
+static constexpr std::array<char, 16> MASK_NAMES = {
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+
 template <typename T>
 static void registerTypeTests(const std::string& typeName)
 {
@@ -407,26 +529,32 @@ static void registerTypeTests(const std::string& typeName)
     // fill buffer up to 16 elements so we do not access unallocated memory for 16-element tests
     values.resize(16, 0x17);
 
+    auto values3 = values;
+    // TestDataBuilder#calculateDimensions rounds up, so we need more values to be divisible by 3
+    values3.emplace_back(43);
+    values3.emplace_back(71);
+
     for(auto num : {2, 3, 4, 8, 16})
     {
+        auto applicableValues = num == 3 ? values3 : values;
         {
             TestDataBuilder<Buffer<T>, Buffer<T>> builder("vload" + std::to_string(num) + "_" + typeName,
                 VECTOR_LOAD_FUNCTION, "test" + std::to_string(num), "-DTYPE=" + typeName);
             builder.setFlags(flags);
-            builder.calculateDimensions(values.size(), num);
-            builder.template allocateParameter<0>(values.size(), 0x42);
-            builder.template setParameter<1>(std::vector<T>(values));
-            builder.template checkParameterEquals<0>(std::vector<T>(values));
+            builder.calculateDimensions(applicableValues.size(), num);
+            builder.template allocateParameter<0>(applicableValues.size(), 0x42);
+            builder.template setParameter<1>(std::vector<T>(applicableValues));
+            builder.template checkParameterEquals<0>(std::vector<T>(applicableValues));
         }
 
         {
             TestDataBuilder<Buffer<T>, Buffer<T>> builder("vstore" + std::to_string(num) + "_" + typeName,
                 VECTOR_STORE_FUNCTION, "test" + std::to_string(num), "-DTYPE=" + typeName);
             builder.setFlags(flags);
-            builder.calculateDimensions(values.size(), num);
-            builder.template allocateParameter<0>(values.size(), 0x42);
-            builder.template setParameter<1>(Buffer<T>(values));
-            builder.template checkParameterEquals<0>(std::vector<T>(values));
+            builder.calculateDimensions(applicableValues.size(), num);
+            builder.template allocateParameter<0>(applicableValues.size(), 0x42);
+            builder.template setParameter<1>(Buffer<T>(applicableValues));
+            builder.template checkParameterEquals<0>(std::vector<T>(applicableValues));
         }
 
         if(num != 3)
@@ -517,6 +645,133 @@ static void registerTypeTests(const std::string& typeName)
             }
             return RESULT_OK;
         });
+    }
+
+    constexpr T placeholder = 17;
+    constexpr T baseOffset = std::min(std::numeric_limits<T>::max() - 12 * 16, (std::numeric_limits<T>::max() / 2 - 7));
+    values.resize(12 * 16);
+    std::iota(values.begin(), values.end(), baseOffset);
+
+    std::unordered_map<uint8_t, uint8_t> scalarMasks;
+    std::string scalarDefines;
+    for(auto num : std::vector<uint8_t>{2u, 3u, 4u, 8u, 16u})
+    {
+        auto it = scalarMasks.emplace(num, generateMask(1, num - 1, true).front()).first;
+        scalarDefines += " -DMASK" + std::to_string(static_cast<unsigned>(num)) + "=s" + MASK_NAMES.at(it->second);
+    }
+
+    for(auto num : std::vector<uint8_t>{2u, 3u, 4u, 8u, 16u})
+    {
+        TestDataBuilder<Buffer<T>, Buffer<T>> scalarToVectorBuilder(
+            "shuffle_assign_1_to_" + std::to_string(num) + "_" + typeName, VECTOR_SHUFFLE_ASSIGN_1_TO_X_FUNCTION,
+            "test1to" + std::to_string(num),
+            "-DTYPE=" + typeName + scalarDefines +
+                " -DPLACEHOLDER=" + std::to_string(static_cast<uint64_t>(placeholder)));
+        scalarToVectorBuilder.setFlags(flags | DataFilter::VECTOR_OPERATIONS);
+        scalarToVectorBuilder.setDimensions(12);
+        scalarToVectorBuilder.template allocateParameter<0>(num * 12);
+        scalarToVectorBuilder.template setParameter<1>(std::vector<T>(values));
+        scalarToVectorBuilder.template checkParameter<0>(
+            num * 12, [scalarMasks, num](const std::vector<T>& result) -> Result {
+                auto mask = scalarMasks.at(num);
+                for(std::size_t i = 0; i < result.size(); ++i)
+                {
+                    auto vectorIndex = static_cast<T>(i / num);
+                    auto vectorElement = i % num;
+                    if(vectorElement == mask && result[i] != baseOffset + vectorIndex)
+                        return Result{false,
+                            "Value error: Got " + std::to_string(static_cast<uint64_t>(result[i])) + ", expected " +
+                                std::to_string(static_cast<uint64_t>(baseOffset + vectorIndex)) + ", for index " +
+                                std::to_string(i) + " (element " + std::to_string(vectorElement) + " of vector " +
+                                std::to_string(static_cast<uint64_t>(vectorIndex)) + " with element mask " +
+                                std::to_string(static_cast<unsigned>(mask)) + ")"};
+                    if(vectorElement != mask && result[i] != placeholder)
+                        return Result{false,
+                            "Value error: Got " + std::to_string(static_cast<uint64_t>(result[i])) + ", expected " +
+                                std::to_string(static_cast<uint64_t>(placeholder)) + ", for index " +
+                                std::to_string(i) + " (element " + std::to_string(vectorElement) + " of vector " +
+                                std::to_string(static_cast<uint64_t>(vectorIndex)) + " with element mask " +
+                                std::to_string(static_cast<unsigned>(mask)) + ")"};
+                }
+                return RESULT_OK;
+            });
+
+        TestDataBuilder<Buffer<T>, Buffer<T>> vectorToScalarBuilder(
+            "shuffle_assign_" + std::to_string(num) + "_to_1_" + typeName, VECTOR_SHUFFLE_ASSIGN_X_TO_1_FUNCTION,
+            "test" + std::to_string(num) + "to1", "-DTYPE=" + typeName + scalarDefines);
+        vectorToScalarBuilder.setFlags(flags | DataFilter::VECTOR_OPERATIONS);
+        vectorToScalarBuilder.setDimensions(12);
+        vectorToScalarBuilder.template allocateParameter<0>(12);
+        vectorToScalarBuilder.template setParameter<1>(std::vector<T>(values));
+        vectorToScalarBuilder.template checkParameter<0>(
+            12, [scalarMasks, num](const std::vector<T>& result) -> Result {
+                auto mask = scalarMasks.at(num);
+                for(std::size_t i = 0; i < result.size(); ++i)
+                {
+                    if(result[i] != baseOffset + num * i + mask)
+                        return Result{false,
+                            "Value error: Got " + std::to_string(static_cast<uint64_t>(result[i])) + ", expected " +
+                                std::to_string(static_cast<uint64_t>(baseOffset + num * i + mask)) + ", for index " +
+                                std::to_string(i) + " (with element mask " +
+                                std::to_string(static_cast<unsigned>(mask)) + ")"};
+                }
+                return RESULT_OK;
+            });
+    }
+
+    for(auto inNum : std::vector<uint8_t>{2u, 3u, 4u, 8u, 16u})
+    {
+        for(auto outNum : std::vector<uint8_t>{2u, 3u, 4u, 8u, 16u})
+        {
+            auto inMask = generateMask(std::min(inNum, outNum) / 2, inNum - 1, true);
+            auto outMask = generateMask(std::min(inNum, outNum) / 2, outNum - 1, false);
+            std::string defines = " -DIN=" + std::to_string(static_cast<unsigned>(inNum)) +
+                " -DOUT=" + std::to_string(static_cast<unsigned>(outNum));
+            defines += " -DINMASK=s";
+            for(auto val : inMask)
+                defines += MASK_NAMES.at(val);
+            defines += " -DOUTMASK=s";
+            for(auto val : outMask)
+                defines += MASK_NAMES.at(val);
+            std::vector<uint8_t> mask(outNum, 0xFFu);
+            for(std::size_t i = 0; i < outMask.size(); ++i)
+                mask.at(outMask.at(i)) = inMask.at(i);
+
+            TestDataBuilder<Buffer<T>, Buffer<T>> builder(
+                "shuffle_assign_" + std::to_string(inNum) + "_to_" + std::to_string(outNum) + "_" + typeName,
+                VECTOR_SHUFFLE_ASSIGN_X_TO_X_FUNCTION, "test",
+                "-DTYPE=" + typeName + defines +
+                    " -DPLACEHOLDER=" + std::to_string(static_cast<uint64_t>(placeholder)));
+            builder.setFlags(flags | DataFilter::VECTOR_OPERATIONS);
+            builder.setDimensions(12);
+            builder.template allocateParameter<0>(outNum * 12);
+            builder.template setParameter<1>(std::vector<T>(values));
+            builder.template checkParameter<0>(
+                outNum * 12, [mask{std::move(mask)}, inNum, outNum, defines](const std::vector<T>& result) -> Result {
+                    for(std::size_t i = 0; i < result.size(); ++i)
+                    {
+                        auto vectorIndex = static_cast<T>(i / outNum);
+                        auto vectorElement = i % outNum;
+                        if(mask.at(vectorElement) != 0xFFu &&
+                            result[i] != (baseOffset + inNum * vectorIndex + mask.at(vectorElement)))
+                            return Result{false,
+                                "Value error: Got " + std::to_string(static_cast<uint64_t>(result[i])) + ", expected " +
+                                    std::to_string(static_cast<uint64_t>(
+                                        baseOffset + inNum * vectorIndex + mask.at(vectorElement))) +
+                                    ", for index " + std::to_string(i) + " (element " + std::to_string(vectorElement) +
+                                    " of vector " + std::to_string(static_cast<uint64_t>(vectorIndex)) +
+                                    " with element masks " + defines + ")"};
+                        if(mask.at(vectorElement) == 0xFFu && result[i] != placeholder)
+                            return Result{false,
+                                "Value error: Got " + std::to_string(static_cast<uint64_t>(result[i])) + ", expected " +
+                                    std::to_string(static_cast<uint64_t>(placeholder)) + ", for index " +
+                                    std::to_string(i) + " (element " + std::to_string(vectorElement) + " of vector " +
+                                    std::to_string(static_cast<uint64_t>(vectorIndex)) + " with element masks " +
+                                    defines + ")"};
+                    }
+                    return RESULT_OK;
+                });
+        }
     }
 }
 

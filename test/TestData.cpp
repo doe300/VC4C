@@ -186,10 +186,23 @@ void test_data::registerGeneralTests()
         TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>> builder(
             "async_copy_general", test_async_copy_cl_string, "test_async_copy_general");
         builder.setFlags(DataFilter::ASYNC_BARRIER);
+        builder.setDimensions(7);
+        builder.allocateParameterRange<0>(0, 7 * 16);
+        builder.allocateParameter<1>(7 * 16);
+        builder.allocateParameter<2>(7 * 16);
+        // the __local arg might be lowered to VPM
+        builder.checkParameterEquals<2>(toRange(0u, 7u * 16u));
+    }
+
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint32_t>, uint32_t> builder(
+            "async_copy_partial", test_async_copy_cl_string, "test_async_copy_partial");
+        builder.setFlags(DataFilter::ASYNC_BARRIER);
         builder.setDimensions(12);
         builder.allocateParameterRange<0>(0, 7 * 16);
         builder.allocateParameter<1>(7 * 16);
         builder.allocateParameter<2>(7 * 16);
+        builder.setParameter<3>(7);
         // the __local arg might be lowered to VPM
         builder.checkParameterEquals<2>(toRange(0u, 7u * 16u));
     }

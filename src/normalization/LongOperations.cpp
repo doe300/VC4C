@@ -359,7 +359,7 @@ static void lowerLongOperation(
             min(as_signed{in0Low}, as_signed{in1Low.value()});
         auto upperEqualPosLower = assign(it, out->lower->type, "%long_max") =
             max(as_signed{in0Low}, as_signed{in1Low.value()});
-        auto negativeCond = assignNop(it) = as_signed{in0Up} < as_signed{INT_ZERO};
+        auto negativeCond = assignNop(it) = isnegative(as_signed{in0Up});
         auto upperEqualLower = assign(it, out->lower->type, "%long_max") = (upperEqualNegLower, negativeCond);
         assign(it, upperEqualLower) = (upperEqualPosLower, negativeCond.invert());
 
@@ -404,7 +404,7 @@ static void lowerLongOperation(
             max(as_signed{in0Low}, as_signed{in1Low.value()});
         auto upperEqualPosLower = assign(it, out->lower->type, "%long_min") =
             min(as_signed{in0Low}, as_signed{in1Low.value()});
-        auto negativeCond = assignNop(it) = as_signed{in0Up} < as_signed{INT_ZERO};
+        auto negativeCond = assignNop(it) = isnegative(as_signed{in0Up});
         auto upperEqualLower = assign(it, out->lower->type, "%long_min") = (upperEqualNegLower, negativeCond);
         assign(it, upperEqualLower) = (upperEqualPosLower, negativeCond.invert());
 
@@ -576,7 +576,7 @@ void normalization::lowerLongOperation(
             {
                 // for unsigned, any non-zero upper part means overflow, so saturate
                 assign(it, outValue) = src->lower->createReference();
-                auto cond = assignNop(it) = as_unsigned{src->upper->createReference()} != as_unsigned{INT_ZERO};
+                auto cond = assignNop(it) = isnonzero(as_unsigned{src->upper->createReference()});
                 assign(it, outValue) = (0xFFFFFFFF_val, cond);
             }
             else

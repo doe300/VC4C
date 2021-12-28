@@ -896,6 +896,47 @@ namespace vc4c
             return ComparisonWrapper{COND_ZERO_SET, val.val, UNDEFINED_VALUE, func};
         }
 
+        template <typename T>
+        NODISCARD inline ComparisonWrapper iszero(as_type<T>&& val)
+        {
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
+                // move and set flags
+                assign(it, out) = (arg0, SetFlag::SET_FLAGS, deco);
+            };
+            return ComparisonWrapper{COND_ZERO_SET, val.val, UNDEFINED_VALUE, func};
+        }
+
+        template <typename T>
+        NODISCARD inline ComparisonWrapper isnonzero(as_type<T>&& val)
+        {
+            // a != 0 <=> !(a == 0)
+            auto tmp = iszero(std::forward<as_type<T>>(val));
+            return ComparisonWrapper{
+                tmp.code.invert(), val.val, UNDEFINED_VALUE, ComparisonWrapper::FuncType{tmp.func}};
+        }
+
+        template <typename T>
+        NODISCARD inline ComparisonWrapper isnegative(as_type<T>&& val)
+        {
+            // a < 0 <=> MSB set
+            static const auto func = [](InstructionWalker& it, const Value& out, const Value& arg0, const Value& arg1,
+                                         intermediate::InstructionDecorations deco) {
+                // move and set flags
+                assign(it, out) = (arg0, SetFlag::SET_FLAGS, deco);
+            };
+            return ComparisonWrapper{COND_NEGATIVE_SET, val.val, UNDEFINED_VALUE, func};
+        }
+
+        template <typename T>
+        NODISCARD inline ComparisonWrapper ispositive(as_type<T>&& val)
+        {
+            // a >= 0 <=> !(a < 0)
+            auto tmp = isnegative(std::forward<as_type<T>>(val));
+            return ComparisonWrapper{
+                tmp.code.invert(), val.val, UNDEFINED_VALUE, ComparisonWrapper::FuncType{tmp.func}};
+        }
+
         NODISCARD inline ComparisonWrapper selectSIMDElement(uint8_t index)
         {
             return as_unsigned{ELEMENT_NUMBER_REGISTER} == as_unsigned{Value(SmallImmediate(index), TYPE_INT8)};

@@ -20,7 +20,7 @@
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
-#include "../intrinsics/Intrinsics.h"
+#include "../intrinsics/Operators.h"
 #include "../performance.h"
 #include "../periphery/RegisterLoweredMemory.h"
 #include "../periphery/TMU.h"
@@ -1120,17 +1120,14 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Using common constant TMU access group stride of: " << commonStride.to_string() << logging::endl);
 
-        // need to manually insert and lower the multiplication instruction
         auto customAddressOffsets =
             method.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%tmu_group_offsets");
-        it.emplace(std::make_unique<intermediate::IntrinsicOperation>("mul", Value(customAddressOffsets),
-            Value(ELEMENT_NUMBER_REGISTER), Value(*commonConstantStride, TYPE_INT32)));
-        it->addDecorations(intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
-        auto copyIt = it.copy().nextInBlock();
-        intrinsics::intrinsify(method.module, method, it, {});
+        it = intrinsics::insertMultiplication(it, method, ELEMENT_NUMBER_REGISTER,
+            Value(*commonConstantStride, TYPE_INT32), customAddressOffsets,
+            intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
 
         auto initialRAMLoad = group.ramReads.front().get<intermediate::RAMAccessInstruction>();
-        it = insertCustomAddressesCalculation(copyIt, method, initialRAMLoad->getMemoryAddress(), customAddressOffsets,
+        it = insertCustomAddressesCalculation(it, method, initialRAMLoad->getMemoryAddress(), customAddressOffsets,
             group.usedVectorSize, group.cacheEntry->addresses);
         group.cacheEntry->customAddressCalculation = true;
         initialRAMLoad->setMemoryAddress(group.cacheEntry->addresses);
@@ -1215,15 +1212,11 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
             calc.safeErase();
         }
 
-        // need to manually insert and lower the multiplication instruction
         auto customAddressOffsets =
             method.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%tmu_group_offsets");
-        it.emplace(std::make_unique<intermediate::IntrinsicOperation>(
-            "mul", Value(customAddressOffsets), Value(ELEMENT_NUMBER_REGISTER), std::move(elementStride)));
-        auto copyIt = it.copy().nextInBlock();
-        intrinsics::intrinsify(method.module, method, it, {});
+        it = intrinsics::insertMultiplication(it, method, ELEMENT_NUMBER_REGISTER, elementStride, customAddressOffsets);
 
-        it = insertCustomAddressesCalculation(copyIt, method, initialRAMLoad->getMemoryAddress(), customAddressOffsets,
+        it = insertCustomAddressesCalculation(it, method, initialRAMLoad->getMemoryAddress(), customAddressOffsets,
             group.usedVectorSize, group.cacheEntry->addresses);
         group.cacheEntry->customAddressCalculation = true;
         initialRAMLoad->setMemoryAddress(group.cacheEntry->addresses);
@@ -1280,8 +1273,8 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
 
         // primary offset = primary stride * (element number / power of two)
         auto tmp = assign(it, replicatedStride.type) = ELEMENT_NUMBER_REGISTER / Literal(strides->powerOfTwo);
-        // TODO is mul24 here enough?? Should be for positive strides only?!
-        auto primaryOffset = assign(it, replicatedStride.type, "%tmu_group_primary_offset") = mul24(primaryStride, tmp);
+        auto primaryOffset = method.addNewLocal(replicatedStride.type, "%tmu_group_primary_offset");
+        it = intrinsics::insertMultiplication(it, method, primaryStride, tmp, primaryOffset);
 
         // full offset = primary offset + (element number % power of two) * secondary stride
         tmp = assign(it, replicatedStride.type) = ELEMENT_NUMBER_REGISTER % Literal(strides->powerOfTwo);
@@ -1499,15 +1492,8 @@ static Value calculateAddress(InstructionWalker& it, const analysis::InductionVa
             it.nextInBlock();
         }
         else if(expr->code == Expression::FAKEOP_UMUL && expr->arg0.checkValue() && expr->arg1.checkValue())
-        {
-            // need to manually insert and lower the multiplication instruction
-            it.emplace(std::make_unique<intermediate::IntrinsicOperation>(
-                "mul", Value(tmpOffset), *expr->arg0.checkValue(), *expr->arg1.checkValue()));
-            it->addDecorations(expr->deco);
-            auto copyIt = it.copy().nextInBlock();
-            intrinsics::intrinsify(method.module, method, it, {});
-            it = copyIt;
-        }
+            it = intrinsics::insertMultiplication(
+                it, method, *expr->arg0.checkValue(), *expr->arg1.checkValue(), tmpOffset, expr->deco);
         else
             throw CompilationError(CompilationStep::OPTIMIZER, "Failed to create expression for TMU offset calculation",
                 expr->to_string());

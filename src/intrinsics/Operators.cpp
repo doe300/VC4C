@@ -815,9 +815,9 @@ InstructionWalker intrinsics::intrinsifyFloatingDivision(
          * 4. 0 / 0 = NaN
          */
         // we can now (correctly?) calculate subnormal values, which we do not support, so flush to zero
-        auto cond = assignNop(it) = as_unsigned{resultExponent} == as_unsigned{INT_ZERO};
+        auto cond = assignNop(it) = iszero(as_unsigned{resultExponent});
         assign(it, result) = (FLOAT_ZERO, cond);
-        cond = assignNop(it) = as_unsigned{nominatorExponent} == as_unsigned{INT_ZERO};
+        cond = assignNop(it) = iszero(as_unsigned{nominatorExponent});
         assign(it, result) = (FLOAT_ZERO, cond);
         cond = assignNop(it) = isinf(as_float{divisor});
         assign(it, result) = (FLOAT_ZERO, cond);
@@ -837,6 +837,98 @@ InstructionWalker intrinsics::intrinsifyFloatingDivision(
 
     it.reset(createWithExtras<MoveOperation>(op, op.getOutput().value(), result));
     return it;
+}
+
+NODISCARD InstructionWalker intrinsics::insertMultiplication(InstructionWalker it, Method& method, const Value& arg0,
+    const Value& arg1, Value& dest, intermediate::InstructionDecorations decorations)
+{
+    if(arg0.type.isFloatingType() != arg1.type.isFloatingType())
+        throw CompilationError(CompilationStep::GENERAL, "Cannot multiply integral and floating-point arguments");
+
+    if(arg0.type.isFloatingType() && arg1.type.isFloatingType())
+    {
+        assign(it, dest) = (as_float{arg0} * as_float{arg1}, decorations);
+        return it;
+    }
+
+    auto op =
+        &it.emplace(std::make_unique<intermediate::IntrinsicOperation>("mul", Value(dest), Value(arg0), Value(arg1)));
+    op->addDecorations(decorations);
+
+    if(Local::getLocalData<MultiRegisterData>(arg0.checkLocal()) ||
+        Local::getLocalData<MultiRegisterData>(arg1.checkLocal()))
+    {
+        // 64-bit multiplication
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Calculating result for 64-bit integer multiplication: " << op->to_string() << logging::endl);
+        it = intrinsifyLongMultiplication(method, it, *op);
+    }
+    else if(arg0.getLiteralValue() && arg1.getLiteralValue())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Calculating result for multiplication with constants: " << op->to_string() << logging::endl);
+        it.reset(createWithExtras<MoveOperation>(*it.get(), Value(op->getOutput()->local(), arg0.type),
+            Value(Literal(arg0.getLiteralValue()->signedInt() * arg1.getLiteralValue()->signedInt()), arg0.type)));
+    }
+    else if(arg0.getLiteralValue() && arg0.getLiteralValue()->signedInt() > 0 &&
+        isPowerTwo(arg0.getLiteralValue()->unsignedInt()))
+    {
+        // a * 2^n = a << n
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying multiplication with left-shift: " << op->to_string() << logging::endl);
+        it.reset(createWithExtras<Operation>(*it.get(), OP_SHL, op->getOutput().value(), arg1,
+            Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt()))), arg0.type)));
+    }
+    else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
+        isPowerTwo(arg1.getLiteralValue()->unsignedInt()))
+    {
+        // a * 2^n = a << n
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying multiplication with left-shift: " << op->to_string() << logging::endl);
+        it.reset(createWithExtras<Operation>(*it.get(), OP_SHL, op->getOutput().value(), op->getFirstArg(),
+            Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt()))), arg1.type)));
+    }
+    else if(std::max(arg0.type.getScalarBitCount(), arg1.type.getScalarBitCount()) <= 24)
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying multiplication of small integers to mul24: " << op->to_string() << logging::endl);
+        it.reset(createWithExtras<Operation>(
+            *it.get(), OP_MUL24, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1)));
+    }
+    else if(arg0.getLiteralValue() && arg0.getLiteralValue()->signedInt() > 0 &&
+        isPowerTwo(arg0.getLiteralValue()->unsignedInt() + 1))
+    {
+        // x * (2^k - 1) = x * 2^k - x = x << k - x
+        // This is a special case of the "binary method", but since the "binary method" only applies shifts and
+        // adds, we handle shift and minus separately.
+        // TODO could make more general, similar to "binary method" implementation/integrate into that
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying multiplication with left-shift and minus: " << op->to_string() << logging::endl);
+        auto tmp = assign(it, arg1.type, "%mul_shift") = (arg1
+            << Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt() + 1))), arg0.type));
+        it.reset(createWithExtras<Operation>(*it.get(), OP_SUB, op->getOutput().value(), tmp, arg1));
+    }
+    else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
+        isPowerTwo(arg1.getLiteralValue()->unsignedInt() + 1))
+    {
+        // x * (2^k - 1) = x * 2^k - x = x << k - x
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying multiplication with left-shift and minus: " << op->to_string() << logging::endl);
+        auto tmp = assign(it, arg0.type, "%mul_shift") = (arg0
+            << Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt() + 1))), arg0.type));
+        it.reset(createWithExtras<Operation>(*it.get(), OP_SUB, op->getOutput().value(), tmp, arg0));
+    }
+    else if(canOptimizeMultiplicationWithBinaryMethod(*op))
+    {
+        // e.g. x * 3 = x << 1 + x
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying multiplication via binary method: " << op->to_string() << logging::endl);
+        it = intrinsifyIntegerMultiplicationViaBinaryMethod(method, it, *op);
+    }
+    else
+        it = intrinsifySignedIntegerMultiplication(method, it, *op);
+
+    return it.nextInBlock();
 }
 
 static constexpr unsigned MSB = 31;

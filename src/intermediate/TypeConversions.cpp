@@ -515,7 +515,7 @@ InstructionWalker intermediate::insertSaturation(
         if(!isInputSigned && isOutputSigned)
         {
             // unsigned -> signed => dest = MSB(src) ? INT_MAX : src
-            auto negativeCond = assignNop(it) = as_signed{src} < as_signed{INT_ZERO};
+            auto negativeCond = assignNop(it) = isnegative(as_signed{src});
             assign(it, dest) = (0x7FFFFFFF_val, negativeCond, InstructionDecorations::UNSIGNED_RESULT);
             it.emplace(std::make_unique<MoveOperation>(dest, src, negativeCond.invert()))
                 .addDecorations(InstructionDecorations::UNSIGNED_RESULT);
@@ -657,7 +657,7 @@ InstructionWalker intermediate::insertFloatingPointConversion(
         denormalMantissa = assign(it, "%denormal_mantissa") = (denormalMantissa & 0x7FFFFF_val, UNSIGNED);
 
         auto denormalResult = assign(it, dest.type, "%denormal_result") = normalResult & 0x80000000_val;
-        auto cond = assignNop(it) = as_unsigned{unsignedResult} != as_unsigned{0_val};
+        auto cond = assignNop(it) = isnonzero(as_unsigned{unsignedResult});
         denormalExponent = assign(it) = denormalExponent << 23_val;
         assign(it, denormalResult) = (denormalResult | denormalExponent, cond);
         assign(it, denormalResult) = (denormalResult | denormalMantissa, cond);
@@ -718,7 +718,7 @@ InstructionWalker intermediate::insertFloatingPointConversion(
             floatMantissa, signBit, normalResult, denormalResult);
 
         // handling of |finite value| > HALF_MAX
-        auto isSigned = assignNop(it) = as_unsigned{signBit} != as_unsigned{0_val};
+        auto isSigned = assignNop(it) = isnonzero(as_unsigned{signBit});
         auto realOverflowResult = assign(it, dest.type, "%overflow_result") = positiveOverflowValue;
         assign(it, realOverflowResult) = (negativeOverflowValue, isSigned);
 
@@ -820,7 +820,7 @@ InstructionWalker intermediate::insertSignedToFloatConversion(
         Value dummySign = UNDEFINED_VALUE;
         it = insertMakePositive(it, method, parts->lower->createReference(), lowerAbs, dummySign);
         auto lowerInput = assign(it, parts->lower->type) = parts->lower->createReference();
-        auto cond = assignNop(it) = as_signed{parts->upper->createReference()} < as_signed{0_val};
+        auto cond = assignNop(it) = isnegative(as_signed{parts->upper->createReference()});
         assign(it, lowerInput) = (lowerAbs, cond);
 
         // convert the actual (absolute value of the) lower part
@@ -828,7 +828,7 @@ InstructionWalker intermediate::insertSignedToFloatConversion(
         it = intermediate::insertUnsignedToFloatConversion(it, method, lowerInput, lowerPart);
 
         // if upper part was negative, subtract, otherwise add the parts together
-        cond = assignNop(it) = as_signed{parts->upper->createReference()} < as_signed{0_val};
+        cond = assignNop(it) = isnegative(as_signed{parts->upper->createReference()});
         assign(it, lowerPart) = (-as_float{lowerPart}, cond);
         // if upper part is all ones, do not add it (since it is only the sign, no value)
         cond = assignNop(it) = as_signed{parts->upper->createReference()} == as_signed{0xFFFFFFFF_val};
