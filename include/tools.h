@@ -9,7 +9,6 @@
 #ifndef VC4C_TOOLS_H
 #define VC4C_TOOLS_H
 
-#include "Optional.h"
 #include "Precompiler.h"
 #include "config.h"
 
@@ -21,6 +20,9 @@
 
 namespace vc4c
 {
+    template <typename T>
+    class Optional;
+
     namespace tools
     {
         /*

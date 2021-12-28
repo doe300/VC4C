@@ -6,8 +6,8 @@
 #ifndef VC4C_REGISTER_ANALYSIS
 #define VC4C_REGISTER_ANALYSIS
 
+#include "../Optional.h"
 #include "../performance.h"
-#include "Optional.h"
 #include "config.h"
 
 #include <string>

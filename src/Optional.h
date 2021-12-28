@@ -250,19 +250,44 @@ namespace vc4c
 
         // These operators are defined as member operators to not interfere with any other operator, since any Type is
         // implicitly convertible to Optional<Type>
-        bool operator&(const std::function<bool(const T&)>& func) const
+        [[deprecated]] bool operator&(const std::function<bool(const T&)>& func) const
+        {
+            return has_value() && func(**this);
+        }
+
+        template <typename Func>
+        std::enable_if_t<std::is_member_function_pointer<Func>::value &&
+                std::is_convertible<std::result_of_t<Func(const T&)>, bool>::value,
+            bool>
+        operator&(Func&& func) const
+        {
+            return has_value() && ((**this).*func)();
+        }
+
+        template <typename Func>
+        std::enable_if_t<!std::is_member_function_pointer<Func>::value &&
+                std::is_convertible<std::result_of_t<Func(const T&)>, bool>::value,
+            bool>
+        operator&(Func&& func) const
         {
             return has_value() && func(**this);
         }
 
         template <typename R>
-        Optional<R> operator&(const std::function<Optional<R>(const T&)>& func) const
+        [[deprecated]] Optional<R> operator&(const std::function<Optional<R>(const T&)>& func) const
         {
             return has_value() ? func(**this) : Optional<R>{};
         }
 
         template <typename R>
-        R* operator&(const std::function<R*(const T&)>& func) const
+        [[deprecated]] R* operator&(const std::function<R*(const T&)>& func) const
+        {
+            return has_value() ? func(**this) : nullptr;
+        }
+
+        template <typename Func>
+        std::enable_if_t<std::is_pointer<std::result_of_t<Func(const T&)>>::value, std::result_of_t<Func(const T&)>>
+        operator&(Func&& func) const
         {
             return has_value() ? func(**this) : nullptr;
         }

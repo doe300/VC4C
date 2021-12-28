@@ -11,7 +11,7 @@
 #include "../Values.h"
 #include "../asm/OpCodes.h"
 #include "../performance.h"
-#include "Optional.h"
+#include "../Optional.h"
 
 #include <functional>
 #include <memory>

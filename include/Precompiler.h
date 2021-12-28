@@ -10,7 +10,6 @@
 #ifndef PRECOMPILER_H
 #define PRECOMPILER_H
 
-#include "Optional.h"
 #include "config.h"
 
 #include <iostream>
@@ -67,7 +66,7 @@ namespace vc4c
      * This class guarantees the temporary file to be deleted even if the compilation is cancelled by throwing an
      * exception.
      */
-    class TemporaryFile : private NonCopyable
+    class TemporaryFile
     {
     public:
         /*
@@ -101,6 +100,9 @@ namespace vc4c
 
     // forward reference to the actual compilation data implementation
     class CompilationDataPrivate;
+
+    template <typename T>
+    class Optional;
 
     /**
      * Handle for compilation input and output data.
@@ -140,8 +142,8 @@ namespace vc4c
         explicit CompilationData(std::shared_ptr<CompilationDataPrivate>&& data);
 
         SourceType getType() const noexcept;
-        Optional<std::string> getFilePath() const;
-        Optional<std::vector<uint8_t>> getRawData() const;
+        [[deprecated]] Optional<std::string> getFilePath() const;
+        [[deprecated]] Optional<std::vector<uint8_t>> getRawData() const;
 
         void readInto(std::ostream& out) const;
 
@@ -162,18 +164,13 @@ namespace vc4c
         /**
          * Helper-function to easily pre-compile a single input with the given configuration into the given output.
          *
-         * \param input The input stream
-         * \param output The output-stream
+         * \param input The input data
+         * \param outputType the desired output type. For the version without this parameter, the output type is chosen
+         * to best fit further processing with the VC4C compiler
          * \param config The configuration to use for compilation
          * \param options Specify additional compiler-options to pass onto the pre-compiler
-         * \param inputFile Can be used by the compiler to speed-up compilation (e.g. by running the pre-compiler with
-         * these files instead of needing to write input to a temporary file)
-         * \param outputFile The optional output-file to write the pre-compiled code into. If this is specified, the
-         * code is compiled into the file, otherwise the output stream is filled with the compiled code
+         * \return the output data
          */
-        [[deprecated]] static void precompile(std::istream& input, std::unique_ptr<std::istream>& output,
-            Configuration config = {}, const std::string& options = "", const Optional<std::string>& inputFile = {},
-            const Optional<std::string>& outputFile = {});
         static CompilationData precompile(
             const CompilationData& input, Configuration config = {}, const std::string& options = "");
         static CompilationData precompile(const CompilationData& input, SourceType outputType,
@@ -189,19 +186,14 @@ namespace vc4c
         /**
          * Links multiple source-code files using a linker provided by the pre-compilers.
          *
-         * Returns the SourceType of the linked module
+         * Returns the linked module
          */
-        [[deprecated]] static SourceType linkSourceCode(
-            const std::unordered_map<std::istream*, Optional<std::string>>& inputs, std::ostream& output,
-            bool includeStandardLibrary = false);
         static CompilationData linkSourceCode(
             const std::vector<CompilationData>& inputs, bool includeStandardLibrary = false);
 
         /**
          * Returns whether there is a linker available that can link the given input modules
          */
-        [[deprecated]] static bool isLinkerAvailable(
-            const std::unordered_map<std::istream*, Optional<std::string>>& inputs);
         static bool isLinkerAvailable(const std::vector<CompilationData>& inputs);
         /*
          * Returns whether a linker is available at all in the compiler

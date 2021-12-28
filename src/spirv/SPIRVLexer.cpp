@@ -6,8 +6,8 @@
 
 #include "SPIRVLexer.h"
 
+#include "../Optional.h"
 #include "CompilationError.h"
-#include "Optional.h"
 #include "SPIRVHelper.h"
 #include "SPIRVOperation.h"
 #include "log.h"

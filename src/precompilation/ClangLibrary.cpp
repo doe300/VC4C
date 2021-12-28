@@ -48,7 +48,7 @@ static constexpr auto INPUT_LANGUAGE = clang::Language::OpenCL;
 static constexpr auto INPUT_LANGUAGE = clang::InputKind::OpenCL;
 #endif
 
-static void logDiagnostics(clang::TextDiagnosticBuffer& diagnostics)
+static void logDiagnostics(clang::TextDiagnosticBuffer& diagnostics, clang::SourceManager* sourceManager)
 {
     LCOV_EXCL_START
     logging::logLazy(logging::Level::WARNING, [&]() {
@@ -56,7 +56,12 @@ static void logDiagnostics(clang::TextDiagnosticBuffer& diagnostics)
         {
             logging::warn() << "Warnings in precompilation:" << logging::endl;
             for(auto it = diagnostics.warn_begin(); it != diagnostics.warn_end(); ++it)
-                logging::warn() << it->second << logging::endl;
+            {
+                auto& log = logging::warn() << it->second;
+                if(sourceManager)
+                    log << " at " << it->first.printToString(*sourceManager);
+                log << logging::endl;
+            }
         }
     });
     LCOV_EXCL_STOP
@@ -64,7 +69,12 @@ static void logDiagnostics(clang::TextDiagnosticBuffer& diagnostics)
     {
         logging::error() << "Errors in precompilation:" << logging::endl;
         for(auto it = diagnostics.err_begin(); it != diagnostics.err_end(); ++it)
-            logging::error() << it->second << logging::endl;
+        {
+            auto& log = logging::error() << it->second;
+            if(sourceManager)
+                log << " at " << it->first.printToString(*sourceManager);
+            log << logging::endl;
+        }
     }
 }
 
@@ -85,7 +95,7 @@ static std::unique_ptr<clang::CompilerInstance> createInstance(
 #endif
 
     diagnosticsBuffer->FlushDiagnostics(diagnostics);
-    logDiagnostics(*diagnosticsBuffer);
+    logDiagnostics(*diagnosticsBuffer, nullptr);
     if(!success)
         throw CompilationError(CompilationStep::PRECOMPILATION, "Failed to create clang compiler invocation");
     if(diagnostics.hasErrorOccurred())
@@ -193,11 +203,11 @@ static Optional<std::string> runClangLibraryCompilation(const std::vector<std::s
     instance->getFrontendOpts().ProgramAction = actionKind;
     if(!instance->ExecuteAction(action))
     {
-        logDiagnostics(diagnostics);
+        logDiagnostics(diagnostics, &instance->getSourceManager());
         throw CompilationError(CompilationStep::PRECOMPILATION, "Error in precompilation");
     }
 
-    logDiagnostics(diagnostics);
+    logDiagnostics(diagnostics, &instance->getSourceManager());
     return outputFilePath;
 }
 

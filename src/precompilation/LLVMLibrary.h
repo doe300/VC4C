@@ -7,8 +7,8 @@
 #ifndef VC4C_LLVM_LIBRARY
 #define VC4C_LLVM_LIBRARY
 
+#include "../Optional.h"
 #include "CompilationData.h"
-#include "Optional.h"
 
 #include <chrono>
 #include <iostream>
@@ -36,6 +36,8 @@ namespace vc4c
             // NOTE: the reference to the context needs to be stable
             std::shared_ptr<llvm::LLVMContext> context;
             std::shared_ptr<llvm::Module> module;
+
+            void dumpText(const std::string& fileName = "/tmp/vc4c-llvm-module.ll") const;
         };
 
         std::shared_ptr<llvm::LLVMContext> initializeLLVMContext();

@@ -12,9 +12,9 @@
 
 #include "SPIRVParserBase.h"
 
+#include "../Optional.h"
 #include "../helper.h"
 #include "CompilationError.h"
-#include "Optional.h"
 
 #include "spirv/unified1/spirv.hpp11"
 

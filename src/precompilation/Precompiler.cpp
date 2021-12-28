@@ -195,57 +195,6 @@ const std::shared_ptr<CompilationDataPrivate>& CompilationData::inner() const no
 static NODISCARD CompilationData runPrecompiler(const CompilationData& input, const Configuration& config,
     SourceType outputType, const std::string& options, std::unique_ptr<CompilationDataPrivate>&& desiredOutput);
 
-void Precompiler::precompile(std::istream& input, std::unique_ptr<std::istream>& output, Configuration config,
-    const std::string& options, const Optional<std::string>& inputFile, const Optional<std::string>& outputFile)
-{
-    PROFILE_SCOPE(Precompile);
-
-    auto inputType = Precompiler::getSourceType(input);
-    if(inputType == SourceType::QPUASM_BIN || inputType == SourceType::QPUASM_HEX || inputType == SourceType::UNKNOWN)
-        throw CompilationError(CompilationStep::PRECOMPILATION, "Invalid input-type for pre-compilation",
-            std::to_string(static_cast<unsigned>(inputType)));
-
-    auto inputData =
-        inputFile ? CompilationData(*inputFile, inputType) : CompilationData(input, inputType, "precompilation source");
-
-    CompilationData outputData{};
-    if(config.frontend != Frontend::DEFAULT)
-    {
-        auto outputType = config.frontend == Frontend::LLVM_IR ? SourceType::LLVM_IR_BIN : SourceType::SPIRV_BIN;
-        std::unique_ptr<CompilationDataPrivate> desiredOutput = nullptr;
-        if(outputFile && outputType == SourceType::LLVM_IR_BIN)
-            desiredOutput = std::make_unique<FileCompilationData<SourceType::LLVM_IR_BIN>>(*outputFile);
-        if(outputFile && outputType == SourceType::SPIRV_BIN)
-            desiredOutput = std::make_unique<FileCompilationData<SourceType::SPIRV_BIN>>(*outputFile);
-        outputData = runPrecompiler(inputData, config, outputType, options, std::move(desiredOutput));
-    }
-    // we have both front-ends, select the front-end which can handle the input type
-    else if(hasLLVMFrontend() && isSupportedByFrontend(inputType, Frontend::LLVM_IR))
-    {
-        // prefer LLVM library front-end
-        auto desiredOutput =
-            outputFile ? std::make_unique<FileCompilationData<SourceType::LLVM_IR_BIN>>(*outputFile) : nullptr;
-        outputData = runPrecompiler(inputData, config, SourceType::LLVM_IR_BIN, options, std::move(desiredOutput));
-    }
-    else if(findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
-    {
-        auto desiredOutput =
-            outputFile ? std::make_unique<FileCompilationData<SourceType::SPIRV_BIN>>(*outputFile) : nullptr;
-        outputData = runPrecompiler(inputData, config, SourceType::SPIRV_BIN, options, std::move(desiredOutput));
-    }
-    else
-        throw CompilationError(CompilationStep::PRECOMPILATION, "No matching precompiler available!");
-
-    // write back to the desired output, if it was not already used
-    if(outputFile && outputData.getFilePath() != outputFile)
-    {
-        std::ofstream fos(*outputFile);
-        outputData.readInto(fos);
-    }
-    else if(!outputFile)
-        output = outputData.inner()->readStream();
-}
-
 CompilationData Precompiler::precompile(const CompilationData& input, Configuration config, const std::string& options)
 {
     if(config.frontend != Frontend::DEFAULT)
@@ -384,30 +333,6 @@ static NODISCARD LLVMIRSource compileToLLVM(const CompilationData& source)
             std::to_string(static_cast<unsigned>(source.getType())));
 }
 
-SourceType Precompiler::linkSourceCode(const std::unordered_map<std::istream*, Optional<std::string>>& inputs,
-    std::ostream& output, bool includeStandardLibrary)
-{
-    std::vector<CompilationData> sources;
-    sources.reserve(inputs.size());
-    for(auto& input : inputs)
-    {
-        if(input.second)
-        {
-            std::ifstream fis(*input.second);
-            auto type = getSourceType(fis);
-            sources.emplace_back(*input.second, type);
-        }
-        else
-        {
-            auto type = getSourceType(*input.first);
-            sources.emplace_back(*input.first, type, "link source");
-        }
-    }
-    auto result = linkSourceCode(sources, includeStandardLibrary);
-    result.readInto(output);
-    return result.getType();
-}
-
 CompilationData Precompiler::linkSourceCode(const std::vector<CompilationData>& inputs, bool includeStandardLibrary)
 {
     PROFILE_SCOPE(linkSourceCode);
@@ -452,26 +377,6 @@ CompilationData Precompiler::linkSourceCode(const std::vector<CompilationData>& 
         return linkSPIRVModules(sources, "").publish();
     }
     throw CompilationError(CompilationStep::LINKER, "Cannot find a linker which can be used for all inputs!");
-}
-
-bool Precompiler::isLinkerAvailable(const std::unordered_map<std::istream*, Optional<std::string>>& inputs)
-{
-    if(!isLinkerAvailable())
-        return false;
-    return std::all_of(inputs.begin(), inputs.end(), [](const auto& input) -> bool {
-        switch(getSourceType(*input.first))
-        {
-        case SourceType::OPENCL_C:
-        case SourceType::LLVM_IR_BIN:
-            return findToolLocation("llvm-link", LLVM_LINK_PATH).has_value();
-        case SourceType::LLVM_IR_TEXT:
-        case SourceType::SPIRV_BIN:
-        case SourceType::SPIRV_TEXT:
-            return hasSPIRVToolsFrontend() || findToolLocation("spirv-link", SPIRV_LINK_PATH);
-        default:
-            return false;
-        }
-    });
 }
 
 bool Precompiler::isLinkerAvailable(const std::vector<CompilationData>& inputs)

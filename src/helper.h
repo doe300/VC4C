@@ -11,6 +11,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "CompilationError.h"
@@ -303,25 +304,40 @@ namespace vc4c
 
         // These operators are defined as member operators to not interfere with any other operator, since any Type is
         // implicitly convertible to Pointer<Type>
-        bool operator&(const std::function<bool(const T&)>& func) const
+        template <typename Func>
+        std::enable_if_t<std::is_member_function_pointer<Func>::value &&
+                std::is_convertible<std::result_of_t<Func(const T&)>, bool>::value,
+            bool>
+        operator&(Func&& func) const
+        {
+            return ptr && (ptr->*func)();
+        }
+
+        template <typename Func>
+        std::enable_if_t<!std::is_member_function_pointer<Func>::value &&
+                std::is_convertible<std::result_of_t<Func(const T&)>, bool>::value,
+            bool>
+        operator&(Func&& func) const
         {
             return ptr && func(*ptr);
         }
 
         template <typename R>
-        Pointer<R> operator&(const std::function<Pointer<R>(const T&)>& func) const
+        [[deprecated]] Pointer<R> operator&(const std::function<Pointer<R>(const T&)>& func) const
         {
             return ptr ? func(*ptr) : Pointer<R>{};
         }
 
-        template <typename R>
-        Pointer<R> operator&(const std::function<R*(const T&)>& func) const
+        template <typename Func>
+        std::enable_if_t<std::is_pointer<std::result_of_t<Func(const T&)>>::value,
+            Pointer<std::result_of_t<Func(const T&)>>>
+        operator&(Func&& func) const
         {
-            return Pointer<R>{ptr ? func(*ptr) : nullptr};
+            return Pointer<std::result_of_t<Func(const T&)>>{ptr ? func(*ptr) : nullptr};
         }
 
         template <typename R>
-        Optional<R> operator&(const std::function<R(const T&)>& func) const
+        [[deprecated]] Optional<R> operator&(const std::function<R(const T&)>& func) const
         {
             return ptr ? func(*ptr) : Optional<R>{};
         }

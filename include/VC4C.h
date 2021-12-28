@@ -9,6 +9,7 @@
 #ifndef VC4C_H
 #define VC4C_H
 
+#include "CompilationError.h"
 #include "Compiler.h"
 #include "Precompiler.h"
 #include "config.h"
@@ -21,8 +22,6 @@ namespace vc4c
     /*
      * Disassembles the given machine-code module and writes the converted code into output
      */
-    [[deprecated]] std::size_t disassembleModule(
-        std::istream& binary, std::ostream& output, OutputMode outputMode = OutputMode::HEX);
     std::size_t disassembleModule(
         const CompilationData& binaryData, std::ostream& output, OutputMode outputMode = OutputMode::HEX);
     /*

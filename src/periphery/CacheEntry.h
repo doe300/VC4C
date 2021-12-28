@@ -7,9 +7,9 @@
 #ifndef VC4C_CACHE_ENTRY_H
 #define VC4C_CACHE_ENTRY_H
 
+#include "../Optional.h"
 #include "../Types.h"
 #include "../tools/SmallSet.h"
-#include "Optional.h"
 
 #include <string>
 

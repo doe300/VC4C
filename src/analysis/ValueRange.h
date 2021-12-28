@@ -7,10 +7,10 @@
 #ifndef VC4C_VALUE_RANGE_H
 #define VC4C_VALUE_RANGE_H
 
+#include "../Optional.h"
 #include "../performance.h"
 #include "../tools/SmallSet.h"
 #include "Analysis.h"
-#include "Optional.h"
 
 #include <algorithm>
 #include <functional>

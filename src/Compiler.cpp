@@ -154,14 +154,10 @@ static std::pair<CompilationData, std::size_t> runCompiler(
     return std::make_pair(std::move(result), bytesWritten);
 }
 
-std::size_t Compiler::compile(std::istream& input, std::ostream& output, const Configuration& config,
-    const std::string& options, const Optional<std::string>& inputFile)
+std::pair<CompilationData, std::size_t> Compiler::compile(const CompilationData& input, const Configuration& config,
+    const std::string& options, const std::string& outputFile)
 {
-    auto inputData = inputFile ? CompilationData{*inputFile, Precompiler::getSourceType(input)} :
-                                 CompilationData{input, Precompiler::getSourceType(input), "compilation source"};
-    auto out = compile(inputData, config, options);
-    out.first.readInto(output);
-    return out.second;
+    return compile(input, config, options, outputFile.empty() ? Optional<std::string>{} : outputFile);
 }
 
 std::pair<CompilationData, std::size_t> Compiler::compile(const CompilationData& input, const Configuration& config,

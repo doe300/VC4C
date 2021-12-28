@@ -331,11 +331,6 @@ static std::size_t generateOutput(std::ostream& stream, ModuleHeader& module, co
     return numBytes;
 }
 
-std::size_t vc4c::disassembleModule(std::istream& binary, std::ostream& output, const OutputMode outputMode)
-{
-    return disassembleModule(CompilationData(binary), output, outputMode);
-}
-
 std::size_t vc4c::disassembleModule(const CompilationData& binaryData, std::ostream& output, OutputMode outputMode)
 {
     if(binaryData.getType() != SourceType::QPUASM_BIN)

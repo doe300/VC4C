@@ -8,7 +8,7 @@
 #define SPIRVOPERATION_H
 
 #include "../Module.h"
-#include "Optional.h"
+#include "../Optional.h"
 
 #include <map>
 #include <memory>

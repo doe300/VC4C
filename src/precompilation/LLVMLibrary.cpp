@@ -29,11 +29,22 @@
 #include "llvm/Support/TimeProfiler.h"
 #endif
 
+#include <fstream>
 #include <memory>
 #include <sstream>
 
 using namespace vc4c;
 using namespace vc4c::precompilation;
+
+void LLVMModuleWithContext::dumpText(const std::string& fileName) const
+{
+    if(module)
+    {
+        std::ofstream fos{fileName};
+        llvm::raw_os_ostream out(fos);
+        module->print(out, nullptr);
+    }
+}
 
 std::shared_ptr<llvm::LLVMContext> precompilation::initializeLLVMContext()
 {

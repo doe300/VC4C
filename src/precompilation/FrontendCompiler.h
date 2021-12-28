@@ -7,9 +7,9 @@
 #ifndef VC4C_FRONTEND_COMPILER
 #define VC4C_FRONTEND_COMPILER
 
+#include "../Optional.h"
 #include "CompilationData.h"
 #include "CompilationError.h"
-#include "Optional.h"
 #include "Precompiler.h"
 #include "tool_paths.h"
 

@@ -7,6 +7,7 @@
 #include "Precompiler.h"
 
 #include "../Profiler.h"
+#include "CompilationError.h"
 #include "log.h"
 
 #include <cerrno>

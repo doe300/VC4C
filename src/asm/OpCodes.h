@@ -9,7 +9,7 @@
 
 #include "../BitMask.h"
 #include "../Bitfield.h"
-#include "Optional.h"
+#include "../Optional.h"
 #include "config.h"
 
 #include <algorithm>

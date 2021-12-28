@@ -9,9 +9,9 @@
 #include "../Expression.h"
 #include "../Graph.h"
 #include "../InstructionWalker.h"
+#include "../Optional.h"
 #include "../performance.h"
 #include "../tools/SmallSet.h"
-#include "Optional.h"
 
 #include <memory>
 #include <string>
