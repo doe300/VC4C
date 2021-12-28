@@ -128,11 +128,29 @@ namespace vc4c
              * from which this loop is entered.
              *
              * The preheader is the single block which directly dominates the loop header, making it the only block from
-             * which control flow jumps into the loop. The preheader node itself is not part of the loop.
+             * which control flow jumps into the loop. Moreover, the preheader is executed iff the loop header is
+             * executed, i.e. the preheader has a single successor node, which is the loop header. The preheader node
+             * itself is not part of the loop.
              *
-             * If there are multiple such blocks, NULL is returned.
+             * If there is no such block, NULL is returned.
              */
             const CFGNode* findPreheader(const DominatorTree& dominators) const;
+
+            /**
+             * Returns the single basic block in the CFG which directly dominates the first node in the loop, the node
+             * from which this loop is entered.
+             *
+             * The preheader is the single block which directly dominates the loop header, making it the only block from
+             * which control flow jumps into the loop. Moreover, the preheader is executed iff the loop header is
+             * executed, i.e. the preheader has a single successor node, which is the loop header. The preheader node
+             * itself is not part of the loop.
+             *
+             * If there is no such block, a new one will be created.
+             *
+             * NOTE: If a new preheader block is created, most control-flow cached values (inclusive the loops and
+             * the given dominator tree) need to be updated!
+             */
+            const CFGNode& getOrCreatePreheader(const DominatorTree& dominators) const;
 
             /*
              * Returns the basic-block in the CFG following the last node in the loop, the node into which this loop
@@ -155,6 +173,7 @@ namespace vc4c
              * Returns the InstructionWalker for the given instruction, if it is within the loop.
              */
             Optional<InstructionWalker> findInLoop(const intermediate::IntermediateInstruction* inst) const;
+            const CFGNode* findInLoop(InstructionWalker it) const;
 
             /*
              * Returns whether this loop includes other loop and doesn't equal it.

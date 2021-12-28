@@ -564,7 +564,7 @@ NODISCARD static bool groupVPMWrites(periphery::VPM& vpm, VPMAccessGroup& group)
         // This line is to calculate the stride in actually written vectors, e.g. for vload/vstore in scalar pointers
         // FIXME this is wrong for mixed vload/vstore, e.g. I/O with different vector types
         auto numElements = dmaSetupValue.dmaSetup.getDepth() / group.groupType.getElementType().getVectorWidth();
-        auto numBytes = static_cast<unsigned>(numElements) * group.groupType.getElementType().getInMemoryWidth();
+        auto numBytes = static_cast<unsigned>(numElements) * group.groupType.getElementType().getLogicalWidth();
         strideSetup.strideSetup.setStride(static_cast<uint16_t>(group.stride == 0 ? 0 : (group.stride - numBytes)));
     }
     std::size_t numRemoved = 0;

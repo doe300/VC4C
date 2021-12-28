@@ -499,6 +499,12 @@ std::pair<Optional<Value>, std::bitset<NATIVE_VECTOR_SIZE>> intermediate::getBra
 
 void intermediate::redirectAllBranches(BasicBlock& oldTarget, BasicBlock& newTarget)
 {
+    redirectBranches(oldTarget, newTarget, [](InstructionWalker it, const Branch& branch) { return true; });
+}
+
+void intermediate::redirectBranches(BasicBlock& oldTarget, BasicBlock& newTarget,
+    const std::function<bool(InstructionWalker, const Branch&)>& predicate)
+{
     // Since (at least if the CFG for the method is already created), by resetting the branch to this block we modify
     // the incoming edges we iterate over, we need to split the finding the function to modify and replacing it.
     FastAccessList<InstructionWalker> instructionsToBeReset;
@@ -506,7 +512,7 @@ void intermediate::redirectAllBranches(BasicBlock& oldTarget, BasicBlock& newTar
         if(auto branch = walker.get<intermediate::Branch>())
         {
             auto targets = branch->getTargetLabels();
-            if(targets.find(oldTarget.getLabel()->getLabel()) != targets.end())
+            if(predicate(walker, *branch) && targets.find(oldTarget.getLabel()->getLabel()) != targets.end())
             {
                 if(targets.size() != 1)
                     throw CompilationError(CompilationStep::GENERAL,

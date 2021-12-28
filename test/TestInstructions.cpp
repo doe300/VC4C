@@ -2371,7 +2371,8 @@ void TestInstructions::testSpecialInstructionMembers()
         intermediate::CombinedOperation op(std::make_unique<intermediate::Operation>(OP_CLZ, out, in),
             std::make_unique<intermediate::Operation>(OP_ITOF, out, in));
 
-        TEST_ASSERT_EQUALS(1u, op.getUsedLocals().count(in.checkLocal()));
+        auto usedLocals = op.getUsedLocals();
+        TEST_ASSERT(usedLocals.find(in.checkLocal()) != usedLocals.end());
         TEST_ASSERT(op.readsLocal(in.checkLocal()));
         TEST_ASSERT(!op.readsLocal(out.checkLocal()));
         TEST_ASSERT(!op.writesLocal(in.checkLocal()));

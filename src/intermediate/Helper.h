@@ -120,6 +120,13 @@ namespace vc4c
         void redirectAllBranches(BasicBlock& oldTarget, BasicBlock& newTarget);
 
         /**
+         * Redirects all EXPLICIT branches previously targeting the old target and matching the given predicate to now
+         * jump to the new target.
+         */
+        void redirectBranches(BasicBlock& oldTarget, BasicBlock& newTarget,
+            const std::function<bool(InstructionWalker, const Branch&)>& predicate);
+
+        /**
          * Checks whether:
          * - the pack-mode of the previous instruction is set, since in that case, the register-file A MUST be used, so
          * it cannot be read in the next instruction

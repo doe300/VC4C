@@ -392,8 +392,7 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
     }
 
     std::set<LoopInclusionTreeNode*> processedNodes;
-    std::set<IntermediateInstruction*> processedInsts;
-    BasicBlock* insertedBlock = nullptr;
+    std::set<const IntermediateInstruction*> processedInsts;
 
     // move instructions
     for(auto& loop : inclusionTree->getNodes())
@@ -413,18 +412,6 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
         {
             auto currentNode = queue.front();
             queue.pop();
-
-            /*
-             * TODO for now don't hoist any code out of to the root loop, but only out of the current loop.
-             * This is required, since we now have non-constant instructions which might depend on code from the parent
-             * loops.
-             * TODO better yet, distinguish between actual constant instructions (hoist out of the outermost loop) and
-             * non-constant, but loop invariant instructions (hoist only outside of the current loop).
-             *
-             * auto targetTreeNode = castToTreeNode(currentNode->findRoot(moveDepth == -1 ? Optional<int>() :
-             * Optional<int>(moveDepth - 1)));
-             * auto targetLoop = targetTreeNode->key;
-             */
             auto targetLoop = currentNode->key;
 
             currentNode->forAllOutgoingEdges(
@@ -439,11 +426,13 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
                 continue;
             }
 
-            const CFGNode* targetCFGNode = targetLoop->findPreheader(*dominatorTree);
-
-            auto targetBlock = targetCFGNode != nullptr ? targetCFGNode->key : insertedBlock;
-
-            if(targetBlock != nullptr)
+            const CFGNode* preheaderNode = targetLoop->findPreheader(*dominatorTree);
+            if(!preheaderNode)
+            {
+                preheaderNode = &targetLoop->getOrCreatePreheader(*dominatorTree);
+                dominatorTree = method.getCFG().getDominatorTree();
+            }
+            if(auto targetBlock = preheaderNode->key)
             {
                 // insert before first 'br' operation (if any)
                 auto targetInst = targetBlock->walk().nextInBlock();
@@ -464,53 +453,22 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
                     it.reset(nullptr);
                 }
             }
-            else
-            {
-                logging::debug() << "Creating a new block to hoist loop invariant code into" << logging::endl;
-
-                auto headBlock = method.begin();
-
-                insertedBlock = &method.createAndInsertNewBlock(method.begin(), "%createdByLoopInvariantCodeMotion");
-                for(auto it : insts->second)
-                {
-                    auto inst = it.get();
-                    if(!it.has() || processedInsts.find(inst) != processedInsts.end())
-                        continue;
-                    processedInsts.insert(inst);
-
-                    CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Moving invariant code out of loop: " << it->to_string() << logging::endl);
-                    // append always to the end to preserve the order, e.g. for dependencies
-                    insertedBlock->walkEnd().emplace(it.release());
-                    it.reset(nullptr);
-                }
-                // Clear processed instructions
-                insts->second.clear();
-
-                auto headLabel = headBlock->getLabel()->getLabel();
-                auto insertedLabel = insertedBlock->getLabel()->getLabel();
-                if(headLabel && insertedLabel && headLabel->name == BasicBlock::DEFAULT_BLOCK)
-                {
-                    // swap labels because DEFAULT_BLOCK is treated as head block.
-                    headLabel->name.swap(insertedLabel->name);
-                }
-            }
         }
     }
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
     auto& cfg2 = method.getCFG();
-    cfg2.dumpGraph("/tmp/vc4c-loop-invariant-code-motion-after.dot", [](const BasicBlock* bb) -> std::string {
-        std::stringstream ss;
-        ss << bb->getLabel()->getLabel()->name << "\\n";
-        for(auto it = bb->walk(); !it.isEndOfBlock(); it.nextInBlock())
-        {
-            if(it.has() && it->isConstantInstruction() &&
-                (check(it->checkOutputLocal()) & &Local::getSingleWriter) == it.get())
-                ss << it->to_string() << "\\l";
-        };
-        return ss.str();
-    });
+    cfg2.dumpGraph(
+        "/tmp/vc4c-loop-invariant-code-motion-after.dot", [&processedInsts](const BasicBlock* bb) -> std::string {
+            std::stringstream ss;
+            ss << bb->getLabel()->getLabel()->name << "\\n";
+            for(auto it = bb->walk(); !it.isEndOfBlock(); it.nextInBlock())
+            {
+                if(processedInsts.find(it.get()) != processedInsts.end())
+                    ss << it->to_string() << "\\l";
+            };
+            return ss.str();
+        });
 #endif
 
     if(hasChanged)

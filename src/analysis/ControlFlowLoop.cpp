@@ -187,7 +187,10 @@ tools::SmallSortedPointerSet<const CFGNode*> ControlFlowLoop::findPredecessors()
 const CFGNode* ControlFlowLoop::findPreheader(const DominatorTree& dominators) const
 {
     const CFGNode* preheaderCandidate = nullptr;
-    if(auto node = dominators.findNode(getHeader()))
+    auto head = getHeader();
+    if(!head)
+        return nullptr;
+    if(auto node = dominators.findNode(head))
     {
         node->forAllIncomingEdges([&](const DominatorTreeNode& node, const auto& edge) -> bool {
             if(preheaderCandidate)
@@ -200,13 +203,66 @@ const CFGNode* ControlFlowLoop::findPreheader(const DominatorTree& dominators) c
             return true;
         });
     }
-    auto predecessors = findPredecessors();
-    if(predecessors.find(preheaderCandidate) == predecessors.end())
-        // node is a dominator, but not an immediate predecessor, don't use
-        // XXX this could only happen, if we have multiple conditional jumps to the loop, not sure whether clang
-        // generates such control flow at all
-        preheaderCandidate = nullptr;
+    if(preheaderCandidate)
+    {
+        bool hasOtherExitEdges = false;
+        bool hasHeadExitEdge = false;
+        preheaderCandidate->forAllOutgoingEdges(
+            [&hasOtherExitEdges, &hasHeadExitEdge, head](const CFGNode& successor, const CFGEdge& edge) {
+                if(&successor == head)
+                    hasHeadExitEdge = true;
+                else
+                {
+                    // candidate has other successors, so not a preheader
+                    hasOtherExitEdges = true;
+                    return false;
+                }
+                return true;
+            });
+        if(!hasHeadExitEdge || hasOtherExitEdges)
+            return nullptr;
+    }
+    if(preheaderCandidate)
+    {
+        bool hasOtherEntryEdges = false;
+        bool hasPreheaderEntryEdge = false;
+        head->forAllIncomingEdges([&hasOtherEntryEdges, &hasPreheaderEntryEdge, preheaderCandidate, this](
+                                      const CFGNode& predecessor, const CFGEdge& edge) {
+            if(&predecessor == preheaderCandidate)
+                hasPreheaderEntryEdge = true;
+            else if(find(&predecessor) == end())
+            {
+                // head has other predecessors, so not a preheader
+                hasOtherEntryEdges = true;
+                return false;
+            }
+            return true;
+        });
+        if(!hasPreheaderEntryEdge || hasOtherEntryEdges)
+            return nullptr;
+    }
     return preheaderCandidate;
+}
+
+const CFGNode& ControlFlowLoop::getOrCreatePreheader(const DominatorTree& dominators) const
+{
+    if(auto preheader = findPreheader(dominators))
+        return *preheader;
+
+    auto head = getHeader();
+    if(!head)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Cannot create preheader for loop without header", to_string());
+
+    // insert new block before header
+    auto& method = head->key->getMethod();
+    auto label = method.createLocal(TYPE_LABEL, head->key->getLabel()->getLabel()->name + ".preheader");
+    auto preheader =
+        method.emplaceLabel(head->key->walk(), std::make_unique<intermediate::BranchLabel>(*label)).getBasicBlock();
+    // update all incoming edges (not part of the loop, e.g. the back edge) to point to the new block
+    intermediate::redirectBranches(*head->key, *preheader,
+        [this](InstructionWalker it, const intermediate::Branch& branch) { return !findInLoop(it); });
+    return method.getCFG().assertNode(preheader);
 }
 
 const CFGNode* ControlFlowLoop::findSuccessor() const
@@ -298,6 +354,17 @@ Optional<InstructionWalker> ControlFlowLoop::findInLoop(const intermediate::Inte
             return it;
     }
     return {};
+}
+
+const CFGNode* ControlFlowLoop::findInLoop(InstructionWalker it) const
+{
+    auto block = it.getBasicBlock();
+    for(const CFGNode* node : *this)
+    {
+        if(node->key == block)
+            return node;
+    }
+    return nullptr;
 }
 
 bool ControlFlowLoop::includes(const ControlFlowLoop& other) const

@@ -117,8 +117,16 @@ static NODISCARD InstructionWalker insertByteToElementAndSubOffset(
         throw CompilationError(CompilationStep::NORMALIZER,
             "Failed to calculate element type width for register-lowered allocation", containerType.to_string());
     auto byteOffset = entry.precalculateOffset();
-    outElementOffset = assign(it, TYPE_INT8, "%element_offset") = byteOffset / Literal(elementTypeSize);
-    outSubOffset = assign(it, TYPE_INT8, "%sub_offset") = byteOffset % Literal(elementTypeSize);
+    if(elementTypeSize == 1)
+    {
+        outElementOffset = assign(it, TYPE_INT8, "%element_offset") = byteOffset;
+        outSubOffset = 0_val;
+    }
+    else
+    {
+        outElementOffset = assign(it, TYPE_INT8, "%element_offset") = byteOffset / Literal(elementTypeSize);
+        outSubOffset = assign(it, TYPE_INT8, "%sub_offset") = byteOffset % Literal(elementTypeSize);
+    }
     return it;
 }
 
