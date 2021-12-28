@@ -333,10 +333,8 @@ namespace vc4c
         BasicBlockList basicBlocks;
         /*
          * The list of locals
-         *
-         * This is a sorted set, since a hashset somehow a very bad performance!
          */
-        SortedSet<Local> locals;
+        StableList<Local> locals;
 
         /*
          * The builtin locals which are statically named

@@ -884,7 +884,7 @@ std::unique_ptr<DependencyGraph> DependencyGraph::createGraph(const BasicBlock& 
         lastInstruction = inst.get();
     }
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
     LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         if(block.size() > 12)

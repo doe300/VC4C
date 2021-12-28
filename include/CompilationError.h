@@ -80,7 +80,7 @@ namespace vc4c
         /*
          * Logs a back-trace for the given executing function.
          *
-         * NOTE: This function is a no-op if DEBUG_MODE is disabled or the compiler is not GCC
+         * NOTE: This function is a no-op if NDEBUG is set or the compiler is not GCC
          */
         static void logBacktrace();
     };

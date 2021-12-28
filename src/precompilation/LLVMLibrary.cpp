@@ -59,7 +59,7 @@ std::shared_ptr<llvm::LLVMContext> precompilation::initializeLLVMContext()
             logging::info() << "Note/Remark in LLVM/clang: " << text << logging::endl;
         }
     });
-#if DEBUG_MODE
+#ifndef NDEBUG
     context->setDiscardValueNames(false);
 #else
     context->setDiscardValueNames(true);

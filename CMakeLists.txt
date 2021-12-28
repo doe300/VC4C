@@ -63,11 +63,9 @@ if(NOT CMAKE_BUILD_TYPE)
 	set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of build." FORCE)
 endif()
 
-if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
+if(("${CMAKE_BUILD_TYPE}" STREQUAL "Release") OR ("${CMAKE_BUILD_TYPE}" STREQUAL "RelWithDebInfo"))
 	# Only allow coverage for debug builds
 	set(ENABLE_COVERAGE OFF)
-else()
-	set(BUILD_DEBUG ON)
 endif()
 
 # Set optimization and warning flags for the build types

@@ -316,8 +316,7 @@ LCOV_EXCL_START
 void ControlFlowGraph::dumpGraph(
     const std::string& path, const std::function<std::string(const BasicBlock*)>& labelFunc) const
 {
-#ifdef DEBUG_MODE
-    // XXX to be exact, would need bidirectional arrow [dir="both"] for compact loops
+#ifndef NDEBUG
     auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
     auto edgeLabelFunc = [](const CFGRelation& r) -> std::string { return r.getLabel(); };
     DebugGraph<BasicBlock*, CFGRelation, CFGEdge::Directed>::dumpGraph<ControlFlowGraph>(
@@ -644,7 +643,7 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
     if(!graph->getNodes().empty())
         updateBackEdges(*graph, &graph->getStartOfControlFlow());
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
     logging::logLazy(logging::Level::DEBUG, [&]() { graph->dumpGraph("/tmp/vc4c-cfg.dot"); });
 #endif
     return graph;

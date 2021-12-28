@@ -183,7 +183,7 @@ static void printHelp()
 
 int main(int argc, char** argv)
 {
-#if DEBUG_MODE
+#ifndef NDEBUG
     setLogger(std::wcout, true, LogLevel::DEBUG);
 #else
     setLogger(std::wcout, true, LogLevel::WARNING);
@@ -321,7 +321,7 @@ int main(int argc, char** argv)
         }
     }
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
     vc4c::profiler::dumpProfileResults(true);
 #endif
 

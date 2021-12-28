@@ -120,7 +120,7 @@ std::unique_ptr<InterferenceGraph> InterferenceGraph::createGraph(
 
     PROFILE_END(createInterferenceGraph);
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
     LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         auto nameFunc = [](const Local* loc) -> std::string { return loc->name; };

@@ -23,7 +23,8 @@ enum RegressionStatus : uint8_t
 {
     PASSED = 1u << 0u,
     PENDING_LLVM = 1u << 1u,
-    PENDING_SPIRV = 1u << 2u
+    PENDING_SPIRV = 1u << 2u,
+    DISABLED_IMAGE = 1u << 3u
 };
 
 constexpr RegressionStatus operator|(RegressionStatus a, RegressionStatus b) noexcept
@@ -44,7 +45,7 @@ static constexpr auto EMULATED = PASSED;
 // Fails due to errors in the llvm-spirv translation
 static constexpr auto PENDING_SPIRV_PRECOMPILER = PENDING_SPIRV;
 // The test requires image functions/types
-static constexpr auto PENDING_IMAGE = PENDING_LLVM | PENDING_SPIRV;
+static constexpr auto PENDING_IMAGE = PENDING_LLVM | PENDING_SPIRV | DISABLED_IMAGE;
 // Fails on the corresponding front-end in the CI but not locally
 static constexpr auto PENDING_LLVM_CI = PENDING_LLVM;
 static constexpr auto PENDING_SPIRV_CI = PENDING_SPIRV;
@@ -455,7 +456,9 @@ RegressionTest::RegressionTest(
 {
     for(const auto& tuple : allKernels)
     {
-        if(isSupported(std::get<0>(tuple), frontend) && (!onlyFast || std::get<1>(tuple) == FAST))
+        if(std::get<0>(tuple) & DISABLED_IMAGE)
+            ; // skip
+        else if(isSupported(std::get<0>(tuple), frontend) && (!onlyFast || std::get<1>(tuple) == FAST))
         {
             TEST_ADD_THREE_ARGUMENTS(RegressionTest::testRegression, static_cast<std::string>(std::get<2>(tuple)),
                 static_cast<std::string>(std::get<3>(tuple)), static_cast<vc4c::Frontend>(frontend));
@@ -502,7 +505,7 @@ void RegressionTest::testSlowPending(std::string clFile, std::string options, vc
 
 void RegressionTest::printProfilingInfo()
 {
-#if DEBUG_MODE
+#ifndef NDEBUG
     vc4c::profiler::dumpProfileResults(true);
 #endif
 }

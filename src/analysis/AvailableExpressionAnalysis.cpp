@@ -89,7 +89,7 @@ std::string AvailableExpressionAnalysis::to_string(const AvailableExpressions& e
 }
 LCOV_EXCL_STOP
 
-#ifndef DEBUG_MODE
+#ifdef NDEBUG
 void AvailableExpressionAnalysis::dumpGraph(const AvailableExpressions& expressions, const std::string& fileName)
 {
     // DebugGraph is not available, no-op

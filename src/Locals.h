@@ -20,7 +20,7 @@
 
 namespace vc4c
 {
-    class Value;
+    struct Value;
 
     namespace intermediate
     {
@@ -276,8 +276,6 @@ namespace vc4c
         virtual std::unique_lock<std::mutex> getUsersLock() const;
 
     private:
-        // FIXME unordered_map randomly throws SEGFAULT somewhere in stdlib in #removeUser called by
-        // IntermediateInstruction#erase
         tools::SmallSortedPointerMap<const LocalUser*, LocalUse> users;
         // Additional data for this local
         std::unique_ptr<LocalData> data;

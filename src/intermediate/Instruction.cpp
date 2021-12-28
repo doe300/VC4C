@@ -156,8 +156,6 @@ IntermediateInstruction::IntermediateInstruction(Optional<Value>&& output) :
 
 IntermediateInstruction::~IntermediateInstruction()
 {
-    // this can't be in LocalUser
-    // since at the time, the ~LocalUser() is called, the IntermediateInstruction "part" is already destroyed
     for(const auto& pair : getUsedLocals())
         const_cast<Local*>(pair.first)->removeUser(*this, LocalUse::Type::BOTH);
 }

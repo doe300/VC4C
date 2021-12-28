@@ -67,8 +67,8 @@ const Local* Method::createLocal(DataType type, const std::string& name)
 {
     Local loc(type, name);
     addLocalData(loc);
-    auto it = locals.emplace(std::move(loc)).first;
-    return &(*it);
+    locals.emplace_back(std::move(loc));
+    return &locals.back();
 }
 
 Parameter& Method::addParameter(Parameter&& param)
@@ -438,8 +438,8 @@ bool Method::removeBlock(BasicBlock& block, bool overwriteUsages)
 
 BasicBlock& Method::createAndInsertNewBlock(BasicBlockList::iterator position, const std::string& labelName)
 {
-    auto newLabel = locals.emplace(Local(TYPE_LABEL, labelName));
-    auto& block = *basicBlocks.emplace(position, *this, std::make_unique<intermediate::BranchLabel>(*newLabel.first));
+    locals.emplace_back(Local(TYPE_LABEL, labelName));
+    auto& block = *basicBlocks.emplace(position, *this, std::make_unique<intermediate::BranchLabel>(locals.back()));
     updateCFGOnBlockInsertion(&block);
     return block;
 }
@@ -682,8 +682,10 @@ void Method::addLocalData(Local& loc)
     if(loc.type.isSimpleType() && loc.type.getScalarBitCount() > 32 && loc.type.getScalarBitCount() <= 64)
     {
         auto elementType = TYPE_INT32.toVectorType(loc.type.getVectorWidth());
-        auto lower = locals.emplace(Local(elementType, loc.name + ".lower")).first;
-        auto upper = locals.emplace(Local(elementType, loc.name + ".upper")).first;
-        loc.set(MultiRegisterData(&*lower, &*upper));
+        locals.emplace_back(Local(elementType, loc.name + ".lower"));
+        auto lower = &locals.back();
+        locals.emplace_back(Local(elementType, loc.name + ".upper"));
+        auto upper = &locals.back();
+        loc.set(MultiRegisterData(lower, upper));
     }
 }

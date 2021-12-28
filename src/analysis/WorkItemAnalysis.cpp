@@ -522,7 +522,7 @@ FastMap<const BasicBlock*, ActiveWorkItems> analysis::determineActiveWorkItems(
         processNode(*node);
     }
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
     cfg.dumpGraph("/tmp/vc4c-cfg-active-workitems.dot", [&](const BasicBlock* block) {
         auto label = block->getLabel()->getLabel()->name;
         auto blockIt = results.find(block);

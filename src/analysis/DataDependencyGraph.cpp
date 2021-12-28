@@ -160,7 +160,7 @@ static void makeTransitive(
     }
 }
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
 LCOV_EXCL_START
 static std::string toEdgeLabel(const DataDependency& dependency)
 {
@@ -195,7 +195,7 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createDependencyGraph(
         findDependencies(block, *graph, mapping);
     }
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
     LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };
@@ -216,7 +216,7 @@ std::unique_ptr<DataDependencyGraph> DataDependencyGraph::createTransitiveDepend
     gla(method);
     makeTransitive(method.getCFG(), *graph, gla);
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
     LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         auto nameFunc = [](const BasicBlock* bb) -> std::string { return bb->getLabel()->getLabel()->name; };

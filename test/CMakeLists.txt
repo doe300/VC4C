@@ -3,10 +3,6 @@ include(sources.list)
 target_link_libraries(TestVC4C VC4CC ${SYSROOT_LIBRARY_FLAGS})
 target_compile_options(TestVC4C PRIVATE ${VC4C_ENABLED_WARNINGS})
 
-if(BUILD_DEBUG)
-	target_compile_definitions(TestVC4C PRIVATE DEBUG_MODE=1)
-endif(BUILD_DEBUG)
-
 target_include_directories (TestVC4C PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_include_directories(TestVC4C PRIVATE ${variant_HEADERS})
 

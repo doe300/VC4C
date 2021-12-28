@@ -190,7 +190,7 @@ static std::unique_ptr<DominatorTree> createTreeInner(ControlFlowGraph& cfg,
         }
     }
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
     LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         auto nameFunc = [](const CFGNode* node) -> std::string { return node->key->to_string(); };

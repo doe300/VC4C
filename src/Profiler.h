@@ -12,7 +12,7 @@
 
 namespace vc4c
 {
-#if DEBUG_MODE
+#ifndef NDEBUG
 #define PROFILE(func, ...)                                                                                             \
     [&]() {                                                                                                            \
         static_assert(__builtin_constant_p(#func), "");                                                                \
@@ -92,14 +92,20 @@ namespace vc4c
 
 #define PROFILE_START(name)
 #define PROFILE_END(name)
+#define PROFILE_END_EXTREMA(name, msg)
 
 #define PROFILE_START_DYNAMIC(name)
 #define PROFILE_END_DYNAMIC(name)
+#define PROFILE_END_DYNAMIC_EXTREMA(name, msg)
 
 #define PROFILE_SCOPE(name)
+#define PROFILE_SCOPE_EXTREMA(name, msg)
 
-#define PROFILE_COUNTER(index, name, value)
-#define PROFILE_COUNTER_WITH_PREV(index, name, value, prevIndex)
+#define PROFILE_COUNTER(base, name, value)
+#define PROFILE_COUNTER_SCOPE(base, name, value)
+#define PROFILE_COUNTER_DYNAMIC(base, name, value)
+#define PROFILE_COUNTER_WITH_PREV(base, name, value)
+#define PROFILE_COUNTER_DYNAMIC_WITH_PREV(base, name, value)
 
 #define PROFILE_RESULTS()
 

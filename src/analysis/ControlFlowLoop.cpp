@@ -1189,7 +1189,7 @@ std::unique_ptr<LoopInclusionTree> analysis::createLoopInclusionTree(const FastA
         }
     }
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
     LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         auto nameFunc = [](const ControlFlowLoop* loop) -> std::string {

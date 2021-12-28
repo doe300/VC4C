@@ -87,7 +87,7 @@ std::unique_ptr<LifetimeGraph> LifetimeGraph::createLifetimeGraph(Method& method
         // TODO this is not completely correct, would need to follow the control-flow from start to stop(s)
     });
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
     LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         auto nameFunc = [](const Local* loc) -> std::string { return loc->name; };

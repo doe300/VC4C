@@ -735,7 +735,7 @@ bool optimizations::reorderBasicBlocks(const Module& module, Method& method, con
         ++blockIt;
     }
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
     cfg.dumpGraph("/tmp/vc4c-cfg-reordered.dot");
 #endif
     return false;

@@ -12,7 +12,7 @@
 #include <fstream>
 #include <functional>
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
 // LCOV_EXCL_START
 
 namespace vc4c
@@ -172,5 +172,5 @@ namespace vc4c
 
 } /* namespace vc4c */
 // LCOV_EXCL_STOP
-#endif /* DEBUG_MODE */
+#endif /* NDEBUG */
 #endif /* DEBUG_GRAPH_H */

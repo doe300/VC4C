@@ -54,7 +54,7 @@ TestEmulator::~TestEmulator() = default;
 
 void TestEmulator::printProfilingInfo()
 {
-#if DEBUG_MODE
+#ifndef NDEBUG
     vc4c::profiler::dumpProfileResults(true);
 #endif
 }

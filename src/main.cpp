@@ -104,7 +104,7 @@ static void printInfo()
     std::cout << "Running VC4C in version: " << VC4C_VERSION << " (" << GIT_COMMIT << ')' << std::endl;
     std::cout << "Build configuration: ";
     static const std::vector<std::string> infoString = {
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
         "debug mode",
 #endif
 #ifdef SPIRV_TOOLS_FRONTEND
@@ -168,7 +168,7 @@ int main(int argc, char** argv)
     std::unique_ptr<std::wofstream> fileLog;
     std::reference_wrapper<std::wostream> logStream = std::wcout;
     bool colorLog = true;
-#if DEBUG_MODE
+#ifndef NDEBUG
     LogLevel minLevel = LogLevel::DEBUG;
 #else
     LogLevel minLevel = LogLevel::WARNING;

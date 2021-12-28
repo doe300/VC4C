@@ -6,7 +6,7 @@
 
 #include "CompilationError.h"
 
-#if defined(DEBUG_MODE) and defined(__GNUC__)
+#if !defined(NDEBUG) and defined(__GNUC__)
 #include "log.h"
 
 #include <array>
@@ -63,7 +63,7 @@ CompilationError::CompilationError(const CompilationStep step, const std::string
 
 CompilationError::~CompilationError() noexcept = default;
 
-#if defined(DEBUG_MODE) and defined(__GNUC__)
+#if !defined(NDEBUG) and defined(__GNUC__)
 // adapted from here: https://stackoverflow.com/a/2526298/8720655
 static void demangleAndPrint(char* line, int i)
 {
@@ -123,7 +123,7 @@ static void demangleAndPrint(char* line, int i)
 
 void CompilationError::logBacktrace()
 {
-#if defined(DEBUG_MODE) and defined(__GNUC__)
+#if !defined(NDEBUG) and defined(__GNUC__)
     std::array<void*, 256> funcPointers{};
     int numFuncs = backtrace(funcPointers.data(), funcPointers.size());
 

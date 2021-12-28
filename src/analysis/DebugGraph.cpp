@@ -8,7 +8,7 @@
 
 #include "../helper.h"
 
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
 LCOV_EXCL_START
 
 using namespace vc4c;

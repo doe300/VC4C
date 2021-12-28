@@ -1140,6 +1140,8 @@ bool Expression::insertInstructions(
     return false;
 }
 
+#ifndef NDEBUG
+LCOV_EXCL_START
 using ExpressionTree = DebugGraph<const void*, empty_base, Directionality::DIRECTED>;
 
 static void dumpExpression(const void* key, const Expression& expr, ExpressionTree& graph);
@@ -1176,6 +1178,14 @@ void Expression::dumpTree(const std::string& path) const
     ExpressionTree graph{path, 8};
     dumpExpression(this, *this, graph);
 }
+
+#else
+void Expression::dumpTree(const std::string& path) const
+{
+    // no-op
+}
+LCOV_EXCL_STOP
+#endif
 
 static std::pair<SubExpression, SubExpression> toSubExpressionParts(
     const SubExpression& subExpr, bool workGroupUniformIsConstant, ExpressionOptions options)

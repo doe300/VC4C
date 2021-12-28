@@ -1,7 +1,7 @@
 if(FALSE AND DEPENDENCIES_USE_FETCH_CONTENT)
 	# TODO disabled for now, since cpplog uninstall target conflicts with VC4C uninstall target
 	include(FetchContent)
-	FetchContent_Declare(cpplog GIT_REPOSITORY https://github.com/doe300/cpplog.git GIT_TAG v0.5)
+	FetchContent_Declare(cpplog GIT_REPOSITORY https://github.com/doe300/cpplog.git GIT_TAG v0.6)
 	# CMake configuration flags for cpplog project
 	set(CPPLOG_NAMESPACE logging)
 	set(CPPLOG_CUSTOM_LOGGER true)
@@ -16,7 +16,7 @@ else()
 	ExternalProject_Add( cpplog-project
 		PREFIX 				${CMAKE_BINARY_DIR}/cpplog
 		GIT_REPOSITORY 		https://github.com/doe300/cpplog.git
-		GIT_TAG				v0.5
+		GIT_TAG				v0.6
 		UPDATE_COMMAND 		git pull -f https://github.com/doe300/cpplog.git
 		CMAKE_ARGS 			-DCPPLOG_NAMESPACE=logging -DCPPLOG_CUSTOM_LOGGER=true -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 		STEP_TARGETS 		build	#If we set our dependency on this, the install step is skipped

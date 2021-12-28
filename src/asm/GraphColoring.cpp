@@ -654,7 +654,7 @@ void GraphColoring::createGraph()
 
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Colored graph with " << graph.getNodes().size() << " nodes created!" << logging::endl);
-#ifdef DEBUG_MODE
+#ifndef NDEBUG
     LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&]() {
         DebugGraph<const Local*, LocalRelation, ColoredEdge::Directed> debugGraph(

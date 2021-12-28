@@ -386,7 +386,7 @@ void TestFrontends::testCompilationDataSerialization()
 
 void TestFrontends::printProfilingInfo()
 {
-#if DEBUG_MODE
+#ifndef NDEBUG
     vc4c::profiler::dumpProfileResults(true);
 #endif
 }
