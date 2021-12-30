@@ -389,11 +389,11 @@ static std::vector<Entry> allKernels = {
     // XXX indices in access chain do not match
     Entry{PENDING_LLVM | PENDING_SPIRV, FAST, "./testing/OpenCV/fft.cl",
         "-DFT=float -DCT=float2 -DLOCAL_SIZE=32 -Dkercn=4 -DRADIX_PROCESS"},
-    Entry{PASSED, FAST, "./testing/OpenCV/flip.cl", "-DT=short16 -DPIX_PER_WI_Y=4"},
+    Entry{EMULATED, FAST, "./testing/OpenCV/flip.cl", "-DT=short16 -DPIX_PER_WI_Y=4"},
     Entry{PASSED, FAST, "./testing/OpenCV/gemm.cl", "-DT=float8 -DLOCAL_SIZE=16 -DWT=float8 -DT1=float"},
     Entry{PASSED, FAST, "./testing/OpenCV/inrange.cl", "-Dcn=4 -DsrcT1=uint -Dkercn=4 -DHAVE_SCALAR -DcolsPerWI=8"},
     Entry{PASSED, FAST, "./testing/OpenCV/lut.cl", "-Dlcn=1 -Ddcn=3 -DdstT=uint8 -DsrcT=short16"},
-    Entry{PASSED, FAST, "./testing/OpenCV/meanstddev.cl",
+    Entry{EMULATED, FAST, "./testing/OpenCV/meanstddev.cl",
         "-DdstT=float -DWGS2_ALIGNED=4 -Dcn=4 -DsqdstT=float -DsrcT=uint -DconvertToDT=convert_float "
         "-DconvertToSDT=convert_float -DWGS=8"},
     Entry{PASSED, FAST, "./testing/OpenCV/minmaxloc.cl",

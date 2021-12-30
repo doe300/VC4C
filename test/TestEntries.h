@@ -75,11 +75,27 @@ namespace test_data
         return std::move(in);
     }
 
+    template <typename T, size_t N>
+    std::vector<T> canaries(std::array<T, N>&& in, T canary = 17, std::size_t num = 11)
+    {
+        std::vector<T> result(in.size() + num, canary);
+        std::copy(in.begin(), in.end(), result.begin());
+        return result;
+    }
+
     template <>
     inline std::vector<float> canaries<float>(std::vector<float>&& in, float canary, std::size_t num)
     {
         in.resize(in.size() + num, canary);
         return std::move(in);
+    }
+
+    template <size_t N>
+    std::vector<float> canaries(std::array<float, N>&& in, float canary, std::size_t num)
+    {
+        std::vector<float> result(in.size() + num, canary);
+        std::copy(in.begin(), in.end(), result.begin());
+        return result;
     }
 
     template <typename R, typename T = R, typename Func = std::function<R(T)>>
@@ -617,6 +633,8 @@ namespace test_data
 
     template <typename T>
     using Buffer = std::vector<T>;
+    template <typename T, std::size_t N>
+    using Vector = std::array<T, N>;
 
     template <typename... Parameters>
     class TestDataBuilder
@@ -631,6 +649,16 @@ namespace test_data
 
         template <typename T>
         struct is_vector<std::vector<T>> : std::true_type
+        {
+        };
+
+        template <typename T>
+        struct is_array : std::false_type
+        {
+        };
+
+        template <typename T, std::size_t N>
+        struct is_array<std::array<T, N>> : std::true_type
         {
         };
 
@@ -687,7 +715,15 @@ namespace test_data
         }
 
         template <std::size_t N>
-        std::enable_if_t<!is_vector<ParameterType<N>>::value> setParameter(ParameterType<N>&& param)
+        std::enable_if_t<is_array<ParameterType<N>>::value> setParameter(ParameterType<N>&& param)
+        {
+            data.kernelArguments[N] = toVectorParameter(
+                canaries(std::move(param), static_cast<typename ParameterType<N>::value_type>(17 * (N + 1))));
+        }
+
+        template <std::size_t N>
+        std::enable_if_t<!is_vector<ParameterType<N>>::value && !is_array<ParameterType<N>>::value> setParameter(
+            ParameterType<N>&& param)
         {
             data.kernelArguments[N] = toScalarParameter(std::move(param));
         }

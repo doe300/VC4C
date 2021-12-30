@@ -176,6 +176,26 @@ Optional<std::vector<uint8_t>> CompilationData::getRawData() const
     return data ? data->getRawData() : Optional<std::vector<uint8_t>>{};
 }
 
+bool CompilationData::getFilePath(std::string& outPath) const
+{
+    if(auto path = (data ? data->getFilePath() : Optional<std::string>{}))
+    {
+        outPath = *std::move(path);
+        return true;
+    }
+    return false;
+}
+
+bool CompilationData::getRawData(std::vector<uint8_t>& outData) const
+{
+    if(auto rawData = data ? data->getRawData() : Optional<std::vector<uint8_t>>{})
+    {
+        outData = *std::move(rawData);
+        return true;
+    }
+    return false;
+}
+
 void CompilationData::readInto(std::ostream& out) const
 {
     if(data)
@@ -430,12 +450,13 @@ static CompilationData runPrecompiler(const CompilationData& input, const Config
             std::to_string(static_cast<unsigned>(outputType)));
 
     std::string extendedOptions = options;
-    if(auto inputFile = input.getFilePath())
+    std::string inputFile;
+    if(input.getFilePath(inputFile))
     {
         // for resolving relative includes
         std::array<char, 1024> buffer{};
         buffer.fill(0);
-        strncpy(buffer.data(), inputFile->data(), std::min(buffer.size(), inputFile->size()));
+        strncpy(buffer.data(), inputFile.data(), std::min(buffer.size(), inputFile.size()));
         std::string tmp = dirname(buffer.data());
         extendedOptions.append(" -I ").append(tmp);
     }

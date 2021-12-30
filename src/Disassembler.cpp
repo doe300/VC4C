@@ -218,10 +218,11 @@ void extractBinary(const CompilationData& binary, ModuleHeader& module, StableLi
     std::vector<qpu_asm::Instruction>& instructions)
 {
     std::vector<uint64_t> binaryData;
-    if(auto rawData = binary.getRawData())
+    std::vector<uint8_t> rawData;
+    if(binary.getRawData(rawData))
     {
-        binaryData.resize(rawData->size() / sizeof(uint64_t));
-        std::memcpy(binaryData.data(), rawData->data(), (rawData->size() / sizeof(uint64_t)) * sizeof(uint64_t));
+        binaryData.resize(rawData.size() / sizeof(uint64_t));
+        std::memcpy(binaryData.data(), rawData.data(), (rawData.size() / sizeof(uint64_t)) * sizeof(uint64_t));
     }
     else
     {

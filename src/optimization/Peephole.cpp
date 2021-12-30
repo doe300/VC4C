@@ -329,9 +329,13 @@ void optimizations::removeObsoleteInstructions(
                 }
                 auto readerIt =
                     findSingleReaderInBlock(it, it.getBasicBlock()->walkEnd(), moveOut, registerMap, inIt->second);
+                auto beforeReaderIt =
+                    !readerIt.isStartOfBlock() ? readerIt.copy().previousInBlock() : Optional<InstructionWalker>{};
                 if(!readerIt.isEndOfBlock() && readerIt->readsLocal(moveOut) && !readerIt->hasUnpackMode() &&
                     !readerIt->getVectorRotation() && !nextIt.isEndOfMethod() &&
-                    canRemoveInstructionBetween(lastInstruction, readerIt, registerMap))
+                    canRemoveInstructionBetween(lastInstruction, readerIt, registerMap) && beforeReaderIt &&
+                    canRemoveInstructionBetween(*beforeReaderIt, readerIt, registerMap) &&
+                    !(*beforeReaderIt)->writesLocal(moveIn))
                 {
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Removing simple move with input and output mapped to the same register file and single "

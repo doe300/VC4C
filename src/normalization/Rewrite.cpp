@@ -189,7 +189,7 @@ static void mapPhiMoves(BasicBlock& sourceBlock, const Local* targetLabel, FastA
         }
     }
     // Since originally the value of the PHI node is set after the jump (at the start of the destination basic
-    // block)  and we have conditional branches "jump to A or B", we need to only set the value if we take the
+    // block) and we have conditional branches "jump to A or B", we need to only set the value if we take the
     // (conditional) branch jumping to this basic block.
 
     if(jumpCondition != COND_ALWAYS && !condition.isUndefined())
@@ -276,7 +276,7 @@ static void mapPhiMoves(BasicBlock& sourceBlock, const Local* targetLabel, FastA
     }
 }
 
-static void setPhiReferences(const intermediate::PhiNode& node)
+static void setPhiReferences(const intermediate::PhiNode& node, Local* origLocal)
 {
     // set reference of local to original reference, if always the same for all possible sources
     if(auto output = node.checkOutputLocal())
@@ -287,7 +287,8 @@ static void setPhiReferences(const intermediate::PhiNode& node)
             if(!pair.second.checkLocal())
                 // cannot set universal reference
                 return;
-            if(pair.second.hasLocal(output) || pair.second.local()->getBase(true) == output)
+            if(pair.second.hasLocal(output) || pair.second.local()->getBase(true) == output ||
+                pair.second.hasLocal(origLocal) || pair.second.local()->getBase(true) == origLocal)
                 // phi node references its own result, ignore
                 continue;
             if(ref != nullptr && pair.second.local()->getBase(true) != ref)
@@ -298,8 +299,11 @@ static void setPhiReferences(const intermediate::PhiNode& node)
 
         if(ref && node.getOutput()->type.getPointerType())
             node.getOutput()->local()->set(ReferenceData(*ref, ANY_ELEMENT));
-        CPPLOG_LAZY(
-            logging::Level::DEBUG, log << "PHI output: " << node.getOutput()->to_string(true, true) << logging::endl);
+        if(ref && origLocal->type.getPointerType())
+            origLocal->set(ReferenceData(*ref, ANY_ELEMENT));
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "PHI output: " << node.getOutput()->to_string(true, true) << " (for " << origLocal->to_string(true)
+                << ')' << logging::endl);
     }
 }
 
@@ -308,7 +312,7 @@ void normalization::eliminatePhiNodes(const Module& module, Method& method, cons
     // 1. search for all phi-nodes, remove from instructions and create mapping
     // mapping of source block -> target block -> phi node data
     FastMap<const Local*, FastMap<const Local*, FastAccessList<PhiMove>>> nodeMapping;
-    FastSet<std::shared_ptr<intermediate::PhiNode>> phiNodes;
+    FastMap<std::shared_ptr<intermediate::PhiNode>, Local*> phiNodes;
     for(auto& block : method)
     {
         auto it = block.walk();
@@ -324,12 +328,25 @@ void normalization::eliminatePhiNodes(const Module& module, Method& method, cons
                 auto targetLabel = block.getLabel()->getLabel();
 
                 for(const auto& entry : phiNode->getValuesForLabels())
-                {
                     nodeMapping[entry.first][targetLabel].push_back(PhiMove{sharedNode, entry.second});
-                    phiNodes.emplace(sharedNode);
-                }
 
-                it.erase();
+                /*
+                 * Create temporary value to be inserted into the source blocks and replace original phi-node (in
+                 * destination block) with a move from the temporary value to the original value.
+                 *
+                 * This is required, since otherwise for phi-nodes on branches which depend on the value written by a
+                 * phi-node, inserting a write to the original phi output before the branch would modify the branch
+                 * condition and thus the control flow. By writing all phi-node values to temporaries first and only in
+                 * the destination block overwriting the original values, we avoid this problem and come a lot closer to
+                 * the original behavior of a phi-node being executed "on the edge" between blocks.
+                 *
+                 * Most of the additional copies are eliminated anyway by later optimization steps.
+                 */
+                auto orig = sharedNode->getOutput().value();
+                phiNodes.emplace(sharedNode, orig.local());
+                auto phiTmp = method.addNewLocal(orig.type, orig.local()->name, "phi");
+                sharedNode->setOutput(phiTmp);
+                it.reset(std::make_unique<intermediate::MoveOperation>(orig, phiTmp));
             }
             else
                 it.nextInBlock();
@@ -347,10 +364,10 @@ void normalization::eliminatePhiNodes(const Module& module, Method& method, cons
             mapPhiMoves(*bb, move.first, move.second);
     }
 
-    // 3. update  references where necessary
-    for(auto entry : phiNodes)
+    // 3. update references where necessary
+    for(const auto& entry : phiNodes)
     {
-        setPhiReferences(*entry);
+        setPhiReferences(*entry.first, entry.second);
     }
 }
 

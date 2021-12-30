@@ -144,6 +144,8 @@ namespace vc4c
         SourceType getType() const noexcept;
         [[deprecated]] Optional<std::string> getFilePath() const;
         [[deprecated]] Optional<std::vector<uint8_t>> getRawData() const;
+        bool getFilePath(std::string& outPath) const;
+        bool getRawData(std::vector<uint8_t>& outData) const;
 
         void readInto(std::ostream& out) const;
 

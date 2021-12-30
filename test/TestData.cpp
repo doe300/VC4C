@@ -458,12 +458,16 @@ void test_data::registerGeneralTests()
             9, 10, 11, 12, 13, 14, 15, 16});
     }
 
-    registerTest(TestData{"vector_param", DataFilter::VECTOR_PARAM | DataFilter::USES_LONG, &test_vector_cl_string, "",
-        "test_param",
-        {toVectorParameter(toRange<uint8_t>(0, 16)), toVectorParameter(toRange<uint32_t>(0, 4)),
-            toVectorParameter(toRange<uint64_t>(0, 2)), toBufferParameter(std::vector<uint32_t>(4))},
-        toDimensions(1),
-        {checkParameterEquals(3, std::vector<uint32_t>{0x03020100, 0x07060505, 0x0B0A090B, 0x0F0E0D0F})}});
+    {
+        TestDataBuilder<Vector<uint8_t, 16>, Vector<uint32_t, 4>, Vector<uint64_t, 2>, Buffer<uint32_t>> builder(
+            "vector_param", test_vector_cl_string, "test_param");
+        builder.setFlags(DataFilter::VECTOR_PARAM | DataFilter::USES_LONG);
+        builder.setParameter<0>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+        builder.setParameter<1>({0, 1, 2, 3});
+        builder.setParameter<2>({0, 1});
+        builder.allocateParameter<3>(4);
+        builder.checkParameterEquals<3>({0x03020100, 0x07060505, 0x0B0A090B, 0x0F0E0D0F});
+    }
 
     {
         // XXX LLVM-SPIRV Translator does not support i3 type used for switch in test19
@@ -1242,7 +1246,7 @@ void test_data::registerGeneralTests()
     }
 
     {
-        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>> builder(
+        TestDataBuilder<Vector<uint32_t, 1>, Buffer<uint32_t>> builder(
             "single_element_struct", pocl_test_structs_as_args_cl_string, "test_single");
         builder.setFlags(DataFilter::TYPE_HANDLING);
         builder.setParameter<0>({0x01000102});
@@ -1251,7 +1255,7 @@ void test_data::registerGeneralTests()
     }
 
     {
-        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>> builder(
+        TestDataBuilder<Vector<uint32_t, 4>, Buffer<uint32_t>> builder(
             "two_element_struct", pocl_test_structs_as_args_cl_string, "test_pair");
         builder.setFlags(DataFilter::TYPE_HANDLING);
         builder.setParameter<0>({0x01010101, 0x23232323, 0x45454545, 0x67676767});
@@ -1260,7 +1264,7 @@ void test_data::registerGeneralTests()
     }
 
     {
-        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>> builder(
+        TestDataBuilder<Vector<uint32_t, 12>, Buffer<uint32_t>> builder(
             "multi_element_struct", pocl_test_structs_as_args_cl_string, "test_kernel");
         builder.setFlags(DataFilter::TYPE_HANDLING);
         builder.setParameter<0>({0x01001001, 0x02002002, 0x03003003, 0x04004004, 0x05005005, 0xDEADDEAD, 0x06006006,
@@ -1433,6 +1437,283 @@ void test_data::registerGeneralTests()
         // group 0 calculates lid 0 + ... + lid 3
         builder.checkParameterEquals<3>(
             {272 + 306 + 340 + 374, 408 + 442 + 476 + 510, 544 + 578 + 612 + 646, 680 + 714 + 748 + 782});
+    }
+
+    {
+        TestDataBuilder<Buffer<float>, int32_t, int32_t, Buffer<float>, int32_t, int32_t, int32_t, int32_t, int32_t,
+            int32_t>
+            builder("OpenCV_flip_rows_float2", OpenCV_flip_cl_string, "arithm_flip_rows",
+                "-DT=float2 -DT1=float -Dkercn=2 -Dcn=1 -DPIX_PER_WI_Y=5");
+        // one work-item per column (X) * DPIX_PER_WI_Y rows (Y) -> covers 10 * 10
+        builder.setDimensions(10, 1, 1, 1, 2, 1);
+        builder.setParameter<0>(toRange<float>(0, 8u /* width */ * 8u /* height */ * 2u /* components */));
+        builder.setParameter<1>(2u * sizeof(float) * 8u); // source step = row stride
+        builder.setParameter<2>(0);                       // source offset
+        builder.allocateParameter<3>(8u /* width */ * 8u /* height */ * 2u /* components */);
+        builder.setParameter<4>(2u * sizeof(float) * 8u); // destination step = row stride
+        builder.setParameter<5>(0);                       // destination offset
+        builder.setParameter<6>(8);                       // rows
+        builder.setParameter<7>(8);                       // columns
+        builder.setParameter<8>(8);                       // thread rows
+        builder.setParameter<9>(8);                       // thread columns
+        builder.checkParameterEquals<3>(
+            {112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, //
+                96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111,  //
+                80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95,              //
+                64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79,              //
+                48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,              //
+                32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,              //
+                16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,              //
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+    }
+
+    {
+        TestDataBuilder<Buffer<uint8_t>, int32_t, int32_t, Buffer<uint8_t>, int32_t, int32_t, int32_t, int32_t, int32_t,
+            int32_t>
+            builder("OpenCV_flip_rows_uchar3", OpenCV_flip_cl_string, "arithm_flip_rows",
+                "-DT=uchar3 -DT1=uchar -Dkercn=3 -Dcn=3 -DPIX_PER_WI_Y=5");
+        // one work-item per column (X) * DPIX_PER_WI_Y rows (Y) -> covers 10 * 10
+        builder.setDimensions(10, 1, 1, 1, 2, 1);
+        builder.setParameter<0>(toRange<uint8_t>(0, 8u /* width */ * 8u /* height */ * 3u /* components */));
+        builder.setParameter<1>(3u * 8u); // source step = row stride
+        builder.setParameter<2>(0);       // source offset
+        builder.allocateParameter<3>(8u /* width */ * 8u /* height */ * 3u /* components */);
+        builder.setParameter<4>(3u * 8u); // destination step = row stride
+        builder.setParameter<5>(0);       // destination offset
+        builder.setParameter<6>(8);       // rows
+        builder.setParameter<7>(8);       // columns
+        builder.setParameter<8>(8);       // thread rows
+        builder.setParameter<9>(8);       // thread columns
+        builder.checkParameterEquals<3>({168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183,
+            184, 185, 186, 187, 188, 189, 190, 191, //
+            144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164,
+            165, 166, 167, //
+            120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140,
+            141, 142, 143, //
+            96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117,
+            118, 119,                                                                                       //
+            72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, //
+            48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, //
+            24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, //
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+    }
+
+    {
+        // FIXME hangs sometimes in barrier across all work-items (at least with clang library front-end)
+        TestDataBuilder<Buffer<float>, int32_t, int32_t, Buffer<float>, int32_t, int32_t, int32_t, int32_t, int32_t,
+            int32_t>
+            builder("OpenCV_flip_columns_float2", OpenCV_flip_cl_string, "arithm_flip_cols",
+                "-DT=float2 -DT1=float -Dkercn=2 -Dcn=1 -DPIX_PER_WI_Y=5");
+        // one work-item per column (X) * DPIX_PER_WI_Y rows (Y) -> covers 10 * 10
+        builder.setDimensions(10, 1, 1, 1, 2, 1);
+        builder.setParameter<0>(toRange<float>(0, 8u /* width */ * 8u /* height */ * 2u /* components */));
+        builder.setParameter<1>(2u * sizeof(float) * 8u); // source step = row stride
+        builder.setParameter<2>(0);                       // source offset
+        builder.allocateParameter<3>(8u /* width */ * 8u /* height */ * 2u /* components */);
+        builder.setParameter<4>(2u * sizeof(float) * 8u); // destination step = row stride
+        builder.setParameter<5>(0);                       // destination offset
+        builder.setParameter<6>(8);                       // rows
+        builder.setParameter<7>(8);                       // columns
+        builder.setParameter<8>(8);                       // thread rows
+        builder.setParameter<9>(8);                       // thread columns
+        builder.checkParameterEquals<3>({
+            15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,                          //
+            31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16,                //
+            47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32,                //
+            63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48,                //
+            79, 78, 77, 76, 75, 74, 73, 72, 71, 70, 69, 68, 67, 66, 65, 64,                //
+            95, 94, 93, 92, 91, 90, 89, 88, 87, 86, 85, 84, 83, 82, 81, 80,                //
+            111, 110, 109, 108, 107, 106, 105, 104, 103, 102, 101, 100, 99, 98, 97, 96,    //
+            127, 126, 125, 124, 123, 122, 121, 120, 119, 118, 117, 116, 115, 114, 113, 112 //
+        });
+    }
+
+    {
+        TestDataBuilder<Buffer<uint8_t>, int32_t, int32_t, Buffer<uint8_t>, int32_t, int32_t, int32_t, int32_t, int32_t,
+            int32_t>
+            builder("OpenCV_flip_columns_uchar3", OpenCV_flip_cl_string, "arithm_flip_cols",
+                "-DT=uchar3 -DT1=uchar -Dkercn=3 -Dcn=3 -DPIX_PER_WI_Y=5");
+        // one work-item per column (X) * DPIX_PER_WI_Y rows (Y) -> covers 10 * 10
+        builder.setDimensions(10, 1, 1, 1, 2, 1);
+        builder.setParameter<0>(toRange<uint8_t>(0, 8u /* width */ * 8u /* height */ * 3u /* components */));
+        builder.setParameter<1>(3u * 8u); // source step = row stride
+        builder.setParameter<2>(0);       // source offset
+        builder.allocateParameter<3>(8u /* width */ * 8u /* height */ * 3u /* components */);
+        builder.setParameter<4>(3u * 8u); // destination step = row stride
+        builder.setParameter<5>(0);       // destination offset
+        builder.setParameter<6>(8);       // rows
+        builder.setParameter<7>(8);       // columns
+        builder.setParameter<8>(8);       // thread rows
+        builder.setParameter<9>(8);       // thread columns
+        builder.checkParameterEquals<3>(
+            {21, 22, 23, 18, 19, 20, 15, 16, 17, 12, 13, 14, 9, 10, 11, 6, 7, 8, 3, 4, 5, 0, 1, 2,              //
+                45, 46, 47, 42, 43, 44, 39, 40, 41, 36, 37, 38, 33, 34, 35, 30, 31, 32, 27, 28, 29, 24, 25, 26, //
+                69, 70, 71, 66, 67, 68, 63, 64, 65, 60, 61, 62, 57, 58, 59, 54, 55, 56, 51, 52, 53, 48, 49, 50, //
+                93, 94, 95, 90, 91, 92, 87, 88, 89, 84, 85, 86, 81, 82, 83, 78, 79, 80, 75, 76, 77, 72, 73, 74, //
+                117, 118, 119, 114, 115, 116, 111, 112, 113, 108, 109, 110, 105, 106, 107, 102, 103, 104, 99, 100, 101,
+                96, 97, 98, //
+                141, 142, 143, 138, 139, 140, 135, 136, 137, 132, 133, 134, 129, 130, 131, 126, 127, 128, 123, 124, 125,
+                120, 121, 122, //
+                165, 166, 167, 162, 163, 164, 159, 160, 161, 156, 157, 158, 153, 154, 155, 150, 151, 152, 147, 148, 149,
+                144, 145, 146, //
+                189, 190, 191, 186, 187, 188, 183, 184, 185, 180, 181, 182, 177, 178, 179, 174, 175, 176, 171, 172, 173,
+                168, 169, 170});
+    }
+
+    {
+        TestDataBuilder<Buffer<float>, int32_t, int32_t, Buffer<float>, int32_t, int32_t, int32_t, int32_t, int32_t,
+            int32_t>
+            builder("OpenCV_flip_rows_columns_float2", OpenCV_flip_cl_string, "arithm_flip_rows_cols",
+                "-DT=float2 -DT1=float -Dkercn=2 -Dcn=1 -DPIX_PER_WI_Y=5");
+        // one work-item per column (X) * DPIX_PER_WI_Y rows (Y) -> covers 10 * 10
+        builder.setDimensions(10, 1, 1, 1, 2, 1);
+        builder.setParameter<0>(toRange<float>(0, 8u /* width */ * 8u /* height */ * 2u /* components */));
+        builder.setParameter<1>(2u * sizeof(float) * 8u); // source step = row stride
+        builder.setParameter<2>(0);                       // source offset
+        builder.allocateParameter<3>(8u /* width */ * 8u /* height */ * 2u /* components */);
+        builder.setParameter<4>(2u * sizeof(float) * 8u); // destination step = row stride
+        builder.setParameter<5>(0);                       // destination offset
+        builder.setParameter<6>(8);                       // rows
+        builder.setParameter<7>(8);                       // columns
+        builder.setParameter<8>(8);                       // thread rows
+        builder.setParameter<9>(8);                       // thread columns
+        builder.checkParameterEquals<3>(toRange<float>(8.0f * 8.0f * 2.0f - 1.0f, -1.0f, -1.0f));
+    }
+
+    {
+        TestDataBuilder<Buffer<uint8_t>, int32_t, int32_t, Buffer<uint8_t>, int32_t, int32_t, int32_t, int32_t, int32_t,
+            int32_t>
+            builder("OpenCV_flip_rows_columns_uchar3", OpenCV_flip_cl_string, "arithm_flip_rows_cols",
+                "-DT=uchar3 -DT1=uchar -Dkercn=3 -Dcn=3 -DPIX_PER_WI_Y=5");
+        // one work-item per column (X) * DPIX_PER_WI_Y rows (Y) -> covers 10 * 10
+        builder.setDimensions(10, 1, 1, 1, 2, 1);
+        builder.setParameter<0>(toRange<uint8_t>(0, 8u /* width */ * 8u /* height */ * 3u /* components */));
+        builder.setParameter<1>(3u * 8u); // source step = row stride
+        builder.setParameter<2>(0);       // source offset
+        builder.allocateParameter<3>(8u /* width */ * 8u /* height */ * 3u /* components */);
+        builder.setParameter<4>(3u * 8u); // destination step = row stride
+        builder.setParameter<5>(0);       // destination offset
+        builder.setParameter<6>(8);       // rows
+        builder.setParameter<7>(8);       // columns
+        builder.setParameter<8>(8);       // thread rows
+        builder.setParameter<9>(8);       // thread columns
+        builder.checkParameterEquals<3>({
+            189, 190, 191, 186, 187, 188, 183, 184, 185, 180, 181, 182, 177, 178, 179, 174, 175, 176, 171, 172, 173,
+            168, 169, 170, 165, 166, 167, 162, 163, 164, 159, 160, 161, 156, 157, 158, 153, 154, 155, 150, 151, 152,
+            147, 148, 149, 144, 145, 146, //
+            141, 142, 143, 138, 139, 140, 135, 136, 137, 132, 133, 134, 129, 130, 131, 126, 127, 128, 123, 124, 125,
+            120, 121, 122, //
+            117, 118, 119, 114, 115, 116, 111, 112, 113, 108, 109, 110, 105, 106, 107, 102, 103, 104, 99, 100, 101, 96,
+            97, 98,                                                                                         //
+            93, 94, 95, 90, 91, 92, 87, 88, 89, 84, 85, 86, 81, 82, 83, 78, 79, 80, 75, 76, 77, 72, 73, 74, //
+            69, 70, 71, 66, 67, 68, 63, 64, 65, 60, 61, 62, 57, 58, 59, 54, 55, 56, 51, 52, 53, 48, 49, 50, //
+            45, 46, 47, 42, 43, 44, 39, 40, 41, 36, 37, 38, 33, 34, 35, 30, 31, 32, 27, 28, 29, 24, 25, 26, //
+            21, 22, 23, 18, 19, 20, 15, 16, 17, 12, 13, 14, 9, 10, 11, 6, 7, 8, 3, 4, 5, 0, 1, 2            //
+        });
+    }
+
+    {
+        TestDataBuilder<Buffer<int16_t>, int32_t, int32_t, int32_t, int32_t, int32_t, Buffer<float>> builder(
+            "OpenCV_mean_stddev", OpenCV_meanstddev_cl_string, "meanStdDev",
+            "-DsrcT=short2 -DdstT=float2 -DsqdstT=float2 -DconvertToDT=convert_float2 -DconvertToSDT=convert_float2 "
+            "-Dcn=2 -DWGS=12 -DWGS2_ALIGNED=8 -DHAVE_SRC_CONT");
+        builder.setFlags(DataFilter::ASYNC_BARRIER | DataFilter::COMPLEX_KERNEL);
+        builder.setDimensions(12, 1, 1, 2);
+        builder.setParameter<0>(toRange<int16_t>(-20, 20));
+        builder.setParameter<1>(1);  // source step
+        builder.setParameter<2>(0);  // source offset
+        builder.setParameter<3>(0);  // columns (ignored)
+        builder.setParameter<4>(20); // total (apparently in short2 entries)
+        builder.setParameter<5>(2);  // groups
+        builder.allocateParameter<6>(2 /* float 2*/ * 2 /* sum and square sum */ * 2 /* 2 groups */);
+        builder.checkParameterEquals<6>({
+            -20 - 18 - 16 - 14 - 12 - 10 - 8 - 6 - 4 - 2 + 0 + 2,
+            -19 - 17 - 15 - 13 - 11 - 9 - 7 - 5 - 3 - 1 + 1 + 3,
+            4 + 6 + 8 + 10 + 12 + 14 + 16 + 18,
+            5 + 7 + 9 + 11 + 13 + 15 + 17 + 19,
+            (-20 * -20) + (-18 * -18) + (-16 * -16) + (-14 * -14) + (-12 * -12) + (-10 * -10) + (-8 * -8) + (-6 * -6) +
+                (-4 * -4) + (-2 * -2) + (0 * 0) + (2 * 2),
+            (-19 * -19) + (-17 * -17) + (-15 * -15) + (-13 * -13) + (-11 * -11) + (-9 * -9) + (-7 * -7) + (-5 * -5) +
+                (-3 * -3) + (-1 * -1) + (1 * 1) + (3 * 3),
+            (4 * 4) + (6 * 6) + (8 * 8) + (10 * 10) + (12 * 12) + (14 * 14) + (16 * 16) + (18 * 18),
+            (5 * 5) + (7 * 7) + (9 * 9) + (11 * 11) + (13 * 13) + (15 * 15) + (17 * 17) + (19 * 19),
+        });
+    }
+
+    {
+        TestDataBuilder<Buffer<int16_t>, int32_t, int32_t, Buffer<uint8_t>, int32_t, int32_t, Buffer<float>, int32_t,
+            int32_t, int32_t, int32_t, float, float>
+            builder("OpenCV_normalize", OpenCV_normalize_cl_string, "normalizek",
+                "-Dcn=2 -DsrcT=short2 -DdstT=float2 -DrowsPerWI=5 -DworkT=float2 -DconvertToWT=convert_float2 "
+                "-DconvertToDT= -DHAVE_SCALE -DHAVE_DELTA");
+        builder.setDimensions(10, 1, 1, 1, 2, 1);          // 10 columns / 2 * 5 rows
+        builder.setParameter<0>(toRange<int16_t>(0, 200)); // source data, 10 * 10 * 2 entries
+        builder.setParameter<1>(2 * sizeof(int16_t) * 10); // source step = row stride
+        builder.setParameter<2>(0);                        // source offset
+        builder.setParameter<3>({0x1});                    // mask data
+        builder.setParameter<4>(0);                        // mask step
+        builder.setParameter<5>(0);                        // mask offset
+        builder.allocateParameter<6>(200);                 // destination data, 10 * 10 * 2 entries
+        builder.setParameter<7>(2 * sizeof(float) * 10);   // destination step = row stride
+        builder.setParameter<8>(0);                        // destination offset
+        builder.setParameter<9>(10);                       // destination rows
+        builder.setParameter<10>(10);                      // destination columns
+        builder.setParameter<11>(1.0f / 256.0f);           // scale
+        builder.setParameter<12>(3.0f);                    // delta
+        builder.checkParameterEquals<6>(
+            toRange(3.0f, 3.0f + 200.0f / 256.0f, 1.0f / 256.0f)); // out = in * scale + delta
+    }
+
+    {
+        TestDataBuilder<Buffer<uint32_t>, int32_t, int32_t, int32_t, int32_t, Buffer<uint32_t>, int32_t, int32_t>
+            builder("OpenCV_transpose", OpenCV_transpose_cl_string, "transpose",
+                "-Dcn=1 -DT=uint -DTILE_DIM=10 -DBLOCK_ROWS=1 -DrowsPerWI=5");
+        builder.setFlags(DataFilter::COMPLEX_KERNEL | DataFilter::CONTROL_FLOW);
+        builder.setDimensions(10, 1, 1, 1, 2, 1);           // 10 columns / 2 * 5 rows
+        builder.setParameter<0>(toRange<uint32_t>(0, 100)); // source data, 10 * 10 entries
+        builder.setParameter<1>(sizeof(int32_t) * 10);      // source step = row stride
+        builder.setParameter<2>(0);                         // source offset
+        builder.setParameter<3>(10);                        // source rows
+        builder.setParameter<4>(10);                        // source columns
+        builder.allocateParameter<5>(100);                  // destination data, 10 * 10 entries
+        builder.setParameter<6>(sizeof(int32_t) * 10);      // destination step = row stride
+        builder.setParameter<7>(0);                         // destination offset
+        builder.checkParameterEquals<5>({
+            0, 10, 20, 30, 40, 50, 60, 70, 80, 90, //
+            1, 11, 21, 31, 41, 51, 61, 71, 81, 91, //
+            2, 12, 22, 32, 42, 52, 62, 72, 82, 92, //
+            3, 13, 23, 33, 43, 53, 63, 73, 83, 93, //
+            4, 14, 24, 34, 44, 54, 64, 74, 84, 94, //
+            5, 15, 25, 35, 45, 55, 65, 75, 85, 95, //
+            6, 16, 26, 36, 46, 56, 66, 76, 86, 96, //
+            7, 17, 27, 37, 47, 57, 67, 77, 87, 97, //
+            8, 18, 28, 38, 48, 58, 68, 78, 88, 98, //
+            9, 19, 29, 39, 49, 59, 69, 79, 89, 99, //
+        });
+    }
+
+    {
+        TestDataBuilder<Buffer<uint32_t>, int32_t, int32_t, int32_t> builder("OpenCV_transpose_inplace",
+            OpenCV_transpose_cl_string, "transpose_inplace",
+            "-Dcn=1 -DT=uint -DTILE_DIM=10 -DBLOCK_ROWS=1 -DrowsPerWI=5");
+        builder.setFlags(DataFilter::COMPLEX_KERNEL | DataFilter::CONTROL_FLOW);
+        builder.setDimensions(10, 1, 1, 1, 2, 1);           // 10 columns / 2 * 5 rows
+        builder.setParameter<0>(toRange<uint32_t>(0, 100)); // source data, 10 * 10 entries
+        builder.setParameter<1>(sizeof(int32_t) * 10);      // source step = row stride
+        builder.setParameter<2>(0);                         // source offset
+        builder.setParameter<3>(10);                        // source rows
+        builder.checkParameterEquals<0>({
+            0, 10, 20, 30, 40, 50, 60, 70, 80, 90, //
+            1, 11, 21, 31, 41, 51, 61, 71, 81, 91, //
+            2, 12, 22, 32, 42, 52, 62, 72, 82, 92, //
+            3, 13, 23, 33, 43, 53, 63, 73, 83, 93, //
+            4, 14, 24, 34, 44, 54, 64, 74, 84, 94, //
+            5, 15, 25, 35, 45, 55, 65, 75, 85, 95, //
+            6, 16, 26, 36, 46, 56, 66, 76, 86, 96, //
+            7, 17, 27, 37, 47, 57, 67, 77, 87, 97, //
+            8, 18, 28, 38, 48, 58, 68, 78, 88, 98, //
+            9, 19, 29, 39, 49, 59, 69, 79, 89, 99, //
+        });
     }
 };
 

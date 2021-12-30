@@ -98,6 +98,10 @@ create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ NVIDIA/VectorAdd.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ OpenCLIPP/Histogram.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ pocl/test_structs_as_args.cl)
 create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ rodinia/nearestNeighbor_kernel.cl)
+create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ OpenCV/flip.cl)
+create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ OpenCV/meanstddev.cl)
+create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ OpenCV/normalize.cl)
+create_header(${CMAKE_CURRENT_SOURCE_DIR}/../testing/ OpenCV/transpose.cl)
 
 set(TEST_FILES_HEADER ${CMAKE_CURRENT_BINARY_DIR}/test_files.h)
 add_custom_command(OUTPUT ${TEST_FILES_HEADER}
