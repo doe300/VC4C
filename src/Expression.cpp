@@ -3,6 +3,7 @@
 #include "InstructionWalker.h"
 #include "Profiler.h"
 #include "analysis/DebugGraph.h"
+#include "analysis/MemoryAnalysis.h"
 #include "intermediate/Helper.h"
 #include "intermediate/operators.h"
 #include "log.h"
@@ -171,7 +172,7 @@ static std::shared_ptr<Expression> createRecursiveExpressionInner(const intermed
         {
             for(auto& arg : instr.getArguments())
             {
-                if(auto writer = arg.getSingleWriter())
+                if(auto writer = analysis::getSingleWriter(arg))
                 {
                     if(parentsCache.find(arg.local()) != parentsCache.end())
                         continue;

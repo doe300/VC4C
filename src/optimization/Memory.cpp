@@ -1208,8 +1208,8 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
         auto insertIt = it.copy().previousInBlock();
         for(auto& calc : secondAddressCalculations)
         {
-            insertIt.emplace(calc.release());
-            calc.safeErase();
+            auto decorations = insertIt.emplace(calc.release()).decoration;
+            calc.safeErase(decorations);
         }
 
         auto customAddressOffsets =
@@ -1263,8 +1263,8 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
         auto insertIt = it.copy().previousInBlock();
         for(auto& calc : secondAddressCalculations)
         {
-            insertIt.emplace(calc.release());
-            calc.safeErase();
+            auto decorations = insertIt.emplace(calc.release()).decoration;
+            calc.safeErase(decorations);
         }
 
         auto replicatedStride =
@@ -1768,12 +1768,15 @@ NODISCARD static InstructionWalker findGroupOfLoweredRegisterAccesses(
                         << " with byte-offset " << byteOffset.to_string() << " storing "
                         << loweredCacheEntry->valueType.to_string() << " from " << access->getData().to_string()
                         << logging::endl);
-            else
+            else if(op == intermediate::MemoryOperation::READ)
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Found read from register-lowered memory " << loweredCacheEntry->loweredRegister.to_string()
                         << " with byte-offset " << byteOffset.to_string() << " loading "
                         << loweredCacheEntry->valueType.to_string() << " into " << access->getData().to_string()
                         << logging::endl);
+            else
+                // access with unsupported operation (e.g. fill), finish group
+                break;
 
             if(group.baseByteOffset.isUndefined())
                 group.baseByteOffset = byteOffset;

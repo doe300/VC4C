@@ -257,6 +257,17 @@ StackAllocation::StackAllocation(const std::string& name, DataType type, std::si
             CompilationStep::GENERAL, "Stack allocations must have private address space", to_string());
 }
 
+LCOV_EXCL_START
+std::string StackAllocation::to_string(bool withContent) const
+{
+    std::string suffix = "";
+    if(withContent)
+        suffix = " (size: " + std::to_string(size) + ", align: " + std::to_string(alignment) +
+            ", offset: " + std::to_string(offset) + ")";
+    return Local::to_string(withContent) + suffix;
+}
+LCOV_EXCL_STOP
+
 bool StackAllocation::residesInMemory() const noexcept
 {
     return true;

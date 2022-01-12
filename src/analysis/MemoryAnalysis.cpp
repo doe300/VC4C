@@ -113,8 +113,12 @@ static FastMap<Value, intermediate::InstructionDecorations> findDirectLevelAddit
 const intermediate::IntermediateInstruction* analysis::getSingleWriter(
     const Value& val, const intermediate::IntermediateInstruction* defaultInst)
 {
+    auto loc = val.checkLocal();
+    if(!loc)
+        return nullptr;
+
     const intermediate::IntermediateInstruction* writer = nullptr;
-    for(const auto& w : val.local()->getUsers(LocalUse::Type::WRITER))
+    for(const auto& w : loc->getUsers(LocalUse::Type::WRITER))
     {
         if(auto memoryInstruction = dynamic_cast<const intermediate::MemoryInstruction*>(w))
         {
@@ -136,12 +140,9 @@ const intermediate::IntermediateInstruction* analysis::getSingleWriter(
     }
     if(!writer)
     {
-        if(auto loc = val.checkLocal())
-        {
-            // if the value is the parameter/global directly, the address write might not yet exist
-            if(loc->residesInMemory())
-                return defaultInst;
-        }
+        // if the value is the parameter/global directly, the address write might not yet exist
+        if(loc->residesInMemory())
+            return defaultInst;
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Unhandled case, value does not have exactly 1 writer for '" << val.to_string()
                 << "': " << (defaultInst ? defaultInst->to_string() : "(null)") << logging::endl);

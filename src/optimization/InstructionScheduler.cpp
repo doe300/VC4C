@@ -281,12 +281,16 @@ static void selectInstructions(analysis::DependencyGraph& graph, BasicBlock& blo
     OpenSet openNodes(NodeSorter(block.size()));
     while(!it.isEndOfBlock())
     {
+        auto decorations = intermediate::InstructionDecorations::NONE;
         if(it.has() &&
             !(it.get<intermediate::Nop>() && !it->hasSideEffects() &&
                 it.get<const intermediate::Nop>()->type != intermediate::DelayType::THREAD_END))
+        {
             // remove all non side-effect NOPs
+            decorations = it->decoration;
             openNodes.emplace(it.release().release());
-        it.safeErase();
+        }
+        it.safeErase(decorations);
     }
 
     // 2. fill again with reordered instructions

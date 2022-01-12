@@ -897,9 +897,13 @@ static Optional<Register> getSourceConstantRegister(InstructionWalker it)
     return {};
 }
 
-static bool canReplaceConstantLoad(
-    InstructionWalker it, const InstructionWalker start, const InstructionWalker match, std::size_t stepsLeft)
+static bool canReplaceConstantLoad(InstructionWalker it, const InstructionWalker start, const InstructionWalker match,
+    std::size_t stepsLeft, const FastSet<const intermediate::IntermediateInstruction*>& applicableInstructions)
 {
+    if(!applicableInstructions.empty())
+        // white-list all applicable instructions, independent of their distance
+        return applicableInstructions.find(it.get()) != applicableInstructions.end();
+
     InstructionWalker pos = it.copy();
     // check whether the instruction last loading the same literal is at most ACCUMULATOR_THRESHOLD_HINT instructions
     // before this one
@@ -915,6 +919,20 @@ static bool canReplaceConstantLoad(
 
 bool optimizations::combineLoadingConstants(const Module& module, Method& method, const Configuration& config)
 {
+    return combineLoadingConstants(method, config, {});
+}
+
+static bool isApplicableInstruction(InstructionWalker it, const BasicBlock& block,
+    const FastSet<const intermediate::IntermediateInstruction*>& applicableInstructions, std::size_t threshold)
+{
+    if(!applicableInstructions.empty())
+        return applicableInstructions.find(it.get()) != applicableInstructions.end();
+    return block.isLocallyLimited(it, it->getOutput()->local(), threshold);
+}
+
+bool optimizations::combineLoadingConstants(Method& method, const Configuration& config,
+    const FastSet<const intermediate::IntermediateInstruction*>& applicableInstructions)
+{
     std::size_t threshold = config.additionalOptions.combineLoadThreshold;
     bool hasChanged = false;
 
@@ -929,13 +947,14 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
                 it->getOutput()->local()->countUsers(LocalUse::Type::WRITER) == 1 &&
                 // TODO also combine is both ranges are not locally limited and overlap for the most part
                 // (or at least if one range completely contains the other range)
-                block.isLocallyLimited(it, it->getOutput()->local(), config.additionalOptions.accumulatorThreshold))
+                isApplicableInstruction(
+                    it, block, applicableInstructions, config.additionalOptions.accumulatorThreshold))
             {
                 if(Optional<Literal> literal = getSourceLiteral(it))
                 {
                     auto immIt = lastConstantWriter.find(literal->unsignedInt());
                     if(immIt != lastConstantWriter.end() && !it->hasSideEffects() &&
-                        canReplaceConstantLoad(it, block.walk(), immIt->second, threshold))
+                        canReplaceConstantLoad(it, block.walk(), immIt->second, threshold, applicableInstructions))
                     {
                         auto oldLocal = it->getOutput()->local();
                         auto newLocal = immIt->second->getOutput()->local();
@@ -957,7 +976,7 @@ bool optimizations::combineLoadingConstants(const Module& module, Method& method
                 {
                     auto regIt = lastLoadRegister.find(*reg);
                     if(regIt != lastLoadRegister.end() && !it->hasSideEffects() &&
-                        canReplaceConstantLoad(it, block.walk(), regIt->second, threshold))
+                        canReplaceConstantLoad(it, block.walk(), regIt->second, threshold, applicableInstructions))
                     {
                         auto oldLocal = it->getOutput()->local();
                         auto newLocal = regIt->second->getOutput()->local();

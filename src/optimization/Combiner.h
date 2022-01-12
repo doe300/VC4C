@@ -26,6 +26,7 @@ namespace vc4c
     {
         struct MoveOperation;
         struct Operation;
+        class IntermediateInstruction;
     } // namespace intermediate
 
     namespace optimizations
@@ -153,6 +154,12 @@ namespace vc4c
          *   %8 = and %5, %6
          */
         bool combineLoadingConstants(const Module& module, Method& method, const Configuration& config);
+        /**
+         * Same as above, but uses the given set of "white-listed" instructions instead of checking for a limited
+         * usage-range
+         */
+        bool combineLoadingConstants(Method& method, const Configuration& config,
+            const FastSet<const intermediate::IntermediateInstruction*>& applicableInstructions);
 
         /*
          * Prepares selections (successive writes to same value with inverted conditions) which write to a local, have

@@ -160,10 +160,14 @@ namespace vc4c
          * InstructionDecorations#MANDATORY_DELAY in which case the instruction is not erased completely, but replaced
          * with a NOP also marked with #MANDATORY_DELAY.
          *
+         * Since the instruction might already be moved somewhere else, its decorations might need to be passed
+         * explicitly as parameter.
+         *
          * @return This instruction walker pointing to the next instruction (as in #erase() if no NOP is inserted, to
          * the instruction after the NOP otherwise).
          */
-        InstructionWalker& safeErase();
+        InstructionWalker& safeErase(
+            intermediate::InstructionDecorations decorations = intermediate::InstructionDecorations::NONE);
         /*
          * Places the given instruction before this position and jumping to the newly inserted position
          *

@@ -392,7 +392,7 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
     }
 
     std::set<LoopInclusionTreeNode*> processedNodes;
-    std::set<const IntermediateInstruction*> processedInsts;
+    FastSet<const IntermediateInstruction*> processedInsts;
 
     // move instructions
     for(auto& loop : inclusionTree->getNodes())
@@ -473,9 +473,13 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
 
     if(hasChanged)
     {
+        logging::debug() << "Combining hoisted loop invariant constant loads..." << logging::endl;
         method.cleanEmptyInstructions();
-        // combine the newly reordered load instructions, since we might have grouped same loads together
-        combineLoadingConstants(module, method, config);
+        // combine the newly reordered load instructions, since we might have grouped same loads together.
+        // all hoisted instructions for the same loop (and therefore moved to the same pre-header block) have the same
+        // usage-range (their definition at the end of the pre-header block + the associated loop), thus we can
+        // deduplicate them without any further usage-range checks.
+        combineLoadingConstants(method, config, processedInsts);
     }
 
     return hasChanged;

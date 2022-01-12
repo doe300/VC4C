@@ -418,6 +418,8 @@ namespace vc4c
         StackAllocation& operator=(const StackAllocation&) = delete;
         StackAllocation& operator=(StackAllocation&&) noexcept = delete;
 
+        std::string to_string(bool withContent = false) const override;
+
         /*
          * Since the "stack" is located in memory, so are allocations on it
          */

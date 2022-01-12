@@ -649,25 +649,6 @@ std::unique_ptr<ControlFlowGraph> ControlFlowGraph::createCFG(Method& method)
     return graph;
 }
 
-std::unique_ptr<ControlFlowGraph> ControlFlowGraph::clone()
-{
-    std::unique_ptr<ControlFlowGraph> graph(new ControlFlowGraph(nodes.size()));
-
-    for(auto& node : nodes)
-    {
-        auto& newNode = graph->getOrCreateNode(node.first);
-        node.second.forAllIncomingEdges([&newNode, &graph](const CFGNode& source, const CFGEdge& edge) -> bool {
-            auto& newSource = graph->getOrCreateNode(source.key);
-            auto& newEdge = newSource.getOrCreateEdge(&newNode, CFGRelation{}).addInput(newSource);
-            newEdge.data.predecessors.emplace(source.key, edge.data.predecessors.at(source.key));
-            newEdge.data.isWorkGroupLoop = edge.data.isWorkGroupLoop;
-            return true;
-        });
-    }
-
-    return graph;
-}
-
 static bool traverseDepthFirstHelper(
     const CFGNode& node, const std::function<ControlFlowVisitResult(const CFGNode&)>& consumer)
 {

@@ -167,7 +167,7 @@ static Literal toLiteral(uint32_t mask, float f)
     return Literal(mask);
 }
 
-static Literal toLiteral(uint32_t mask, int32_t j)
+static constexpr Literal toLiteral(uint32_t mask, int32_t j)
 {
     if((static_cast<int64_t>(j) & 0xFFFFFFFF) != (static_cast<int64_t>(mask) & 0xFFFFFFFF))
         throw CompilationError(CompilationStep::GENERAL,
@@ -175,7 +175,7 @@ static Literal toLiteral(uint32_t mask, int32_t j)
     return Literal(mask);
 }
 
-static Literal toLiteral(uint32_t mask, uint32_t j)
+static constexpr Literal toLiteral(uint32_t mask, uint32_t j)
 {
     if((static_cast<int64_t>(j) & 0xFFFFFFFF) != (static_cast<int64_t>(mask) & 0xFFFFFFFF))
         throw CompilationError(CompilationStep::GENERAL,

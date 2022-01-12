@@ -131,11 +131,6 @@ namespace vc4c
              */
             static std::unique_ptr<ControlFlowGraph> createCFG(Method& method);
 
-            /*
-             * Clone the CFG
-             */
-            std::unique_ptr<ControlFlowGraph> clone();
-
             /**
              * Traverses this CFG depth-first applying the given consumer to every node visited.
              *

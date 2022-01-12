@@ -135,12 +135,6 @@ void TestAnalyses::testControlFlowGraph()
         // no work-group edges (they are only created by optimizations which are not yet run)
         TEST_ASSERT_EQUALS(0u, workGroupEdges.size());
 
-        // Modifying the clone leaves the original CFG intact
-        auto copy = cfg.clone();
-        copy->getNodes().begin()->second.erase();
-        TEST_ASSERT_EQUALS(numNodes - 1, copy->getNodes().size());
-        TEST_ASSERT_EQUALS(numNodes, cfg.getNodes().size());
-
         // Run the optimization steps and do some more checks
         optimize(module);
 
@@ -213,12 +207,6 @@ void TestAnalyses::testControlFlowGraph()
         TEST_ASSERT_EQUALS(8u, implicitEdges.size());
         // no work-group edges (they are only created by optimizations which are not yet run)
         TEST_ASSERT_EQUALS(0u, workGroupEdges.size());
-
-        // Modifying the clone leaves the original CFG intact
-        auto copy = cfg.clone();
-        copy->getNodes().begin()->second.erase();
-        TEST_ASSERT_EQUALS(numNodes - 1, copy->getNodes().size());
-        TEST_ASSERT_EQUALS(numNodes, cfg.getNodes().size());
 
         // Run the optimization steps and do some more checks
         optimize(module);

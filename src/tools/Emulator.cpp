@@ -434,6 +434,19 @@ void Registers::writeRegister(Register reg, const SIMDVector& val, std::bitset<1
             CompilationStep::GENERAL, "Conditional write to periphery registers is not allowed", reg.to_string());
 }
 
+static SIMDVector generateRandomVector()
+{
+    static std::default_random_engine generator;
+    static std::uniform_real_distribution<float> distribution;
+
+    return SIMDVector({Literal(distribution(generator)), Literal(distribution(generator)),
+        Literal(distribution(generator)), Literal(distribution(generator)), Literal(distribution(generator)),
+        Literal(distribution(generator)), Literal(distribution(generator)), Literal(distribution(generator)),
+        Literal(distribution(generator)), Literal(distribution(generator)), Literal(distribution(generator)),
+        Literal(distribution(generator)), Literal(distribution(generator)), Literal(distribution(generator)),
+        Literal(distribution(generator)), Literal(distribution(generator))});
+}
+
 std::pair<SIMDVector, bool> Registers::readRegister(Register reg, bool anyElementUsed)
 {
     if(reg.isGeneralPurpose())
@@ -459,17 +472,7 @@ std::pair<SIMDVector, bool> Registers::readRegister(Register reg, bool anyElemen
     case REG_VARYING.num:
     {
         // returns random floating-point values
-        std::default_random_engine generator;
-        std::uniform_real_distribution<float> distribution;
-        return std::make_pair(
-            SIMDVector({Literal(distribution(generator)), Literal(distribution(generator)),
-                Literal(distribution(generator)), Literal(distribution(generator)), Literal(distribution(generator)),
-                Literal(distribution(generator)), Literal(distribution(generator)), Literal(distribution(generator)),
-                Literal(distribution(generator)), Literal(distribution(generator)), Literal(distribution(generator)),
-                Literal(distribution(generator)), Literal(distribution(generator)), Literal(distribution(generator)),
-                Literal(distribution(generator)), Literal(distribution(generator))}),
-
-            true);
+        return std::make_pair(generateRandomVector(), true);
     }
     case REG_ELEMENT_NUMBER.num:
 
@@ -551,11 +554,11 @@ SIMDVector Registers::readStorageRegister(Register reg, bool anyElementUsed)
     if(vec.first.isUndefined())
     {
         if(anyElementUsed)
-            throw CompilationError(
-                CompilationStep::GENERAL, "Reading from register not previously defined", reg.to_string());
-        else
-            // for ALU operations which are not actually executed (e.g. flags do not match), we can return a dummy value
-            return SIMDVector{};
+            // This could be desired/okay, e.g. for dynamic insertions into vectors, where we need to read the
+            // (initially unset) vector before inserting some value ...
+            logging::warn() << "Reading from register not previously defined: " << reg.to_string() << logging::endl;
+        // ... for ALU operations which are not actually executed (e.g. flags do not match), this is completely harmless
+        return generateRandomVector();
     }
     CPPLOG_LAZY(logging::Level::DEBUG,
         log << "Reading from register '" << reg.to_string(true, true) << "': " << vec.first.to_string(true)

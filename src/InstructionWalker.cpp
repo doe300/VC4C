@@ -184,9 +184,10 @@ InstructionWalker& InstructionWalker::erase()
     return *this;
 }
 
-InstructionWalker& InstructionWalker::safeErase()
+InstructionWalker& InstructionWalker::safeErase(intermediate::InstructionDecorations decorations)
 {
-    if(!isEndOfBlock() && get() && get()->hasDecoration(intermediate::InstructionDecorations::MANDATORY_DELAY))
+    if(has_flag(decorations, intermediate::InstructionDecorations::MANDATORY_DELAY) ||
+        (!isEndOfBlock() && get() && get()->hasDecoration(intermediate::InstructionDecorations::MANDATORY_DELAY)))
     {
         reset(std::make_unique<intermediate::Nop>(intermediate::DelayType::WAIT_REGISTER))
             .addDecorations(intermediate::InstructionDecorations::MANDATORY_DELAY);

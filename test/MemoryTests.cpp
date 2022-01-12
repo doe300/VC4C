@@ -642,6 +642,12 @@ void test_data::registerMemoryTests()
         builder.allocateParameter<6>(16);
         builder.allocateParameter<7>(16);
         builder.checkParameterEquals<0>(toStorageTestResult(toRange<int8_t>(-6, 10)));
+        builder.checkParameterEquals<2>(toRange<int8_t>(-6, 10));
+        builder.checkParameterEquals<3>(toRange<int8_t>(-6 + 3, 10 + 3));
+        builder.checkParameterEquals<4>(toRange<int8_t>(-6 + 7, 10 + 7));
+        builder.checkParameterEquals<5>(toRange<int8_t>(-6 + 11, 10 + 11));
+        builder.checkParameterEquals<6>(toRange<int8_t>(-6 + 13, 10 + 13));
+        builder.checkParameterEquals<7>(toRange<int8_t>(-6 + 17, 10 + 17));
     }
 
     {
@@ -676,6 +682,12 @@ void test_data::registerMemoryTests()
         builder.allocateParameter<6>(16);
         builder.allocateParameter<7>(16);
         builder.checkParameterEquals<0>(toStorageTestResult(toRange<int16_t>(-6, 10)));
+        builder.checkParameterEquals<2>(toRange<int16_t>(-6, 10));
+        builder.checkParameterEquals<3>(toRange<int16_t>(-6 + 3, 10 + 3));
+        builder.checkParameterEquals<4>(toRange<int16_t>(-6 + 7, 10 + 7));
+        builder.checkParameterEquals<5>(toRange<int16_t>(-6 + 11, 10 + 11));
+        builder.checkParameterEquals<6>(toRange<int16_t>(-6 + 13, 10 + 13));
+        builder.checkParameterEquals<7>(toRange<int16_t>(-6 + 17, 10 + 17));
     }
 
     {
@@ -710,6 +722,12 @@ void test_data::registerMemoryTests()
         builder.allocateParameter<6>(16);
         builder.allocateParameter<7>(16);
         builder.checkParameterEquals<0>(toStorageTestResult(toRange<int32_t>(-6, 10)));
+        builder.checkParameterEquals<2>(toRange<int32_t>(-6, 10));
+        builder.checkParameterEquals<3>(toRange<int32_t>(-6 + 3, 10 + 3));
+        builder.checkParameterEquals<4>(toRange<int32_t>(-6 + 7, 10 + 7));
+        builder.checkParameterEquals<5>(toRange<int32_t>(-6 + 11, 10 + 11));
+        builder.checkParameterEquals<6>(toRange<int32_t>(-6 + 13, 10 + 13));
+        builder.checkParameterEquals<7>(toRange<int32_t>(-6 + 17, 10 + 17));
     }
 
     {
@@ -753,6 +771,12 @@ void test_data::registerMemoryTests()
         builder.allocateParameter<6>(16, 0x45);
         builder.allocateParameter<7>(16, 0x46);
         builder.checkParameterEquals<0>(toStorageTestResult(toRange<int64_t>(-6, 10)));
+        builder.checkParameterEquals<2>(toRange<int64_t>(-6, 10));
+        builder.checkParameterEquals<3>(toRange<int64_t>(-6 + 3, 10 + 3));
+        builder.checkParameterEquals<4>(toRange<int64_t>(-6 + 7, 10 + 7));
+        builder.checkParameterEquals<5>(toRange<int64_t>(-6 + 11, 10 + 11));
+        builder.checkParameterEquals<6>(toRange<int64_t>(-6 + 13, 10 + 13));
+        builder.checkParameterEquals<7>(toRange<int64_t>(-6 + 17, 10 + 17));
     }
 
     {

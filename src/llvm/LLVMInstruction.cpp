@@ -12,6 +12,7 @@
 #include "../intermediate/TypeConversions.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intrinsics/Intrinsics.h"
+#include "../normalization/LongOperations.h"
 #include "config.h"
 #include "log.h"
 
@@ -694,23 +695,6 @@ Switch::Switch(Value&& cond, Value&& defaultLabel, FastMap<uint64_t, Value>&& ca
 {
 }
 
-static void insertLongLoad(Method& method, const Local& dest, uint64_t value)
-{
-    auto multiRegisters = Local::getLocalData<MultiRegisterData>(&dest);
-
-    if(!multiRegisters)
-        throw CompilationError(CompilationStep::LLVM_2_IR, "Cannot load 64-bit constant given value", dest.to_string());
-
-    CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Generating loading of scalar 64-bit constant " << value << " into " << dest.to_string()
-            << logging::endl);
-
-    Literal lower(static_cast<uint32_t>(static_cast<uint64_t>(value) & 0x00000000FFFFFFFF));
-    Literal upper(static_cast<uint32_t>((static_cast<uint64_t>(value) & 0xFFFFFFFF00000000) >> 32));
-    method.appendToEnd(std::make_unique<intermediate::LoadImmediate>(multiRegisters->lower->createReference(), lower));
-    method.appendToEnd(std::make_unique<intermediate::LoadImmediate>(multiRegisters->upper->createReference(), upper));
-}
-
 bool Switch::mapInstruction(Method& method)
 {
     CPPLOG_LAZY(logging::Level::DEBUG,
@@ -734,7 +718,7 @@ bool Switch::mapInstruction(Method& method)
         if(option.first > std::numeric_limits<uint32_t>::max())
         {
             comparisonValue = method.addNewLocal(TYPE_INT64, "%switch.comp");
-            insertLongLoad(method, *comparisonValue.local(), option.first);
+            normalization::insertLongLoad(method.appendToEnd(), method, *comparisonValue.local(), option.first);
         }
         else
             comparisonValue = Value(Literal(static_cast<uint32_t>(option.first)), TYPE_INT32);
@@ -767,6 +751,6 @@ bool LongConstant::mapInstruction(Method& method)
         return true;
     }
 
-    insertLongLoad(method, *dest.local(), static_cast<uint64_t>(value));
+    normalization::insertLongLoad(method.appendToEnd(), method, *dest.local(), static_cast<uint64_t>(value));
     return true;
 }

@@ -2212,23 +2212,26 @@ void TestInstructions::testInstructionEquality()
     {
         intermediate::BranchLabel inst(*method.addNewLocal(TYPE_LABEL).local());
         op2 = inst.copyFor(method, "", mapping);
-        TEST_ASSERT_EQUALS(inst, *op2)
+        // Since a copy of the label is created, we cannot compare the instructions directly
+        TEST_ASSERT_EQUALS(inst.to_string(), op2->to_string())
     }
 
     {
         intermediate::Branch inst(method.addNewLocal(TYPE_LABEL).local(), BRANCH_ALL_Z_CLEAR);
         op2 = inst.copyFor(method, "", mapping);
-        TEST_ASSERT_EQUALS(inst, *op2)
+        // Since a copy of the label is created, we cannot compare the instructions directly
+        TEST_ASSERT_EQUALS(inst.to_string(), op2->to_string())
         inst.branchCondition = BRANCH_ANY_N_SET;
-        TEST_ASSERT(inst != *op2)
+        TEST_ASSERT(inst.to_string() != op2->to_string())
     }
 
     {
         intermediate::CodeAddress inst(method.addNewLocal(TYPE_CODE_ADDRESS), method.addNewLocal(TYPE_LABEL).local());
         op2 = inst.copyFor(method, "", mapping);
-        TEST_ASSERT_EQUALS(inst, *op2)
+        // Since a copy of the label is created, we cannot compare the instructions directly
+        TEST_ASSERT_EQUALS(inst.to_string(), op2->to_string())
         inst.setArgument(0, method.addNewLocal(TYPE_LABEL));
-        TEST_ASSERT(inst != *op2)
+        TEST_ASSERT(inst.to_string() != op2->to_string())
     }
 
     {
@@ -2267,7 +2270,8 @@ void TestInstructions::testInstructionEquality()
             {{Value(INT_ONE), method.addNewLocal(TYPE_LABEL).local()},
                 {Value(INT_MINUS_ONE), method.addNewLocal(TYPE_LABEL).local()}});
         op2 = inst.copyFor(method, "", mapping);
-        TEST_ASSERT_EQUALS(inst, *op2)
+        // Since copies of the labels are created, we cannot compare the instructions directly
+        TEST_ASSERT_EQUALS(inst.to_string(), op2->to_string())
     }
 
     {
@@ -2300,7 +2304,8 @@ void TestInstructions::testInstructionEquality()
         intermediate::MemoryInstruction inst(
             intermediate::MemoryOperation::COPY, std::move(dest), std::move(src), Value(INT_ONE), true);
         op2 = inst.copyFor(method, "", mapping);
-        TEST_ASSERT_EQUALS(inst, *op2);
+        // Since a copy of the local is created, we cannot compare the instructions directly
+        TEST_ASSERT_EQUALS(inst.to_string(), op2->to_string())
         intermediate::MemoryInstruction inst2(
             intermediate::MemoryOperation::COPY, std::move(dest), std::move(src), Value(INT_ONE), false);
         TEST_ASSERT(inst2 != *op2);

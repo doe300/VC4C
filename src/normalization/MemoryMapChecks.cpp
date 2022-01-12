@@ -660,6 +660,19 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping, I
     return local;
 }
 
+static bool hasSingleReader(const Local* local)
+{
+    auto numReaders = local ? local->countUsers(LocalUse::Type::READER) : 0u;
+    if(auto multiRegister = Local::getLocalData<MultiRegisterData>(local))
+    {
+        // the readers might already be lowered to the lower and upper parts
+        auto lowerReaders = multiRegister->lower->countUsers(LocalUse::Type::READER);
+        auto upperReaders = multiRegister->upper->countUsers(LocalUse::Type::READER);
+        numReaders += std::max(lowerReaders, upperReaders);
+    }
+    return numReaders == 1u;
+}
+
 MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
 {
     // TODO lower local/private struct-elements into VPM?! At least for single structs
@@ -774,7 +787,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                 }
             }
             else if(memInstr->op == MemoryOperation::READ && !memInstr->hasConditionalExecution() &&
-                memInstr->getDestination().local()->countUsers(LocalUse::Type::READER) == 1)
+                hasSingleReader(memInstr->getDestination().local()))
             {
                 // convert read-then-write to copy
                 auto nextIt = findNextValueStore(
