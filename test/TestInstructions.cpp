@@ -20,6 +20,7 @@
 #include "intermediate/IntermediateInstruction.h"
 #include "normalization/LiteralValues.h"
 
+#include <cmath>
 #include <functional>
 #include <map>
 
@@ -998,8 +999,8 @@ analysis::ValueRange calculateRange(const analysis::ValueRange& in0, const analy
         for(T b = static_cast<T>(in1.minValue); b <= static_cast<T>(in1.maxValue); ++b)
             res.emplace_back(op(a, b));
     }
-    return analysis::ValueRange{static_cast<double>(*std::min_element(res.begin(), res.end())),
-        static_cast<double>(*std::max_element(res.begin(), res.end()))};
+    auto limits = std::minmax_element(res.begin(), res.end());
+    return analysis::ValueRange{static_cast<double>(*limits.first), static_cast<double>(*limits.second)};
 }
 
 void TestInstructions::testOpCodeRanges()

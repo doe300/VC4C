@@ -764,6 +764,15 @@ bool GraphColoring::colorGraph()
         processClosedSet(graph, closedSet, openSet, errorSet);
     }
 
+    LCOV_EXCL_START
+    if(!errorSet.empty())
+        logging::logLazy(logging::Level::DEBUG, [&]() {
+            for(const auto& entry : errorSet)
+                logging::debug() << "Error allocating local to register: " << graph.assertNode(entry).to_string()
+                                 << logging::endl;
+        });
+    LCOV_EXCL_STOP
+
     return errorSet.empty();
 }
 
@@ -922,7 +931,8 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
      * The following cases can occur:
      * 1) local is fixed to accumulator, but there is no more free accumulator
      *  -> can be fixed by inserting NOP between writing and reading of local to allow it to be moved to the physical
-     * files. This won't even change the graph, since the local associations don't change NOTES:
+     * files. This won't even change the graph, since the local associations don't change
+     * NOTES:
      *   - this is not correct if the local is used as vector rotation input
      *   - need to make sure, none of the register files are blocked by other locals, this local is used together (as
      * inputs) or literal values/fixed registers
@@ -930,7 +940,8 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
      * 2) local could be on one of the physical files (initial files as well as free registers), but the file is blocked
      * by another local used together with the erroneous one
      *  -> can be fixed by copying the local before every conflicting use and using the copy (on accumulator) as input
-     * to the conflicting instruction NOTES:
+     * to the conflicting instruction
+     * NOTES:
      *   - this only works if the local is never unpacked as argument, which is not valid for accumulator inputs
      *
      *  -> another way to fix this would be to create a copy and move it to the other physical file
@@ -943,7 +954,8 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
      * 3) local could be on one of the physical files (possible files), but there are no more free registers on that
      * file (and of course the accumulators)
      *  -> could be fixed by copying the local before any use to a temporary (which will land on accumulators), so it
-     * can be assigned to the other physical file NOTES:
+     * can be assigned to the other physical file
+     * NOTES:
      *   - this will only work, if there are free registers on the other file (if not, the only way out would be
      * spilling!)
      *   - need to make sure, the uses of the local do not block both register files.
@@ -952,9 +964,9 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
      *   - need to make sure, copy is written to when the main local is written!
      */
 
-    // TODO if we only use fixes which do not change the graph (don't insert new locals)
-    // we could skip re-creating the whole graph and simply try to assign a register to the node
-    // by re-checking which registers are not used by any neighbor
+    // NOTE: As long as we only use fixes which do not change the graph (don't insert new locals) we don't need to
+    // re-create the whole graph and simply try to assign a register to the node by re-checking which registers are not
+    // used by any neighbor!
 
     const auto& users = node.key->getUsers();
     auto& use = localUses.at(node.key);
@@ -1083,6 +1095,59 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
         }
         else
         {
+            bool splitUpSomeCombinedInstructions = false;
+            // we need to copy the list, since we might edit the original list inside the loop
+            auto oldInstructions = localUse.associatedInstructions;
+            for(InstructionWalker it : oldInstructions)
+            {
+                if(auto comb = it.get<intermediate::CombinedOperation>())
+                {
+                    const auto* otherOp = comb->getFirstOp() && comb->getFirstOp()->writesLocal(node.key) ?
+                        comb->getSecondOp() :
+                        comb->getFirstOp();
+                    auto otherOutputLocal = otherOp ? otherOp->checkOutputLocal() : nullptr;
+                    if(!otherOutputLocal || otherOutputLocal == node.key)
+                        // no other local that blocks this local
+                        continue;
+                    const auto* otherLocalNode = graph.findNode(otherOutputLocal);
+                    if(!otherLocalNode ||
+                        !has_flag(otherLocalNode->possibleFiles,
+                            fileACouldBeUsed ? RegisterFile::PHYSICAL_A : RegisterFile::PHYSICAL_B) ||
+                        !blocksLocal(otherLocalNode, node.getEdge(otherLocalNode)->data))
+                        // other local exists, but does not block this local
+                        continue;
+                    auto& otherLocalUse = localUses.at(otherOutputLocal);
+
+                    auto parts = comb->splitUp();
+                    auto firstIt = it.copy();
+                    localUse.associatedInstructions.erase(it);
+                    otherLocalUse.associatedInstructions.erase(it);
+                    firstIt.emplace(std::move(parts.first));
+                    it.reset(std::move(parts.second));
+                    if(firstIt.get() == otherOp)
+                    {
+                        localUse.associatedInstructions.emplace(it);
+                        otherLocalUse.associatedInstructions.emplace(firstIt);
+                    }
+                    else
+                    {
+                        localUse.associatedInstructions.emplace(firstIt);
+                        otherLocalUse.associatedInstructions.emplace(it);
+                    }
+                    // the "original" InstructionWalker is already in the associatedInstructions set, since we only
+                    // change its content
+                    CPPLOG_LAZY(logging::Level::DEBUG,
+                        log << "Split up combined instruction into '" << firstIt->to_string() << "' and '"
+                            << it->to_string() << '\'' << logging::endl);
+                    PROFILE_COUNTER(vc4c::profiler::COUNTER_BACKEND, "Combined split up", 1);
+                    splitUpSomeCombinedInstructions = true;
+                }
+            }
+
+            if(splitUpSomeCombinedInstructions)
+                return moveLocalToRegisterFile(method, graph, node, localUses, localUse,
+                    fileACouldBeUsed ? RegisterFile::PHYSICAL_A : RegisterFile::PHYSICAL_B);
+
             // if only one file is blocked, create a copy, write it (after the local is written to) and use it as inputs
             // for all uses of the original local  if both files are blocked, create two copies, copy the local into
             // them and use them where their respective file is not blocked
@@ -1176,6 +1241,7 @@ bool GraphColoring::fixErrors()
         else
             ++locIt;
     }
+
     return errorSet.empty();
 }
 
@@ -1205,6 +1271,16 @@ FastMap<const Local*, Register> GraphColoring::toRegisterMap() const
 const analysis::GlobalLivenessAnalysis& GraphColoring::getLivenessAnalysis() const
 {
     return livenessAnalysis;
+}
+
+const FastMap<const Local*, LocalUsage>& GraphColoring::getLocalUses() const
+{
+    return localUses;
+}
+
+const ColoredGraph& GraphColoring::getGraph() const
+{
+    return graph;
 }
 
 void GraphColoring::resetGraph()

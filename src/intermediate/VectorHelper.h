@@ -22,8 +22,7 @@ namespace vc4c
         NODISCARD InstructionWalker insertVectorRotation(InstructionWalker it, const Value& src, const Value& offset,
             const Value& dest, Direction direction = Direction::UP, bool isSingleElementMoveFromToZero = false);
 
-        NODISCARD InstructionWalker insertReplication(
-            InstructionWalker it, const Value& src, const Value& dest, bool useDestination = true);
+        NODISCARD InstructionWalker insertReplication(InstructionWalker it, const Value& src, const Value& dest);
 
         NODISCARD InstructionWalker insertVectorExtraction(
             InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& dest);

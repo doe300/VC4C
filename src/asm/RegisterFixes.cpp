@@ -7,6 +7,7 @@
 #include "RegisterFixes.h"
 
 #include "../Method.h"
+#include "../Profiler.h"
 #include "../analysis/ControlFlowGraph.h"
 #include "../analysis/LivenessAnalysis.h"
 #include "../intermediate/VectorHelper.h"
@@ -103,7 +104,7 @@ FixupResult qpu_asm::groupParameters(Method& method, const Configuration& config
     FastAccessList<const Parameter*> parametersToBeGrouped;
     for(const auto& entry : localUsageRangeAnalysis.getOverallUsages())
     {
-        if(entry.numLoops > 0)
+        if(entry.numLoops > 1)
             continue;
         // TODO some better values?
         if(entry.numAccesses > 3)
@@ -178,11 +179,15 @@ FixupResult qpu_asm::groupParameters(Method& method, const Configuration& config
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Grouping parameter '" << (*paramIt)->to_string() << "' into " << groupedValue->to_string()
                 << " at position: " << static_cast<uint32_t>(groupIndex) << logging::endl);
+        PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_BACKEND, "Parameters grouped", 1);
 
+        // Parameter writes always read UNIFORMs which are splat values, so we can simply select the desired element
         auto it = mappingIt->second.first;
         auto cond = assignNop(it) = selectSIMDElement(groupIndex);
         it.get<intermediate::ExtendedInstruction>()->setCondition(cond);
         it->setOutput(groupedValue);
+        it->decoration = remove_flag(it->decoration, intermediate::InstructionDecorations::IDENTICAL_ELEMENTS);
+        it->addDecorations(intermediate::InstructionDecorations::ELEMENT_INSERTION);
 
         for(auto& readerIt : mappingIt->second.second)
         {

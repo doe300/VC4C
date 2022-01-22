@@ -1475,7 +1475,8 @@ analysis::ValueRange OpCode::operator()(
             secondLiteral = acceptsFloat ? Literal(static_cast<float>(*secondSingleton)) :
                                            Literal(static_cast<int32_t>(*secondSingleton));
         if(auto result = calcLiteral(*this, firstLiteral, secondLiteral).first)
-            return ValueRange(*result, returnsFloat ? TYPE_FLOAT : TYPE_INT32);
+            return returnsFloat ? ValueRange(static_cast<double>(result->real())) :
+                                  ValueRange(static_cast<double>(result->signedInt()));
     }
 
     switch(opAdd)

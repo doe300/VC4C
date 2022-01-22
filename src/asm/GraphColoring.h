@@ -152,6 +152,9 @@ namespace vc4c
              */
             const analysis::GlobalLivenessAnalysis& getLivenessAnalysis() const;
 
+            const FastMap<const Local*, LocalUsage>& getLocalUses() const;
+            const ColoredGraph& getGraph() const;
+
         private:
             Method& method;
             FastSet<const Local*> closedSet;

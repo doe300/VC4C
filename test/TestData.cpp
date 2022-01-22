@@ -1499,7 +1499,7 @@ void test_data::registerGeneralTests()
     }
 
     {
-        // FIXME hangs sometimes in barrier across all work-items (at least with clang library front-end)
+        // FIXME hangs sometimes in barrier across all work-items
         TestDataBuilder<Buffer<float>, int32_t, int32_t, Buffer<float>, int32_t, int32_t, int32_t, int32_t, int32_t,
             int32_t>
             builder("OpenCV_flip_columns_float2", OpenCV_flip_cl_string, "arithm_flip_cols",

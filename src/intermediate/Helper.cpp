@@ -274,38 +274,38 @@ InstructionWalker intermediate::insertByteSwap(
         // TODO shorts lose signedness!
 
         // ? ? A B -> 0 ? ? A
-        Value tmpA0 = assign(it, src.type, "byte_swap") = as_unsigned{src} >> 8_val;
+        Value tmpA0 = assign(it, src.type, "%byte_swap") = as_unsigned{src} >> 8_val;
         // ? ? A B -> ? A B 0
-        Value tmpB0 = assign(it, src.type, "byte_swap") = src << 8_val;
+        Value tmpB0 = assign(it, src.type, "%byte_swap") = src << 8_val;
         // 0 ? ? A -> 0 0 0 A
-        Value tmpA1 = assign(it, src.type, "byte_swap") = tmpA0 & 0x000000FF_val;
+        Value tmpA1 = assign(it, src.type, "%byte_swap") = tmpA0 & 0x000000FF_val;
         // ? A B 0 -> 0 0 B 0
-        Value tmpB1 = assign(it, src.type, "byte_swap") = tmpB0 & 0x0000FF00_val;
+        Value tmpB1 = assign(it, src.type, "%byte_swap") = tmpB0 & 0x0000FF00_val;
         // 0 0 0 A | 0 0 B 0 -> 0 0 A B
         assign(it, dest) = tmpA1 | tmpB1;
     }
     else if(numBytes == 4)
     {
         // A B C D -> B C D A
-        const Value tmpAC0 = method.addNewLocal(src.type, "byte_swap");
+        const Value tmpAC0 = method.addNewLocal(src.type, "%byte_swap");
         it.emplace(std::make_unique<Operation>(OP_ROR, tmpAC0, src, Value(Literal(24u), TYPE_INT8)));
         it.nextInBlock();
         // A B C D -> D A B C
-        const Value tmpBD0 = method.addNewLocal(src.type, "byte_swap");
+        const Value tmpBD0 = method.addNewLocal(src.type, "%byte_swap");
         it.emplace(std::make_unique<Operation>(OP_ROR, tmpBD0, src, Value(Literal(8u), TYPE_INT8)));
         it.nextInBlock();
         // B C D A -> 0 0 0 A
-        Value tmpA1 = assign(it, src.type, "byte_swap") = tmpAC0 & 0x000000FF_val;
+        Value tmpA1 = assign(it, src.type, "%byte_swap") = tmpAC0 & 0x000000FF_val;
         // D A B C -> 0 0 B 0
-        Value tmpB1 = assign(it, src.type, "byte_swap") = tmpBD0 & 0x0000FF00_val;
+        Value tmpB1 = assign(it, src.type, "%byte_swap") = tmpBD0 & 0x0000FF00_val;
         // B C D A -> 0 C 0 0
-        Value tmpC1 = assign(it, src.type, "byte_swap") = tmpAC0 & 0x00FF0000_val;
+        Value tmpC1 = assign(it, src.type, "%byte_swap") = tmpAC0 & 0x00FF0000_val;
         // D A B C -> D 0 0 0
-        Value tmpD1 = assign(it, src.type, "byte_swap") = tmpBD0 & 0xFF000000_val;
+        Value tmpD1 = assign(it, src.type, "%byte_swap") = tmpBD0 & 0xFF000000_val;
         // 0 0 0 A | 0 0 B 0 -> 0 0 B A
-        Value tmpAB2 = assign(it, src.type, "byte_swap") = tmpA1 | tmpB1;
+        Value tmpAB2 = assign(it, src.type, "%byte_swap") = tmpA1 | tmpB1;
         // 0 C 0 0 | D 0 0 0 -> D C 0 0
-        Value tmpCD2 = assign(it, src.type, "byte_swap") = tmpC1 | tmpD1;
+        Value tmpCD2 = assign(it, src.type, "%byte_swap") = tmpC1 | tmpD1;
         // 0 0 B A | D C 0 0 -> D C B A
         assign(it, dest) = tmpAB2 | tmpCD2;
     }

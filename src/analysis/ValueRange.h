@@ -125,7 +125,7 @@ namespace vc4c
             static ValueRange getValueRangeFlat(const intermediate::IntermediateInstruction& inst,
                 const FastMap<const Local*, ValueRange>& knownRanges, const Method* method = nullptr);
             static ValueRange getValueRangeFlat(
-                const Value& val, bool indeterminateOnFulRange, const Method* method = nullptr);
+                const Value& val, bool indeterminateOnFullRange, const Method* method = nullptr);
             static ValueRange getValueRangeRecursive(
                 const Value& val, Method* method, FastMap<const Local*, ValueRange>& knownRanges);
             static ValueRange getValueRange(const Expression& expr, const Method* method = nullptr);

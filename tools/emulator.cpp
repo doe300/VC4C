@@ -172,11 +172,14 @@ static void printHelp()
     std::cout << "\t-f <file-name>\t\tRead <file-name> as binary file" << std::endl;
     std::cout << "\t-s <string>\t\tUse <string> as input string" << std::endl;
     std::cout << "\t-b <num>\t\tAllocate an empty buffer with <num> words of size" << std::endl;
-    std::cout << "\t-ib <values>\t\tAllocate a buffer containing the given values. The values are passed "
-                 "space-separated inside a string (double-quotes, e.g. \"0 1 2 3 ...\")"
+    std::cout << "\t-ib <values>\t\tAllocate a buffer containing the given signed integer values. The values are "
+                 "passed space-separated inside a string (double-quotes, e.g. \"0 1 2 3 ...\")"
               << std::endl;
-    std::cout << "\t-fb <values>\t\tAllocate a buffer containing the given values. The values are passed "
-                 "space-separated inside a string (double-quotes, e.g. \"0.0 1.0 2.0 3.0 ...\")"
+    std::cout << "\t-ub <values>\t\tAllocate a buffer containing the given unsigned integer values. The values are "
+                 "passed space-separated inside a string (double-quotes, e.g. \"0 1 2 3 ...\")"
+              << std::endl;
+    std::cout << "\t-fb <values>\t\tAllocate a buffer containing the given floating point values. The values are "
+                 "passed space-separated inside a string (double-quotes, e.g. \"0.0 1.0 2.0 3.0 ...\")"
               << std::endl;
     std::cout << "\t<data>\t\t\tUse <data> as input word" << std::endl;
 }
@@ -270,6 +273,12 @@ int main(int argc, char** argv)
         {
             ++i;
             data.parameter.emplace_back(0u, readDirectBuffer<int>(argv[i]));
+            bufferTypes.push_back(BufferType::INT);
+        }
+        else if(std::string("-ub") == argv[i])
+        {
+            ++i;
+            data.parameter.emplace_back(0u, readDirectBuffer<unsigned>(argv[i]));
             bufferTypes.push_back(BufferType::INT);
         }
         else if(std::string("-fb") == argv[i])

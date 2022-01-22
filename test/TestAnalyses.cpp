@@ -759,10 +759,10 @@ void TestAnalyses::testDataDependency()
         // The end of control flow has no incoming or outgoing dependencies, so it has no dependency node at all
         TEST_ASSERT_EQUALS(nullptr, dataDependencies->findNode(cfg.getEndOfControlFlow().key));
 
-        // The 2 inner-most loop have the induction variable as dependency to their dominator/preceding node and
-        // themselves
+        // The 2 (or 3 depending on loop unrolling) inner-most loop have the induction variable as dependency to their
+        // dominator/preceding node and themselves
         auto loops = cfg.findLoops(false);
-        TEST_ASSERT_EQUALS(2u, loops.size());
+        TEST_ASSERT(loops.size() >= 2u && loops.size() <= 3u);
         for(auto& loop : loops)
         {
             auto preheader = loop.findPredecessor();
@@ -853,7 +853,7 @@ void TestAnalyses::testDominatorTree()
         TEST_ASSERT_EQUALS(numNodes - 1, start->getDominatedNodes().size());
         // the end of the control flow dominates no nodes
         auto* end = &tree->assertNode(&cfg.getEndOfControlFlow());
-        TEST_ASSERT(end->getDominators().size() > 3);
+        TEST_ASSERT(!end->getDominators().empty());
         TEST_ASSERT_EQUALS(0u, end->getDominatedNodes().size());
 
         for(auto& node : tree->getNodes())
@@ -871,7 +871,7 @@ void TestAnalyses::testDominatorTree()
 
         // the start of the control flow post-dominates no nodes
         start = &tree->assertNode(&cfg.getStartOfControlFlow());
-        TEST_ASSERT(start->getDominators().size() > 3);
+        TEST_ASSERT(!start->getDominators().empty());
         TEST_ASSERT_EQUALS(0u, start->getDominatedNodes().size());
         // the end of the control flow post-dominates all nodes (except itself)
         end = &tree->assertNode(&cfg.getEndOfControlFlow());
@@ -921,7 +921,7 @@ void TestAnalyses::testDominatorTree()
         TEST_ASSERT_EQUALS(numNodes - 1, start->getDominatedNodes().size());
         // the end of the control flow dominates no nodes
         auto* end = &tree->assertNode(&cfg.getEndOfControlFlow());
-        TEST_ASSERT(end->getDominators().size() > 4);
+        TEST_ASSERT(!end->getDominators().empty());
         TEST_ASSERT_EQUALS(0u, end->getDominatedNodes().size());
 
         for(auto& node : tree->getNodes())
@@ -939,7 +939,7 @@ void TestAnalyses::testDominatorTree()
 
         // the start of the control flow post-dominates no nodes
         start = &tree->assertNode(&cfg.getStartOfControlFlow());
-        TEST_ASSERT(start->getDominators().size() > 4);
+        TEST_ASSERT(!start->getDominators().empty());
         TEST_ASSERT_EQUALS(0u, start->getDominatedNodes().size());
         // the end of the control flow post-dominates all nodes (except itself)
         end = &tree->assertNode(&cfg.getEndOfControlFlow());
@@ -1324,11 +1324,11 @@ void TestAnalyses::testIntegerComparisonDetection()
     for(auto& test : tests)
     {
         auto out = m.addNewLocal(TYPE_BOOL, std::string("%out.") + test.inputComparison);
-        it.emplace(std::make_unique<Comparison>(
+        auto& compInst = it.emplace(std::make_unique<Comparison>(
             test.inputComparison, Value(out), Value(test.inputLeftOperand), Value(test.inputRightOperand)));
         auto comparisonString = it->to_string();
         auto checkIt = it.copy().previousInBlock();
-        TEST_ASSERT(intrinsics::intrinsifyComparison(m, it));
+        TEST_ASSERT(intrinsics::intrinsifyComparison(m, typeSafe(it, compInst)));
 
         auto comp = analysis::getComparison(out.local(), checkIt);
         if(!comp)

@@ -147,14 +147,12 @@ InstructionWalker intermediate::insertVectorRotation(InstructionWalker it, const
     return it;
 }
 
-InstructionWalker intermediate::insertReplication(
-    InstructionWalker it, const Value& src, const Value& dest, const bool useDestination)
+InstructionWalker intermediate::insertReplication(InstructionWalker it, const Value& src, const Value& dest)
 {
     // distribute value 0 to all positions in the vector
     assign(it, Value(REG_REPLICATE_ALL, src.type)) = src;
-    if(useDestination)
-        //"Reading r5 returns the per-quad 32-bit value replicated across the four elements of that quad" (p. 18)
-        assign(it, dest) = (Value(REG_REPLICATE_ALL, src.type), InstructionDecorations::IDENTICAL_ELEMENTS);
+    //"Reading r5 returns the per-quad 32-bit value replicated across the four elements of that quad" (p. 18)
+    assign(it, dest) = (Value(REG_REPLICATE_ALL, src.type), InstructionDecorations::IDENTICAL_ELEMENTS);
     return it;
 }
 
@@ -898,7 +896,7 @@ Optional<std::vector<ElementSource>> checkVectorCanBeAssembled(DataType type, co
     return results;
 }
 
-InstructionWalker insertAssembleVector(
+static NODISCARD InstructionWalker insertAssembleVector(
     InstructionWalker it, Method& method, const Value& dest, std::vector<ElementSource>&& sources)
 {
     if(sources.empty())

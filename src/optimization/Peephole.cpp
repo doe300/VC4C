@@ -95,8 +95,10 @@ static InstructionWalker findSingleReaderInBlock(InstructionWalker it, Instructi
             }
         });
 
+        if(isAborted)
+            break;
         if(readsRegister)
-            return isAborted ? endIt : it;
+            return it;
     }
     return endIt;
 }
@@ -279,8 +281,7 @@ void optimizations::removeObsoleteInstructions(
             it.erase();
             continue;
         }
-        if(it->isSimpleMove() && !it->hasConditionalExecution() && it->checkOutputLocal() &&
-            it->getMoveSource()->checkLocal())
+        if(it->isSimpleMove() && it->checkOutputLocal() && it->getMoveSource()->checkLocal())
         {
             auto reg = getSingleRegister(*it.get(), registerMap);
             if(reg && canRemoveInstructionBetween(lastInstruction, nextIt, registerMap))
@@ -293,6 +294,10 @@ void optimizations::removeObsoleteInstructions(
                 it.erase();
                 continue;
             }
+        }
+        if(it->isSimpleMove() && !it->hasConditionalExecution() && it->checkOutputLocal() &&
+            it->getMoveSource()->checkLocal())
+        {
             auto moveOut = it->checkOutputLocal();
             auto moveIn = it->getMoveSource()->checkLocal();
             auto inIt = registerMap.find(moveIn);

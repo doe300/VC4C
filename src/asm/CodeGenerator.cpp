@@ -77,8 +77,9 @@ static FixupResult runRegisterFixupStep(const std::pair<std::string, RegisterFix
     const Configuration& config, std::unique_ptr<GraphColoring>& coloredGraph)
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Running register fix-up step: " << step.first << "..." << logging::endl);
-    PROFILE_SCOPE(runRegisterFixupStep);
+    PROFILE_START_DYNAMIC(step.first);
     auto result = step.second(method, config, *coloredGraph);
+    PROFILE_END_DYNAMIC(step.first);
     return result;
 }
 

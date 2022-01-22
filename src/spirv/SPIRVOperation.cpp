@@ -1246,7 +1246,7 @@ void SPIRVSelect::mapInstruction(TypeMapping& types, ConstantMapping& constants,
     {
         // if a vector is selected on a scalar value, the whole vector needs to be selected -> replicate the condition
         // to all elements
-        auto it = intermediate::insertReplication(method.method->appendToEnd(), condition, NOP_REGISTER, true);
+        auto it = intermediate::insertReplication(method.method->appendToEnd(), condition, NOP_REGISTER);
         it.previousInBlock().get<intermediate::ExtendedInstruction>()->setSetFlags(SetFlag::SET_FLAGS);
     }
     else

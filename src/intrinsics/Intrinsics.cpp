@@ -960,8 +960,9 @@ static bool intrinsifyArithmetic(
                 Value(Literal(arg0.getLiteralValue()->signedInt() / arg1.getLiteralValue()->signedInt()), arg0.type)));
         }
         // a / 2^n = (abs(a) >> n) * sign(a)
-        else if(arg1.isLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
-            isPowerTwo(arg1.getLiteralValue()->unsignedInt()))
+        // a / -2^n = (abs(a) >> n) * ~sign(a)
+        else if(arg1.isLiteralValue() && arg1.getLiteralValue()->signedInt() != 0 &&
+            isPowerTwo(static_cast<uint32_t>(std::abs(arg1.getLiteralValue()->signedInt()))))
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying signed division with right-shift and sign-copy: " << op.to_string()
@@ -969,10 +970,14 @@ static bool intrinsifyArithmetic(
             Value tmp = method.addNewLocal(arg1.type, "%unsigned");
             Value sign = UNDEFINED_VALUE;
             it = insertMakePositive(it, method, arg0, tmp, sign);
-            Value tmpResult = assign(it, op->getOutput()->type) = (as_unsigned{tmp} >>
-                    Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->unsignedInt()))), arg1.type),
-                InstructionDecorations::UNSIGNED_RESULT);
-            Value tmpResult2 = op->getOutput().value();
+            Value tmpResult = assign(it, op.getOutput()->type) =
+                (as_unsigned{tmp} >> Value(Literal(static_cast<int32_t>(std::log2(
+                                               static_cast<uint32_t>(std::abs(arg1.getLiteralValue()->signedInt()))))),
+                                         arg1.type),
+                    InstructionDecorations::UNSIGNED_RESULT);
+            Value tmpResult2 = op.getOutput().value();
+            if(arg1.getLiteralValue()->signedInt() < 0)
+                sign = assign(it, sign.type, "%sign") = ~sign;
             it = insertRestoreSign(it, method, tmpResult, tmpResult2, sign);
             if(!(tmpResult2 == op.getOutput().value()))
                 it.reset(std::make_unique<MoveOperation>(op.getOutput().value(), tmpResult2));
@@ -983,7 +988,7 @@ static bool intrinsifyArithmetic(
                 it.previousInBlock();
             }
         }
-        else if((arg1.isLiteralValue() || arg1.checkVector()) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.checkVector()) && arg0.type.getScalarBitCount() <= 32)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying signed division by constant: " << op.to_string() << logging::endl);
@@ -1029,7 +1034,7 @@ static bool intrinsifyArithmetic(
                          Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type)))
                 .addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
-        else if((arg1.isLiteralValue() || arg1.checkVector()) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.checkVector()) && arg0.type.getScalarBitCount() <= 32)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying unsigned modulo by constant: " << op.to_string() << logging::endl);
@@ -1086,9 +1091,11 @@ static bool intrinsifyArithmetic(
                 it.previousInBlock();
             }
         }
-        else if((arg1.isLiteralValue() || arg1.checkVector()) && arg0.type.getScalarBitCount() <= 16)
+        else if((arg1.isLiteralValue() || arg1.checkVector()) && arg0.type.getScalarBitCount() <= 32)
         {
-            it = intrinsifySignedIntegerDivisionByConstant(method, it, *op, true);
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Intrinsifying signed modulo by constant: " << op.to_string() << logging::endl);
+            it = intrinsifySignedIntegerDivisionByConstant(method, inIt, true);
         }
         else if(arg0.type.getScalarBitCount() < 24 && arg1.type.getScalarBitCount() < 24)
         {

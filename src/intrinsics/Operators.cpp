@@ -127,9 +127,10 @@ InstructionWalker intrinsics::intrinsifyLongMultiplication(
 
     InstructionWalker it = inIt;
     auto resLowLow = method.addNewLocal(partType, "%mul.resLowLow");
-    auto newCall = &it.emplace(std::make_unique<MethodCall>(Value(resLowLow), "mul_full",
-        std::vector<Value>{firstLower, secondLower, Value(Literal(VC4CL_UNSIGNED), TYPE_INT8)}));
-    it = intrinsifyIntegerToLongMultiplication(method, it, newCall, resultData->lower->createReference());
+    auto newCall = &it.emplace(
+        std::make_unique<MethodCall>(Value(resLowLow), "mul_full", std::vector<Value>{firstLower, secondLower}));
+    it = intrinsifyIntegerToLongMultiplication(
+        method, typeSafe(it, *newCall), resultData->lower->createReference(), true /* unsigned */);
     it.nextInBlock();
 
     auto resLowHigh = method.addNewLocal(partType, "%mul.resLowHigh");
@@ -567,6 +568,35 @@ static std::pair<Literal, Literal> calculateConstant(Literal divisor, unsigned a
     return std::make_pair(Literal(factor), Literal(shift));
 }
 
+struct DivisionConstants
+{
+    uint32_t factor;
+    uint32_t shiftOffset;
+};
+
+static DivisionConstants calculateLongConstant(Literal divisor)
+{
+    if(divisor.isUndefined() || divisor.unsignedInt() == 0)
+        // a multiplication by 1 and a shift by 0 should both be able to be eliminated
+        return DivisionConstants{};
+
+    auto shift = static_cast<uint32_t>(std::ceil(std::log2(divisor.unsignedInt())));
+    auto factor = static_cast<uint64_t>(std::ceil(std::pow(2, 32 + shift) / divisor.unsignedInt()));
+
+    // The factor has a 33rd bit , which needs to be applied separately to not overflow 64-bit multiplication for
+    // large nominators
+    auto hasHighBit = (factor & uint64_t{0x100000000}) != 0;
+    factor = factor - uint64_t{0x100000000};
+
+    if(shift > 31)
+        throw CompilationError(CompilationStep::NORMALIZER,
+            "Unsigned division by constant generated invalid shift offset", std::to_string(shift));
+    if(factor > std::numeric_limits<uint32_t>::max() || !hasHighBit)
+        throw CompilationError(CompilationStep::NORMALIZER,
+            "Unsigned division by constant generated invalid multiplication factor", std::to_string(factor));
+    return DivisionConstants{static_cast<uint32_t>(factor), shift};
+}
+
 static std::pair<Value, Value> calculateConstant(Module& module, const Value& divisor, unsigned accuracy)
 {
     if(auto vector = divisor.checkVector())
@@ -587,8 +617,59 @@ static std::pair<Value, Value> calculateConstant(Module& module, const Value& di
 }
 
 InstructionWalker intrinsics::intrinsifyUnsignedIntegerDivisionByConstant(
-    Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder)
+    Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> inIt, bool useRemainder)
 {
+    const auto& op = *inIt.get();
+    InstructionWalker it = inIt;
+    if(op.getSecondArg().value().getLiteralValue() && op.getFirstArg().type.getScalarBitCount() > 16)
+    {
+        // use int to long multiplication and take upper part
+        /*
+         * Taken from: https://www.ridiculousfish.com/blog/posts/labor-of-division-episode-i.html
+         *
+         * r = n / d = (m * n) / 2^(32 + p)
+         * p = ceil(log2(d))
+         * m = ceil(2^(32 + p) / d) [33-bit integer due to ceilings]
+         * m' = m - 2^32
+         */
+        // TODO implement for vector divisor
+        auto constants = calculateLongConstant(*op.assertArgument(1).getLiteralValue());
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying unsigned division by " << op.assertArgument(1).to_string(false, true)
+                << " by long multiplication with " << constants.factor << " and right-shift by 32+"
+                << constants.shiftOffset << logging::endl);
+
+        // mn = m * n = (m - 2^32) * n + 2^32 * n = m' * n + 2^32 * n
+        // q = (m' * n) >> 32 = (mn - 2^32 * n) >> 32 = mn >> 32 - n
+        auto mulResult = method.addNewLocal(op.getFirstArg().type, "%udiv_multiply");
+        auto& mulHi = it.emplace(std::make_unique<MethodCall>(Value(mulResult), "mul_hi",
+            std::vector<Value>{Value(Literal(constants.factor), TYPE_INT32), op.getFirstArg()}));
+        it = intrinsifyIntegerToLongMultiplication(method, typeSafe(it, mulHi), NO_VALUE, true /* unsigned */);
+        it.nextInBlock();
+        // t = (n - q) >> 1 + q = (n - q) / 2 + q = (n + q) / 2 = (n + q) >> 1 = (n + mn >> 32 - n) >> 1 = mn >> 33
+        auto tmp = assign(it, op.getFirstArg().type) = op.getFirstArg() - mulResult;
+        tmp = assign(it, op.getFirstArg().type) = as_unsigned{tmp} >> 1_val;
+        tmp = assign(it, op.getFirstArg().type) = tmp + mulResult;
+        // t = t >> (p - 1) = (mn >> 33) >> (p - 1) = mn >> (32 + p) = n / d = r
+        auto offset = assign(it, TYPE_INT8) = Value(Literal(constants.shiftOffset), TYPE_INT8) - 1_val;
+        auto finalResult = assign(it, op.getOutput()->type, "%udiv_result") =
+            (as_unsigned{tmp} >> offset, InstructionDecorations::UNSIGNED_RESULT);
+        if(useRemainder)
+        {
+            // x mod y = x - (x/y) * y [since r = n / d <= n, z = r * d fits into a 32-bit multiplication]
+            auto tmpMul = method.addNewLocal(op.getFirstArg().type);
+            it = insertMultiplication(
+                it, method, op.assertArgument(1), finalResult, tmpMul, InstructionDecorations::UNSIGNED_RESULT);
+            // replace original division
+            it.reset(createWithExtras<Operation>(op, OP_SUB, op.getOutput().value(), op.getFirstArg(), tmpMul));
+        }
+        else
+            it.reset(createWithExtras<MoveOperation>(op, op.getOutput().value(), finalResult));
+
+        it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
+        return it;
+    }
+
     /*
      * Taken from here:
      * http://forums.parallax.com/discussion/114807/fast-faster-fastest-code-integer-division

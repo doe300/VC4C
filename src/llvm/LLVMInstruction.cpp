@@ -645,7 +645,7 @@ bool Selection::mapInstruction(Method& method)
          * "If the condition is an i1 and the value arguments are vectors of the same size, then an entire vector is
          * selected."
          */
-        auto it = intermediate::insertReplication(method.appendToEnd(), cond, NOP_REGISTER, true);
+        auto it = intermediate::insertReplication(method.appendToEnd(), cond, NOP_REGISTER);
         it.previousInBlock().get<intermediate::ExtendedInstruction>()->setSetFlags(SetFlag::SET_FLAGS);
     }
     else

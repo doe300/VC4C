@@ -689,7 +689,7 @@ void ValueRange::processedOpenSet(Method* method, FastMap<const Local*, ValueRan
     LCOV_EXCL_STOP
 }
 
-ValueRange ValueRange::getValueRangeFlat(const Value& val, bool indeterminateOnFulRange, const Method* method)
+ValueRange ValueRange::getValueRangeFlat(const Value& val, bool indeterminateOnFullRange, const Method* method)
 {
     if(val.isUndefined())
         return ValueRange{};
@@ -706,7 +706,7 @@ ValueRange ValueRange::getValueRangeFlat(const Value& val, bool indeterminateOnF
     }
     range.update(val.getConstantValue() | (singleWriter ? singleWriter->precalculate(3).first : Optional<Value>{}),
         ranges, singleWriter, method, val.checkLocal() ? val.local()->as<BuiltinLocal>() : nullptr);
-    if(!range.hasExplicitBoundaries() && !indeterminateOnFulRange)
+    if(!range.hasExplicitBoundaries() && !indeterminateOnFullRange)
         range = ValueRange{val.type};
     return range;
 }

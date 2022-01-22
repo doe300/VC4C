@@ -1225,7 +1225,7 @@ static MemoryInfo canLowerToPrivateVPMArea(Method& method, const Local* baseAddr
             baseAddr, MemoryAccessType::VPM_PER_QPU, area, {}, NO_VALUE, convertSmallArrayToRegister(baseAddr)};
     }
 
-    // cannot lower to register, use fall-back
+    // cannot lower to private VPM area, use fall-back
     access.preferred = access.fallback;
     return checkMemoryMapping(method, baseAddr, access);
 }
