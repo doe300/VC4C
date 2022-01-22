@@ -331,10 +331,10 @@ static void removeSplatDecoration(IntermediateInstruction* inst, Optional<Instru
                 "Cannot remove splat decoration from TMU read without knowing its position");
         auto reader = tmuCache->getCacheReader();
         auto readerIt = it->getBasicBlock()->findWalkerForInstruction(reader);
-        if(!readerIt || readerIt->isEndOfBlock())
+        if(!readerIt || readerIt->base().isEndOfBlock())
             throw CompilationError(CompilationStep::OPTIMIZER,
                 "Failed to find TMU value read for no longer identical TMU address write", inst->to_string());
-        removeSplatDecoration(reader, *readerIt);
+        removeSplatDecoration(reader, readerIt->base());
     }
     if(auto loc = inst->checkOutputLocal())
         loc->forUsers(LocalUse::Type::READER,

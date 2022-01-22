@@ -169,7 +169,7 @@ struct VPMAccessGroup
     FastAccessList<InstructionWalker> dmaSetups;
     FastAccessList<InstructionWalker> strideSetups;
     FastAccessList<InstructionWalker> genericSetups;
-    FastAccessList<InstructionWalker> addressWrites;
+    FastAccessList<TypedInstructionWalker<intermediate::MoveOperation>> addressWrites;
     // this is the distance/offset (start of row to start of row, 1 = consecutive) between two vectors in bytes
     unsigned stride = 1;
 
@@ -209,14 +209,14 @@ struct VPMAccessGroup
                 ++it;
         }
 
-        it = addressWrites.begin();
-        ++it;
-        while(it != addressWrites.end())
+        auto writeIt = addressWrites.begin();
+        ++writeIt;
+        while(writeIt != addressWrites.end())
         {
-            if((it - 1)->get() == it->get())
-                it = addressWrites.erase(it);
+            if((writeIt - 1)->get() == writeIt->get())
+                writeIt = addressWrites.erase(writeIt);
             else
-                ++it;
+                ++writeIt;
         }
     }
 };
@@ -482,7 +482,7 @@ NODISCARD static InstructionWalker findGroupOfVPMAccess(
         baseAddress = baseAndOffset->baseAddress;
         dynamicOffset = baseAndOffset->dynamicOffset;
         initialConstantOffset = baseAndOffset->workGroupConstantOffset;
-        group.addressWrites.push_back(it);
+        group.addressWrites.push_back(typeSafe<intermediate::MoveOperation>(it));
         if(dmaSetup)
             // not always given, e.g. for caching in VPM without accessing RAM
             group.dmaSetups.push_back(dmaSetup.value());
@@ -581,15 +581,14 @@ NODISCARD static bool groupVPMWrites(periphery::VPM& vpm, VPMAccessGroup& group)
 
     // 3. remove all but the last address writes (and the following DMA waits), update the last write to write the first
     // address written to
-    group.addressWrites.back().get<intermediate::MoveOperation>()->setSource(
-        Value(group.addressWrites.front().get<intermediate::MoveOperation>()->getSource()));
+    group.addressWrites.back().get()->setSource(Value(group.addressWrites.front().get()->getSource()));
     for(std::size_t i = 0; i < group.addressWrites.size() - 1; ++i)
     {
-        if(!group.addressWrites[i].copy().nextInBlock()->readsRegister(
+        if(!group.addressWrites[i].base().copy().nextInBlock()->readsRegister(
                group.isVPMWrite ? REG_VPM_DMA_STORE_WAIT : REG_VPM_DMA_LOAD_WAIT))
             throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find VPW wait for address write",
                 group.addressWrites[i]->to_string());
-        group.addressWrites[i].copy().nextInBlock().erase();
+        group.addressWrites[i].base().copy().nextInBlock().erase();
         group.addressWrites[i].erase();
         numRemoved += 2;
     }
@@ -669,7 +668,7 @@ NODISCARD static bool groupVPMReads(periphery::VPM& vpm, VPMAccessGroup& group)
     }
 
     // 3. remove all Mutex acquires and releases between the first and the last write, so memory consistency is restored
-    auto it = group.addressWrites.front();
+    InstructionWalker it = group.addressWrites.front();
     while(!it.isEndOfBlock() && it != group.addressWrites.back())
     {
         if(it.get() && it->writesRegister(REG_MUTEX))
@@ -689,11 +688,11 @@ NODISCARD static bool groupVPMReads(periphery::VPM& vpm, VPMAccessGroup& group)
     // 4. remove all but the first address writes (and the following DMA writes)
     for(std::size_t i = 1; i < group.addressWrites.size(); ++i)
     {
-        if(!group.addressWrites[i].copy().nextInBlock()->readsRegister(
+        if(!group.addressWrites[i].base().copy().nextInBlock()->readsRegister(
                group.isVPMWrite ? REG_VPM_DMA_STORE_WAIT : REG_VPM_DMA_LOAD_WAIT))
             throw CompilationError(CompilationStep::OPTIMIZER, "Failed to find VPR wait for address write",
                 group.addressWrites[i]->to_string());
-        group.addressWrites[i].copy().nextInBlock().erase();
+        group.addressWrites[i].base().copy().nextInBlock().erase();
         group.addressWrites[i].erase();
         numRemoved += 2;
     }
@@ -739,8 +738,8 @@ bool optimizations::groupVPMAccess(const Module& module, Method& method, const C
 struct TMUAccessGroup
 {
     std::shared_ptr<periphery::TMUCacheEntry> cacheEntry;
-    FastAccessList<InstructionWalker> ramReads;
-    FastAccessList<InstructionWalker> cacheLoads;
+    FastAccessList<TypedInstructionWalker<intermediate::RAMAccessInstruction>> ramReads;
+    FastAccessList<TypedInstructionWalker<intermediate::CacheAccessInstruction>> cacheLoads;
     FastAccessList<SubExpression> uniformAddressParts;
     uint8_t usedVectorSize;
 };
@@ -758,7 +757,7 @@ NODISCARD static InstructionWalker findGroupOfTMUAccess(InstructionWalker it, TM
                 auto cacheReadInst = tmuCacheEntry->getCacheReader();
                 auto cacheReadIt = cacheReadInst ?
                     it.getBasicBlock()->findWalkerForInstruction(cacheReadInst, it, it.getBasicBlock()->walkEnd()) :
-                    Optional<InstructionWalker>{};
+                    Optional<TypedInstructionWalker<intermediate::CacheAccessInstruction>>{};
                 if(!cacheReadIt)
                     // this load does not have exactly 1 cache read (or we could not find it), so skip
                     return it.nextInBlock();
@@ -822,7 +821,7 @@ NODISCARD static InstructionWalker findGroupOfTMUAccess(InstructionWalker it, TM
 
                 // add to group
                 group.usedVectorSize += static_cast<uint8_t>(numVectorElements->unsignedInt());
-                group.ramReads.emplace_back(it);
+                group.ramReads.emplace_back(typeSafe(it, *load));
                 group.cacheLoads.emplace_back(*cacheReadIt);
                 group.uniformAddressParts.emplace_back(baseAndOffset->workGroupConstantOffset);
             }
@@ -931,7 +930,7 @@ static std::pair<std::vector<SubExpression>, std::vector<std::vector<SubExpressi
     elementOffsetsParts.reserve(group.usedVectorSize);
     for(std::size_t i = 0; i < group.ramReads.size(); ++i)
     {
-        auto cacheEntry = group.ramReads[i].get<intermediate::RAMAccessInstruction>()->getTMUCacheEntry();
+        auto cacheEntry = group.ramReads[i].get()->getTMUCacheEntry();
         auto numVectorElements = cacheEntry->numVectorElements.getLiteralValue().value().unsignedInt();
         auto loadStrideExpr = std::make_shared<Expression>(OP_SUB, group.uniformAddressParts[i], previousUniformOffset)
                                   ->combineWith({},
@@ -1088,7 +1087,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
     FastAccessList<InstructionWalker> secondAddressCalculations;
 
     // 2. Update TMU cache entry to the number and stride/offsets of elements read
-    auto it = group.ramReads.front();
+    InstructionWalker it = group.ramReads.front();
     if(commonConstantStride && commonConstantStride->signedInt() >= 0 &&
         /* TODO currently this needs to be a positive power of 2, since TMU lowering does not handle anything else! */
         isPowerTwo(commonConstantStride->unsignedInt()) &&
@@ -1126,7 +1125,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
             Value(*commonConstantStride, TYPE_INT32), customAddressOffsets,
             intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
 
-        auto initialRAMLoad = group.ramReads.front().get<intermediate::RAMAccessInstruction>();
+        auto initialRAMLoad = group.ramReads.front().get();
         it = insertCustomAddressesCalculation(it, method, initialRAMLoad->getMemoryAddress(), customAddressOffsets,
             group.usedVectorSize, group.cacheEntry->addresses);
         group.cacheEntry->customAddressCalculation = true;
@@ -1159,7 +1158,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
 
         it = intermediate::insertAssembleVector(it, method, customAddressOffsets, addressOffsets);
 
-        auto initialRAMLoad = group.ramReads.front().get<intermediate::RAMAccessInstruction>();
+        auto initialRAMLoad = group.ramReads.front().get();
         it = insertCustomAddressesCalculation(it, method, initialRAMLoad->getMemoryAddress(), customAddressOffsets,
             group.usedVectorSize, group.cacheEntry->addresses);
         group.cacheEntry->customAddressCalculation = true;
@@ -1169,8 +1168,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
         std::all_of(elementStrides.begin() + 1, elementStrides.end(),
             [=](const SubExpression& stride) -> bool { return stride == commonStride; }) &&
         checkSecondAddressCalculation(group.ramReads.at(1), group.ramReads.front(),
-            group.ramReads.at(1).get<intermediate::RAMAccessInstruction>()->getMemoryAddress().checkLocal(),
-            secondAddressCalculations))
+            group.ramReads.at(1).get()->getMemoryAddress().checkLocal(), secondAddressCalculations))
     {
         /*
          * If all elements have the same (non-constant literal) stride (within and between single group elements/loads
@@ -1186,7 +1184,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
          * x+3*constB, ...
          * TODO Need to make sure we do not insert too many instructions
          */
-        auto initialRAMLoad = group.ramReads.front().get<intermediate::RAMAccessInstruction>();
+        auto initialRAMLoad = group.ramReads.front().get();
 
         auto elementStride = method.addNewLocal(TYPE_INT32.toVectorType(group.usedVectorSize), "%tmu_group_stride");
         auto strideExpression = commonStride.checkExpression();
@@ -1197,8 +1195,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
         }
         else
             assign(it, elementStride) =
-                (group.ramReads.at(1).get<intermediate::RAMAccessInstruction>()->getMemoryAddress() -
-                    initialRAMLoad->getMemoryAddress());
+                (group.ramReads.at(1).get()->getMemoryAddress() - initialRAMLoad->getMemoryAddress());
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Using common non-constant TMU access group stride of: " << elementStride.to_string()
                 << logging::endl);
@@ -1227,8 +1224,8 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
         // between loads is not identical to the stride between vector elements.
         // Since we do check for the "primary" stride to be a power of 2, we can use the element numbers to speed up
         // offset calculation.
-        auto initialRAMLoad = group.ramReads.front().get<intermediate::RAMAccessInstruction>();
-        auto secondRAMLoad = group.ramReads.at(1).get<intermediate::RAMAccessInstruction>();
+        auto initialRAMLoad = group.ramReads.front().get();
+        auto secondRAMLoad = group.ramReads.at(1).get();
         if(initialRAMLoad->getTMUCacheEntry()->numVectorElements.getLiteralValue().value_or(Literal(0)).unsignedInt() !=
             strides->powerOfTwo)
             // we use the difference of the second to the first original TMU RAM read addresses to calculate the primary
@@ -1318,13 +1315,13 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
 
     // 3. Extract all data with first cache read
     auto firstCacheReadIt = group.cacheLoads.front();
-    auto firstCacheRead = firstCacheReadIt.get<intermediate::CacheAccessInstruction>();
+    auto firstCacheRead = firstCacheReadIt.get();
     auto tmpData =
         method.addNewLocal(firstCacheRead->getData().type.toVectorType(group.usedVectorSize), "%grouped_tmu_loads");
     if(auto oldCacheReadOutput = firstCacheRead->getOutput())
     {
         // "extract" 0th element by simply copying the value
-        it = firstCacheReadIt.copy().nextInBlock();
+        it = firstCacheReadIt.base().copy().nextInBlock();
         it = intermediate::insertVectorExtraction(it, method, tmpData, INT_ZERO, *oldCacheReadOutput);
     }
     firstCacheRead->setOutput(tmpData);
@@ -1332,7 +1329,7 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
     // 4. Replace all other cache reads with vector extraction
     for(std::size_t i = 1; i < group.cacheLoads.size(); ++i)
     {
-        auto cacheRead = group.cacheLoads[i].get<intermediate::CacheAccessInstruction>();
+        auto cacheRead = group.cacheLoads[i].get();
         auto tmpIt = intermediate::insertVectorExtraction(
             group.cacheLoads[i], method, tmpData, Value(Literal(currentOffset), TYPE_INT8), cacheRead->getData());
         currentOffset += cacheRead->getTMUCacheEntry()->numVectorElements.getLiteralValue().value().unsignedInt();
@@ -1383,10 +1380,11 @@ struct TMULoadOffset
     SubExpression offsetExpression;
 };
 
-static FastMap<InstructionWalker, TMULoadOffset> findTMULoadsInLoop(
+static FastMap<TypedInstructionWalker<intermediate::RAMAccessInstruction>, TMULoadOffset> findTMULoadsInLoop(
     const analysis::ControlFlowLoop& loop, Method& method, const analysis::DataDependencyGraph& dependencyGraph)
 {
-    std::array<FastMap<InstructionWalker, TMULoadOffset>, 2> relevantTMULoads{};
+    std::array<FastMap<TypedInstructionWalker<intermediate::RAMAccessInstruction>, TMULoadOffset>, 2>
+        relevantTMULoads{};
     std::array<unsigned, 2> numTMULoads{};
     auto inductionVariables = loop.findInductionVariables(dependencyGraph, false);
     const auto* globalDataAddress = method.findBuiltin(BuiltinLocal::Type::GLOBAL_DATA_ADDRESS);
@@ -1460,7 +1458,7 @@ static FastMap<InstructionWalker, TMULoadOffset> findTMULoadsInLoop(
                         << matchingInductionVar->local->to_string() << ')' << logging::endl);
 
                 relevantTMULoads[cacheEntry->getTMUIndex()].emplace(
-                    it, TMULoadOffset{baseLocal, *matchingInductionVar, addressOffset});
+                    typeSafe(it, *ramAccess), TMULoadOffset{baseLocal, *matchingInductionVar, addressOffset});
             }
         }
     }
@@ -1472,7 +1470,7 @@ static FastMap<InstructionWalker, TMULoadOffset> findTMULoadsInLoop(
     if(numTMULoads[0] + numTMULoads[1] != 1)
         return {};
 
-    FastMap<InstructionWalker, TMULoadOffset> result;
+    FastMap<TypedInstructionWalker<intermediate::RAMAccessInstruction>, TMULoadOffset> result;
     result.insert(relevantTMULoads[0].begin(), relevantTMULoads[0].end());
     result.insert(relevantTMULoads[1].begin(), relevantTMULoads[1].end());
 
@@ -1527,7 +1525,7 @@ NODISCARD static bool prefetchTMULoadsInLoop(const analysis::ControlFlowLoop& lo
         if(!initialPrefetchIt)
             continue;
 
-        auto originalAccess = load.first.get<intermediate::RAMAccessInstruction>();
+        auto originalAccess = load.first.get();
 
         // move original TMU RAM load before the loop
         auto it = initialPrefetchIt->copy().nextInBlock();
@@ -1550,7 +1548,7 @@ NODISCARD static bool prefetchTMULoadsInLoop(const analysis::ControlFlowLoop& lo
         }
         auto firstIterationAddress = calculateAddress(it, load.second.inductionVariable, load.second.offsetExpression,
             method, originalAccess->getMemoryAddress().type, load.second.baseLocal);
-        it.emplace(const_cast<InstructionWalker&>(load.first).release());
+        it.emplace(const_cast<TypedInstructionWalker<intermediate::RAMAccessInstruction>&>(load.first).release());
         it.get<intermediate::RAMAccessInstruction>()->setMemoryAddress(firstIterationAddress);
 
         // add instruction prefetching the value for the next iteration into the TMU FIFO

@@ -36,7 +36,7 @@ namespace vc4c
             // the underlying memory object which is accessed
             const Local* memoryObject = nullptr;
             // the instruction writing the address to VPR_ADDR or VPW_ADDR or the intermediate::MemoryInstruction
-            InstructionWalker addressWrite{};
+            TypedInstructionWalker<intermediate::MemoryInstruction> addressWrite{};
             // the optional constant offset added after the base address was calculated, e.g. for element index
             Optional<Value> constantOffset;
             // the instruction adding the offset to the base pointer, could be the same as addressWrite
@@ -76,8 +76,8 @@ namespace vc4c
          *
          * NOTE: This function is intended to be run BEFORE the MemoryInstructions have been lowered!
          */
-        FastAccessList<MemoryAccessRange> determineAccessRanges(
-            Method& method, const Local* baseAddr, FastMap<InstructionWalker, const Local*>& accessInstructions);
+        FastAccessList<MemoryAccessRange> determineAccessRanges(Method& method, const Local* baseAddr,
+            FastMap<TypedInstructionWalker<intermediate::MemoryInstruction>, const Local*>& accessInstructions);
 
         /**
          * Checks whether all work-group uniform parts of the memory accesses are equal.

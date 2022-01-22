@@ -258,7 +258,7 @@ static bool hasOnlyAddressesDerivateOfLocalId(const MemoryAccessRange& range, un
     // do have a cross-item access.
     return !range.dynamicAddressParts.empty() &&
         std::all_of(range.dynamicAddressParts.begin(), range.dynamicAddressParts.end(),
-            [&, memWrite{range.addressWrite.get<MemoryInstruction>()}](
+            [&, memWrite{range.addressWrite.get()}](
                 const std::pair<Value, intermediate::InstructionDecorations>& parts) -> bool {
                 if(checkIdDecoration(parts.second))
                 {

@@ -190,7 +190,7 @@ static bool isMemoryOnlyRead(const Local* local)
 }
 
 // Finds the next instruction writing the given value into memory
-static NODISCARD InstructionWalker findNextValueStore(
+static NODISCARD TypedInstructionWalker<MemoryInstruction> findNextValueStore(
     InstructionWalker it, const Value& src, std::size_t limit, const Local* sourceLocation)
 {
     while(!it.isEndOfBlock() && limit > 0)
@@ -198,20 +198,20 @@ static NODISCARD InstructionWalker findNextValueStore(
         auto memInstr = it.get<MemoryInstruction>();
         if(memInstr != nullptr && memInstr->op == MemoryOperation::WRITE && memInstr->getSource() == src)
         {
-            return it;
+            return typeSafe(it, *memInstr);
         }
         if(memInstr != nullptr && memInstr->getDestination().local()->getBase(true) == sourceLocation)
         {
             // there is some other instruction writing into the memory we read, it could have been changed -> abort
             // TODO can we be more precise and abort only if the same index is written?? How to determine??
-            return it.getBasicBlock()->walkEnd();
+            return typeSafe<MemoryInstruction>(it.getBasicBlock()->walkEnd());
         }
         if(it.get<MemoryBarrier>() || it.get<Branch>() || it.get<MutexLock>() || it.get<SemaphoreAdjustment>())
             break;
         it.nextInBlock();
         --limit;
     }
-    return it.getBasicBlock()->walkEnd();
+    return typeSafe<MemoryInstruction>(it.getBasicBlock()->walkEnd());
 }
 
 static NODISCARD std::pair<InstructionWalker, InstructionWalker> insert64BitWrite(Method& method, InstructionWalker it,
@@ -400,10 +400,11 @@ static void addConditionalLocalMapping(const Local* loc, const ConditionalMemory
     conditionalLocalMappings[conditionalWrite.conditionalWrite->checkOutputLocal()].emplace(loc);
 }
 
-static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping, InstructionWalker it, const Local* local,
+static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping,
+    TypedInstructionWalker<intermediate::MemoryInstruction> it, const Local* local,
     const intermediate::MemoryInstruction* memInstr,
-    FastMap<InstructionWalker, std::pair<const Local*, FastSet<const ConditionalMemoryAccess*>>>&
-        conditionalWrittenMemoryAccesses,
+    FastMap<TypedInstructionWalker<intermediate::MemoryInstruction>,
+        std::pair<const Local*, FastSet<const ConditionalMemoryAccess*>>>& conditionalWrittenMemoryAccesses,
     FastSet<ConditionalMemoryAccess>& conditionalAddressWrites)
 {
     if(mapping.find(local) != mapping.end())
@@ -679,7 +680,8 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Determining memory access for kernel: " << method.name << logging::endl);
     MemoryAccessMap mapping;
     FastSet<InstructionWalker> allWalkers;
-    FastMap<InstructionWalker, std::pair<const Local*, FastSet<const ConditionalMemoryAccess*>>>
+    FastMap<TypedInstructionWalker<intermediate::MemoryInstruction>,
+        std::pair<const Local*, FastSet<const ConditionalMemoryAccess*>>>
         conditionalWrittenMemoryAccesses;
     FastSet<ConditionalMemoryAccess> conditionalAddressWrites;
     for(const auto& param : method.parameters)
@@ -792,7 +794,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                 // convert read-then-write to copy
                 auto nextIt = findNextValueStore(
                     it, memInstr->getDestination(), 16 /* TODO */, memInstr->getSource().local()->getBase(true));
-                auto nextMemInstr = nextIt.isEndOfBlock() ? nullptr : nextIt.get<const MemoryInstruction>();
+                auto nextMemInstr = nextIt.base().isEndOfBlock() ? nullptr : nextIt.get();
                 if(nextMemInstr != nullptr && !nextIt->hasConditionalExecution() &&
                     nextMemInstr->op == MemoryOperation::WRITE &&
                     nextMemInstr->getSource().getSingleWriter() == memInstr &&
@@ -1005,8 +1007,8 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                 }
             }
             for(const auto local : memInstr->getMemoryAreas())
-                determineSingleMemoryAreaMapping(
-                    mapping, it, local, memInstr, conditionalWrittenMemoryAccesses, conditionalAddressWrites);
+                determineSingleMemoryAreaMapping(mapping, typeSafe(it, *memInstr), local, memInstr,
+                    conditionalWrittenMemoryAccesses, conditionalAddressWrites);
             if(it.has())
                 allWalkers.emplace(it);
         }
@@ -1173,7 +1175,7 @@ static MemoryInfo canLowerToRegisterReadOnly(Method& method, const Local* baseAd
     // c) the global is a constant where all accesses are direct accesses (i.e. not via a conditional address write) and
     // have constant indices and therefore all accessed elements can be determined at compile time
     if(std::all_of(access.accessInstructions.begin(), access.accessInstructions.end(), [&](const auto& entry) -> bool {
-           auto memInstr = entry.first.template get<const intermediate::MemoryInstruction>();
+           auto memInstr = entry.first.get();
            return memInstr && baseAddr == entry.second && memInstr->getNumEntries().hasLiteral(1_lit) &&
                getConstantElementValue(memInstr->getSource()).has_value();
        }))
@@ -1291,12 +1293,12 @@ static MemoryInfo canMapToDMAReadWrite(Method& method, const Local* baseAddr, Me
     bool isCacheableType = memoryDataType.isSimpleType() && memoryDataType.getScalarBitCount() <= 32;
     bool hasOnlyCacheableAccesses = isLocalMemory ||
         std::none_of(access.accessInstructions.begin(), access.accessInstructions.end(),
-            [](const std::pair<InstructionWalker, const Local*>& pair) -> bool {
+            [](const std::pair<TypedInstructionWalker<intermediate::MemoryInstruction>, const Local*>& pair) -> bool {
                 // XXX for now, don't cache any copy between RAM and RAM, since we will have to rewrite the layout
                 // inside the VPM (or read/write initially with the correct/not-packed layout)
                 // XXX also for now, don't cache any 64-bit access, since we cannot (yet) write multiple rows of 64-bit
                 // data
-                auto memoryInst = pair.first.get<intermediate::MemoryInstruction>();
+                auto memoryInst = pair.first.get();
                 return memoryInst &&
                     (memoryInst->op == intermediate::MemoryOperation::COPY ||
                         memoryInst->getDestinationElementType().getScalarBitCount() > 32 ||

@@ -274,7 +274,7 @@ InstructionWalker optimizations::combineFlagWithOutput(
     };
 
     // look into the future until we hit the instruction requiring the flag
-    InstructionWalker resultIt = it.getBasicBlock()->walkEnd();
+    auto resultIt = typeSafe<intermediate::ExtendedInstruction>(it.getBasicBlock()->walkEnd());
     auto checkIt = it.copy().nextInBlock();
     while(!checkIt.isEndOfBlock())
     {
@@ -290,14 +290,14 @@ InstructionWalker optimizations::combineFlagWithOutput(
             break;
         if(movesFromSameInput(checkIt))
         {
-            resultIt = checkIt;
+            resultIt = typeSafe<intermediate::ExtendedInstruction>(checkIt);
             break;
         }
         checkIt.nextInBlock();
     }
 
     // look back only a few instructions
-    if(resultIt.isEndOfBlock())
+    if(resultIt.base().isEndOfBlock())
     {
         checkIt = it.copy().previousInBlock();
         while(!checkIt.isStartOfBlock())
@@ -315,18 +315,18 @@ InstructionWalker optimizations::combineFlagWithOutput(
                 break;
             if(movesFromSameInput(checkIt))
             {
-                resultIt = checkIt;
+                resultIt = typeSafe<intermediate::ExtendedInstruction>(checkIt);
                 break;
             }
             checkIt.previousInBlock();
         }
     }
-    if(!resultIt.isEndOfBlock())
+    if(!resultIt.base().isEndOfBlock())
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Combining move to set flags '" << it->to_string()
                 << "' with move to output: " << resultIt->to_string() << logging::endl);
-        resultIt.get<intermediate::ExtendedInstruction>()->setSetFlags(SetFlag::SET_FLAGS);
+        resultIt.get()->setSetFlags(SetFlag::SET_FLAGS);
         // TODO decorations? If input is the same, most decorations are also the same?! Also, setflags usually don't
         // have that many!?
         it.erase();
@@ -492,19 +492,18 @@ static Optional<ConditionCode> getConditionalBooleanWrites(const Value& val, Ins
     if(writers.size() != 2)
         return {};
     // check local writes are within the same block
-    std::vector<InstructionWalker> writerWalkers;
+    std::vector<TypedInstructionWalker<intermediate::ExtendedInstruction>> writerWalkers;
     for(auto writer : writers)
     {
         if(auto writerIt = it.getBasicBlock()->findWalkerForInstruction(writer, it.getBasicBlock()->walk(), it))
-            writerWalkers.emplace_back(*writerIt);
+            writerWalkers.emplace_back(typeSafe<intermediate::ExtendedInstruction>(*writerIt));
         else
             return {};
     }
     // check writes are conditional with inverted conditions
     if(!writerWalkers.front()->hasConditionalExecution() || !writerWalkers.back()->hasConditionalExecution())
         return {};
-    if(!writerWalkers.front().get<intermediate::ExtendedInstruction>()->getCondition().isInversionOf(
-           writerWalkers.back().get<intermediate::ExtendedInstruction>()->getCondition()))
+    if(!writerWalkers.front().get()->getCondition().isInversionOf(writerWalkers.back().get()->getCondition()))
         return {};
     // check writes are conditional on the same setting of flags
     auto firstFlagIt = it.getBasicBlock()->findLastSettingOfFlags(writerWalkers.front());
@@ -522,9 +521,9 @@ static Optional<ConditionCode> getConditionalBooleanWrites(const Value& val, Ins
     if(!firstValue || !secondValue)
         return {};
     if(firstValue == BOOL_TRUE && secondValue == BOOL_FALSE)
-        return writerWalkers.front().get<intermediate::ExtendedInstruction>()->getCondition();
+        return writerWalkers.front().get()->getCondition();
     if(firstValue == BOOL_FALSE && secondValue == BOOL_TRUE)
-        return writerWalkers.back().get<intermediate::ExtendedInstruction>()->getCondition();
+        return writerWalkers.back().get()->getCondition();
     return {};
 }
 

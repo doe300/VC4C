@@ -640,7 +640,7 @@ void normalization::lowerLongOperation(
             auto outLow = out->lower->createReference();
             auto outUp = out->upper->createReference();
             call->setOutput(outUp);
-            it = intrinsics::intrinsifyIntegerToLongMultiplication(method, it, call, outLow);
+            it = intrinsics::intrinsifyIntegerToLongMultiplication(method, typeSafe(it, *call), outLow);
         }
     }
     else if(auto load = it.get<intermediate::LoadImmediate>())

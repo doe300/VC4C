@@ -46,13 +46,15 @@ static NODISCARD InstructionWalker replaceWithSetBoolean(
     return it;
 }
 
-static void intrinsifyLongRelation(Method& method, InstructionWalker it, const Comparison* comp, bool invertResult)
+static void intrinsifyLongRelation(Method& method, TypedInstructionWalker<Comparison> inIt, bool invertResult)
 {
-    auto boolType = TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth());
-    auto firstParts = normalization::getLowerAndUpperWords(comp->getFirstArg());
-    auto secondParts = normalization::getLowerAndUpperWords(comp->assertArgument(1));
+    const auto& comp = *inIt.get();
+    InstructionWalker it = inIt;
+    auto boolType = TYPE_BOOL.toVectorType(comp.getFirstArg().type.getVectorWidth());
+    auto firstParts = normalization::getLowerAndUpperWords(comp.getFirstArg());
+    auto secondParts = normalization::getLowerAndUpperWords(comp.assertArgument(1));
 
-    if(COMP_EQ == comp->opCode)
+    if(COMP_EQ == comp.opCode)
     {
         auto cond = assignNop(it) = as_unsigned{firstParts.first} == as_unsigned{secondParts.first};
         // dummy instruction to be replaced
@@ -65,13 +67,13 @@ static void intrinsifyLongRelation(Method& method, InstructionWalker it, const C
         {
             // A != B <=> (A.low != B.low) || (A.up != B.up)
             assign(it, tmp) = (BOOL_TRUE, cond.invert());
-            it.reset(std::make_unique<MoveOperation>(comp->getOutput().value(), tmp));
+            it.reset(std::make_unique<MoveOperation>(comp.getOutput().value(), tmp));
         }
         else
             // A == B <=> (A.low == B.low) && (A.up == B.up)
-            it = replaceWithSetBoolean(it, comp->getOutput().value(), cond, tmp);
+            it = replaceWithSetBoolean(it, comp.getOutput().value(), cond, tmp);
     }
-    else if(COMP_UNSIGNED_LT == comp->opCode || COMP_SIGNED_LT == comp->opCode)
+    else if(COMP_UNSIGNED_LT == comp.opCode || COMP_SIGNED_LT == comp.opCode)
     {
         /*
          * For unsigned:
@@ -89,46 +91,48 @@ static void intrinsifyLongRelation(Method& method, InstructionWalker it, const C
          * parts both positive" and "upper parts both negative" have the same lower comparison.
          */
         const char* upperComparison = nullptr;
-        if(COMP_UNSIGNED_LT == comp->opCode)
+        if(COMP_UNSIGNED_LT == comp.opCode)
             upperComparison = invertResult ? COMP_UNSIGNED_GT : COMP_UNSIGNED_LT;
         else
             upperComparison = invertResult ? COMP_SIGNED_GT : COMP_SIGNED_LT;
 
         auto tmpUpper = method.addNewLocal(boolType, "%lcomp");
-        it.emplace(std::make_unique<Comparison>(
+        auto& tmpComp0 = it.emplace(std::make_unique<Comparison>(
             upperComparison, Value(tmpUpper), Value(firstParts.second), Value(secondParts.second)));
-        intrinsics::intrinsifyComparison(method, it);
+        intrinsics::intrinsifyComparison(method, typeSafe(it, tmpComp0));
         it.nextInBlock();
 
         auto tmpLower = method.addNewLocal(boolType, "%lcomp");
-        it.emplace(std::make_unique<Comparison>(invertResult ? COMP_UNSIGNED_GE : COMP_UNSIGNED_LT, Value(tmpLower),
-            Value(firstParts.first), Value(secondParts.first)));
-        intrinsics::intrinsifyComparison(method, it);
+        auto& tmpComp1 = it.emplace(std::make_unique<Comparison>(invertResult ? COMP_UNSIGNED_GE : COMP_UNSIGNED_LT,
+            Value(tmpLower), Value(firstParts.first), Value(secondParts.first)));
+        intrinsics::intrinsifyComparison(method, typeSafe(it, tmpComp1));
         it.nextInBlock();
 
-        assign(it, comp->getOutput().value()) = tmpUpper;
+        assign(it, comp.getOutput().value()) = tmpUpper;
         auto cond = assignNop(it) = as_unsigned{firstParts.second} == as_unsigned{secondParts.second};
-        it.reset(std::make_unique<MoveOperation>(comp->getOutput().value(), tmpLower, cond));
+        it.reset(std::make_unique<MoveOperation>(comp.getOutput().value(), tmpLower, cond));
     }
     else
-        throw CompilationError(CompilationStep::NORMALIZER, "Unrecognized integer comparison", comp->opCode);
+        throw CompilationError(CompilationStep::NORMALIZER, "Unrecognized integer comparison", comp.opCode);
 }
 
-static void intrinsifyIntegerRelation(Method& method, InstructionWalker it, const Comparison* comp, bool invertResult)
+static void intrinsifyIntegerRelation(Method& method, TypedInstructionWalker<Comparison> inIt, bool invertResult)
 {
+    const auto& comp = *inIt.get();
+    InstructionWalker it = inIt;
     // http://llvm.org/docs/LangRef.html#icmp-instruction
-    auto boolType = TYPE_BOOL.toVectorType(comp->getFirstArg().type.getVectorWidth());
-    if(comp->getFirstArg().type.getScalarBitCount() > 32 || comp->assertArgument(1).type.getScalarBitCount() > 32)
+    auto boolType = TYPE_BOOL.toVectorType(comp.getFirstArg().type.getVectorWidth());
+    if(comp.getFirstArg().type.getScalarBitCount() > 32 || comp.assertArgument(1).type.getScalarBitCount() > 32)
     {
         // long comparison, split into multiple parts and run integer comparisons
-        return intrinsifyLongRelation(method, it, comp, invertResult);
+        return intrinsifyLongRelation(method, inIt, invertResult);
     }
-    if(COMP_EQ == comp->opCode)
+    if(COMP_EQ == comp.opCode)
     {
-        auto cond = assignNop(it) = (as_unsigned{comp->getFirstArg()} == as_unsigned{comp->assertArgument(1)});
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? cond.invert() : cond);
+        auto cond = assignNop(it) = (as_unsigned{comp.getFirstArg()} == as_unsigned{comp.assertArgument(1)});
+        it = replaceWithSetBoolean(it, comp.getOutput().value(), invertResult ? cond.invert() : cond);
     }
-    else if(COMP_UNSIGNED_LT == comp->opCode)
+    else if(COMP_UNSIGNED_LT == comp.opCode)
     {
         // a < b [<=> umin(a, b) != b] <=> umax(a, b) != a
         /*
@@ -142,36 +146,36 @@ static void intrinsifyIntegerRelation(Method& method, InstructionWalker it, cons
          * a < b [<=> max(a & 0xFF, b & 0xFF) != a] <=> max(a, b) != a (since MSB is never set -> always positive)
          */
         ConditionCode cond = COND_NEVER;
-        if(comp->getFirstArg().getConstantValue() == INT_ZERO)
+        if(comp.getFirstArg().getConstantValue() == INT_ZERO)
         {
             // 0 < b <=> b != 0
-            cond = assignNop(it) = isnonzero(as_unsigned{comp->assertArgument(1)});
+            cond = assignNop(it) = isnonzero(as_unsigned{comp.assertArgument(1)});
         }
-        else if(comp->getFirstArg().type.getScalarBitCount() == 32 ||
-            comp->assertArgument(1).type.getScalarBitCount() == 32)
+        else if(comp.getFirstArg().type.getScalarBitCount() == 32 ||
+            comp.assertArgument(1).type.getScalarBitCount() == 32)
         {
             // a < b [b = 2^x] <=> (a & (b-1)) == a <=> (a & ~(b-1)) == 0
-            if(comp->assertArgument(1).checkLiteral() && isPowerTwo(comp->assertArgument(1).literal().unsignedInt()))
+            if(comp.assertArgument(1).checkLiteral() && isPowerTwo(comp.assertArgument(1).literal().unsignedInt()))
             {
                 // this is actually pre-calculated, so no insertion is performed
-                Value mask = assign(it, comp->assertArgument(1).type) = comp->assertArgument(1) - 1_val;
+                Value mask = assign(it, comp.assertArgument(1).type) = comp.assertArgument(1) - 1_val;
                 mask = assign(it, mask.type) = ~mask;
-                assignNop(it) = (comp->getFirstArg() & mask, SetFlag::SET_FLAGS);
+                assignNop(it) = (comp.getFirstArg() & mask, SetFlag::SET_FLAGS);
 
                 // we set to true, if flag is zero, false otherwise
                 invertResult = !invertResult;
             }
             // a < b [b = 2^x -1] <=> (a & b) == a && a != b <=> (a & ~b) == 0 && a != b (this version is used)!
             // <=> (a >> log2(b + 1)) == 0 && a != b
-            else if(comp->assertArgument(1).checkLiteral() &&
-                isPowerTwo(comp->assertArgument(1).literal().unsignedInt() + 1))
+            else if(comp.assertArgument(1).checkLiteral() &&
+                isPowerTwo(comp.assertArgument(1).literal().unsignedInt() + 1))
             {
                 // this is actually pre-calculated, so no insertion is performed
-                Value mask = assign(it, comp->assertArgument(1).type) = ~comp->assertArgument(1);
-                Value tmp1 = assign(it, boolType, "%icomp") = comp->getFirstArg() & mask;
+                Value mask = assign(it, comp.assertArgument(1).type) = ~comp.assertArgument(1);
+                Value tmp1 = assign(it, boolType, "%icomp") = comp.getFirstArg() & mask;
                 const Value tmp2 = method.addNewLocal(boolType, "%icomp");
 
-                assign(it, NOP_REGISTER) = (comp->getFirstArg() ^ comp->assertArgument(1), SetFlag::SET_FLAGS);
+                assign(it, NOP_REGISTER) = (comp.getFirstArg() ^ comp.assertArgument(1), SetFlag::SET_FLAGS);
                 // insert dummy comparison to be replaced
                 it.emplace(std::make_unique<Nop>(DelayType::WAIT_VPM));
                 it = replaceWithSetBoolean(it, tmp2, COND_ZERO_SET);
@@ -181,11 +185,11 @@ static void intrinsifyIntegerRelation(Method& method, InstructionWalker it, cons
                 invertResult = !invertResult;
             }
             // a < b [a = 2^x - 1] <=> (~a & b) != 0
-            else if(comp->getFirstArg().checkLiteral() && isPowerTwo(comp->getFirstArg().literal().unsignedInt() + 1))
+            else if(comp.getFirstArg().checkLiteral() && isPowerTwo(comp.getFirstArg().literal().unsignedInt() + 1))
             {
                 // this is actually pre-calculated, so no insertion is performed
-                Value mask = assign(it, comp->getFirstArg().type) = ~comp->getFirstArg();
-                assignNop(it) = (mask & comp->assertArgument(1), SetFlag::SET_FLAGS);
+                Value mask = assign(it, comp.getFirstArg().type) = ~comp.getFirstArg();
+                assignNop(it) = (mask & comp.assertArgument(1), SetFlag::SET_FLAGS);
             }
             else
             {
@@ -204,18 +208,18 @@ static void intrinsifyIntegerRelation(Method& method, InstructionWalker it, cons
                  * a neg  | min(a, b) != a | max(a, b) != a | min(a, b) != a |
                  * a zero | max(a, b) != a | min(a, b) != a | max(a, b) != a |
                  */
-                auto firstArg = comp->getFirstArg();
-                auto secondArg = comp->assertArgument(1);
+                auto firstArg = comp.getFirstArg();
+                auto secondArg = comp.assertArgument(1);
                 // insert a single instruction loading literal values to not need to insert one per usage
                 if(firstArg.getLiteralValue())
                 {
                     firstArg = method.addNewLocal(firstArg.type);
-                    assign(it, firstArg) = comp->getFirstArg();
+                    assign(it, firstArg) = comp.getFirstArg();
                 }
                 if(secondArg.getLiteralValue())
                 {
                     secondArg = method.addNewLocal(secondArg.type);
-                    assign(it, secondArg) = comp->assertArgument(1);
+                    assign(it, secondArg) = comp.assertArgument(1);
                 }
                 assign(it, NOP_REGISTER) = (firstArg ^ secondArg, SetFlag::SET_FLAGS);
                 Value unsignedMax = method.addNewLocal(firstArg.type, "%icomp");
@@ -228,43 +232,43 @@ static void intrinsifyIntegerRelation(Method& method, InstructionWalker it, cons
         else
         {
             // for non 32-bit types, high-bit is not set and therefore signed max == unsigned max
-            cond = assignNop(it) = (as_signed{comp->getFirstArg()} < as_signed{comp->assertArgument(1)});
+            cond = assignNop(it) = (as_signed{comp.getFirstArg()} < as_signed{comp.assertArgument(1)});
         }
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? cond.invert() : cond);
+        it = replaceWithSetBoolean(it, comp.getOutput().value(), invertResult ? cond.invert() : cond);
     }
-    else if(COMP_SIGNED_LT == comp->opCode)
+    else if(COMP_SIGNED_LT == comp.opCode)
     {
-        Value firstArg = comp->getFirstArg();
-        Value secondArg = comp->assertArgument(1);
+        Value firstArg = comp.getFirstArg();
+        Value secondArg = comp.assertArgument(1);
         // TODO is this required?
         if(firstArg.type.getScalarBitCount() < 32 && !firstArg.getConstantValue())
         {
             firstArg = method.addNewLocal(TYPE_INT32.toVectorType(firstArg.type.getVectorWidth()), "%icomp");
-            it = insertSignExtension(it, method, comp->getFirstArg(), firstArg, true);
+            it = insertSignExtension(it, method, comp.getFirstArg(), firstArg, true);
         }
         if(secondArg.type.getScalarBitCount() < 32 && !secondArg.getConstantValue())
         {
             secondArg = method.addNewLocal(TYPE_INT32.toVectorType(secondArg.type.getVectorWidth()), "%icomp");
-            it = insertSignExtension(it, method, comp->assertArgument(1), secondArg, true);
+            it = insertSignExtension(it, method, comp.assertArgument(1), secondArg, true);
         }
         auto cond = assignNop(it) = (as_signed{firstArg} < as_signed{secondArg});
-        it = replaceWithSetBoolean(it, comp->getOutput().value(), invertResult ? cond.invert() : cond);
+        it = replaceWithSetBoolean(it, comp.getOutput().value(), invertResult ? cond.invert() : cond);
     }
     else
-        throw CompilationError(CompilationStep::NORMALIZER, "Unrecognized integer comparison", comp->opCode);
+        throw CompilationError(CompilationStep::NORMALIZER, "Unrecognized integer comparison", comp.opCode);
 }
 
 static NODISCARD InstructionWalker insertCheckForNaN(
-    InstructionWalker it, const Value& result, const Comparison* comp, bool invertResult)
+    InstructionWalker it, const Value& result, const Comparison& comp, bool invertResult)
 {
     assign(it, result) = invertResult ? BOOL_TRUE : BOOL_FALSE;
-    if(has_flag(comp->decoration, InstructionDecorations::NO_NAN) ||
-        has_flag(comp->decoration, InstructionDecorations::FAST_MATH))
+    if(has_flag(comp.decoration, InstructionDecorations::NO_NAN) ||
+        has_flag(comp.decoration, InstructionDecorations::FAST_MATH))
         // we are allowed to assume the operands to be non-nan, so we don't need to check this
         return it;
-    auto nanCond = assignNop(it) = isnan(as_float{comp->getFirstArg()});
+    auto nanCond = assignNop(it) = isnan(as_float{comp.getFirstArg()});
     assign(it, result) = (invertResult ? BOOL_FALSE : BOOL_TRUE, nanCond);
-    if(auto arg1 = comp->getSecondArg())
+    if(auto arg1 = comp.getSecondArg())
     {
         nanCond = assignNop(it) = isnan(as_float{*arg1});
         assign(it, result) = (invertResult ? BOOL_FALSE : BOOL_TRUE, nanCond);
@@ -273,12 +277,12 @@ static NODISCARD InstructionWalker insertCheckForNaN(
 }
 
 static NODISCARD InstructionWalker insertCheckFloatZero(
-    InstructionWalker it, const Value& result, const Comparison* comp)
+    InstructionWalker it, const Value& result, const Comparison& comp)
 {
     assign(it, result) = BOOL_FALSE;
-    auto zeroCond = assignNop(it) = iszero(as_float{comp->getFirstArg()});
+    auto zeroCond = assignNop(it) = iszero(as_float{comp.getFirstArg()});
     assign(it, result) = (BOOL_TRUE, zeroCond);
-    if(auto arg1 = comp->getSecondArg())
+    if(auto arg1 = comp.getSecondArg())
     {
         // if we have 2 inputs, we need to check whether BOTH are zero
         zeroCond = assignNop(it) = iszero(as_float{*arg1});
@@ -288,7 +292,7 @@ static NODISCARD InstructionWalker insertCheckFloatZero(
     return it;
 }
 
-static void intrinsifyFloatingRelation(Method& method, InstructionWalker it, const Comparison* comp)
+static void intrinsifyFloatingRelation(Method& method, TypedInstructionWalker<Comparison> inIt)
 {
     // since we do not support NaNs/Inf and denormals, all ordered comparisons are treated as unordered
     // -> "don't care if value could be Nan/Inf"
@@ -300,137 +304,139 @@ static void intrinsifyFloatingRelation(Method& method, InstructionWalker it, con
      * >, <, >=, <= -> false if any is NaN
      */
 
+    const auto& comp = *inIt.get();
+    InstructionWalker it = inIt;
+
     // http://llvm.org/docs/LangRef.html#fcmp-instruction
-    if(COMP_TRUE == comp->opCode)
+    if(COMP_TRUE == comp.opCode)
     {
         // true
-        it.reset(std::make_unique<MoveOperation>(comp->getOutput().value(), BOOL_TRUE)).setSetFlags(SetFlag::SET_FLAGS);
+        it.reset(std::make_unique<MoveOperation>(comp.getOutput().value(), BOOL_TRUE)).setSetFlags(SetFlag::SET_FLAGS);
     }
-    else if(COMP_FALSE == comp->opCode)
+    else if(COMP_FALSE == comp.opCode)
     {
         // false
-        it.reset(std::make_unique<MoveOperation>(comp->getOutput().value(), BOOL_FALSE))
-            .setSetFlags(SetFlag::SET_FLAGS);
+        it.reset(std::make_unique<MoveOperation>(comp.getOutput().value(), BOOL_FALSE)).setSetFlags(SetFlag::SET_FLAGS);
     }
-    else if(COMP_ORDERED_EQ == comp->opCode)
+    else if(COMP_ORDERED_EQ == comp.opCode)
     {
         // IEEE 754 considers -0 and 0 to be equal according to the "usual numeric comparisons", see
         // https://en.wikipedia.org/wiki/Signed_zero#Comparisons
         // !isnan(a) && !isnan(b) && (a == b || (iszero(a) && iszero(b))) <=>
         // !(isnan(a) || isnan(b) || a != b) || (iszero(a) && iszero(b))
-        const auto& res = comp->getOutput().value();
+        const auto& res = comp.getOutput().value();
         it = insertCheckForNaN(it, res, comp, true);
-        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} != as_float{comp->assertArgument(1)});
+        auto cond = assignNop(it) = (as_float{comp.getFirstArg()} != as_float{comp.assertArgument(1)});
         assign(it, res) = (BOOL_FALSE, cond);
-        auto tmpZero = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getOutput()->type.getVectorWidth()), "%iszero");
+        auto tmpZero = method.addNewLocal(TYPE_BOOL.toVectorType(comp.getOutput()->type.getVectorWidth()), "%iszero");
         it = insertCheckFloatZero(it, tmpZero, comp);
         assign(it, res) = res || tmpZero;
         it.erase();
     }
-    else if(COMP_ORDERED_NEQ == comp->opCode)
+    else if(COMP_ORDERED_NEQ == comp.opCode)
     {
         // IEEE 754 considers -0 and 0 to be equal according to the "usual numeric comparisons", see
         // https://en.wikipedia.org/wiki/Signed_zero#Comparisons
         // !isnan(a) && !isnan(b) && a != b && !(iszero(a) && iszero(b)) <=>
         // !(isnan(a) || isnan(b) || a == b || (iszero(a) && iszero(b))
-        const auto& res = comp->getOutput().value();
+        const auto& res = comp.getOutput().value();
         it = insertCheckForNaN(it, res, comp, true);
-        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} == as_float{comp->assertArgument(1)});
+        auto cond = assignNop(it) = (as_float{comp.getFirstArg()} == as_float{comp.assertArgument(1)});
         assign(it, res) = (BOOL_FALSE, cond);
-        auto tmpZero = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getOutput()->type.getVectorWidth()), "%iszero");
+        auto tmpZero = method.addNewLocal(TYPE_BOOL.toVectorType(comp.getOutput()->type.getVectorWidth()), "%iszero");
         it = insertCheckFloatZero(it, tmpZero, comp);
         cond = assignNop(it) = isnonzero(as_unsigned{tmpZero});
         assign(it, res) = (BOOL_FALSE, cond);
         it.erase();
     }
-    else if(COMP_ORDERED_LT == comp->opCode)
+    else if(COMP_ORDERED_LT == comp.opCode)
     {
         // !isnan(a) && !isnan(b) && a < b <=> !(isnan(a) || isnan(b) || a >= b)
-        const auto& res = comp->getOutput().value();
+        const auto& res = comp.getOutput().value();
         it = insertCheckForNaN(it, res, comp, true);
-        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} >= as_float{comp->assertArgument(1)});
+        auto cond = assignNop(it) = (as_float{comp.getFirstArg()} >= as_float{comp.assertArgument(1)});
         assign(it, res) = (BOOL_FALSE, cond);
         it.erase();
     }
-    else if(COMP_ORDERED_LE == comp->opCode)
+    else if(COMP_ORDERED_LE == comp.opCode)
     {
         // !isnan(a) && !isnan(b) && a <= b <=> !(isnan(a) || isnan(b) || a > b)
-        const auto& res = comp->getOutput().value();
+        const auto& res = comp.getOutput().value();
         it = insertCheckForNaN(it, res, comp, true);
-        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} > as_float{comp->assertArgument(1)});
+        auto cond = assignNop(it) = (as_float{comp.getFirstArg()} > as_float{comp.assertArgument(1)});
         assign(it, res) = (BOOL_FALSE, cond);
         it.erase();
     }
-    else if(COMP_ORDERED == comp->opCode)
+    else if(COMP_ORDERED == comp.opCode)
     {
         // !isnan(a) && !isnan(b) <=> !(isnan(a) || isnan(b))
-        it = insertCheckForNaN(it, comp->getOutput().value(), comp, true);
+        it = insertCheckForNaN(it, comp.getOutput().value(), comp, true);
         it.erase();
     }
-    else if(COMP_UNORDERED_EQ == comp->opCode)
+    else if(COMP_UNORDERED_EQ == comp.opCode)
     {
         // isnan(a) || isnan(b) || a == b
-        const auto& res = comp->getOutput().value();
+        const auto& res = comp.getOutput().value();
         it = insertCheckForNaN(it, res, comp, false);
-        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} == as_float{comp->assertArgument(1)});
+        auto cond = assignNop(it) = (as_float{comp.getFirstArg()} == as_float{comp.assertArgument(1)});
         assign(it, res) = (BOOL_TRUE, cond);
         it.erase();
     }
-    else if(COMP_UNORDERED_NEQ == comp->opCode)
+    else if(COMP_UNORDERED_NEQ == comp.opCode)
     {
         // IEEE 754 considers -0 and 0 to be equal according to the "usual numeric comparisons", see
         // https://en.wikipedia.org/wiki/Signed_zero#Comparisons
         // isnan(a) || isnan(b) || (a != b && !(iszero(a) && iszero(b)))
-        const auto& res = comp->getOutput().value();
+        const auto& res = comp.getOutput().value();
         it = insertCheckForNaN(it, res, comp, false);
-        auto tmpZero = method.addNewLocal(TYPE_BOOL.toVectorType(comp->getOutput()->type.getVectorWidth()), "%iszero");
+        auto tmpZero = method.addNewLocal(TYPE_BOOL.toVectorType(comp.getOutput()->type.getVectorWidth()), "%iszero");
         it = insertCheckFloatZero(it, tmpZero, comp);
         assign(it, tmpZero) = tmpZero ^ BOOL_TRUE;
         // if the values are equal, we need to clear the flag
-        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} == as_float{comp->assertArgument(1)});
+        auto cond = assignNop(it) = (as_float{comp.getFirstArg()} == as_float{comp.assertArgument(1)});
         assign(it, tmpZero) = (BOOL_FALSE, cond);
         assign(it, res) = res || tmpZero;
         it.erase();
     }
-    else if(COMP_UNORDERED_LT == comp->opCode)
+    else if(COMP_UNORDERED_LT == comp.opCode)
     {
         // isnan(a) || isnan(b) || a < b
-        const auto& res = comp->getOutput().value();
+        const auto& res = comp.getOutput().value();
         it = insertCheckForNaN(it, res, comp, false);
-        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} < as_float{comp->assertArgument(1)});
+        auto cond = assignNop(it) = (as_float{comp.getFirstArg()} < as_float{comp.assertArgument(1)});
         assign(it, res) = (BOOL_TRUE, cond);
         it.erase();
     }
-    else if(COMP_UNORDERED_LE == comp->opCode)
+    else if(COMP_UNORDERED_LE == comp.opCode)
     {
         // isnan(a) || isnan(b) || a <= b
-        const auto& res = comp->getOutput().value();
+        const auto& res = comp.getOutput().value();
         it = insertCheckForNaN(it, res, comp, false);
-        auto cond = assignNop(it) = (as_float{comp->getFirstArg()} <= as_float{comp->assertArgument(1)});
+        auto cond = assignNop(it) = (as_float{comp.getFirstArg()} <= as_float{comp.assertArgument(1)});
         assign(it, res) = (BOOL_TRUE, cond);
         it.erase();
     }
-    else if(COMP_UNORDERED == comp->opCode)
+    else if(COMP_UNORDERED == comp.opCode)
     {
         // isnan(a) || isnan(b)
-        it = insertCheckForNaN(it, comp->getOutput().value(), comp, false);
+        it = insertCheckForNaN(it, comp.getOutput().value(), comp, false);
         it.erase();
     }
     else
-        throw CompilationError(CompilationStep::NORMALIZER, "Unrecognized floating-point comparison", comp->opCode);
+        throw CompilationError(CompilationStep::NORMALIZER, "Unrecognized floating-point comparison", comp.opCode);
 }
 
-static void swapComparisons(const std::string& opCode, Comparison* comp)
+static void swapComparisons(const std::string& opCode, Comparison& comp)
 {
-    Value tmp = comp->getFirstArg();
-    comp->setArgument(0, comp->assertArgument(1));
-    comp->setArgument(1, std::move(tmp));
-    comp->opCode = opCode;
+    Value tmp = comp.getFirstArg();
+    comp.setArgument(0, comp.assertArgument(1));
+    comp.setArgument(1, std::move(tmp));
+    comp.opCode = opCode;
 }
 
-bool intrinsics::intrinsifyComparison(Method& method, InstructionWalker it)
+bool intrinsics::intrinsifyComparison(Method& method, TypedInstructionWalker<intermediate::Comparison> it)
 {
-    Comparison* comp = it.get<Comparison>();
+    Comparison* comp = it.get();
     if(comp == nullptr)
     {
         return false;
@@ -460,13 +466,13 @@ bool intrinsics::intrinsifyComparison(Method& method, InstructionWalker it)
         else if(COMP_UNSIGNED_GT == comp->opCode)
         {
             // a > b -> b < a
-            swapComparisons(COMP_UNSIGNED_LT, comp);
+            swapComparisons(COMP_UNSIGNED_LT, *comp);
             negateResult = false;
         }
         else if(COMP_UNSIGNED_LE == comp->opCode)
         {
             // a <= b -> !(b < a)
-            swapComparisons(COMP_UNSIGNED_LT, comp);
+            swapComparisons(COMP_UNSIGNED_LT, *comp);
             negateResult = true;
         }
         else if(COMP_SIGNED_GE == comp->opCode)
@@ -478,37 +484,37 @@ bool intrinsics::intrinsifyComparison(Method& method, InstructionWalker it)
         else if(COMP_SIGNED_GT == comp->opCode)
         {
             // a > b -> b < a
-            swapComparisons(COMP_SIGNED_LT, comp);
+            swapComparisons(COMP_SIGNED_LT, *comp);
             negateResult = false;
         }
         else if(COMP_SIGNED_LE == comp->opCode)
         {
             // a <= b -> !(b < a)
-            swapComparisons(COMP_SIGNED_LT, comp);
+            swapComparisons(COMP_SIGNED_LT, *comp);
             negateResult = true;
         }
-        intrinsifyIntegerRelation(method, it, comp, negateResult);
+        intrinsifyIntegerRelation(method, it, negateResult);
     }
     else
     {
         // simplification, make a R b -> b R' a
         if(COMP_ORDERED_GE == comp->opCode)
         {
-            swapComparisons(COMP_ORDERED_LE, comp);
+            swapComparisons(COMP_ORDERED_LE, *comp);
         }
         else if(COMP_ORDERED_GT == comp->opCode)
         {
-            swapComparisons(COMP_ORDERED_LT, comp);
+            swapComparisons(COMP_ORDERED_LT, *comp);
         }
         else if(COMP_UNORDERED_GE == comp->opCode)
         {
-            swapComparisons(COMP_UNORDERED_LE, comp);
+            swapComparisons(COMP_UNORDERED_LE, *comp);
         }
         else if(COMP_UNORDERED_GT == comp->opCode)
         {
-            swapComparisons(COMP_UNORDERED_LT, comp);
+            swapComparisons(COMP_UNORDERED_LT, *comp);
         }
-        intrinsifyFloatingRelation(method, it, comp);
+        intrinsifyFloatingRelation(method, it);
     }
     return true;
 }

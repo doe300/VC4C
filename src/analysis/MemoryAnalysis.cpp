@@ -18,13 +18,10 @@ std::string MemoryAccessRange::to_string() const
                                                      (" with address expression: " + addressExpression->to_string()));
 
     auto mode = (addressWrite->writesRegister(REG_VPM_DMA_LOAD_ADDR) ||
-                (addressWrite.get<intermediate::MemoryInstruction>() &&
-                    addressWrite.get<intermediate::MemoryInstruction>()->op == intermediate::MemoryOperation::READ) ?
+                addressWrite.get()->op == intermediate::MemoryOperation::READ ?
             " - read " :
             (addressWrite->writesRegister(REG_VPM_DMA_STORE_ADDR) ||
-                        (addressWrite.get<intermediate::MemoryInstruction>() &&
-                            addressWrite.get<intermediate::MemoryInstruction>()->op ==
-                                intermediate::MemoryOperation::WRITE) ?
+                        addressWrite.get()->op == intermediate::MemoryOperation::WRITE ?
                     " - write " :
                     " - access "));
     return addressWrite->to_string() + mode +
@@ -348,7 +345,7 @@ static bool findTypeSizeShift(
 }
 
 static Optional<MemoryAccessRange> determineAccessRange(Method& method,
-    const intermediate::IntermediateInstruction& inst, InstructionWalker memIt,
+    const intermediate::IntermediateInstruction& inst, TypedInstructionWalker<intermediate::MemoryInstruction> memIt,
     FastMap<const Local*, ValueRange>& knownRanges, const Local* checkBaseAddress = nullptr)
 {
     // 1. find writes to memory addresses with work-group uniform part in address values
@@ -386,7 +383,7 @@ static Optional<MemoryAccessRange> determineAccessRange(Method& method,
             return range;
         }
     }
-    auto memInst = memIt.get<intermediate::MemoryInstruction>();
+    auto memInst = memIt.get();
     auto moveSourceLocal = inst.getMoveSource() & &Value::checkLocal;
     if(memInst && moveSourceLocal && moveSourceLocal->residesInMemory())
     {
@@ -485,8 +482,8 @@ static Optional<MemoryAccessRange> determineAccessRange(Method& method,
 }
 
 static Optional<MemoryAccessRange> findAccessRange(Method& method, const Value& val, const Local* baseAddr,
-    InstructionWalker accessIt, const intermediate::IntermediateInstruction* defaultInst,
-    FastMap<const Local*, ValueRange>& knownRanges)
+    TypedInstructionWalker<intermediate::MemoryInstruction> accessIt,
+    const intermediate::IntermediateInstruction* defaultInst, FastMap<const Local*, ValueRange>& knownRanges)
 {
     if(auto writer = getSingleWriter(val, defaultInst))
         // if there is a single address writer, take that one
@@ -495,15 +492,15 @@ static Optional<MemoryAccessRange> findAccessRange(Method& method, const Value& 
     return {};
 }
 
-FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(
-    Method& method, const Local* baseAddr, FastMap<InstructionWalker, const Local*>& accessInstructions)
+FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(Method& method, const Local* baseAddr,
+    FastMap<TypedInstructionWalker<intermediate::MemoryInstruction>, const Local*>& accessInstructions)
 {
     // NOTE: If we cannot find one access range for a local, we cannot combine any other access ranges for this local!
     FastAccessList<MemoryAccessRange> result;
     FastMap<const Local*, ValueRange> knownRanges;
     for(const auto& entry : accessInstructions)
     {
-        const auto memInstr = entry.first.get<intermediate::MemoryInstruction>();
+        const auto memInstr = entry.first.get();
         switch(memInstr->op)
         {
         case intermediate::MemoryOperation::READ:

@@ -10,6 +10,7 @@
 #include "Optional.h"
 #include "config.h"
 
+#include "InstructionWalker.h"
 #include "Register.h"
 #include "helper.h"
 #include "performance.h"
@@ -28,8 +29,6 @@ namespace vc4c
         using ConstInstructionsIterator = InstructionsList::const_iterator;
     } // namespace intermediate
 
-    class InstructionWalker;
-    class ConstInstructionWalker;
     class Method;
     class Local;
 
@@ -137,7 +136,27 @@ namespace vc4c
         Optional<InstructionWalker> findWalkerForInstruction(
             const intermediate::IntermediateInstruction* instr, InstructionWalker start, InstructionWalker end) const;
         Optional<InstructionWalker> findWalkerForInstruction(const intermediate::IntermediateInstruction* instr);
-        Optional<ConstInstructionWalker> findWalkerForInstruction(const intermediate::IntermediateInstruction* instr) const;
+        Optional<ConstInstructionWalker> findWalkerForInstruction(
+            const intermediate::IntermediateInstruction* instr) const;
+
+        template <typename T>
+        Optional<TypedInstructionWalker<T>> findWalkerForInstruction(
+            const T* instr, const InstructionWalker& start, const InstructionWalker& end) const
+        {
+            if(auto it = findWalkerForInstruction(
+                   static_cast<const intermediate::IntermediateInstruction*>(instr), start, end))
+                return typeSafe<T>(*it);
+            return {};
+        }
+
+        template <typename T>
+        Optional<TypedInstructionWalker<T>> findWalkerForInstruction(const T* instr)
+        {
+            if(auto it = findWalkerForInstruction(static_cast<const intermediate::IntermediateInstruction*>(instr)))
+                return typeSafe<T>(*it);
+            return {};
+        }
+
         /*
          * Returns the InstructionWalker for the last (as in prior to the given instruction) instruction setting flags
          * within this basic block

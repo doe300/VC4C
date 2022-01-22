@@ -203,59 +203,58 @@ static NODISCARD InstructionWalker intrinsifyReadLocalID(Method& method, Instruc
         add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT));
 }
 
-bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it)
+bool intrinsics::intrinsifyWorkItemFunction(Method& method, TypedInstructionWalker<intermediate::MethodCall> inIt)
 {
-    MethodCall* callSite = it.get<MethodCall>();
-    if(callSite == nullptr)
+    const auto& callSite = *inIt.get();
+    InstructionWalker it = inIt;
+    if(callSite.getArguments().size() > 1)
         return false;
-    if(callSite->getArguments().size() > 1)
-        return false;
-    auto decoration = callSite->decoration;
+    auto decoration = callSite.decoration;
 
-    if(callSite->methodName == FUNCTION_NAME_NUM_DIMENSIONS && callSite->getArguments().empty())
+    if(callSite.methodName == FUNCTION_NAME_NUM_DIMENSIONS && callSite.getArguments().empty())
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Intrinsifying reading of work-item dimensions into: " << callSite->getOutput().to_string()
+            log << "Intrinsifying reading of work-item dimensions into: " << callSite.getOutput().to_string()
                 << logging::endl);
         // setting the type to int8 allows us to optimize e.g. multiplications with work-item values
-        Value out = callSite->getOutput().value();
+        Value out = callSite.getOutput().value();
         out.type = TYPE_INT8;
-        it.reset(createWithExtras<MoveOperation>(*callSite, out,
-                     method.findOrCreateBuiltin(BuiltinLocal::Type::WORK_DIMENSIONS)->createReference()))
+        it.reset(createWithExtras<MoveOperation>(
+                     callSite, out, method.findOrCreateBuiltin(BuiltinLocal::Type::WORK_DIMENSIONS)->createReference()))
             .addDecorations(add_flag(decoration,
                 add_flag(InstructionDecorations::BUILTIN_WORK_DIMENSIONS, InstructionDecorations::UNSIGNED_RESULT),
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
         return true;
     }
-    if(callSite->methodName == FUNCTION_NAME_NUM_GROUPS && callSite->getArguments().size() == 1)
+    if(callSite.methodName == FUNCTION_NAME_NUM_GROUPS && callSite.getArguments().size() == 1)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Intrinsifying reading of the number of work-groups into: " << callSite->getOutput().to_string()
+            log << "Intrinsifying reading of the number of work-groups into: " << callSite.getOutput().to_string()
                 << logging::endl);
-        it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
+        it = intrinsifyReadWorkGroupInfo(method, it, callSite.assertArgument(0),
             {BuiltinLocal::Type::NUM_GROUPS_X, BuiltinLocal::Type::NUM_GROUPS_Y, BuiltinLocal::Type::NUM_GROUPS_Z},
             INT_ONE,
             add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT,
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
         return true;
     }
-    if(callSite->methodName == FUNCTION_NAME_GROUP_ID && callSite->getArguments().size() == 1)
+    if(callSite.methodName == FUNCTION_NAME_GROUP_ID && callSite.getArguments().size() == 1)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Intrinsifying reading of the work-group ids into: " << callSite->getOutput().to_string()
+            log << "Intrinsifying reading of the work-group ids into: " << callSite.getOutput().to_string()
                 << logging::endl);
-        it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
+        it = intrinsifyReadWorkGroupInfo(method, it, callSite.assertArgument(0),
             {BuiltinLocal::Type::GROUP_ID_X, BuiltinLocal::Type::GROUP_ID_Y, BuiltinLocal::Type::GROUP_ID_Z}, INT_ZERO,
             add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT,
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
         return true;
     }
-    if(callSite->methodName == FUNCTION_NAME_GLOBAL_OFFSET && callSite->getArguments().size() == 1)
+    if(callSite.methodName == FUNCTION_NAME_GLOBAL_OFFSET && callSite.getArguments().size() == 1)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Intrinsifying reading of the global offsets into: " << callSite->getOutput().to_string()
+            log << "Intrinsifying reading of the global offsets into: " << callSite.getOutput().to_string()
                 << logging::endl);
-        it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
+        it = intrinsifyReadWorkGroupInfo(method, it, callSite.assertArgument(0),
             {BuiltinLocal::Type::GLOBAL_OFFSET_X, BuiltinLocal::Type::GLOBAL_OFFSET_Y,
                 BuiltinLocal::Type::GLOBAL_OFFSET_Z},
             INT_ZERO,
@@ -263,56 +262,56 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
         return true;
     }
-    if(callSite->methodName == FUNCTION_NAME_LOCAL_SIZE && callSite->getArguments().size() == 1)
+    if(callSite.methodName == FUNCTION_NAME_LOCAL_SIZE && callSite.getArguments().size() == 1)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Intrinsifying reading of local work-item sizes into: " << callSite->getOutput().to_string()
+            log << "Intrinsifying reading of local work-item sizes into: " << callSite.getOutput().to_string()
                 << logging::endl);
-        it = intrinsifyReadLocalSize(method, it, callSite->assertArgument(0));
+        it = intrinsifyReadLocalSize(method, it, callSite.assertArgument(0));
         return true;
     }
-    if(callSite->methodName == FUNCTION_NAME_LOCAL_ID && callSite->getArguments().size() == 1)
+    if(callSite.methodName == FUNCTION_NAME_LOCAL_ID && callSite.getArguments().size() == 1)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Intrinsifying reading of local work-item ids into: " << callSite->getOutput().to_string()
+            log << "Intrinsifying reading of local work-item ids into: " << callSite.getOutput().to_string()
                 << logging::endl);
-        it = intrinsifyReadLocalID(method, it, callSite->assertArgument(0));
+        it = intrinsifyReadLocalID(method, it, callSite.assertArgument(0));
         return true;
     }
-    if(callSite->methodName == FUNCTION_NAME_GLOBAL_SIZE && callSite->getArguments().size() == 1)
+    if(callSite.methodName == FUNCTION_NAME_GLOBAL_SIZE && callSite.getArguments().size() == 1)
     {
         // global_size(dim) = local_size(dim) * num_groups(dim)
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Intrinsifying reading of global work-item sizes into: " << callSite->getOutput().to_string()
+            log << "Intrinsifying reading of global work-item sizes into: " << callSite.getOutput().to_string()
                 << logging::endl);
 
         const Value tmpLocalSize = method.addNewLocal(TYPE_INT8, "%local_size");
         const Value tmpNumGroups = method.addNewLocal(TYPE_INT32, "%num_groups");
-        auto dimension = getDimension(callSite->assertArgument(0));
+        auto dimension = getDimension(callSite.assertArgument(0));
         // emplace dummy instructions to be replaced
         it.emplace(std::make_unique<MoveOperation>(tmpLocalSize, NOP_REGISTER));
-        it = intrinsifyReadLocalSize(method, it, callSite->assertArgument(0));
+        it = intrinsifyReadLocalSize(method, it, callSite.assertArgument(0));
         it.nextInBlock();
         it.emplace(std::make_unique<MoveOperation>(tmpNumGroups, NOP_REGISTER));
-        it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
+        it = intrinsifyReadWorkGroupInfo(method, it, callSite.assertArgument(0),
             {BuiltinLocal::Type::NUM_GROUPS_X, BuiltinLocal::Type::NUM_GROUPS_Y, BuiltinLocal::Type::NUM_GROUPS_Z},
             INT_ONE,
             add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT,
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
         it.nextInBlock();
-        it.reset(createWithExtras<Operation>(
-                     *callSite, OP_MUL24, callSite->getOutput().value(), tmpLocalSize, tmpNumGroups))
+        it.reset(
+              createWithExtras<Operation>(callSite, OP_MUL24, callSite.getOutput().value(), tmpLocalSize, tmpNumGroups))
             .addDecorations(add_flag(decoration,
                 add_flag(InstructionDecorations::BUILTIN_GLOBAL_SIZE, InstructionDecorations::UNSIGNED_RESULT,
                     InstructionDecorations::WORK_GROUP_UNIFORM_VALUE)))
             .addDecorations(dimension);
         return true;
     }
-    if(callSite->methodName == FUNCTION_NAME_GLOBAL_ID && callSite->getArguments().size() == 1)
+    if(callSite.methodName == FUNCTION_NAME_GLOBAL_ID && callSite.getArguments().size() == 1)
     {
         // global_id(dim) = global_offset(dim) + (group_id(dim) * local_size(dim) + local_id(dim)
         CPPLOG_LAZY(logging::Level::DEBUG,
-            log << "Intrinsifying reading of global work-item ids into: " << callSite->getOutput().to_string()
+            log << "Intrinsifying reading of global work-item ids into: " << callSite.getOutput().to_string()
                 << logging::endl);
 
         const Value tmpGroupID = method.addNewLocal(TYPE_INT32, "%group_id");
@@ -321,19 +320,19 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
         const Value tmpLocalID = method.addNewLocal(TYPE_INT8, "%local_id");
         const Value tmpRes0 = method.addNewLocal(TYPE_INT32, "%group_global_id");
         const Value tmpRes1 = method.addNewLocal(TYPE_INT32, "%group_global_id");
-        auto dimension = getDimension(callSite->assertArgument(0));
+        auto dimension = getDimension(callSite.assertArgument(0));
         // emplace dummy instructions to be replaced
         it.emplace(std::make_unique<MoveOperation>(tmpGroupID, NOP_REGISTER));
-        it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
+        it = intrinsifyReadWorkGroupInfo(method, it, callSite.assertArgument(0),
             {BuiltinLocal::Type::GROUP_ID_X, BuiltinLocal::Type::GROUP_ID_Y, BuiltinLocal::Type::GROUP_ID_Z}, INT_ZERO,
             add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT,
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
         it.nextInBlock();
         it.emplace(std::make_unique<MoveOperation>(tmpLocalSize, NOP_REGISTER));
-        it = intrinsifyReadLocalSize(method, it, callSite->assertArgument(0));
+        it = intrinsifyReadLocalSize(method, it, callSite.assertArgument(0));
         it.nextInBlock();
         it.emplace(std::make_unique<MoveOperation>(tmpGlobalOffset, NOP_REGISTER));
-        it = intrinsifyReadWorkGroupInfo(method, it, callSite->assertArgument(0),
+        it = intrinsifyReadWorkGroupInfo(method, it, callSite.assertArgument(0),
             {BuiltinLocal::Type::GLOBAL_OFFSET_X, BuiltinLocal::Type::GLOBAL_OFFSET_Y,
                 BuiltinLocal::Type::GLOBAL_OFFSET_Z},
             INT_ZERO,
@@ -341,11 +340,11 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, InstructionWalker it
                 InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
         it.nextInBlock();
         it.emplace(std::make_unique<MoveOperation>(tmpLocalID, NOP_REGISTER));
-        it = intrinsifyReadLocalID(method, it, callSite->assertArgument(0));
+        it = intrinsifyReadLocalID(method, it, callSite.assertArgument(0));
         it.nextInBlock();
         assign(it, tmpRes0) = (mul24(tmpGroupID, tmpLocalSize), InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
         assign(it, tmpRes1) = (tmpGlobalOffset + tmpRes0, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
-        it.reset(createWithExtras<Operation>(*callSite, OP_ADD, callSite->getOutput().value(), tmpRes1, tmpLocalID))
+        it.reset(createWithExtras<Operation>(callSite, OP_ADD, callSite.getOutput().value(), tmpRes1, tmpLocalID))
             .addDecorations(add_flag(
                 decoration, InstructionDecorations::BUILTIN_GLOBAL_ID, InstructionDecorations::UNSIGNED_RESULT))
             .addDecorations(dimension);
@@ -374,7 +373,7 @@ static void insertSingleSecondaryBlockCode(Method& method, BasicBlock& block, ui
 
         // we need to create the other block first to be able to correctly update the CFG
         auto releaseBlock = method.addNewLocal(TYPE_LABEL, "%barrier_next_release").local();
-        auto blockIt = method.emplaceLabel(it, std::make_unique<BranchLabel>(*releaseBlock));
+        InstructionWalker blockIt = method.emplaceLabel(it, std::make_unique<BranchLabel>(*releaseBlock));
         {
             blockIt.nextInBlock();
             blockIt.emplace(std::make_unique<SemaphoreAdjustment>(static_cast<Semaphore>(index + 1), true));
@@ -460,7 +459,7 @@ static void insertPrimaryBarrierCode(Method& method, BasicBlock& block, const Va
     it.emplace(std::make_unique<Branch>(afterLabel));
 }
 
-static void lowerBarrier(Method& method, InstructionWalker it, const MethodCall* callSite,
+static void lowerBarrier(Method& method, InstructionWalker it,
     const std::function<InstructionWalker(InstructionWalker)>& insertFirstWorkItemOnlyCode)
 {
     /*
@@ -625,19 +624,21 @@ static void lowerBarrier(Method& method, InstructionWalker it, const MethodCall*
         insertFirstWorkItemOnlyCode);
 }
 
-InstructionWalker intrinsics::intrinsifyBarrier(Method& method, InstructionWalker it, const MethodCall* callSite)
+InstructionWalker intrinsics::intrinsifyBarrier(Method& method, TypedInstructionWalker<intermediate::MethodCall> inIt)
 {
+    const auto& callSite = *inIt.get();
+    InstructionWalker it = inIt;
     CPPLOG_LAZY(
-        logging::Level::DEBUG, log << "Intrinsifying control flow barrier: " << callSite->to_string() << logging::endl);
+        logging::Level::DEBUG, log << "Intrinsifying control flow barrier: " << callSite.to_string() << logging::endl);
     // since we do insert functions that needs intrinsification, we need to go over all of them again
     auto origIt = it.copy().previousInBlock();
-    lowerBarrier(method, it, callSite, {});
+    lowerBarrier(method, it, {});
     return origIt.nextInBlock();
 }
 
 void intrinsics::insertControlFlowBarrier(Method& method, InstructionWalker it,
     const std::function<InstructionWalker(InstructionWalker)>& insertFirstWorkItemOnlyCode)
 {
-    auto newCall = &it.emplace(std::make_unique<intermediate::MethodCall>("dummy", std::vector<Value>{}));
-    lowerBarrier(method, it, newCall, insertFirstWorkItemOnlyCode);
+    it.emplace(std::make_unique<intermediate::MethodCall>("dummy", std::vector<Value>{}));
+    lowerBarrier(method, it, insertFirstWorkItemOnlyCode);
 }

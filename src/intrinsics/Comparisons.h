@@ -14,7 +14,7 @@ namespace vc4c
     namespace intrinsics
     {
         // relational operators
-        bool intrinsifyComparison(Method& method, InstructionWalker it);
+        bool intrinsifyComparison(Method& method, TypedInstructionWalker<intermediate::Comparison> it);
     } // namespace intrinsics
 } // namespace vc4c
 

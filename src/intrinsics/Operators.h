@@ -19,33 +19,34 @@ namespace vc4c
     namespace intrinsics
     {
         NODISCARD InstructionWalker intrinsifySignedIntegerMultiplication(
-            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op);
+            Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> it);
         bool canOptimizeMultiplicationWithBinaryMethod(const intermediate::IntrinsicOperation& op);
         NODISCARD InstructionWalker intrinsifyUnsignedIntegerMultiplication(
-            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op);
+            Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> it);
         NODISCARD InstructionWalker intrinsifyLongMultiplication(
-            Method& method, InstructionWalker it, const intermediate::IntrinsicOperation& op);
+            Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> it);
         /**
          * Returns 64-bit result of full 32-bit multiplication, storing the upper part in the output of the given method
          * call and the (optional) lower part into the given additional value.
          */
-        NODISCARD InstructionWalker intrinsifyIntegerToLongMultiplication(Method& method, InstructionWalker it,
-            const intermediate::MethodCall* call, Optional<Value> lowResult = NO_VALUE);
+        NODISCARD InstructionWalker intrinsifyIntegerToLongMultiplication(Method& method,
+            TypedInstructionWalker<intermediate::MethodCall> it, Optional<Value> lowResult = NO_VALUE,
+            bool forceUnsigned = false);
         NODISCARD InstructionWalker intrinsifyIntegerMultiplicationViaBinaryMethod(
-            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op);
+            Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> it);
         NODISCARD InstructionWalker intrinsifySignedIntegerDivision(
-            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder = false);
+            Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> it, bool useRemainder = false);
         NODISCARD InstructionWalker intrinsifyUnsignedIntegerDivision(
-            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder = false);
+            Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> it, bool useRemainder = false);
         NODISCARD InstructionWalker intrinsifySignedIntegerDivisionByConstant(
-            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder = false);
+            Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> it, bool useRemainder = false);
         NODISCARD InstructionWalker intrinsifyUnsignedIntegerDivisionByConstant(
-            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder = false);
+            Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> it, bool useRemainder = false);
         NODISCARD InstructionWalker intrinsifyIntegerDivisionByFloatingDivision(
-            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder = false);
+            Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> it, bool useRemainder = false);
 
         NODISCARD InstructionWalker intrinsifyFloatingDivision(
-            Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool fullRangeDivision = true);
+            Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> it, bool fullRangeDivision = true);
 
         /**
          * Helper function to insert general multiplication, to be mapped and optimized according to the argument types

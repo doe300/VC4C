@@ -171,6 +171,18 @@ namespace vc4c
     static_assert(assert_hashable<InstructionWalker>::value, "InstructionWalker is not hashable!");
     static_assert(sizeof(Optional<InstructionWalker>) == sizeof(InstructionWalker), "");
 
+    static_assert(std::is_default_constructible<TypedInstructionWalker<intermediate::BranchLabel>>::value,
+        "TypedInstructionWalker is not default constructible!");
+    static_assert(assert_assignable<TypedInstructionWalker<intermediate::BranchLabel>>::value,
+        "TypedInstructionWalker is not assignable!");
+    static_assert(std::is_destructible<TypedInstructionWalker<intermediate::BranchLabel>>::value,
+        "TypedInstructionWalker is not destructible!");
+    static_assert(assert_hashable<TypedInstructionWalker<intermediate::BranchLabel>>::value,
+        "TypedInstructionWalker is not hashable!");
+    static_assert(sizeof(Optional<TypedInstructionWalker<intermediate::BranchLabel>>) ==
+            sizeof(TypedInstructionWalker<intermediate::BranchLabel>),
+        "");
+
     /*
      * Intermediate instructions
      *

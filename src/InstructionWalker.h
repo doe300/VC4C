@@ -7,7 +7,6 @@
 #ifndef INSTRUCTION_WALKER_H
 #define INSTRUCTION_WALKER_H
 
-#include "BasicBlock.h"
 #include "intermediate/IntermediateInstruction.h"
 
 #include <functional>
@@ -15,6 +14,13 @@
 
 namespace vc4c
 {
+    namespace intermediate
+    {
+        using InstructionsList = FastModificationList<std::unique_ptr<IntermediateInstruction>>;
+        using InstructionsIterator = InstructionsList::iterator;
+        using ConstInstructionsIterator = InstructionsList::const_iterator;
+    } // namespace intermediate
+
     class BasicBlock;
 
     /*
@@ -253,6 +259,125 @@ namespace vc4c
         friend struct tombstone_traits<InstructionWalker>;
     };
 
+    template <typename T>
+    class TypedInstructionWalker;
+
+    template <typename T>
+    TypedInstructionWalker<T> typeSafe(InstructionWalker it);
+    template <typename T>
+    TypedInstructionWalker<T> typeSafe(InstructionWalker it, const T& instruction);
+
+    /**
+     *  Special case for instruction walker asserting that the pointed-to instruction exists and is of the template
+     * parameter type.
+     */
+    template <typename T>
+    class TypedInstructionWalker
+    {
+    public:
+        explicit TypedInstructionWalker() = default;
+
+        bool has() const
+        {
+            return it.has();
+        }
+
+        T* get()
+        {
+            return it.get<T>();
+        }
+
+        const T* get() const
+        {
+            return it.get<T>();
+        }
+
+        inline T* operator->()
+        {
+            return get();
+        }
+
+        inline const T* operator->() const
+        {
+            return get();
+        }
+
+        bool operator==(const TypedInstructionWalker& other) const
+        {
+            return it == other.it;
+        }
+
+        bool operator!=(const TypedInstructionWalker& other) const
+        {
+            return it != other.it;
+        }
+
+        operator InstructionWalker() const noexcept
+        {
+            return it;
+        }
+
+        InstructionWalker& base() noexcept
+        {
+            return it;
+        }
+
+        InstructionWalker base() const noexcept
+        {
+            return it;
+        }
+
+        InstructionWalker erase()
+        {
+            return it.erase();
+        }
+
+        T& reset(std::unique_ptr<T>&& instr)
+        {
+            return it.reset(std::move(instr));
+        }
+
+        NODISCARD std::unique_ptr<T> release()
+        {
+            if(auto val = get())
+            {
+                it.release().release();
+                return std::unique_ptr<T>{val};
+            }
+            return nullptr;
+        }
+
+    private:
+        InstructionWalker it;
+
+        explicit TypedInstructionWalker(InstructionWalker walker) : it(walker) {}
+
+        friend TypedInstructionWalker typeSafe<>(InstructionWalker it);
+        friend TypedInstructionWalker typeSafe<>(InstructionWalker it, const T& instruction);
+    };
+
+    template <typename T>
+    TypedInstructionWalker<T> typeSafe(InstructionWalker it)
+    {
+        if(it.isEndOfBlock() || !it.has())
+            return TypedInstructionWalker<T>{it};
+        if(auto ptr = it.get<T>())
+            return TypedInstructionWalker<T>{it};
+        throw CompilationError(
+            CompilationStep::GENERAL, "Invalid instruction type to pass to typed instruction walker", it->to_string());
+    }
+
+    template <typename T>
+    TypedInstructionWalker<T> typeSafe(InstructionWalker it, const T& instruction)
+    {
+        if(it.isEndOfBlock() || !it.has())
+            return TypedInstructionWalker<T>{it};
+        if(&instruction != it.get())
+            throw CompilationError(CompilationStep::GENERAL,
+                "Wrong instruction parameter to pass to typed instruction walker", it->to_string());
+        return TypedInstructionWalker<T>{it};
+    }
+
     template <>
     struct tombstone_traits<InstructionWalker>
     {
@@ -264,6 +389,21 @@ namespace vc4c
             return val.basicBlock == nullptr && val.pos == intermediate::InstructionsIterator{};
         }
     };
+
+    template <typename T>
+    struct tombstone_traits<TypedInstructionWalker<T>>
+    {
+        static constexpr bool is_specialized = true;
+        static const TypedInstructionWalker<T> tombstone;
+
+        static constexpr bool isTombstone(const TypedInstructionWalker<T>& val)
+        {
+            return tombstone_traits<InstructionWalker>::isTombstone(val);
+        }
+    };
+
+    template <typename T>
+    const TypedInstructionWalker<T> tombstone_traits<TypedInstructionWalker<T>>::tombstone;
 
     /*
      * Constant version of InstructionWalker, which only allows read-only access to the instructions
@@ -441,6 +581,15 @@ namespace std
     struct hash<vc4c::InstructionWalker> : public std::hash<const vc4c::intermediate::IntermediateInstruction*>
     {
         inline size_t operator()(const vc4c::InstructionWalker& it) const noexcept
+        {
+            return std::hash<const vc4c::intermediate::IntermediateInstruction*>::operator()(it.get());
+        }
+    };
+
+    template <typename T>
+    struct hash<vc4c::TypedInstructionWalker<T>> : public std::hash<const vc4c::intermediate::IntermediateInstruction*>
+    {
+        inline size_t operator()(const vc4c::TypedInstructionWalker<T>& it) const noexcept
         {
             return std::hash<const vc4c::intermediate::IntermediateInstruction*>::operator()(it.get());
         }

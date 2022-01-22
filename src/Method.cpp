@@ -481,6 +481,9 @@ InstructionWalker Method::emplaceLabel(InstructionWalker it, std::unique_ptr<int
 
 void Method::calculateStackOffsets()
 {
+    if(stackAllocations.empty())
+        return;
+
     // TODO this could be greatly improved, by re-using space for other stack-allocations, when their life-times don't
     // intersect (similar to register allocation)
     const std::size_t stackBaseOffset = getStackBaseOffset();
@@ -498,6 +501,9 @@ void Method::calculateStackOffsets()
         stackAllocation.offset = currentOffset;
         currentOffset += stackAllocation.size;
     }
+    auto memoryStackSize = currentOffset;
+    if(memoryStackSize)
+        PROFILE_COUNTER_SCOPE(profiler::COUNTER_GENERAL, "In-memory stack size", memoryStackSize);
 
     /*
      * If a stack allocation is lowered to VPM or a register, we don't care about its "memory address". But, e.g. for
@@ -521,6 +527,8 @@ void Method::calculateStackOffsets()
         stackAllocation.offset = currentOffset;
         currentOffset += stackAllocation.size;
     }
+    if(currentOffset > memoryStackSize)
+        PROFILE_COUNTER_SCOPE(profiler::COUNTER_GENERAL, "Lowered stack size", currentOffset - memoryStackSize);
 }
 
 std::size_t Method::calculateStackSize() const

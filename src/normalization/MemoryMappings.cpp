@@ -450,7 +450,7 @@ static InstructionWalker insertToInVPMAreaOffset(Method& method, InstructionWalk
     if(info.ranges)
     {
         auto range = std::find_if(info.ranges->begin(), info.ranges->end(),
-            [&](const MemoryAccessRange& range) -> bool { return range.addressWrite == it; });
+            [&](const MemoryAccessRange& range) -> bool { return range.addressWrite.base() == it; });
         if(range == info.ranges->end())
             throw CompilationError(CompilationStep::NORMALIZER,
                 "Failed to find memory access range for VPM cached memory access", mem->to_string());
@@ -1002,23 +1002,23 @@ static InstructionWalker insertWriteBackCode(
         // of entries written. TODO how to reliably get the actual number of entries written by all work-items?
         // calculate the scalar local size
         auto localSizeX = method.addNewLocal(TYPE_INT8, "%local_size_x");
-        it.emplace(std::make_unique<MethodCall>(
+        auto* tmpCall = &it.emplace(std::make_unique<MethodCall>(
             Value(localSizeX), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), std::vector<Value>{0_val}));
         auto oldIt = it;
         it.nextInBlock();
-        intrinsics::intrinsifyWorkItemFunction(method, oldIt);
+        intrinsics::intrinsifyWorkItemFunction(method, typeSafe(oldIt, *tmpCall));
         auto localSizeY = method.addNewLocal(TYPE_INT8, "%local_size_y");
-        it.emplace(std::make_unique<MethodCall>(
+        tmpCall = &it.emplace(std::make_unique<MethodCall>(
             Value(localSizeY), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), std::vector<Value>{1_val}));
         oldIt = it;
         it.nextInBlock();
-        intrinsics::intrinsifyWorkItemFunction(method, oldIt);
+        intrinsics::intrinsifyWorkItemFunction(method, typeSafe(oldIt, *tmpCall));
         auto localSizeZ = method.addNewLocal(TYPE_INT8, "%local_size_z");
-        it.emplace(std::make_unique<MethodCall>(
+        tmpCall = &it.emplace(std::make_unique<MethodCall>(
             Value(localSizeZ), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), std::vector<Value>{2_val}));
         oldIt = it;
         it.nextInBlock();
-        intrinsics::intrinsifyWorkItemFunction(method, oldIt);
+        intrinsics::intrinsifyWorkItemFunction(method, typeSafe(oldIt, *tmpCall));
 
         // local_size_scalar = local_size_z * local_size_y * local_size_x
         auto tmp = assign(it, TYPE_INT8, "%local_size_scalar") = mul24(localSizeZ, localSizeY);

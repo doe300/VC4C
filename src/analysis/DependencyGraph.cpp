@@ -6,6 +6,7 @@
 
 #include "DependencyGraph.h"
 
+#include "../BasicBlock.h"
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
 #include "../helper.h"

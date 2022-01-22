@@ -28,13 +28,13 @@ namespace vc4c
         /**
          * Intrinsifies the call to one of the work-item intrinsic functions listed above
          */
-        bool intrinsifyWorkItemFunction(Method& method, InstructionWalker it);
+        bool intrinsifyWorkItemFunction(Method& method, TypedInstructionWalker<intermediate::MethodCall> it);
 
         /**
          * Intrinsifies the call to the barrier(...) OpenCL C function.
          */
         NODISCARD InstructionWalker intrinsifyBarrier(
-            Method& method, InstructionWalker it, const intermediate::MethodCall* callSite);
+            Method& method, TypedInstructionWalker<intermediate::MethodCall> it);
 
         /**
          * Inserts a control-flow barrier similar to the barrier(...) OpenCL C function at the given position.

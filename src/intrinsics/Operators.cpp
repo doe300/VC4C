@@ -28,7 +28,7 @@ using namespace vc4c::operators;
 static constexpr unsigned char VC4CL_UNSIGNED{1};
 
 InstructionWalker intrinsics::intrinsifySignedIntegerMultiplication(
-    Method& method, InstructionWalker it, IntrinsicOperation& op)
+    Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> inIt)
 {
     /*
      * For 2's-complement, the unsigned and signed multiplication is identical
@@ -43,14 +43,16 @@ InstructionWalker intrinsics::intrinsifySignedIntegerMultiplication(
      * https://gitlab.freedesktop.org/mesa/mesa/blob/master/src/gallium/drivers/vc4/vc4_program.c (function
      * ntq_emit_alu)
      */
-    it = intrinsifyUnsignedIntegerMultiplication(method, it, op);
+    auto it = intrinsifyUnsignedIntegerMultiplication(method, inIt);
     it->decoration = remove_flag(it->decoration, InstructionDecorations::UNSIGNED_RESULT);
     return it;
 }
 
 InstructionWalker intrinsics::intrinsifyUnsignedIntegerMultiplication(
-    Method& method, InstructionWalker it, IntrinsicOperation& op)
+    Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> inIt)
 {
+    auto& op = *inIt.get();
+    InstructionWalker it = inIt;
     const Value& arg0 = op.getFirstArg();
     const Value& arg1 = op.getSecondArg().value_or(UNDEFINED_VALUE);
 
@@ -92,8 +94,9 @@ InstructionWalker intrinsics::intrinsifyUnsignedIntegerMultiplication(
 }
 
 InstructionWalker intrinsics::intrinsifyLongMultiplication(
-    Method& method, InstructionWalker it, const intermediate::IntrinsicOperation& op)
+    Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> inIt)
 {
+    const auto& op = *inIt.get();
     Value firstLower = UNDEFINED_VALUE;
     Value firstUpper = UNDEFINED_VALUE;
     Value secondLower = UNDEFINED_VALUE;
@@ -122,6 +125,7 @@ InstructionWalker intrinsics::intrinsifyLongMultiplication(
         throw CompilationError(
             CompilationStep::NORMALIZER, "Cannot lower a 64-bit multiplication to a non 64-bit output", op.to_string());
 
+    InstructionWalker it = inIt;
     auto resLowLow = method.addNewLocal(partType, "%mul.resLowLow");
     auto newCall = &it.emplace(std::make_unique<MethodCall>(Value(resLowLow), "mul_full",
         std::vector<Value>{firstLower, secondLower, Value(Literal(VC4CL_UNSIGNED), TYPE_INT8)}));
@@ -131,13 +135,13 @@ InstructionWalker intrinsics::intrinsifyLongMultiplication(
     auto resLowHigh = method.addNewLocal(partType, "%mul.resLowHigh");
     auto newOp = &it.emplace(
         std::make_unique<IntrinsicOperation>("mul_full", Value(resLowHigh), Value(firstLower), Value(secondUpper)));
-    it = intrinsifyUnsignedIntegerMultiplication(method, it, *newOp);
+    it = intrinsifyUnsignedIntegerMultiplication(method, typeSafe(it, *newOp));
     it.nextInBlock();
 
     auto resHighLow = method.addNewLocal(partType, "%mul.resHighLow");
     newOp = &it.emplace(
         std::make_unique<IntrinsicOperation>("mul_full", Value(resHighLow), Value(firstUpper), Value(secondLower)));
-    it = intrinsifyUnsignedIntegerMultiplication(method, it, *newOp);
+    it = intrinsifyUnsignedIntegerMultiplication(method, typeSafe(it, *newOp));
     it.nextInBlock();
 
     // Add the parts back together
@@ -150,13 +154,17 @@ InstructionWalker intrinsics::intrinsifyLongMultiplication(
     return it;
 }
 
-InstructionWalker intrinsics::intrinsifyIntegerToLongMultiplication(
-    Method& method, InstructionWalker it, const MethodCall* call, Optional<Value> lowResult)
+InstructionWalker intrinsics::intrinsifyIntegerToLongMultiplication(Method& method,
+    TypedInstructionWalker<intermediate::MethodCall> inIt, Optional<Value> lowResult, bool forceUnsigned)
 {
-    auto arg0 = call->assertArgument(0);
-    auto arg1 = call->assertArgument(1);
-    bool isUnsigned = call->getArgument(2) && call->assertArgument(2).getLiteralValue() &&
-        call->assertArgument(2).getLiteralValue()->unsignedInt() == VC4CL_UNSIGNED;
+    const auto& call = *inIt.get();
+    InstructionWalker it = inIt;
+
+    auto arg0 = call.assertArgument(0);
+    auto arg1 = call.assertArgument(1);
+    bool isUnsigned = forceUnsigned ||
+        (call.getArgument(2) && call.assertArgument(2).getLiteralValue() &&
+            call.assertArgument(2).getLiteralValue()->unsignedInt() == VC4CL_UNSIGNED);
 
     // Similar to the Mesa implementation in
     // https://gitlab.freedesktop.org/mesa/mesa/blob/master/src/compiler/nir/nir_lower_alu.c (function lower_alu_instr,
@@ -188,7 +196,7 @@ InstructionWalker intrinsics::intrinsifyIntegerToLongMultiplication(
     // NOTE: in contrast to the normal 32-bit multiplication, we need to take 16-bit portions, since for 24-bit
     // multiplication, we lose the upper 16 bits (2 * 24 = 48 > 32)!
 
-    auto outputType = call->getOutput()->type;
+    auto outputType = call.getOutput()->type;
     auto arg0Hi = assign(it, outputType, "%mul_hi.arg0Hi") = as_unsigned{arg0} >> 16_val;
     auto arg1Hi = assign(it, outputType, "%mul_hi.arg1Hi") = as_unsigned{arg1} >> 16_val;
     auto arg0Lo = assign(it, outputType, "%mul_hi.arg0Lo") = arg0 & 0xFFFF_val;
@@ -227,8 +235,8 @@ InstructionWalker intrinsics::intrinsifyIntegerToLongMultiplication(
         highComplement = assign(it, outputType, "%mul_hi.highComp") = highComplement + carry;
 
         auto finalResult = assign(it, outputType, "%mul_hi.out") = out;
-        auto arg0Neg = assign(it, arg0.type, "%mul_hi.arg0Sign") = as_signed{call->assertArgument(0)} >> 31_val;
-        auto arg1Neg = assign(it, arg1.type, "%mul_hi.arg1Sign") = as_signed{call->assertArgument(1)} >> 31_val;
+        auto arg0Neg = assign(it, arg0.type, "%mul_hi.arg0Sign") = as_signed{call.assertArgument(0)} >> 31_val;
+        auto arg1Neg = assign(it, arg1.type, "%mul_hi.arg1Sign") = as_signed{call.assertArgument(1)} >> 31_val;
         auto cond = assignNop(it) = as_unsigned{arg0Neg} != as_unsigned{arg1Neg};
         assign(it, finalResult) = (highComplement, cond);
         if(lowResult)
@@ -238,13 +246,13 @@ InstructionWalker intrinsics::intrinsifyIntegerToLongMultiplication(
             assign(it, *lowResult) = (lowerComplement, cond);
         }
 
-        it.reset(createWithExtras<MoveOperation>(*call, call->getOutput().value(), std::move(finalResult)));
+        it.reset(createWithExtras<MoveOperation>(call, call.getOutput().value(), std::move(finalResult)));
     }
     else
     {
         if(lowResult)
             assign(it, *lowResult) = resLower;
-        it.reset(std::make_unique<Operation>(OP_ADD, call->getOutput().value(), resMid, resHi));
+        it.reset(std::make_unique<Operation>(OP_ADD, call.getOutput().value(), resMid, resHi));
         it->addDecorations(InstructionDecorations::UNSIGNED_RESULT);
     }
 
@@ -282,8 +290,10 @@ bool intrinsics::canOptimizeMultiplicationWithBinaryMethod(const IntrinsicOperat
  * NOTE: The constant multiplication factor needs to be unsigned!
  */
 InstructionWalker intrinsics::intrinsifyIntegerMultiplicationViaBinaryMethod(
-    Method& method, InstructionWalker it, IntrinsicOperation& op)
+    Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> inIt)
 {
+    const auto& op = *inIt.get();
+    InstructionWalker it = inIt;
     auto factor = (op.getFirstArg().getLiteralValue() | op.getSecondArg()->getLiteralValue())->signedInt();
     const auto& src = op.getFirstArg().getLiteralValue() ? op.getSecondArg().value() : op.getFirstArg();
 
@@ -347,8 +357,9 @@ InstructionWalker intrinsics::intrinsifyIntegerMultiplicationViaBinaryMethod(
  */
 
 InstructionWalker intrinsics::intrinsifySignedIntegerDivision(
-    Method& method, InstructionWalker it, IntrinsicOperation& op, const bool useRemainder)
+    Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> inIt, const bool useRemainder)
 {
+    auto& op = *inIt.get();
     Value opDest = op.getOutput().value();
     // check any operand is negative
     Value op1Sign = UNDEFINED_VALUE;
@@ -358,6 +369,7 @@ InstructionWalker intrinsics::intrinsifySignedIntegerDivision(
     Value op1Pos = method.addNewLocal(op.assertArgument(0).type, "%unsigned");
     Value op2Pos = method.addNewLocal(op.assertArgument(0).type, "%unsigned");
 
+    InstructionWalker it = inIt;
     it = insertMakePositive(it, method, op.assertArgument(0), op1Pos, op1Sign);
     it = insertMakePositive(it, method, op.assertArgument(1), op2Pos, op2Sign);
 
@@ -369,7 +381,7 @@ InstructionWalker intrinsics::intrinsifySignedIntegerDivision(
     op.setOutput(tmpDest);
 
     // calculate unsigned division
-    it = intrinsifyUnsignedIntegerDivision(method, it, op, useRemainder);
+    it = intrinsifyUnsignedIntegerDivision(method, typeSafe(it, op), useRemainder);
     it.nextInBlock();
 
     if(op1Sign.hasLiteral(0_lit) && op2Sign.hasLiteral(0_lit))
@@ -390,8 +402,9 @@ InstructionWalker intrinsics::intrinsifySignedIntegerDivision(
 }
 
 InstructionWalker intrinsics::intrinsifyUnsignedIntegerDivision(
-    Method& method, InstructionWalker it, IntrinsicOperation& op, const bool useRemainder)
+    Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> inIt, const bool useRemainder)
 {
+    const auto& op = *inIt.get();
     // https://en.wikipedia.org/wiki/Division_algorithm#Integer_division_.28unsigned.29_with_remainder
     // see also: https://www.microsoft.com/en-us/research/wp-content/uploads/2008/08/tr-2008-141.pdf
     // TODO for |type| < 24, use floating-point division??
@@ -408,6 +421,7 @@ InstructionWalker intrinsics::intrinsifyUnsignedIntegerDivision(
     // set explicitly to zero
     Value quotient = 0_val;
     Value remainder = 0_val;
+    InstructionWalker it = inIt;
 
     // for i := n ? 1 ... 0 do     -- where n is number of bits in N
     // "number of bits in N" as in in the numerator, not in the type!!
@@ -481,8 +495,9 @@ InstructionWalker intrinsics::intrinsifyUnsignedIntegerDivision(
 }
 
 InstructionWalker intrinsics::intrinsifySignedIntegerDivisionByConstant(
-    Method& method, InstructionWalker it, IntrinsicOperation& op, bool useRemainder)
+    Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> inIt, bool useRemainder)
 {
+    auto& op = *inIt.get();
     /*
      * Conversion between signedness is taken from:
      * https://llvm.org/doxygen/IntegerDivision_8cpp_source.html
@@ -497,6 +512,7 @@ InstructionWalker intrinsics::intrinsifySignedIntegerDivisionByConstant(
     Value op1Pos = method.addNewLocal(op.assertArgument(0).type, "%unsigned");
     Value op2Pos = method.addNewLocal(op.assertArgument(0).type, "%unsigned");
 
+    InstructionWalker it = inIt;
     it = insertMakePositive(it, method, op.assertArgument(0), op1Pos, op1Sign);
     it = insertMakePositive(it, method, op.assertArgument(1), op2Pos, op2Sign);
 
@@ -508,7 +524,7 @@ InstructionWalker intrinsics::intrinsifySignedIntegerDivisionByConstant(
     op.setOutput(tmpDest);
 
     // calculate unsigned division
-    it = intrinsifyUnsignedIntegerDivisionByConstant(method, it, op, useRemainder);
+    it = intrinsifyUnsignedIntegerDivisionByConstant(method, typeSafe(it, op), useRemainder);
     it.nextInBlock();
 
     if(op1Sign.hasLiteral(0_lit) && op2Sign.hasLiteral(0_lit))
@@ -635,8 +651,11 @@ InstructionWalker intrinsics::intrinsifyUnsignedIntegerDivisionByConstant(
 }
 
 NODISCARD InstructionWalker intrinsics::intrinsifyIntegerDivisionByFloatingDivision(
-    Method& method, InstructionWalker it, intermediate::IntrinsicOperation& op, bool useRemainder)
+    Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> inIt, bool useRemainder)
 {
+    auto& op = *inIt.get();
+    InstructionWalker it = inIt;
+
     auto floatType = TYPE_FLOAT.toVectorType(op.getOutput()->type.getVectorWidth());
     auto floatNominator = assign(it, floatType, "%fdiv") = itof(op.assertArgument(0));
     auto floatDivisor = assign(it, floatType, "%fdiv") = itof(op.assertArgument(1));
@@ -647,7 +666,7 @@ NODISCARD InstructionWalker intrinsics::intrinsifyIntegerDivisionByFloatingDivis
     op.setOutput(floatResult);
     // The only "edge case" we have for integer division is division by zero, which we are allowed to return an
     // undefined value anyway
-    it = intrinsifyFloatingDivision(method, it, op, false /* no need to handle edge cases */);
+    it = intrinsifyFloatingDivision(method, typeSafe(it, op), false /* no need to handle edge cases */);
     it.nextInBlock();
     auto result = assign(it, realResult->type, "%div") = ftoi(floatResult);
 
@@ -693,7 +712,7 @@ NODISCARD InstructionWalker intrinsics::intrinsifyIntegerDivisionByFloatingDivis
 }
 
 InstructionWalker intrinsics::intrinsifyFloatingDivision(
-    Method& method, InstructionWalker it, IntrinsicOperation& op, bool fullRangeDivision)
+    Method& method, TypedInstructionWalker<intermediate::IntrinsicOperation> inIt, bool fullRangeDivision)
 {
     /*
      * Current implementation is a Goldschmidt algorithm taken from
@@ -716,6 +735,7 @@ InstructionWalker intrinsics::intrinsifyFloatingDivision(
      */
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying floating-point division" << logging::endl);
 
+    const auto& op = *inIt.get();
     const Value nominator = op.getFirstArg();
     const Value& divisor = op.assertArgument(1);
     auto outputType = op.getOutput()->type;
@@ -723,6 +743,7 @@ InstructionWalker intrinsics::intrinsifyFloatingDivision(
     auto reducedNominator = nominator;
     auto reducedDivisor = divisor;
 
+    InstructionWalker it = inIt;
     if(fullRangeDivision)
     {
         /*
@@ -839,7 +860,7 @@ InstructionWalker intrinsics::intrinsifyFloatingDivision(
     return it;
 }
 
-NODISCARD InstructionWalker intrinsics::insertMultiplication(InstructionWalker it, Method& method, const Value& arg0,
+InstructionWalker intrinsics::insertMultiplication(InstructionWalker it, Method& method, const Value& arg0,
     const Value& arg1, Value& dest, intermediate::InstructionDecorations decorations)
 {
     if(arg0.type.isFloatingType() != arg1.type.isFloatingType())
@@ -861,7 +882,7 @@ NODISCARD InstructionWalker intrinsics::insertMultiplication(InstructionWalker i
         // 64-bit multiplication
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Calculating result for 64-bit integer multiplication: " << op->to_string() << logging::endl);
-        it = intrinsifyLongMultiplication(method, it, *op);
+        it = intrinsifyLongMultiplication(method, typeSafe(it, *op));
     }
     else if(arg0.getLiteralValue() && arg1.getLiteralValue())
     {
@@ -923,10 +944,10 @@ NODISCARD InstructionWalker intrinsics::insertMultiplication(InstructionWalker i
         // e.g. x * 3 = x << 1 + x
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying multiplication via binary method: " << op->to_string() << logging::endl);
-        it = intrinsifyIntegerMultiplicationViaBinaryMethod(method, it, *op);
+        it = intrinsifyIntegerMultiplicationViaBinaryMethod(method, typeSafe(it, *op));
     }
     else
-        it = intrinsifySignedIntegerMultiplication(method, it, *op);
+        it = intrinsifySignedIntegerMultiplication(method, typeSafe(it, *op));
 
     return it.nextInBlock();
 }
