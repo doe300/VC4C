@@ -1685,6 +1685,8 @@ bool optimizations::compactVectorFolding(const Module& module, Method& method, c
 
                 it = insertFoldVector(
                     it, method, folding->output, container, folding->foldingOp, folding->lastFoldIt->decoration);
+                // to not skip the next instruction
+                it.previousInBlock();
                 // remove original last write so our new code is used and the whole original folding cascade can be
                 // removed as unused code
                 folding->lastFoldIt.erase();

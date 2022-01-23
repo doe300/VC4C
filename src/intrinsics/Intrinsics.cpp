@@ -957,26 +957,28 @@ static bool intrinsifyArithmetic(
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Calculating result for signed division with constants: " << op.to_string() << logging::endl);
             it.reset(createWithExtras<MoveOperation>(*it.get(), Value(op.getOutput()->local(), arg0.type),
-                Value(Literal(arg0.getLiteralValue()->signedInt() / arg1.getLiteralValue()->signedInt()), arg0.type)));
+                Value(Literal(
+                          arg0.getLiteralValue()->signedInt(arg0.type) / arg1.getLiteralValue()->signedInt(arg1.type)),
+                    arg0.type)));
         }
         // a / 2^n = (abs(a) >> n) * sign(a)
         // a / -2^n = (abs(a) >> n) * ~sign(a)
         else if(arg1.isLiteralValue() && arg1.getLiteralValue()->signedInt() != 0 &&
-            isPowerTwo(static_cast<uint32_t>(std::abs(arg1.getLiteralValue()->signedInt()))))
+            isPowerTwo(static_cast<uint32_t>(std::abs(arg1.getLiteralValue()->signedInt(arg1.type)))))
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying signed division with right-shift and sign-copy: " << op.to_string()
                     << logging::endl);
+            auto divisor = arg1.getLiteralValue()->signedInt(arg1.type);
             Value tmp = method.addNewLocal(arg1.type, "%unsigned");
             Value sign = UNDEFINED_VALUE;
             it = insertMakePositive(it, method, arg0, tmp, sign);
-            Value tmpResult = assign(it, op.getOutput()->type) =
-                (as_unsigned{tmp} >> Value(Literal(static_cast<int32_t>(std::log2(
-                                               static_cast<uint32_t>(std::abs(arg1.getLiteralValue()->signedInt()))))),
-                                         arg1.type),
-                    InstructionDecorations::UNSIGNED_RESULT);
+            Value tmpResult = assign(it, op.getOutput()->type) = (as_unsigned{tmp} >>
+                    Value(
+                        Literal(static_cast<int32_t>(std::log2(static_cast<uint32_t>(std::abs(divisor))))), arg1.type),
+                InstructionDecorations::UNSIGNED_RESULT);
             Value tmpResult2 = op.getOutput().value();
-            if(arg1.getLiteralValue()->signedInt() < 0)
+            if(divisor < 0)
                 sign = assign(it, sign.type, "%sign") = ~sign;
             it = insertRestoreSign(it, method, tmpResult, tmpResult2, sign);
             if(!(tmpResult2 == op.getOutput().value()))
@@ -1066,20 +1068,22 @@ static bool intrinsifyArithmetic(
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Calculating result for signed modulo with constants: " << op.to_string() << logging::endl);
             it.reset(createWithExtras<MoveOperation>(*it.get(), Value(op.getOutput()->local(), arg0.type),
-                Value(Literal(arg0.getLiteralValue()->signedInt() % arg1.getLiteralValue()->signedInt()), arg0.type)));
+                Value(Literal(
+                          arg0.getLiteralValue()->signedInt(arg0.type) % arg1.getLiteralValue()->signedInt(arg1.type)),
+                    arg0.type)));
         }
         // a % 2^n = (abs(a) & 2^n-1) * sign(a)
         else if(arg1.isLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
-            isPowerTwo(arg1.getLiteralValue()->unsignedInt()))
+            isPowerTwo(arg1.getLiteralValue()->unsignedInt(arg1.type)))
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying signed modulo by power of two: " << op.to_string() << logging::endl);
+            auto divisor = arg1.getLiteralValue()->unsignedInt(arg1.type);
             Value tmp = method.addNewLocal(arg1.type, "%unsigned");
             Value sign = UNDEFINED_VALUE;
             it = insertMakePositive(it, method, arg0, tmp, sign);
             Value tmpResult = assign(it, op.getOutput()->type) =
-                (tmp & Value(Literal(arg1.getLiteralValue()->unsignedInt() - 1), arg1.type),
-                    InstructionDecorations::UNSIGNED_RESULT);
+                (tmp & Value(Literal(divisor - 1), arg1.type), InstructionDecorations::UNSIGNED_RESULT);
             Value tmpResult2 = op.getOutput().value();
             it = insertRestoreSign(it, method, tmpResult, tmpResult2, sign);
             if(!(tmpResult2 == op.getOutput().value()))

@@ -27,6 +27,14 @@ static Value toNewLocal(Method& method, const uint32_t id, const uint32_t typeID
     LocalTypeMapping& localTypes, LocalMapping& localMapping)
 {
     localTypes[id] = typeID;
+
+    auto it = localMapping.find(id);
+    if(it != localMapping.end())
+        // local is "defined" (at compilation time) before its definition (in code), this can e.g. happen for back-edges
+        // and phi-nodes where the phi-node is already processed, introducing the local for the copied value which is
+        // written later in the (linear) code in the loop
+        return it->second->createReference();
+
     auto loc = method.createLocal(typeMappings.at(typeID), std::string("%") + std::to_string(id));
     localMapping.emplace(id, loc);
     return loc->createReference();

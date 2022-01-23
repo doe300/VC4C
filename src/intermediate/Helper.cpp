@@ -24,8 +24,8 @@ InstructionWalker intermediate::insertMakePositive(
 {
     if(auto lit = src.getLiteralValue())
     {
-        bool isNegative = lit->signedInt() < 0;
-        dest = isNegative ? Value(Literal(-lit->signedInt()), src.type) : src;
+        bool isNegative = lit->signedInt(src.type) < 0;
+        dest = isNegative ? Value(Literal(-lit->signedInt(src.type)), src.type) : src;
         writeIsNegative = isNegative ? INT_MINUS_ONE : INT_ZERO;
     }
     else if(auto vector = src.checkVector())
@@ -35,8 +35,8 @@ InstructionWalker intermediate::insertMakePositive(
         for(unsigned i = 0; i < vector->size(); ++i)
         {
             auto elem = (*vector)[i];
-            bool isNegative = elem.signedInt() < 0;
-            tmpDest[i] = isNegative ? Literal(-elem.signedInt()) : elem;
+            bool isNegative = elem.signedInt(src.type) < 0;
+            tmpDest[i] = isNegative ? Literal(-elem.signedInt(src.type)) : elem;
             tmpNegative[i] = isNegative ? Literal(-1) : Literal(0u);
         }
         dest = SIMDVectorHolder::storeVector(std::move(tmpDest), src.type, vector->getStorage());
@@ -97,7 +97,7 @@ InstructionWalker intermediate::insertRestoreSign(
 {
     if(src.getLiteralValue() && sign.getLiteralValue())
     {
-        dest = sign.isZeroInitializer() ? src : Value(Literal(-src.getLiteralValue()->signedInt()), src.type);
+        dest = sign.isZeroInitializer() ? src : Value(Literal(-src.getLiteralValue()->signedInt(src.type)), src.type);
     }
     else
     {

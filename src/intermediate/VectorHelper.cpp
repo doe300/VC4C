@@ -1151,7 +1151,6 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
             auto partialDestination = method.addNewLocal(dest.type.getElementType(), "%vector_fold_partial");
             it = insertFoldVector(
                 it, method, partialDestination, partialSource, foldingOp, addedInstructions, decorations);
-            it.nextInBlock();
 
             if(partialVector.type.getVectorWidth() == partialSourceType.getVectorWidth())
             {
@@ -1180,6 +1179,7 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
             partialVector = tmp;
         }
         it.emplace(std::make_unique<MoveOperation>(dest, partialVector));
+        it.nextInBlock();
         return it;
     }
 
@@ -1230,5 +1230,6 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
 
     // 3. move result to dest
     it.emplace(std::make_unique<MoveOperation>(dest, tmpResult));
+    it.nextInBlock();
     return it;
 }

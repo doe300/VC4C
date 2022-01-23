@@ -77,14 +77,17 @@ namespace vc4c
          * Bit-casts the stored value to a floating-point value
          */
         float real() const noexcept;
+        float real(DataType floatType) const;
         /*
          * Bit-casts the stored value to a signed value
          */
         int32_t signedInt() const noexcept;
+        int32_t signedInt(DataType intType) const;
         /*
          * Bit-casts the stored value to an unsigned value
          */
         uint32_t unsignedInt() const noexcept;
+        uint32_t unsignedInt(DataType intType) const;
 
         /*
          * Converts the stored value to a immediate-value which can be used in a load-immediate instruction.

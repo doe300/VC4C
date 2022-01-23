@@ -7,6 +7,7 @@
 #include "Values.h"
 
 #include "CompilationError.h"
+#include "HalfType.h"
 #include "Locals.h"
 #include "SIMDVector.h"
 #include "intermediate/IntermediateInstruction.h"
@@ -71,14 +72,49 @@ float Literal::real() const noexcept
     return f;
 }
 
+float Literal::real(DataType floatType) const
+{
+    if(floatType.getElementType() == TYPE_FLOAT)
+        return f;
+    if(floatType.getElementType() == TYPE_HALF)
+        return static_cast<float>(half_t{static_cast<uint16_t>(u & 0xFFFFu)});
+    throw CompilationError(CompilationStep::GENERAL, "Invalid type to convert float literal to", floatType.to_string());
+}
+
 int32_t Literal::signedInt() const noexcept
 {
     return i;
 }
 
+int32_t Literal::signedInt(DataType intType) const
+{
+    if(!intType.getElementType().isIntegralType() || intType.getScalarBitCount() > 32)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Invalid type to convert signed integer literal to", intType.to_string());
+    if(intType.getScalarBitCount() == 32)
+        return i;
+    auto bitWidth = intType.getScalarBitCount();
+    auto mask = intType.getScalarWidthMask();
+    auto value = u & mask;
+    if(value >> (bitWidth - 1u))
+        // sign-extend
+        value |= 0xFFFFFFFFu & ~mask;
+    return bit_cast<uint32_t, int32_t>(value);
+}
+
 uint32_t Literal::unsignedInt() const noexcept
 {
     return u;
+}
+
+uint32_t Literal::unsignedInt(DataType intType) const
+{
+    if(!intType.getElementType().isIntegralType() || intType.getScalarBitCount() > 32)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Invalid type to convert unsigned integer literal to", intType.to_string());
+    if(intType.getScalarBitCount() == 32)
+        return u;
+    return u & intType.getScalarWidthMask();
 }
 
 uint32_t Literal::toImmediate() const noexcept

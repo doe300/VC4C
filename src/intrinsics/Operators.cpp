@@ -274,9 +274,9 @@ static constexpr int BINARY_METHOD_OPERATIONS_THRESHOLD = 8;
 bool intrinsics::canOptimizeMultiplicationWithBinaryMethod(const IntrinsicOperation& op)
 {
     return std::any_of(op.getArguments().begin(), op.getArguments().end(), [](const Value& arg) -> bool {
-        if(arg.getLiteralValue() && arg.getLiteralValue()->signedInt() > 0)
+        if(arg.getLiteralValue() && arg.getLiteralValue()->signedInt(arg.type) > 0)
         {
-            std::bitset<32> tmp(arg.getLiteralValue()->unsignedInt());
+            std::bitset<32> tmp(arg.getLiteralValue()->unsignedInt(arg.type));
             return tmp.count() <= BINARY_METHOD_OPERATIONS_THRESHOLD;
         }
         return false;
@@ -970,25 +970,26 @@ InstructionWalker intrinsics::insertMultiplication(InstructionWalker it, Method&
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Calculating result for multiplication with constants: " << op->to_string() << logging::endl);
         it.reset(createWithExtras<MoveOperation>(*it.get(), Value(op->getOutput()->local(), arg0.type),
-            Value(Literal(arg0.getLiteralValue()->signedInt() * arg1.getLiteralValue()->signedInt()), arg0.type)));
+            Value(Literal(arg0.getLiteralValue()->signedInt(arg0.type) * arg1.getLiteralValue()->signedInt(arg1.type)),
+                arg0.type)));
     }
-    else if(arg0.getLiteralValue() && arg0.getLiteralValue()->signedInt() > 0 &&
-        isPowerTwo(arg0.getLiteralValue()->unsignedInt()))
+    else if(arg0.getLiteralValue() && arg0.getLiteralValue()->signedInt(arg0.type) > 0 &&
+        isPowerTwo(arg0.getLiteralValue()->unsignedInt(arg0.type)))
     {
         // a * 2^n = a << n
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying multiplication with left-shift: " << op->to_string() << logging::endl);
         it.reset(createWithExtras<Operation>(*it.get(), OP_SHL, op->getOutput().value(), arg1,
-            Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt()))), arg0.type)));
+            Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt(arg0.type)))), arg0.type)));
     }
-    else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
-        isPowerTwo(arg1.getLiteralValue()->unsignedInt()))
+    else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt(arg1.type) > 0 &&
+        isPowerTwo(arg1.getLiteralValue()->unsignedInt(arg1.type)))
     {
         // a * 2^n = a << n
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying multiplication with left-shift: " << op->to_string() << logging::endl);
         it.reset(createWithExtras<Operation>(*it.get(), OP_SHL, op->getOutput().value(), op->getFirstArg(),
-            Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt()))), arg1.type)));
+            Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt(arg1.type)))), arg1.type)));
     }
     else if(std::max(arg0.type.getScalarBitCount(), arg1.type.getScalarBitCount()) <= 24)
     {
@@ -997,8 +998,8 @@ InstructionWalker intrinsics::insertMultiplication(InstructionWalker it, Method&
         it.reset(createWithExtras<Operation>(
             *it.get(), OP_MUL24, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1)));
     }
-    else if(arg0.getLiteralValue() && arg0.getLiteralValue()->signedInt() > 0 &&
-        isPowerTwo(arg0.getLiteralValue()->unsignedInt() + 1))
+    else if(arg0.getLiteralValue() && arg0.getLiteralValue()->signedInt(arg0.type) > 0 &&
+        isPowerTwo(arg0.getLiteralValue()->unsignedInt(arg0.type) + 1))
     {
         // x * (2^k - 1) = x * 2^k - x = x << k - x
         // This is a special case of the "binary method", but since the "binary method" only applies shifts and
@@ -1006,18 +1007,20 @@ InstructionWalker intrinsics::insertMultiplication(InstructionWalker it, Method&
         // TODO could make more general, similar to "binary method" implementation/integrate into that
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying multiplication with left-shift and minus: " << op->to_string() << logging::endl);
-        auto tmp = assign(it, arg1.type, "%mul_shift") = (arg1
-            << Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt() + 1))), arg0.type));
+        auto tmp = assign(it, arg1.type, "%mul_shift") =
+            (arg1 << Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt(arg0.type) + 1))),
+                 arg0.type));
         it.reset(createWithExtras<Operation>(*it.get(), OP_SUB, op->getOutput().value(), tmp, arg1));
     }
-    else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
-        isPowerTwo(arg1.getLiteralValue()->unsignedInt() + 1))
+    else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt(arg1.type) > 0 &&
+        isPowerTwo(arg1.getLiteralValue()->unsignedInt(arg1.type) + 1))
     {
         // x * (2^k - 1) = x * 2^k - x = x << k - x
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying multiplication with left-shift and minus: " << op->to_string() << logging::endl);
-        auto tmp = assign(it, arg0.type, "%mul_shift") = (arg0
-            << Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt() + 1))), arg0.type));
+        auto tmp = assign(it, arg0.type, "%mul_shift") =
+            (arg0 << Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt(arg1.type) + 1))),
+                 arg0.type));
         it.reset(createWithExtras<Operation>(*it.get(), OP_SUB, op->getOutput().value(), tmp, arg0));
     }
     else if(canOptimizeMultiplicationWithBinaryMethod(*op))
