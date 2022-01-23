@@ -1162,8 +1162,8 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
 
             // we folded parts down to a scalar value (at element 0), so prepend it to the remaining elements for the
             // next iteration
-            auto remainingType =
-                src.type.toVectorType(partialVector.type.getVectorWidth() - partialSourceType.getVectorWidth() + 1u);
+            auto remainingType = src.type.toVectorType(
+                static_cast<uint8_t>(partialVector.type.getVectorWidth() - partialSourceType.getVectorWidth() + 1u));
             auto tmp = method.addNewLocal(remainingType, "%vector_fold_remainder");
             it = insertVectorRotation(it, partialVector,
                 Value(Literal(partialSourceType.getVectorWidth() - 1u), TYPE_INT8), tmp, Direction::DOWN);

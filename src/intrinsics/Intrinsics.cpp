@@ -946,7 +946,7 @@ static bool intrinsifyArithmetic(
             it = intrinsifyIntegerDivisionByFloatingDivision(method, typeSafe(it, op));
         }
         else
-            it = intrinsifyUnsignedIntegerDivision(method, it, *op);
+            it = intrinsifyUnsignedIntegerDivision(method, inIt);
         return true;
     }
     // signed division
@@ -1009,7 +1009,7 @@ static bool intrinsifyArithmetic(
             it = intrinsifyIntegerDivisionByFloatingDivision(method, typeSafe(it, op));
         }
         else
-            it = intrinsifySignedIntegerDivision(method, it, *op);
+            it = intrinsifySignedIntegerDivision(method, inIt);
         return true;
     }
     // unsigned modulo
@@ -1055,7 +1055,7 @@ static bool intrinsifyArithmetic(
             it = intrinsifyIntegerDivisionByFloatingDivision(method, typeSafe(it, op), true);
         }
         else
-            it = intrinsifyUnsignedIntegerDivision(method, it, *op, true);
+            it = intrinsifyUnsignedIntegerDivision(method, inIt, true);
         return true;
     }
     // signed modulo
@@ -1111,7 +1111,7 @@ static bool intrinsifyArithmetic(
             it = intrinsifyIntegerDivisionByFloatingDivision(method, typeSafe(it, op), true);
         }
         else
-            it = intrinsifySignedIntegerDivision(method, it, *op, true);
+            it = intrinsifySignedIntegerDivision(method, inIt, true);
         return true;
     }
     // floating division

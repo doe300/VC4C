@@ -452,7 +452,7 @@ static Optional<MemoryAccessRange> determineAccessRange(Method& method,
         if(!has_flag(val.second, intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE))
         {
             range.dynamicAddressParts.emplace(val);
-            if(auto loc = val.first.checkLocal())
+            if(val.first.checkLocal())
             {
                 if(auto singleRange = analysis::ValueRange::getValueRangeRecursive(val.first, &method, knownRanges))
                 {
