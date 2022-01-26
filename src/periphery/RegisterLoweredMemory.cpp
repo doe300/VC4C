@@ -8,11 +8,13 @@
 
 #include "../Expression.h"
 #include "../SIMDVector.h"
+#include "../analysis/MemoryAnalysis.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/TypeConversions.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
 #include "../normalization/LiteralValues.h"
+#include "../normalization/LongOperations.h"
 #include "logger.h"
 
 using namespace vc4c;
@@ -100,6 +102,110 @@ InstructionWalker periphery::insertReadLoweredRegister(
             loweredRegister, dest.type, MultiPartDataAccess::UPPER_PART);
     }
     return insertReadLoweredRegisterInner(method, it, dest, addressOffset, loweredRegister, dest.type);
+}
+
+InstructionWalker periphery::insertFillLoweredRegister(Method& method, InstructionWalker it, const Value& src,
+    const Value& addressOffset, const Value& numCopies, const Value& loweredRegister)
+{
+    // NOTE: In contrast to READ/WRITE, we directly insert the code for FILL due to a) cache access not supporting
+    // multi-element access and b) we currently can't optimize (e.g. combine) FILLs anyway. XXX Should be unified at
+    // some point!
+    auto staticAddressOffset = addressOffset.getConstantValue() & &Value::getLiteralValue;
+    if(!staticAddressOffset)
+    {
+        auto writer = analysis::getSingleWriter(addressOffset);
+        auto expr = writer ? Expression::createRecursiveExpression(*writer) : nullptr;
+        staticAddressOffset = expr ? expr->getConstantExpression() & &Value::getLiteralValue : Optional<Literal>{};
+    }
+    auto staticNumCopies = numCopies.getConstantValue() & &Value::getLiteralValue;
+    if(!staticNumCopies)
+    {
+        auto writer = analysis::getSingleWriter(numCopies);
+        auto expr = writer ? Expression::createRecursiveExpression(*writer) : nullptr;
+        staticNumCopies = expr ? expr->getConstantExpression() & &Value::getLiteralValue : Optional<Literal>{};
+    }
+    auto loweredRegisterElementWidth = loweredRegister.type.getElementType().getLogicalWidth();
+    if(src.type.isScalarType() && src.type.getScalarBitCount() == loweredRegister.type.getScalarBitCount())
+    {
+        if(staticAddressOffset == 0_lit && staticNumCopies == Literal(loweredRegister.type.getVectorWidth()))
+        {
+            // we fill the whole vector
+            return insertReplication(it, src, loweredRegister);
+        }
+
+        auto replicatedValue = method.addNewLocal(
+            src.type.toVectorType(static_cast<uint8_t>(
+                staticNumCopies.value_or(Literal(static_cast<uint32_t>(NATIVE_VECTOR_SIZE))).unsignedInt())),
+            "%fill_register_splat");
+        it = insertReplication(it, src, replicatedValue);
+        Value elementOffset = UNDEFINED_VALUE;
+        if(staticAddressOffset)
+            elementOffset = Value(Literal(staticAddressOffset->unsignedInt() / loweredRegisterElementWidth), TYPE_INT8);
+        else
+            elementOffset = assign(it, TYPE_INT8, "%fill_register_offset") =
+                addressOffset / Literal(loweredRegisterElementWidth);
+        return insertVectorInsertion(it, method, loweredRegister, elementOffset, replicatedValue, numCopies);
+    }
+    if(src.type.isScalarType() && src.type.getScalarBitCount() < loweredRegister.type.getScalarBitCount())
+    {
+        if(staticAddressOffset && staticAddressOffset->unsignedInt() % loweredRegisterElementWidth == 0 &&
+            staticNumCopies &&
+            staticNumCopies->unsignedInt() % (loweredRegisterElementWidth / src.type.getLogicalWidth()) == 0)
+        {
+            // the inserted data size is a multiple of the lowered register element width and aligned to the lowered
+            // register element alignment, thus we can replicate the value across a single lowered register and then
+            // treat identical to above (for filling same-width elements)
+            Value replicatedElement = UNDEFINED_VALUE;
+            if(auto srcLiteral = src.getConstantValue() & &Value::getLiteralValue)
+            {
+                uint64_t value = srcLiteral->unsignedInt();
+                for(uint8_t typeWidth = src.type.getScalarBitCount();
+                    typeWidth < loweredRegister.type.getScalarBitCount(); typeWidth *= 2)
+                {
+                    auto lower = value & ((uint64_t{1} << typeWidth) - 1u);
+                    value = lower | (lower << typeWidth);
+                }
+                if(auto lit = toLongLiteral(value))
+                    replicatedElement = Value(*lit, loweredRegister.type.getElementType());
+                else
+                {
+                    replicatedElement = method.addNewLocal(loweredRegister.type.getElementType());
+                    it = normalization::insertLongLoad(it, method, *replicatedElement.local(), value);
+                }
+            }
+            else
+            {
+                replicatedElement = src;
+                for(uint8_t typeWidth = src.type.getScalarBitCount();
+                    typeWidth < loweredRegister.type.getScalarBitCount(); typeWidth *= 2)
+                {
+                    auto lower = assign(it, loweredRegister.type.getElementType()) =
+                        replicatedElement & Value(Literal((1u << typeWidth) - 1u), TYPE_INT32);
+                    auto upper = assign(it, loweredRegister.type.getElementType()) = lower
+                        << Value(Literal(typeWidth), TYPE_INT8);
+                    replicatedElement = assign(it, loweredRegister.type.getElementType(), "%fill_register_replicated") =
+                        lower | upper;
+                }
+            }
+            auto numResizedCopies =
+                staticNumCopies->unsignedInt() / (loweredRegisterElementWidth / src.type.getLogicalWidth());
+            if(staticAddressOffset == 0_lit && numResizedCopies >= loweredRegister.type.getVectorWidth() &&
+                replicatedElement.getLiteralValue())
+            {
+                // simply load the replicated value in all vector elements
+                assign(it, loweredRegister) = load(replicatedElement.getLiteralValue().value());
+                return it;
+            }
+            return insertFillLoweredRegister(method, it, replicatedElement, addressOffset,
+                Value(Literal(numResizedCopies), TYPE_INT8), loweredRegister);
+        }
+    }
+
+    logging::error() << "Unimplemented filling of " << numCopies.to_string() << " copies of " << src.to_string()
+                     << " into " << loweredRegister.to_string() << " at offset " << addressOffset.to_string()
+                     << logging::endl;
+    throw CompilationError(
+        CompilationStep::NORMALIZER, "General case for filling register-lowered memory is not yet implemented");
 }
 
 static NODISCARD InstructionWalker insertByteToElementAndSubOffset(

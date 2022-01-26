@@ -362,7 +362,10 @@ static InstructionWalker lowerMemoryReadWriteToRegister(Method& method, Instruct
     else if(mem->op == MemoryOperation::FILL && mem->getSource().type.isScalarType())
     {
         ASSERT_SINGLE_DESTINATION("lowerMemoryReadWriteToRegister");
-        it = insertReplication(it, mem->getSource(), destInfo.mappedRegisterOrConstant.value());
+        Value offset = UNDEFINED_VALUE;
+        it = insertAddressToOffset(it, method, offset, getBaseAddresses(destInfos), mem, mem->getDestination());
+        it = periphery::insertFillLoweredRegister(
+            method, it, mem->getSource(), offset, mem->getNumEntries(), destInfo.mappedRegisterOrConstant.value());
     }
     else
         throw CompilationError(

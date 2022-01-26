@@ -22,14 +22,6 @@ namespace vc4c
         void accessGlobalData(Module& module, Method& method, InstructionWalker it, const Configuration& config);
 
         /*
-         * Spills long-living locals which are rarely read into the VPM to be cached there.
-         * Also splits the uses before and after being spilled into several locals
-         *
-         * NOTE: This step currently only runs the analysis of spill-candidates, no actual spilling is performed
-         */
-        void spillLocals(const Module& module, Method& method, const Configuration& config);
-
-        /*
          * Handles stack allocations:
          * - calculates the offsets from the start of one QPU's "stack"
          * - removes the life-time instructions

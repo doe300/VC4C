@@ -275,8 +275,8 @@ void extractBinary(const CompilationData& binary, ModuleHeader& module, StableLi
         {
             // words are already in little endian
             auto word = binaryData[module.getGlobalDataOffset() + i];
-            elements.emplace_back(TYPE_INT32, Literal(static_cast<unsigned>(word & 0xFFFFFFFF)));
-            elements.emplace_back(TYPE_INT32, Literal(static_cast<unsigned>((word >> 32) & 0xFFFFFFFF)));
+            elements.emplace_back(TYPE_INT32, Literal(truncate<unsigned>(word)));
+            elements.emplace_back(TYPE_INT32, Literal(truncate<unsigned>(word >> 32)));
         }
 
         globals.emplace_back("globalData", DataType(GLOBAL_TYPE_HOLDER.createPointerType(type, AddressSpace::GLOBAL)),

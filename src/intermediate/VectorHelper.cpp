@@ -170,8 +170,8 @@ InstructionWalker intermediate::insertVectorExtraction(
     return insertVectorRotation(it, container, index, dest, Direction::DOWN, dest.type.isScalarType());
 }
 
-InstructionWalker intermediate::insertVectorInsertion(
-    InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& value)
+InstructionWalker intermediate::insertVectorInsertion(InstructionWalker it, Method& method, const Value& container,
+    const Value& index, const Value& value, const Optional<Value>& dynamicValueWidth)
 {
     Value tmp = UNDEFINED_VALUE;
     if(value.isAllSame())
@@ -198,13 +198,24 @@ InstructionWalker intermediate::insertVectorInsertion(
     else
     {
         // multiple elements -> insert range of indices
-        // preconditions: index >= 0 and we want to insert elements [insert, insert + vector-width[ while leaving the
-        // other unchanged
+        // preconditions: index >= 0 and we want to insert elements [insert, insert + (dynamic) vector-width[ while
+        // leaving the other unchanged
         // we use the mask version of loads to set the elements we want to insert to and then use flags to insert only
         // those
-        unsigned maskLit = (1u << value.type.getVectorWidth()) - 1u;
+        Optional<Literal> staticVectorWidth = Literal(value.type.getVectorWidth());
+        if(dynamicValueWidth)
+            staticVectorWidth = dynamicValueWidth->getConstantValue() & &Value::getLiteralValue;
+        unsigned maskLit = (1u << staticVectorWidth.value_or(0_lit).unsignedInt()) - 1u;
         auto shiftedMask = method.addNewLocal(TYPE_INT32, "%vector_mask");
-        if(auto lit = index.getLiteralValue())
+        ConditionCode maskCond = COND_ZERO_CLEAR;
+        if(!staticVectorWidth)
+        {
+            auto mask = assign(it, TYPE_INT8.toVectorType(NATIVE_VECTOR_SIZE)) =
+                ELEMENT_NUMBER_REGISTER - dynamicValueWidth.value();
+            it = insertVectorRotation(it, mask, index, shiftedMask);
+            maskCond = COND_NEGATIVE_SET;
+        }
+        else if(auto lit = index.getLiteralValue())
             // rotate mask by constant offset at compile time
             assign(it, shiftedMask) =
                 load(maskLit << (lit->unsignedInt() % NATIVE_VECTOR_SIZE), LoadType::PER_ELEMENT_UNSIGNED);
@@ -216,7 +227,7 @@ InstructionWalker intermediate::insertVectorInsertion(
             it = insertVectorRotation(it, mask, index, shiftedMask);
         }
         assign(it, NOP_REGISTER) = (shiftedMask, SetFlag::SET_FLAGS);
-        assign(it, container) = (tmp, COND_ZERO_CLEAR);
+        assign(it, container) = (tmp, maskCond);
     }
     return it;
 }

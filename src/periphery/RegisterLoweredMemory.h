@@ -77,6 +77,8 @@ namespace vc4c
             const Value& addressOffset, const Value& loweredRegister);
         NODISCARD InstructionWalker insertReadLoweredRegister(Method& method, InstructionWalker it, const Value& dest,
             const Value& addressOffset, const Value& loweredRegister);
+        NODISCARD InstructionWalker insertFillLoweredRegister(Method& method, InstructionWalker it, const Value& src,
+            const Value& addressOffset, const Value& numCopies, const Value& loweredRegister);
 
         /**
          * Lowers the intermediate lowered register (cache) access instructions to the hardware instructions performing

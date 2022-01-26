@@ -26,8 +26,8 @@ namespace vc4c
 
         NODISCARD InstructionWalker insertVectorExtraction(
             InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& dest);
-        NODISCARD InstructionWalker insertVectorInsertion(
-            InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& value);
+        NODISCARD InstructionWalker insertVectorInsertion(InstructionWalker it, Method& method, const Value& container,
+            const Value& index, const Value& value, const Optional<Value>& dynamicValueWidth = NO_VALUE);
         NODISCARD InstructionWalker insertVectorShuffle(InstructionWalker it, Method& method, const Value& destination,
             const Value& source0, const Value& source1, const Value& mask);
 

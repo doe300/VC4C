@@ -35,16 +35,22 @@ namespace vc4c
 
     template <typename T,
         typename R = typename std::conditional<std::numeric_limits<T>::is_signed, int32_t, uint32_t>::type>
-    CONST R saturate(int64_t val) noexcept
+    constexpr R saturate(int64_t val) noexcept
     {
         return static_cast<R>(std::min(std::max(val, static_cast<int64_t>(std::numeric_limits<T>::min())),
             static_cast<int64_t>(std::numeric_limits<T>::max())));
     }
 
-    CONST inline float saturate(double val) noexcept
+    constexpr float saturate(double val) noexcept
     {
         return static_cast<float>(std::min(std::max(val, static_cast<double>(std::numeric_limits<float>::lowest())),
             static_cast<double>(std::numeric_limits<float>::max())));
+    }
+
+    template <typename R, typename T>
+    constexpr std::enable_if_t<std::is_unsigned<R>::value && std::is_unsigned<T>::value, R> truncate(T val) noexcept
+    {
+        return static_cast<R>(val & ((T{1} << (sizeof(R) * 8u)) - 1u));
     }
 
     /*!

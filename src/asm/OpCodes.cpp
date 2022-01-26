@@ -20,6 +20,13 @@
 
 using namespace vc4c;
 
+static_assert(saturate<int16_t>(0x00DEAD00) == std::numeric_limits<int16_t>::max(), "");
+static_assert(saturate<int16_t>(std::numeric_limits<int64_t>::min()) == std::numeric_limits<int16_t>::min(), "");
+static_assert(saturate<uint16_t>(0x00DEAD00) == std::numeric_limits<uint16_t>::max(), "");
+static_assert(saturate<uint16_t>(std::numeric_limits<int64_t>::min()) == 0, "");
+static_assert(truncate<uint8_t>(0xDEADDEAD) == 0xAD, "");
+static_assert(truncate<uint16_t>(0xDEADDEAD) == 0xDEAD, "");
+
 LCOV_EXCL_START
 std::string ConditionCode::to_string() const
 {
@@ -206,7 +213,7 @@ static Literal unpackLiteral(Unpack mode, Literal literal, bool isFloatOperation
     case UNPACK_16A_32:
     {
         // signed conversion -> truncate to unsigned short, bit-cast to signed short and sign-extend
-        uint16_t lowWord = static_cast<uint16_t>(literal.unsignedInt() & 0xFFFF);
+        uint16_t lowWord = truncate<uint16_t>(literal.unsignedInt());
         if(isFloatOperation)
         {
             if((lowWord & 0x7FFFu) != 0 && (lowWord & 0x7C00) == 0)
@@ -1001,12 +1008,15 @@ bool OpCode::operator<(const OpCode& right) const noexcept
 }
 
 // Taken from https://stackoverflow.com/questions/2835469/how-to-perform-rotate-shift-in-c?noredirect=1&lq=1
-CONST static unsigned int rotate_right(unsigned int value, int shift) noexcept
+static constexpr unsigned int rotate_right(unsigned int value, int shift) noexcept
 {
     if((shift &= 31) == 0)
         return value;
     return (value >> shift) | (value << (32 - shift));
 }
+
+static_assert(rotate_right(0xDEAD, 4) == 0xD0000DEA, "");
+static_assert(rotate_right(0xDEAD, -4) == 0x000DEAD0, "");
 
 // TODO somehow use the FlagBehavior here?
 static std::pair<Optional<Literal>, ElementFlags> setFlags(Literal lit)

@@ -77,7 +77,7 @@ float Literal::real(DataType floatType) const
     if(floatType.getElementType() == TYPE_FLOAT)
         return f;
     if(floatType.getElementType() == TYPE_HALF)
-        return static_cast<float>(half_t{static_cast<uint16_t>(u & 0xFFFFu)});
+        return static_cast<float>(half_t{truncate<uint16_t>(u)});
     throw CompilationError(CompilationStep::GENERAL, "Invalid type to convert float literal to", floatType.to_string());
 }
 
@@ -135,7 +135,7 @@ BitMask Literal::getBitMask() const noexcept
 Optional<Literal> vc4c::toLongLiteral(uint64_t val)
 {
     auto upper = val >> 32u;
-    auto lower = static_cast<uint32_t>(val & 0xFFFFFFFFu);
+    auto lower = truncate<uint32_t>(val);
     if(upper == 0)
         return Literal(lower);
     if(upper == 0xFFFFFFFF)

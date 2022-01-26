@@ -861,6 +861,28 @@ static bool intrinsifyArithmetic(
             it.reset(createWithExtras<Operation>(*it.get(), OP_SHL, op.getOutput().value(), op.getFirstArg(),
                 Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt()))), arg1.type)));
         }
+        else if(arg0.getLiteralValue() && arg0.getLiteralValue()->signedInt() < 0 &&
+            isPowerTwo(static_cast<unsigned>(-arg0.getLiteralValue()->signedInt())))
+        {
+            // a * -2^n = -(a << n)
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Intrinsifying multiplication with left-shift and sign inversion: " << op.to_string()
+                    << logging::endl);
+            auto mulTmp = assign(it, op.getOutput()->type) = arg1
+                << Value(Literal(static_cast<int32_t>(std::log2(-arg0.getLiteralValue()->signedInt()))), arg0.type);
+            it.reset(createWithExtras<Operation>(*it.get(), OP_SUB, op.getOutput().value(), INT_ZERO, mulTmp));
+        }
+        else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt() < 0 &&
+            isPowerTwo(static_cast<unsigned>(-arg1.getLiteralValue()->unsignedInt())))
+        {
+            // a * -2^n = -(a << n)
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Intrinsifying multiplication with left-shift and sign inversion: " << op.to_string()
+                    << logging::endl);
+            auto mulTmp = assign(it, op.getOutput()->type) = arg0
+                << Value(Literal(static_cast<int32_t>(std::log2(-arg1.getLiteralValue()->signedInt()))), arg1.type);
+            it.reset(createWithExtras<Operation>(*it.get(), OP_SUB, op.getOutput().value(), INT_ZERO, mulTmp));
+        }
         else if(std::max(arg0.type.getScalarBitCount(), arg1.type.getScalarBitCount()) <= 24)
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
