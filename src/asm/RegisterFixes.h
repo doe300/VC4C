@@ -105,6 +105,27 @@ namespace vc4c
          */
         FixupResult groupScalarLocals(
             Method& method, const Configuration& config, const GraphColoring& coloredGraph, bool runConservative);
+
+        /**
+         * Reduces register pressure by moving constant calculations closer to their usages.
+         *
+         * This fix-up may partially undo some optimizations, e.g. by moving constant loads back to their original
+         * position inside a loop they were hoisted from.
+         *
+         * NOTE: Since delays have already been handled at this point, some instructions will be replaced by a NOP
+         * instead of being completely removed when being moved away!
+         *
+         * Example:
+         *   %a = ldi 42
+         *   [...]
+         *   %b = %a xor 15
+         *
+         * is converted to:
+         *   [...]
+         *   %a = ldi 42
+         *   %b = %a xor 15
+         */
+        FixupResult rematerializeConstants(Method& method, const Configuration& config, GraphColoring& coloredGraph);
     } // namespace qpu_asm
 
 } // namespace vc4c

@@ -12,6 +12,7 @@
 #include "../analysis/LivenessAnalysis.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
+#include "../normalization/LiteralValues.h"
 #include "GraphColoring.h"
 
 using namespace vc4c;
@@ -32,6 +33,8 @@ const std::vector<std::pair<std::string, RegisterFixupStep>> qpu_asm::FIXUP_STEP
             // same as above
             return coloredGraph.fixErrors() ? FixupResult::ALL_FIXED : FixupResult::FIXES_APPLIED_KEEP_GRAPH;
         }},
+    // Try to move some constant calculations closer to their usages
+    {"Rematerialize constants", rematerializeConstants},
     // Try to group pointer parameters into vectors to save registers used
     {"Group parameters", groupParameters},
     // Try to group any scalar/pointer local into vectors to save registers used
@@ -382,4 +385,71 @@ FixupResult qpu_asm::groupScalarLocals(
         }
     }
     return FixupResult::FIXES_APPLIED_RECREATE_GRAPH;
+}
+
+FixupResult qpu_asm::rematerializeConstants(Method& method, const Configuration& config, GraphColoring& coloredGraph)
+{
+    // Simplified version, move constant loads (e.g. as restructured by loop invariant code motion) back close to their
+    // usages
+    auto it = method.walkAllInstructions();
+    FastMap<const Local*, InstructionWalker> constants;
+    while(!it.isEndOfMethod())
+    {
+        // 1. Collect constant loads/calculations which are used exactly once (XXX for simplicity only for now)
+        auto constantValue = NO_VALUE;
+        if(it.has() && it->isConstantInstruction() && it->checkOutputLocal() &&
+            (constantValue = it->precalculate().first) &&
+            it->checkOutputLocal()->countUsers(LocalUse::Type::READER) == 1 &&
+            // if the local is locally limited, moving it (at most by a few instructions) won't have any big effect
+            !it.getBasicBlock()->isLocallyLimited(
+                it, it->checkOutputLocal(), config.additionalOptions.accumulatorThreshold))
+        {
+            constants.emplace(it->checkOutputLocal(), it);
+        }
+
+        // 2. Move constant loads/calculations closer to their usages
+        // NOTE: This algorithm relies on a constant load being defined (in linear instruction order) before its usage,
+        // even across blocks. Except for some rare cases of reordered blocks, this should almost always be true (since
+        // blocks are sorted by domination) and safes us from iterating over all instructions twice.
+        tools::SmallSortedPointerSet<const Local*> usedConstants;
+        it->forReadLocals(
+            [&usedConstants, &constants](const Local* loc, const intermediate::IntermediateInstruction& inst) {
+                if(constants.find(loc) != constants.end())
+                    usedConstants.emplace(loc);
+            });
+        for(const auto* loc : usedConstants)
+        {
+            auto constantIt = constants.at(loc);
+            CPPLOG_LAZY(logging::Level::WARNING,
+                log << "Moving constant calculation close to its single user: " << constantIt->to_string()
+                    << logging::endl);
+            auto decorations = it.emplace(constantIt.release()).decoration;
+            constantIt.safeErase(decorations);
+            it.nextInBlock();
+            PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_BACKEND, "Constants rematerialized", 1);
+        }
+
+        it.nextInMethod();
+    }
+
+    /*
+     * TODO extended version:
+     *
+     * - allow for moving constant loads with multiple (clustered, e.g. within single block) readers
+     *
+     * Actual rematerilization:
+     * 1. determine constant calculations as only writer to output locals
+     * 2. determine all reads of the local and the distance to the calculation
+     * 2.x filter locals read across multiple blocks or with already small access range
+     * 3. remove instruction (or if is MANDATORY_DELAY, replace with NOP)
+     * 4. insert calculating instruction close to usage
+     * 4.1 if usage-range is > accumulatorThreshold, keep delay instruction
+     *
+     * More general:
+     * Don't only do for constants, but more general for every operation (where the gain is large enough, e.g. distance
+     * is > some factor * users) where all operands are also available close to their users. Remove original
+     * calculation, insert close to users (with different locals).
+     */
+
+    return constants.empty() ? FixupResult::NOTHING_FIXED : FixupResult::FIXES_APPLIED_RECREATE_GRAPH;
 }
