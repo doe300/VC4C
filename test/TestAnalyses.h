@@ -8,9 +8,9 @@
 
 #include "cpptest.h"
 
-#include "TestCompilationHelper.h"
+#include "config.h"
 
-class TestAnalyses : public Test::Suite, private TestCompilationHelper
+class TestAnalyses : public Test::Suite
 {
 public:
     TestAnalyses(const vc4c::Configuration& config = {});

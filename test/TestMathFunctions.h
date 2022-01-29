@@ -9,9 +9,9 @@
 
 #include "cpptest.h"
 
-#include "TestCompilationHelper.h"
+#include "config.h"
 
-class TestMathFunctions : public Test::Suite, private TestCompilationHelper
+class TestMathFunctions : public Test::Suite
 {
 public:
     TestMathFunctions(const vc4c::Configuration& config = {});
@@ -86,6 +86,8 @@ public:
 
 private:
     void onMismatch(const std::string& expected, const std::string& result);
+
+    vc4c::Configuration config;
 };
 
 #endif /* VC4C_TEST_STDLIB_H */

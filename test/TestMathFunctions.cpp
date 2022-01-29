@@ -36,7 +36,7 @@ __kernel void test(__global OUT* out, __global IN0* in0, __global IN1* in1, __gl
 }
 )";
 
-TestMathFunctions::TestMathFunctions(const vc4c::Configuration& config) : TestCompilationHelper(config)
+TestMathFunctions::TestMathFunctions(const vc4c::Configuration& config) : config(config)
 {
     TEST_ADD(TestMathFunctions::testAcos);
     TEST_ADD(TestMathFunctions::testAcosh);

@@ -180,7 +180,7 @@ __kernel void test(__global Type* out, const __global Type* in)
 }
 )";
 
-TestIntrinsicFunctions::TestIntrinsicFunctions(const vc4c::Configuration& config) : TestCompilationHelper(config)
+TestIntrinsicFunctions::TestIntrinsicFunctions(const vc4c::Configuration& config) : config(config)
 {
     TEST_ADD(TestIntrinsicFunctions::testIntMultiplicationWithConstant);
     TEST_ADD(TestIntrinsicFunctions::testShortMultiplicationWithConstant);

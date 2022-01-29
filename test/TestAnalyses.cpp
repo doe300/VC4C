@@ -5,6 +5,8 @@
  */
 #include "TestAnalyses.h"
 
+#include "CompilerInstance.h"
+#include "Precompiler.h"
 #include "analysis/ControlFlowGraph.h"
 #include "analysis/DataDependencyGraph.h"
 #include "analysis/DominatorTree.h"
@@ -21,7 +23,6 @@ using namespace vc4c::analysis;
 using namespace vc4c::operators;
 
 static const Configuration config{};
-static Module module{config};
 
 static constexpr auto KERNEL_NESTED_LOOPS = R"(
 __kernel void test(__global int16* in, __global int16* out, uint count) {
@@ -64,7 +65,7 @@ __kernel void test(__global int16* in, __global int16* out) {
 }
 )";
 
-TestAnalyses::TestAnalyses(const Configuration& config) : TestCompilationHelper(config)
+TestAnalyses::TestAnalyses(const Configuration& config)
 {
     // TEST_ADD(TestAnalyses::testAvailableExpressions);
     // FIXME randomly fails
@@ -97,13 +98,13 @@ void TestAnalyses::testControlFlowGraph()
 
     // first kernel
     {
-        Module module(configCopy);
+        CompilerInstance instance{configCopy};
         std::stringstream ss(KERNEL_NESTED_LOOPS);
-        precompileAndParse(module, ss, "");
-        normalize(module);
+        instance.precompileAndParseInput(CompilationData{ss});
+        instance.normalize();
 
-        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
-        auto kernel = module.getKernels()[0];
+        TEST_ASSERT_EQUALS(1u, instance.module.getKernels().size());
+        auto kernel = instance.module.getKernels()[0];
         auto& cfg = kernel->getCFG();
         auto numNodes = cfg.getNodes().size();
 
@@ -136,7 +137,7 @@ void TestAnalyses::testControlFlowGraph()
         TEST_ASSERT_EQUALS(0u, workGroupEdges.size());
 
         // Run the optimization steps and do some more checks
-        optimize(module);
+        instance.optimize();
 
         // This kernel has:
         // A start of the CFG
@@ -170,13 +171,13 @@ void TestAnalyses::testControlFlowGraph()
 
     // second kernel
     {
-        Module module(configCopy);
+        CompilerInstance instance{configCopy};
         std::stringstream ss(KERNEL_LOOP_BARRIER);
-        precompileAndParse(module, ss, "");
-        normalize(module);
+        instance.precompileAndParseInput(CompilationData{ss});
+        instance.normalize();
 
-        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
-        auto kernel = module.getKernels()[0];
+        TEST_ASSERT_EQUALS(1u, instance.module.getKernels().size());
+        auto kernel = instance.module.getKernels()[0];
         auto& cfg = kernel->getCFG();
         auto numNodes = cfg.getNodes().size();
 
@@ -209,7 +210,7 @@ void TestAnalyses::testControlFlowGraph()
         TEST_ASSERT_EQUALS(0u, workGroupEdges.size());
 
         // Run the optimization steps and do some more checks
-        optimize(module);
+        instance.optimize();
 
         // This kernel has:
         // A start of the CFG
@@ -252,13 +253,13 @@ void TestAnalyses::testControlFlowLoops()
 
     // first kernel
     {
-        Module module(configCopy);
+        CompilerInstance instance{configCopy};
         std::stringstream ss(KERNEL_NESTED_LOOPS);
-        precompileAndParse(module, ss, "");
-        normalize(module);
+        instance.precompileAndParseInput(CompilationData{ss});
+        instance.normalize();
 
-        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
-        auto kernel = module.getKernels()[0];
+        TEST_ASSERT_EQUALS(1u, instance.module.getKernels().size());
+        auto kernel = instance.module.getKernels()[0];
         auto loops = kernel->getCFG().findLoops(true, false);
         // 2 loops (2 for-loops)
         TEST_ASSERT_EQUALS(2u, loops.size());
@@ -377,7 +378,7 @@ void TestAnalyses::testControlFlowLoops()
         }
 
         // Run the optimization steps and do some more checks
-        optimize(module);
+        instance.optimize();
 
         loops = kernel->getCFG().findLoops(true, false);
         // 6 loops (2 for-loops, 3 for the work-group loop, 1 for work-group barrier)
@@ -530,13 +531,13 @@ void TestAnalyses::testControlFlowLoops()
 
     // second kernel
     {
-        Module module(configCopy);
+        CompilerInstance instance{configCopy};
         std::stringstream ss(KERNEL_LOOP_BARRIER);
-        precompileAndParse(module, ss, "");
-        normalize(module);
+        instance.precompileAndParseInput(CompilationData{ss});
+        instance.normalize();
 
-        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
-        auto kernel = module.getKernels()[0];
+        TEST_ASSERT_EQUALS(1u, instance.module.getKernels().size());
+        auto kernel = instance.module.getKernels()[0];
         auto loops = kernel->getCFG().findLoops(true, false);
         // 2 loops (2 for-loops)
         TEST_ASSERT_EQUALS(2u, loops.size());
@@ -574,7 +575,7 @@ void TestAnalyses::testControlFlowLoops()
         TEST_ASSERT_EQUALS(0u, inclusionTree->assertNode(&loops.back()).getLongestPathToRoot());
 
         // Run the optimization steps and do some more checks
-        optimize(module);
+        instance.optimize();
 
         loops = kernel->getCFG().findLoops(true, false);
         // 6 loops (2 for-loops, 3 for the work-group loop, 1 for work-group synchronization)
@@ -668,13 +669,13 @@ void TestAnalyses::testDataDependency()
 {
     // first kernel
     {
-        Module module(config);
+        CompilerInstance instance{config};
         std::stringstream ss(KERNEL_NESTED_LOOPS);
-        precompileAndParse(module, ss, "");
-        normalize(module);
+        instance.precompileAndParseInput(CompilationData{ss});
+        instance.normalize();
 
-        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
-        auto kernel = module.getKernels()[0];
+        TEST_ASSERT_EQUALS(1u, instance.module.getKernels().size());
+        auto kernel = instance.module.getKernels()[0];
         auto& cfg = kernel->getCFG();
 
         auto dataDependencies = analysis::DataDependencyGraph::createDependencyGraph(*kernel);
@@ -740,13 +741,13 @@ void TestAnalyses::testDataDependency()
 
     // second kernel
     {
-        Module module(config);
+        CompilerInstance instance{config};
         std::stringstream ss(KERNEL_LOOP_BARRIER);
-        precompileAndParse(module, ss, "");
-        normalize(module);
+        instance.precompileAndParseInput(CompilationData{ss});
+        instance.normalize();
 
-        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
-        auto kernel = module.getKernels()[0];
+        TEST_ASSERT_EQUALS(1u, instance.module.getKernels().size());
+        auto kernel = instance.module.getKernels()[0];
         auto& cfg = kernel->getCFG();
 
         auto dataDependencies = analysis::DataDependencyGraph::createDependencyGraph(*kernel);
@@ -833,13 +834,13 @@ void TestAnalyses::testDominatorTree()
 
     // first kernel
     {
-        Module module(configCopy);
+        CompilerInstance instance{configCopy};
         std::stringstream ss(KERNEL_NESTED_LOOPS);
-        precompileAndParse(module, ss, "");
-        normalize(module);
+        instance.precompileAndParseInput(CompilationData{ss});
+        instance.normalize();
 
-        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
-        auto kernel = module.getKernels()[0];
+        TEST_ASSERT_EQUALS(1u, instance.module.getKernels().size());
+        auto kernel = instance.module.getKernels()[0];
         auto& cfg = kernel->getCFG();
         auto numNodes = cfg.getNodes().size();
 
@@ -888,7 +889,7 @@ void TestAnalyses::testDominatorTree()
         }
 
         // Run the optimization steps and do some more checks
-        optimize(module);
+        instance.optimize();
 
         numNodes = cfg.getNodes().size();
         tree = DominatorTree::createDominatorTree(cfg);
@@ -901,13 +902,13 @@ void TestAnalyses::testDominatorTree()
 
     // second kernel
     {
-        Module module(configCopy);
+        CompilerInstance instance{configCopy};
         std::stringstream ss(KERNEL_LOOP_BARRIER);
-        precompileAndParse(module, ss, "");
-        normalize(module);
+        instance.precompileAndParseInput(CompilationData{ss});
+        instance.normalize();
 
-        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
-        auto kernel = module.getKernels()[0];
+        TEST_ASSERT_EQUALS(1u, instance.module.getKernels().size());
+        auto kernel = instance.module.getKernels()[0];
         auto& cfg = kernel->getCFG();
         auto numNodes = cfg.getNodes().size();
 
@@ -956,7 +957,7 @@ void TestAnalyses::testDominatorTree()
         }
 
         // Run the optimization steps and do some more checks
-        optimize(module);
+        instance.optimize();
 
         numNodes = cfg.getNodes().size();
         tree = DominatorTree::createDominatorTree(cfg);
@@ -1237,6 +1238,7 @@ struct TestEntry
 void TestAnalyses::testIntegerComparisonDetection()
 {
     using namespace vc4c::intermediate;
+    Module module{config};
     Method m(module);
     auto& block = m.createAndInsertNewBlock(m.begin(), "dummyLabel");
     auto it = block.walkEnd();
@@ -1455,15 +1457,15 @@ void TestAnalyses::testActiveWorkItems()
 
     // first kernel
     {
-        Module module(configCopy);
+        CompilerInstance instance{configCopy};
         std::stringstream ss;
         ss << "__attribute__((reqd_work_group_size(7,1,1)))\n";
         ss << KERNEL_NESTED_LOOPS;
-        precompileAndParse(module, ss, "");
-        normalize(module);
+        instance.precompileAndParseInput(CompilationData{ss});
+        instance.normalize();
 
-        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
-        auto kernel = module.getKernels()[0];
+        TEST_ASSERT_EQUALS(1u, instance.module.getKernels().size());
+        auto kernel = instance.module.getKernels()[0];
         auto& cfg = kernel->getCFG();
         auto numNodes = cfg.getNodes().size();
 
@@ -1479,7 +1481,7 @@ void TestAnalyses::testActiveWorkItems()
         }
 
         // Run the optimization steps and do some more checks
-        optimize(module);
+        instance.optimize();
 
         numNodes = cfg.getNodes().size();
         items = determineActiveWorkItems(*kernel, cfg);
@@ -1502,13 +1504,13 @@ void TestAnalyses::testActiveWorkItems()
 
     // second kernel
     {
-        Module module(configCopy);
+        CompilerInstance instance{configCopy};
         std::stringstream ss(KERNEL_LOOP_BARRIER);
-        precompileAndParse(module, ss, "");
-        normalize(module);
+        instance.precompileAndParseInput(CompilationData{ss});
+        instance.normalize();
 
-        TEST_ASSERT_EQUALS(1u, module.getKernels().size());
-        auto kernel = module.getKernels()[0];
+        TEST_ASSERT_EQUALS(1u, instance.module.getKernels().size());
+        auto kernel = instance.module.getKernels()[0];
         auto& cfg = kernel->getCFG();
         auto numNodes = cfg.getNodes().size();
 
@@ -1541,7 +1543,7 @@ void TestAnalyses::testActiveWorkItems()
         }
 
         // Run the optimization steps and do some more checks
-        optimize(module);
+        instance.optimize();
 
         numNodes = cfg.getNodes().size();
         items = determineActiveWorkItems(*kernel, cfg);

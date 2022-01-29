@@ -7,6 +7,7 @@
 #include "Compiler.h"
 
 #include "CompilationError.h"
+#include "CompilerInstance.h"
 #include "Logger.h"
 #include "Parser.h"
 #include "Precompiler.h"
@@ -90,64 +91,98 @@ static std::unique_ptr<Parser> getParser(const CompilationData& source)
     return nullptr;
 }
 
-static std::pair<CompilationData, std::size_t> runCompiler(
-    const CompilationData& input, const Configuration& config, const Optional<std::string>& outputFile)
+CompilerInstance::CompilerInstance(const Configuration& config) : moduleConfig(config), module(moduleConfig) {}
+
+void CompilerInstance::precompileAndParseInput(const CompilationData& input, const std::string& options)
 {
-    Module module(config);
+    auto intermediate = Precompiler::precompile(input, moduleConfig, options);
+    parseInput(intermediate);
+}
 
-    {
-        PROFILE_SCOPE(Parser);
-        std::unique_ptr<Parser> parser = getParser(input);
-        parser->parse(module);
-        // early clean up the parser, since we do not need it anymore and it may use a lot of memory
-    }
+void CompilerInstance::parseInput(const CompilationData& input)
+{
+    PROFILE_SCOPE(Parser);
+    std::unique_ptr<Parser> parser = getParser(input);
+    parser->parse(module);
+}
 
-    normalization::Normalizer norm(config);
-    optimizations::Optimizer opt(config);
-    qpu_asm::CodeGenerator codeGen(module, config);
+void CompilerInstance::normalize(bool dropNonKernels)
+{
+    normalization::Normalizer norm(moduleConfig);
 
     PROFILE_START(Normalizer);
     norm.normalize(module);
     PROFILE_END(Normalizer);
 
-    // remove all non-kernel functions, since we do not handle them anymore, to free up some memory
-    module.dropNonKernels();
+    if(dropNonKernels)
+        // remove all non-kernel functions, since we do not handle them anymore, to free up some memory
+        module.dropNonKernels();
+}
+
+void CompilerInstance::optimize()
+{
+    optimizations::Optimizer opt(moduleConfig);
 
     PROFILE_START(Optimizer);
     opt.optimize(module);
     PROFILE_END(Optimizer);
+}
+
+void CompilerInstance::adjust()
+{
+    normalization::Normalizer norm(moduleConfig);
 
     PROFILE_START(SecondNormalizer);
     norm.adjust(module);
     PROFILE_END(SecondNormalizer);
 
+    // TODO could discard unused globals
+    // since they are exported, they are still in the intermediate code, even if not used (e.g. optimized away)
+}
+
+std::size_t CompilerInstance::generateCode(std::ostream& output)
+{
+    qpu_asm::CodeGenerator codeGen(module, moduleConfig);
+
     auto kernels = module.getKernels();
     const auto f = [&codeGen](Method* kernelFunc) -> void { codeGen.toMachineCode(*kernelFunc); };
     ThreadPool::scheduleAll<Method*>("CodeGenerator", kernels, f, THREAD_LOGGER.get());
+    return codeGen.writeOutput(output);
+}
 
-    // TODO could discard unused globals
-    // since they are exported, they are still in the intermediate code, even if not used (e.g. optimized away)
+std::size_t CompilerInstance::generateCode(
+    std::ostream& output, const std::vector<qpu_asm::RegisterFixupStep>& customSteps)
+{
+    qpu_asm::CodeGenerator codeGen(module, customSteps, moduleConfig);
 
+    auto kernels = module.getKernels();
+    const auto f = [&codeGen](Method* kernelFunc) -> void { codeGen.toMachineCode(*kernelFunc); };
+    ThreadPool::scheduleAll<Method*>("CodeGenerator", kernels, f, THREAD_LOGGER.get());
+    return codeGen.writeOutput(output);
+}
+
+std::pair<CompilationData, std::size_t> CompilerInstance::generateCode(const Optional<std::string>& outputFile)
+{
     // code generation
     CompilationData result{};
     std::size_t bytesWritten = 0;
     if(outputFile)
     {
         std::ofstream fos{*outputFile};
-        bytesWritten = codeGen.writeOutput(fos);
+        bytesWritten = generateCode(fos);
         fos.flush();
 
         result = CompilationData{
-            *outputFile, config.outputMode == OutputMode::HEX ? SourceType::QPUASM_HEX : SourceType::QPUASM_BIN};
+            *outputFile, moduleConfig.outputMode == OutputMode::HEX ? SourceType::QPUASM_HEX : SourceType::QPUASM_BIN};
     }
     else
     {
         std::stringstream output;
-        bytesWritten = codeGen.writeOutput(output);
+        bytesWritten = generateCode(output);
         output.flush();
 
         result = CompilationData{output,
-            config.outputMode == OutputMode::HEX ? SourceType::QPUASM_HEX : SourceType::QPUASM_BIN,
+            moduleConfig.outputMode == OutputMode::HEX ? SourceType::QPUASM_HEX : SourceType::QPUASM_BIN,
             "compilation result"};
     }
 
@@ -165,11 +200,16 @@ std::pair<CompilationData, std::size_t> Compiler::compile(const CompilationData&
 {
     try
     {
+        CompilerInstance instance{config};
+
         // pre-compilation
-        auto intermediate = Precompiler::precompile(input, config, options);
+        instance.precompileAndParseInput(input, options);
 
         // compilation
-        auto result = runCompiler(intermediate, config, outputFile);
+        instance.normalize();
+        instance.optimize();
+        instance.adjust();
+        auto result = instance.generateCode(outputFile);
 
         // clean-up
         std::wcout.flush();

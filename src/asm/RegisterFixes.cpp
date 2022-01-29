@@ -20,7 +20,7 @@ using namespace vc4c::qpu_asm;
 using namespace vc4c::operators;
 
 // TODO make steps: 1. only small fixes, 2. group locals, "spill" to vector, rematerialize, 3. spill into VPM
-const std::vector<std::pair<std::string, RegisterFixupStep>> qpu_asm::FIXUP_STEPS = {
+const std::vector<RegisterFixupStep> qpu_asm::FIXUP_STEPS = {
     // For the first two steps, try to run our in-graph fix-ups
     {"Small rewrites",
         [](Method& method, const Configuration& config, GraphColoring& coloredGraph) -> FixupResult {
@@ -420,7 +420,7 @@ FixupResult qpu_asm::rematerializeConstants(Method& method, const Configuration&
         for(const auto* loc : usedConstants)
         {
             auto constantIt = constants.at(loc);
-            CPPLOG_LAZY(logging::Level::WARNING,
+            CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Moving constant calculation close to its single user: " << constantIt->to_string()
                     << logging::endl);
             auto decorations = it.emplace(constantIt.release()).decoration;

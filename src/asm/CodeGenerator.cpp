@@ -29,7 +29,17 @@ using namespace vc4c;
 using namespace vc4c::qpu_asm;
 using namespace vc4c::intermediate;
 
-CodeGenerator::CodeGenerator(const Module& module, const Configuration& config) : config(config), module(module) {}
+CodeGenerator::CodeGenerator(const Module& module, const Configuration& config) :
+    CodeGenerator(module, FIXUP_STEPS, config)
+{
+}
+
+CodeGenerator::CodeGenerator(
+    const Module& module, const std::vector<RegisterFixupStep>& customSteps, const Configuration& config) :
+    config(config),
+    module(module), fixupSteps(customSteps)
+{
+}
 
 static FastMap<const Local*, std::size_t> mapLabels(Method& method)
 {
@@ -73,13 +83,14 @@ static FastMap<const Local*, std::size_t> mapLabels(Method& method)
     return labelsMap;
 }
 
-static FixupResult runRegisterFixupStep(const std::pair<std::string, RegisterFixupStep>& step, Method& method,
-    const Configuration& config, std::unique_ptr<GraphColoring>& coloredGraph)
+static FixupResult runRegisterFixupStep(const RegisterFixupStep& step, Method& method, const Configuration& config,
+    std::unique_ptr<GraphColoring>& coloredGraph)
 {
-    CPPLOG_LAZY(logging::Level::DEBUG, log << "Running register fix-up step: " << step.first << "..." << logging::endl);
-    PROFILE_START_DYNAMIC(step.first);
-    auto result = step.second(method, config, *coloredGraph);
-    PROFILE_END_DYNAMIC(step.first);
+    CPPLOG_LAZY(
+        logging::Level::DEBUG, log << "Running register fix-up step: " << step.name << "..." << logging::endl);
+    PROFILE_START_DYNAMIC(step.name);
+    auto result = step(method, config, *coloredGraph);
+    PROFILE_END_DYNAMIC(step.name);
     return result;
 }
 
@@ -92,9 +103,9 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
 
     // check and fix possible errors with register-association
     std::unique_ptr<GraphColoring> coloredGraph;
-    auto stepIt = FIXUP_STEPS.begin();
+    auto stepIt = fixupSteps.begin();
     FixupResult lastResult = FixupResult::FIXES_APPLIED_RECREATE_GRAPH;
-    while(stepIt != FIXUP_STEPS.end())
+    while(stepIt != fixupSteps.end())
     {
         if(!coloredGraph || lastResult == FixupResult::FIXES_APPLIED_RECREATE_GRAPH)
         {
@@ -117,7 +128,7 @@ const FastAccessList<DecoratedInstruction>& CodeGenerator::generateInstructions(
         ++stepIt;
     }
 
-    if(stepIt == FIXUP_STEPS.end())
+    if(stepIt == fixupSteps.end())
     {
         logging::warn() << "Register conflict resolver has exceeded its maximum rounds, there might still be errors!"
                         << logging::endl;

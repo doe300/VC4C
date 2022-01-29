@@ -9,9 +9,9 @@
 
 #include "cpptest.h"
 
-#include "TestCompilationHelper.h"
+#include "config.h"
 
-class TestIntrinsicFunctions : public Test::Suite, private TestCompilationHelper
+class TestIntrinsicFunctions : public Test::Suite
 {
 public:
     TestIntrinsicFunctions(const vc4c::Configuration& config = {});
@@ -107,5 +107,7 @@ public:
 
 private:
     void onMismatch(const std::string& expected, const std::string& result);
+
+    vc4c::Configuration config;
 };
 #endif /* VC4C_TEST_INTRINSICS_H */

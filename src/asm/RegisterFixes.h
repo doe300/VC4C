@@ -33,7 +33,16 @@ namespace vc4c
             NOTHING_FIXED
         };
 
-        using RegisterFixupStep = FunctionPointer<FixupResult(Method&, const Configuration&, GraphColoring&)>;
+        struct RegisterFixupStep
+        {
+            std::string name;
+            FunctionPointer<FixupResult(Method&, const Configuration&, GraphColoring&)> step;
+
+            FixupResult operator()(Method& method, const Configuration& config, GraphColoring& coloredGraph) const
+            {
+                return step(method, config, coloredGraph);
+            }
+        };
 
         /**
          * The different steps to run for trying to fix register association errors.
@@ -45,7 +54,7 @@ namespace vc4c
          * 3. if necessary, completely recreate the colored graph
          * 4. increment current fix-up step and go back to 1.
          */
-        extern const std::vector<std::pair<std::string, RegisterFixupStep>> FIXUP_STEPS;
+        extern const std::vector<RegisterFixupStep> FIXUP_STEPS;
 
         /**
          * Reduces register pressure by grouping pointer parameter into the elements of vector locals.

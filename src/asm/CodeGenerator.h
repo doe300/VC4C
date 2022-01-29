@@ -9,6 +9,7 @@
 
 #include "../performance.h"
 #include "Instruction.h"
+#include "RegisterFixes.h"
 #include "config.h"
 
 #include <map>
@@ -28,6 +29,8 @@ namespace vc4c
         {
         public:
             explicit CodeGenerator(const Module& module, const Configuration& config = {});
+            explicit CodeGenerator(const Module& module, const std::vector<RegisterFixupStep>& customSteps,
+                const Configuration& config = {});
 
             std::size_t writeOutput(std::ostream& stream);
             void toMachineCode(Method& kernel);
@@ -37,6 +40,7 @@ namespace vc4c
             const Module& module;
             std::map<Method*, FastAccessList<qpu_asm::DecoratedInstruction>> allInstructions;
             std::mutex instructionsLock;
+            std::vector<RegisterFixupStep> fixupSteps;
 
             /*
              * NOTE: Instruction to Assembler mapping can be run in parallel for different methods,
