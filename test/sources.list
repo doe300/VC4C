@@ -15,4 +15,5 @@ target_sources(TestVC4C
     TestOptimizations.cpp
     TestOptimizationSteps.cpp
     TestPatternMatching.cpp
+    TestRegisterFixes.cpp
 )

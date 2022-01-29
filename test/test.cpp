@@ -23,6 +23,7 @@
 #include "TestOptimizationSteps.h"
 #include "TestCustomContainers.h"
 #include "TestAnalyses.h"
+#include "TestRegisterFixes.h"
 
 #include "tools.h"
 #include "logger.h"
@@ -78,6 +79,11 @@ static Test::Suite* newOptimizationsTest()
     return new TestOptimizations(config);
 }
 
+static Test::Suite* newRegisterFixupTest()
+{
+    return new TestRegisterFixes(config);
+}
+
 /*
  * 
  */
@@ -88,6 +94,7 @@ int main(int argc, char** argv)
 
     Test::registerSuite(Test::newInstance<TestOptimizationSteps>, "test-optimization-steps", "Runs unit tests on the single optimization steps");
     Test::registerSuite(newOptimizationsTest, "test-optimizations", "Runs smoke tests on the single optimization steps");
+    Test::registerSuite(newRegisterFixupTest, "test-register-fixes", "Runs smoke tests on the register fix-up steps");
     Test::registerSuite(Test::newInstance<TestOperators>, "test-operators", "Tests the implementation of some operators");
     Test::registerSuite(Test::newInstance<TestInstructions>, "test-instructions", "Tests some common instruction handling");
     Test::registerSuite(Test::newInstance<TestFrontends>, "test-frontend", "Tests various functions of the default front-end");
