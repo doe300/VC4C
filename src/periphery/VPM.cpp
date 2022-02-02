@@ -1228,6 +1228,43 @@ const VPMArea* VPM::addArea(
     return ptr.get();
 }
 
+const VPMArea* VPM::addSpillArea(unsigned numQPUs)
+{
+    // find free consecutive space in VPM with the requested number of rows and return it
+    // to keep the remaining space free for scratch, we start allocating space from the end of the VPM
+    Optional<unsigned> rowOffset;
+    uint8_t numFreeRows = 0;
+    for(auto i = areas.size() - 1; i > 0 /* index 0 is always reserved for scratch */; --i)
+    {
+        if(areas[i])
+        {
+            // row is already reserved
+            numFreeRows = 0;
+            continue;
+        }
+        else
+            ++numFreeRows;
+        if(numFreeRows >= numQPUs)
+        {
+            rowOffset = static_cast<unsigned>(i);
+            break;
+        }
+    }
+    if(!rowOffset)
+        // no more (big enough) free space on VPM
+        return nullptr;
+
+    // for now align all new VPM areas at the beginning of a row
+    auto ptr = std::make_shared<VPMArea>(VPMUsage::REGISTER_SPILLING, static_cast<uint8_t>(rowOffset.value()), numQPUs);
+    for(auto i = rowOffset.value(); i < (rowOffset.value() + numQPUs); ++i)
+        areas[i] = ptr;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Allocating " << numQPUs << " rows (per 64 byte) of VPM spill cache starting at row "
+            << rowOffset.value() << logging::endl);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL, "VPM spill rows", numQPUs);
+    return ptr.get();
+}
+
 unsigned VPM::getMaxCacheVectors(DataType type, bool writeAccess) const
 {
     unsigned numFreeRows = 0;

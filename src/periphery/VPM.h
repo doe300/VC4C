@@ -862,6 +862,7 @@ namespace vc4c
             const VPMArea* findArea(const Local* local);
             const VPMArea* addArea(const Local* local, DataType elementType, bool isStackArea = false,
                 bool isMemoryCache = false, unsigned numStacks = NUM_QPUS);
+            const VPMArea* addSpillArea(unsigned numQPUs = NUM_QPUS);
 
             /*
              * The maximum number of vectors (of the given type) which can be cached in this VPM.
