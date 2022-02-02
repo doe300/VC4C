@@ -15,6 +15,7 @@
 #include "asm/RegisterFixes.h"
 #include "tools.h"
 
+#include <atomic>
 #include <set>
 #include <sstream>
 
@@ -23,6 +24,8 @@ using namespace vc4c::tools;
 
 static const std::string MESSAGE_REGISTER_FIX_FAILED =
     "Register allocation failed, remainder of test will be skipped: ";
+
+static std::atomic_bool fixupStepCalled{};
 
 class RegisterFixEmulationRunner final : public EmulationRunner
 {
@@ -112,8 +115,15 @@ TestRegisterFixes::~TestRegisterFixes() = default;
 
 void TestRegisterFixes::testRegisterFix(std::string entryName, std::string stepName)
 {
+    fixupStepCalled = false;
     auto test = test_data::getTest(entryName);
     std::vector<qpu_asm::RegisterFixupStep> steps;
+
+    steps.emplace_back(
+        qpu_asm::RegisterFixupStep{"Tracker", [](Method&, const Configuration&, qpu_asm::GraphColoring&) {
+                                       fixupStepCalled = true;
+                                       return qpu_asm::FixupResult::NOTHING_FIXED;
+                                   }});
 
     for(const auto& step : qpu_asm::FIXUP_STEPS)
     {
@@ -122,17 +132,18 @@ void TestRegisterFixes::testRegisterFix(std::string entryName, std::string stepN
     }
 
     // make sure we have an entry in any case
-    fixupPasses[stepName] += 0;
+    fixupPasses[stepName].first += 0;
 
     RegisterFixEmulationRunner runner(config, std::move(steps), precompilationCache);
     auto result = test_data::execute(test, runner);
+    fixupPasses[stepName].second += fixupStepCalled ? 1 : 0;
     if(!result && result.error.find(MESSAGE_REGISTER_FIX_FAILED) == 0)
     {
         // handle as "passed"
         return;
     }
     // the compilation succeeded, so track as that
-    fixupPasses[stepName] += 1;
+    fixupPasses[stepName].first += 1;
     TEST_ASSERT(result.wasSuccess)
     if(!result.error.empty())
         TEST_ASSERT_EQUALS("(no error)", result.error);
@@ -147,7 +158,9 @@ void TestRegisterFixes::checkTestQuality()
     // applied
     for(const auto& entry : fixupPasses)
     {
-        if(entry.second == 0)
+        printf("Register fix-up step '%s' applied %zu times and compiled %zu out of 13 kernels successfully\n",
+            entry.first.data(), entry.second.second, entry.second.first);
+        if(entry.second.first == 0)
             TEST_ASSERT_EQUALS("",
                 "All compilations failed for register fix-up step " + entry.first +
                     ", step correctness could not be tested!");

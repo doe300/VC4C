@@ -138,7 +138,10 @@ void TestFrontends::testLinking()
     std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>> params;
     params.push_back(std::make_pair(0, Optional<std::vector<uint32_t>>{std::vector<uint32_t>{0}}));
     params.push_back(std::make_pair(0, Optional<std::vector<uint32_t>>{std::vector<uint32_t>{42}}));
-    tools::EmulationData data(out.first, "test_linker", params);
+    tools::EmulationData data;
+    data.module = out.first;
+    data.kernelName = "test_linker";
+    data.parameter = params;
     auto res = tools::emulate(data);
 
     TEST_ASSERT(res.executionSuccessful)
@@ -242,7 +245,10 @@ void TestFrontends::testEmulation(const vc4c::CompilationData& binary)
     params.push_back(std::make_pair(1, Optional<std::vector<uint32_t>>{}));
     params.push_back(std::make_pair(1, Optional<std::vector<uint32_t>>{}));
     params.push_back(std::make_pair(0, Optional<std::vector<uint32_t>>{std::vector<uint32_t>(16)}));
-    tools::EmulationData data(binary, "fibonacci", params);
+    tools::EmulationData data;
+    data.module = binary;
+    data.kernelName = "fibonacci";
+    data.parameter = params;
     auto res = tools::emulate(data);
 
     TEST_ASSERT(res.executionSuccessful)

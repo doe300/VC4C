@@ -75,16 +75,6 @@ namespace vc4c
              */
             std::string instrumentationDump;
 
-            explicit EmulationData() = default;
-
-            EmulationData(const CompilationData& moduleData, const std::string& kernelName,
-                const std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>>& parameter,
-                const WorkGroupConfig& config = {}, uint32_t maxCycles = std::numeric_limits<uint32_t>::max()) :
-                module(moduleData),
-                kernelName(kernelName), parameter(parameter), workGroup(config), maxEmulationCycles(maxCycles)
-            {
-            }
-
             std::size_t calcParameterSize() const;
             uint32_t calcNumWorkItems() const;
         };
@@ -200,7 +190,7 @@ namespace vc4c
             /*
              * The final contents of the parameter passed to the emulation (e.g. for output-parameter).
              */
-            std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>> results{};
+            std::vector<std::pair<uint32_t, Optional<std::vector<uint32_t>>>> results;
             /*
              * The instrumentation result for the emulation run. The indices of the instrumentation result correspond to
              * the indices of the instruction in the executed kernel

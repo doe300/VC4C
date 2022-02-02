@@ -25,7 +25,7 @@ public:
 
 private:
     vc4c::Configuration config;
-    vc4c::SortedMap<std::string, std::size_t> fixupPasses;
+    vc4c::SortedMap<std::string, std::pair<std::size_t, std::size_t>> fixupPasses;
     vc4c::FastMap<std::string, vc4c::CompilationData> precompilationCache;
 };
 

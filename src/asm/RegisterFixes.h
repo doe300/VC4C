@@ -135,6 +135,15 @@ namespace vc4c
          *   %b = %a xor 15
          */
         FixupResult rematerializeConstants(Method& method, const Configuration& config, GraphColoring& coloredGraph);
+
+        /**
+         * Reduces register pressure by spilling long-living and rarely used locals into VPM cache rows.
+         *
+         * NOTE: This fix-up could greatly reduce performance, since it introduces VPM accesses.
+         *
+         */
+        FixupResult spillLocals(Method& method, const Configuration& config, GraphColoring& coloredGraph);
+
     } // namespace qpu_asm
 
 } // namespace vc4c

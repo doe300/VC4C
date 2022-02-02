@@ -421,7 +421,11 @@ std::array<Result, VectorWidth * LocalSize * NumGroups> runEmulation(const vc4c:
     workGroups.localSizes[0] = LocalSize;
     workGroups.numGroups[0] = NumGroups;
 
-    EmulationData data(codeBuffer, kernelName, parameter, workGroups);
+    EmulationData data;
+    data.module = codeBuffer;
+    data.kernelName = kernelName;
+    data.parameter = parameter;
+    data.workGroup = workGroups;
 
     auto result = emulate(data);
 

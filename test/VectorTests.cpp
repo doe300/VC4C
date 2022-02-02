@@ -656,7 +656,7 @@ static void registerTypeTests(const std::string& typeName)
     std::string scalarDefines;
     for(auto num : std::vector<uint8_t>{2u, 3u, 4u, 8u, 16u})
     {
-        auto it = scalarMasks.emplace(num, generateMask(1, num - 1, true).front()).first;
+        auto it = scalarMasks.emplace(num, generateMask(1, static_cast<uint8_t>(num - 1u), true).front()).first;
         scalarDefines += " -DMASK" + std::to_string(static_cast<unsigned>(num)) + "=s" + MASK_NAMES.at(it->second);
     }
 
@@ -723,8 +723,8 @@ static void registerTypeTests(const std::string& typeName)
     {
         for(auto outNum : std::vector<uint8_t>{2u, 3u, 4u, 8u, 16u})
         {
-            auto inMask = generateMask(std::min(inNum, outNum) / 2, inNum - 1, true);
-            auto outMask = generateMask(std::min(inNum, outNum) / 2, outNum - 1, false);
+            auto inMask = generateMask(std::min(inNum, outNum) / 2u, static_cast<uint8_t>(inNum - 1u), true);
+            auto outMask = generateMask(std::min(inNum, outNum) / 2u, static_cast<uint8_t>(outNum - 1u), false);
             std::string defines = " -DIN=" + std::to_string(static_cast<unsigned>(inNum)) +
                 " -DOUT=" + std::to_string(static_cast<unsigned>(outNum));
             defines += " -DINMASK=s";
