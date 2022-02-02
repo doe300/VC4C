@@ -30,3 +30,25 @@ for(uint i = 0; i < n; i++){
 
 }
 
+inline bool compare_second(_pair_int_float_t a, _pair_int_float_t b){ return a.second < b.second; }
+
+
+__kernel void serial_insertion_sort_second(__local _pair_int_float_t* data, uint n, __global _pair_int_float_t* _buf0)
+{
+for(uint i = 0; i < n; i++){
+    data[i] = _buf0[i];
+}
+for(uint i = 1; i < n; i++){
+    const _pair_int_float_t value = data[i];
+    uint pos = i;
+    while(pos > 0 && compare_second(value, data[pos-1])){
+        data[pos] = data[pos-1];
+        pos--;
+    }
+    data[pos] = value;
+}
+for(uint i = 0; i < n; i++){
+    _buf0[i] = data[i];
+}
+
+}

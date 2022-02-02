@@ -2844,8 +2844,7 @@ EmulationResult tools::emulate(const EmulationData& data)
     if(!data.memoryDump.empty())
         dumpMemory(mem, data.memoryDump, uniformAddress, false);
 
-    EmulationResult result{data};
-    result.executionSuccessful = status;
+    EmulationResult result{data, status, {}};
 
     result.results.reserve(data.parameter.size());
     for(std::size_t i = 0; i < data.parameter.size(); ++i)
