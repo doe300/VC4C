@@ -238,6 +238,11 @@ qpu_asm::DecoratedInstruction Operation::convertToAsm(const FastMap<const Local*
                         "Can't perform operation with two distinguish literals", to_string());
                 regA = REG_NOP;
             }
+            else if(input0 != input1 &&
+                ((input0.second && input1.first.file == RegisterFile::PHYSICAL_B) ||
+                    (input1.second && input0.first.file == RegisterFile::PHYSICAL_B)))
+                throw CompilationError(CompilationStep::CODE_GENERATION,
+                    "Can't perform operation with two distinct inputs using the same mux", to_string());
             else if(input0.second && input1.first.file == RegisterFile::ACCUMULATOR)
                 // don't read register overlapped by accumulator, e.g. UNIFORM
                 regA = REG_NOP;
@@ -942,6 +947,10 @@ qpu_asm::DecoratedInstruction CombinedOperation::convertToAsm(const FastMap<cons
         throw CompilationError(CompilationStep::CODE_GENERATION,
             "Can't map combined instruction with two distinct immediate arguments", to_string());
 
+    if(addOp->getOutput() && addOp->getOutput() == mulOp->getOutput() &&
+        addInstr.getAddOutput() != mulInstr.getMulOutput())
+        throw CompilationError(CompilationStep::CODE_GENERATION,
+            "Shared output for combined instructions is wrongly mapped to different output registers", to_string());
     if(addInstr.getAddOutput().file == mulInstr.getMulOutput().file && addInstr.getAddOutput().isGeneralPurpose() &&
         mulInstr.getMulOutput().isGeneralPurpose())
         // This also does not work for output to the same register (on a physical register-file), since we cannot

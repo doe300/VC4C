@@ -6,6 +6,7 @@
 
 #include "VPM.h"
 
+#include "../Expression.h"
 #include "../Profiler.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/VectorHelper.h"
@@ -587,8 +588,28 @@ static NODISCARD InstructionWalker calculateElementOffsetInVPM(Method& method, I
  */
 static bool isUnalignedMemoryVPMAccess(const Value& offset, DataType elementType)
 {
-    return elementType.getVectorWidth() > 1 &&
-        (!offset.getLiteralValue() || (offset.getLiteralValue()->unsignedInt() % elementType.getInMemoryWidth()) != 0);
+    if(elementType.getVectorWidth() == 1)
+        return false;
+    if(auto litOffset = offset.getLiteralValue())
+        return litOffset->unsignedInt() % elementType.getInMemoryWidth() != 0;
+    if(auto writer = offset.getSingleWriter())
+    {
+        if(auto expression = Expression::createRecursiveExpression(*writer, 3))
+        {
+            if(expression->code == OP_SHL && expression->arg1.getLiteralValue() &&
+                (expression->arg1.getLiteralValue()->unsignedInt() % 32) >=
+                    static_cast<unsigned>(std::log2(elementType.getInMemoryWidth())))
+                return false;
+            if(expression->code == Expression::FAKEOP_UMUL &&
+                ((expression->arg0.getLiteralValue() &&
+                     expression->arg0.getLiteralValue()->unsignedInt() % elementType.getInMemoryWidth() == 0) ||
+                    (expression->arg1.getLiteralValue() &&
+                        expression->arg1.getLiteralValue()->unsignedInt() % elementType.getInMemoryWidth() == 0)))
+                return false;
+        }
+    }
+    // unless we can prove otherwise, assume unaligned
+    return true;
 }
 
 InstructionWalker VPM::insertCopyRAM(Method& method, InstructionWalker it, const Value& destAddress,
@@ -1358,7 +1379,6 @@ NODISCARD static InstructionWalker lowerReadVPM(
             (load(Literal(genericSetup.value)), InstructionDecorations::VPM_READ_CONFIGURATION);
     else if(isUnalignedMemoryVPMAccess(internalOffset, dataType))
     {
-        // TODO make sure this block is only used where really really required!
         // TODO if inAreaOffset guaranteed to lie within one row, skip loading of second?!
         // TODO 64-bit version
         /*
@@ -1451,7 +1471,6 @@ NODISCARD static InstructionWalker lowerWriteVPM(
             (load(Literal(genericSetup.value)), InstructionDecorations::VPM_WRITE_CONFIGURATION);
     else if(isUnalignedMemoryVPMAccess(internalOffset, dataType))
     {
-        // TODO make sure this block is only used where really really required!
         // TODO if inAreaOffset guaranteed to lie within one row, skip loading of second?!
         // TODO 64-bit version
         /*

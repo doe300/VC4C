@@ -256,6 +256,15 @@ static Optional<FastSet<const IntermediateInstruction*>> checkAllWritersArePhiNo
         if(excludedInstructions.find(writer) != excludedInstructions.end())
             // skip the (possible write) we are currently processing
             return;
+        if(auto memoryAccess = dynamic_cast<const MemoryInstruction*>(writer))
+        {
+            if(memoryAccess->op != MemoryOperation::READ)
+                // the contents are written (or read), not the address itself
+                return;
+            if(!memoryAccess->getDestination().hasLocal(local))
+                // the contents of the address is read, not the address written
+                return;
+        }
         if(writer->hasDecoration(InstructionDecorations::PHI_NODE))
         {
             if(writer->assertArgument(0).checkLocal())
@@ -402,7 +411,6 @@ static void addConditionalLocalMapping(const Local* loc, const ConditionalMemory
 
 static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping,
     TypedInstructionWalker<intermediate::MemoryInstruction> it, const Local* local,
-    const intermediate::MemoryInstruction* memInstr,
     FastMap<TypedInstructionWalker<intermediate::MemoryInstruction>,
         std::pair<const Local*, FastSet<const ConditionalMemoryAccess*>>>& conditionalWrittenMemoryAccesses,
     FastSet<ConditionalMemoryAccess>& conditionalAddressWrites)
@@ -449,7 +457,7 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping,
         if(isMemoryOnlyRead(local))
         {
             // global buffer
-            if(getConstantElementValue(memInstr->getSource()) && memInstr->getNumEntries().hasLiteral(1_lit))
+            if(getConstantElementValue(it->getSource()) && it->getNumEntries().hasLiteral(1_lit))
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Constant element of constant buffer '" << local->to_string()
@@ -493,7 +501,7 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping,
             mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
         }
     }
-    else if(auto conditonalWrites = checkAllWritersArePhiNodesOrSelections(local, {it.get(), memInstr}))
+    else if(auto conditonalWrites = checkAllWritersArePhiNodesOrSelections(local, {it.get()}))
     {
         // If the local is a PHI result from different memory addresses, we can still map it, if the
         // source addresses have the same access type. Since the "original" access types of the sources
@@ -613,7 +621,7 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping,
                 log << "Failed to determine underlying memory area for '" << local->to_string()
                     << "', trying again for its single source: " << sourceLocal->to_string() << logging::endl);
             auto memoryLocal = determineSingleMemoryAreaMapping(
-                mapping, it, sourceLocal, memInstr, conditionalWrittenMemoryAccesses, conditionalAddressWrites);
+                mapping, it, sourceLocal, conditionalWrittenMemoryAccesses, conditionalAddressWrites);
             // if we returned here, then we managed to (conditionally) map the local to a memory area. So edit the
             // current local to reference the inner most local
             if(local->type.getPointerType() && !local->get<LocalData>() && memoryLocal &&
@@ -629,7 +637,7 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping,
                     innerMappingIt->second.accessInstructions.emplace(it, local);
                 const_cast<Local*>(local)->set(ReferenceData(*memoryLocal, hasOffset ? ANY_ELEMENT : 0));
                 auto memoryParameter = memoryLocal->as<Parameter>();
-                if(memoryParameter && memInstr->op != MemoryOperation::READ &&
+                if(memoryParameter && it->op != MemoryOperation::READ &&
                     !has_flag(memoryParameter->decorations, ParameterDecorations::READ_ONLY))
                 {
                     // Mark the original memory area as being written to.
@@ -1007,7 +1015,7 @@ MemoryAccessInfo normalization::determineMemoryAccess(Method& method)
                 }
             }
             for(const auto local : memInstr->getMemoryAreas())
-                determineSingleMemoryAreaMapping(mapping, typeSafe(it, *memInstr), local, memInstr,
+                determineSingleMemoryAreaMapping(mapping, typeSafe(it, *memInstr), local,
                     conditionalWrittenMemoryAccesses, conditionalAddressWrites);
             if(it.has())
                 allWalkers.emplace(it);
