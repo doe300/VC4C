@@ -717,8 +717,8 @@ namespace test_data
         template <std::size_t N>
         std::enable_if_t<is_array<ParameterType<N>>::value> setParameter(ParameterType<N>&& param)
         {
-            data.kernelArguments[N] = toVectorParameter(
-                canaries(std::move(param), static_cast<typename ParameterType<N>::value_type>(17 * (N + 1))));
+            data.kernelArguments[N] =
+                toVectorParameter(std::vector<typename ParameterType<N>::value_type>(param.begin(), param.end()));
         }
 
         template <std::size_t N>

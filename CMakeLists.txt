@@ -68,6 +68,9 @@ if(("${CMAKE_BUILD_TYPE}" STREQUAL "Release") OR ("${CMAKE_BUILD_TYPE}" STREQUAL
 	set(ENABLE_COVERAGE OFF)
 endif()
 
+# Retain debug logs, exception stack trace and profiling results for RelWithDebInfo
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -UNDEBUG")
+
 # Set optimization and warning flags for the build types
 include(cmake/flags.cmake)
 

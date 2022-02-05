@@ -118,7 +118,7 @@ static std::vector<Entry> allKernels = {
     Entry{PASSED, FAST, "./testing/deepCL/backpropweights_byrow.cl",
         "-DgInputSize=16 -DgOutputSize=16 -DgFilterSize=4 -DgFilterSizeSquared=16 -DgNumOutputPlanes=4 -DgMargin=1 "
         "-DgNumInputPlanes=4 -DinputRow=0"},
-    Entry{PASSED, FAST, "./testing/deepCL/BackpropWeightsScratchLarge.cl",
+    Entry{PENDING_SPIRV, FAST, "./testing/deepCL/BackpropWeightsScratchLarge.cl",
         "-DgFilterSize=4 -DgFilterSizeSquared=16 -DgOutputSize=16 -DgInputSize=16 -DgMargin=1 "
         "-DgInputStripeInnerSize=2 -DgInputStripeOuterSize=3 -DgOutputSizeSquared=16 -DgInputStripeMarginSize=1 "
         "-DgNumStripes=16 -DgOutputStripeSize=16 -DgOutputStripeNumRows=4 -DgNumFilters=4 -DgInputPlanes=4 "
