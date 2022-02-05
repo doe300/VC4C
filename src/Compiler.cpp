@@ -192,12 +192,6 @@ std::pair<CompilationData, std::size_t> CompilerInstance::generateCode(const Opt
 std::pair<CompilationData, std::size_t> Compiler::compile(const CompilationData& input, const Configuration& config,
     const std::string& options, const std::string& outputFile)
 {
-    return compile(input, config, options, outputFile.empty() ? Optional<std::string>{} : outputFile);
-}
-
-std::pair<CompilationData, std::size_t> Compiler::compile(const CompilationData& input, const Configuration& config,
-    const std::string& options, const Optional<std::string>& outputFile)
-{
     try
     {
         CompilerInstance instance{config};
@@ -209,7 +203,7 @@ std::pair<CompilationData, std::size_t> Compiler::compile(const CompilationData&
         instance.normalize();
         instance.optimize();
         instance.adjust();
-        auto result = instance.generateCode(outputFile);
+        auto result = instance.generateCode(outputFile.empty() ? Optional<std::string>{} : outputFile);
 
         // clean-up
         std::wcout.flush();

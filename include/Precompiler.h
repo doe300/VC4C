@@ -101,9 +101,6 @@ namespace vc4c
     // forward reference to the actual compilation data implementation
     class CompilationDataPrivate;
 
-    template <typename T>
-    class Optional;
-
     /**
      * Handle for compilation input and output data.
      *
@@ -142,8 +139,6 @@ namespace vc4c
         explicit CompilationData(std::shared_ptr<CompilationDataPrivate>&& data);
 
         SourceType getType() const noexcept;
-        [[deprecated]] Optional<std::string> getFilePath() const;
-        [[deprecated]] Optional<std::vector<uint8_t>> getRawData() const;
         bool getFilePath(std::string& outPath) const;
         bool getRawData(std::vector<uint8_t>& outData) const;
 

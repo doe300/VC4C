@@ -36,9 +36,6 @@ namespace vc4c
     // Declared in Precompiler.h
     class CompilationData;
 
-    template <typename T>
-    class Optional;
-
     /*
      * Base class for the compilation process
      */
@@ -56,8 +53,6 @@ namespace vc4c
          */
         static std::pair<CompilationData, std::size_t> compile(const CompilationData& input,
             const Configuration& config = {}, const std::string& options = "", const std::string& outputFile = "");
-        [[deprecated]] static std::pair<CompilationData, std::size_t> compile(const CompilationData& input,
-            const Configuration& config, const std::string& options, const Optional<std::string>& outputFile);
     };
 
     /*

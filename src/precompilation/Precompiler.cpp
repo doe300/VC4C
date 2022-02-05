@@ -166,16 +166,6 @@ SourceType CompilationData::getType() const noexcept
     return data ? data->getType() : SourceType::UNKNOWN;
 }
 
-Optional<std::string> CompilationData::getFilePath() const
-{
-    return data ? data->getFilePath() : Optional<std::string>{};
-}
-
-Optional<std::vector<uint8_t>> CompilationData::getRawData() const
-{
-    return data ? data->getRawData() : Optional<std::vector<uint8_t>>{};
-}
-
 bool CompilationData::getFilePath(std::string& outPath) const
 {
     if(auto path = (data ? data->getFilePath() : Optional<std::string>{}))

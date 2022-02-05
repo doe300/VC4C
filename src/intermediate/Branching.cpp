@@ -124,7 +124,8 @@ qpu_asm::DecoratedInstruction Branch::convertToAsm(const FastMap<const Local*, R
     auto mulOut = outReg.file == RegisterFile::PHYSICAL_B ? outReg : REG_NOP;
     int64_t branchOffset = 0;
     std::string targetName;
-    Optional<Address> addressRegister;
+    BranchReg branchRegister = BranchReg::NONE;
+    Address addressRegister = 0 /* only 5 bits, so REG_NOP doesn't fit */;
     if(auto label = getSingleTargetLabel())
     {
         // static branch to single label, relative address offset is the label address - the current address
@@ -145,6 +146,7 @@ qpu_asm::DecoratedInstruction Branch::convertToAsm(const FastMap<const Local*, R
         if(addressReg.file != RegisterFile::PHYSICAL_A || !addressReg.isGeneralPurpose())
             throw CompilationError(CompilationStep::CODE_GENERATION,
                 "Can only read dynamic branch address from physical register-file A", to_string());
+        branchRegister = BranchReg::BRANCH_REG;
         addressRegister = addressReg.num;
     }
 
@@ -156,10 +158,8 @@ qpu_asm::DecoratedInstruction Branch::convertToAsm(const FastMap<const Local*, R
         throw CompilationError(CompilationStep::CODE_GENERATION,
             "Cannot jump a distance not fitting into 32-bit integer", std::to_string(branchOffset));
     return qpu_asm::DecoratedInstruction(
-        qpu_asm::BranchInstruction(branchCondition, BranchRel::BRANCH_RELATIVE,
-            addressRegister ? BranchReg::BRANCH_REG : BranchReg::NONE,
-            addressRegister ? *addressRegister : 0 /* only 5 bits, so REG_NOP doesn't fit */, addOut.num, mulOut.num,
-            static_cast<int32_t>(branchOffset)),
+        qpu_asm::BranchInstruction(branchCondition, BranchRel::BRANCH_RELATIVE, branchRegister, addressRegister,
+            addOut.num, mulOut.num, static_cast<int32_t>(branchOffset)),
         "to " + targetName);
 }
 
