@@ -1603,9 +1603,9 @@ AsynchronousExecution Slice::startUniformRead(AsynchronousHandle<Word>&& handle,
         if(cacheLine.isBeingFilled)
             throw CompilationError(CompilationStep::GENERAL, "Can't evict cache line being filled for another read!");
 
-        AsynchronousHandle<std::array<Word, 16>> handle{};
-        auto fut = handle.get_future();
-        auto l2Read = l2Cache.startCacheLineRead(std::move(handle), address);
+        AsynchronousHandle<std::array<Word, 16>> cacheReadHandle{};
+        auto fut = cacheReadHandle.get_future();
+        auto l2Read = l2Cache.startCacheLineRead(std::move(cacheReadHandle), address);
         auto baseAddress = getBaseCacheLineAddress(uniformCache, address);
 
         if(cacheLine.isSet)
@@ -1687,9 +1687,9 @@ AsynchronousExecution Slice::startTMURead(uint8_t tmuIndex, AsynchronousHandle<W
                 }};
         }
 
-        AsynchronousHandle<std::array<Word, 16>> handle{};
-        auto fut = handle.get_future();
-        auto l2Read = l2Cache.startCacheLineRead(std::move(handle), address);
+        AsynchronousHandle<std::array<Word, 16>> cacheReadHandle{};
+        auto fut = cacheReadHandle.get_future();
+        auto l2Read = l2Cache.startCacheLineRead(std::move(cacheReadHandle), address);
         auto baseAddress = getBaseCacheLineAddress(tmuIndex == 0 ? tmu0Cache : tmu1Cache, address);
 
         if(cacheLine.isSet)

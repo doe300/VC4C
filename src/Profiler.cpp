@@ -393,14 +393,14 @@ void profiler::dumpProfileResults(bool writeAsWarning)
 }
 
 static profiler::Counter& allocateCounter(
-    profiler::HashKey key, std ::map<std::size_t, profiler::Counter>& counters, std::size_t baseIndex)
+    profiler::HashKey key, std ::map<std::size_t, profiler::Counter>& countersMap, std::size_t baseIndex)
 {
     static std::atomic_size_t currentIndex{0};
-    auto it = counters.find(key);
-    if(it == counters.end())
+    auto it = countersMap.find(key);
+    if(it == countersMap.end())
     {
         auto nextIndex = currentIndex++;
-        it = counters.emplace(key, profiler::Counter{}).first;
+        it = countersMap.emplace(key, profiler::Counter{}).first;
         it->second.index = baseIndex + nextIndex;
     }
     return it->second;

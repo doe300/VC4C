@@ -59,6 +59,7 @@ static R castToType(T val)
 {
     if(std::is_floating_point<R>::value)
     {
+#pragma STDC FENV_ACCESS on
         // need special handling, need to use trunc-to-zero conversion, since this is also used on the VideoCore IV GPU
         auto oldMode = std::fegetround();
         std::fesetround(FE_TOWARDZERO);

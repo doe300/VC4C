@@ -3,8 +3,8 @@
  *
  * See the file "LICENSE" for the full license governing this code.
  */
-#ifndef VC4C_REGISTER_ANALYSIS
-#define VC4C_REGISTER_ANALYSIS
+#ifndef VC4C_WORK_ITEM_ANALYSIS
+#define VC4C_WORK_ITEM_ANALYSIS
 
 #include "../Optional.h"
 #include "../performance.h"
@@ -106,4 +106,4 @@ namespace vc4c
     } // namespace analysis
 } // namespace vc4c
 
-#endif /* VC4C_REGISTER_ANALYSIS */
+#endif /* VC4C_WORK_ITEM_ANALYSIS */

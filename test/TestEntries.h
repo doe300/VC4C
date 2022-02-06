@@ -207,6 +207,7 @@ namespace test_data
     static std::function<R(float)> roundToZero(const std::function<R(float)>& func)
     {
         return [&](float in) -> R {
+#pragma STDC FENV_ACCESS on
             auto origMode = fegetround();
             // emulate the VideoCore IV rounding mode, truncate to zero
             fesetround(FE_TOWARDZERO);
@@ -220,6 +221,7 @@ namespace test_data
     static std::function<R(float, float)> roundToZero(const std::function<R(float, float)>& func)
     {
         return [&](float in1, float in2) -> R {
+#pragma STDC FENV_ACCESS on
             auto origMode = fegetround();
             // emulate the VideoCore IV rounding mode, truncate to zero
             fesetround(FE_TOWARDZERO);

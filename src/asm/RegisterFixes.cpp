@@ -10,6 +10,7 @@
 #include "../Profiler.h"
 #include "../analysis/ControlFlowGraph.h"
 #include "../analysis/LivenessAnalysis.h"
+#include "../intermediate/Helper.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
 #include "../normalization/LiteralValues.h"
@@ -441,7 +442,14 @@ FixupResult qpu_asm::rematerializeConstants(Method& method, const Configuration&
                     << logging::endl);
             auto decorations = it.emplace(constantIt.release()).decoration;
             constantIt.safeErase(decorations);
+            if(!constantIt.isEndOfBlock() && constantIt.has() &&
+                intermediate::needsDelay(constantIt.copy().previousInBlock().get(), constantIt.get()))
+                // to not introduce issues at the removal point
+                nop(constantIt, intermediate::DelayType::WAIT_REGISTER);
             it.nextInBlock();
+            if(intermediate::needsDelay(it.copy().previousInBlock().get(), it.get()))
+                // e.g. if the user is a vector rotation
+                nop(it, intermediate::DelayType::WAIT_REGISTER);
             PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_BACKEND, "Constants rematerialized", 1);
         }
 

@@ -31,13 +31,13 @@ static InstructionWalker invalidMapping(Method& method, InstructionWalker it, Me
     throw CompilationError(CompilationStep::NORMALIZER, "Invalid memory access", mem->to_string());
 }
 
-static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, InstructionWalker it, MemoryInstruction* mem,
+static InstructionWalker lowerMemoryReadOnlyFromRegister(Method& method, InstructionWalker it, MemoryInstruction* mem,
     const tools::SmallSortedPointerSet<const MemoryInfo*>& srcInfos,
     const tools::SmallSortedPointerSet<const MemoryInfo*>& destInfos);
 static InstructionWalker lowerMemoryReadWriteToRegister(Method& method, InstructionWalker it, MemoryInstruction* mem,
     const tools::SmallSortedPointerSet<const MemoryInfo*>& srcInfos,
     const tools::SmallSortedPointerSet<const MemoryInfo*>& destInfos);
-static InstructionWalker lowerMemoryCopyToRegister(Method& method, InstructionWalker it, MemoryInstruction* mem,
+static InstructionWalker lowerMemoryCopyFromRegister(Method& method, InstructionWalker it, MemoryInstruction* mem,
     const tools::SmallSortedPointerSet<const MemoryInfo*>& srcInfos,
     const tools::SmallSortedPointerSet<const MemoryInfo*>& destInfos);
 static InstructionWalker lowerMemoryReadToVPM(Method& method, InstructionWalker it, MemoryInstruction* mem,
@@ -59,12 +59,12 @@ static InstructionWalker mapMemoryCopy(Method& method, InstructionWalker it, Mem
 /* clang-format off */
 static constexpr MemoryMapper MAPPERS[6][4] = {
     /* READ,                         WRITE,                          COPY (from),                   FILL */
-    {lowerMemoryReadOnlyToRegister,  invalidMapping,                 lowerMemoryReadOnlyToRegister, invalidMapping},                 /* QPU_REGISTER_READONLY */
-    {lowerMemoryReadWriteToRegister, lowerMemoryReadWriteToRegister, lowerMemoryCopyToRegister,     lowerMemoryReadWriteToRegister}, /* QPU_REGISTER_READWRITE */
-    {lowerMemoryReadToVPM,           lowerMemoryWriteToVPM,          mapMemoryCopy,                 lowerMemoryWriteToVPM},          /* VPM_PER_QPU */
-    {lowerMemoryReadToVPM,           lowerMemoryWriteToVPM,          mapMemoryCopy,                 lowerMemoryWriteToVPM},          /* VPM_SHARED_ACCESS */
-    {loadMemoryViaTMU,               invalidMapping,                 mapMemoryCopy,                 invalidMapping},                 /* RAM_LOAD_TMU */
-    {accessMemoryInRAMViaVPM,        accessMemoryInRAMViaVPM,        mapMemoryCopy,                 accessMemoryInRAMViaVPM},        /* RAM_READ_WRITE_VPM */
+    {lowerMemoryReadOnlyFromRegister, invalidMapping,                 lowerMemoryReadOnlyFromRegister, invalidMapping},                 /* QPU_REGISTER_READONLY */
+    {lowerMemoryReadWriteToRegister,  lowerMemoryReadWriteToRegister, lowerMemoryCopyFromRegister,     lowerMemoryReadWriteToRegister}, /* QPU_REGISTER_READWRITE */
+    {lowerMemoryReadToVPM,            lowerMemoryWriteToVPM,          mapMemoryCopy,                   lowerMemoryWriteToVPM},          /* VPM_PER_QPU */
+    {lowerMemoryReadToVPM,            lowerMemoryWriteToVPM,          mapMemoryCopy,                   lowerMemoryWriteToVPM},          /* VPM_SHARED_ACCESS */
+    {loadMemoryViaTMU,                invalidMapping,                 mapMemoryCopy,                   invalidMapping},                 /* RAM_LOAD_TMU */
+    {accessMemoryInRAMViaVPM,         accessMemoryInRAMViaVPM,        mapMemoryCopy,                   accessMemoryInRAMViaVPM},        /* RAM_READ_WRITE_VPM */
 };
 /* clang-format on */
 
@@ -174,11 +174,11 @@ static FastMap<const Local*, Value> getBaseAddressesAndContainers(
  *
  * NOTE: This is the best optimization for memory access and should be preferred, where applicable.
  */
-static InstructionWalker lowerMemoryReadOnlyToRegister(Method& method, InstructionWalker it, MemoryInstruction* mem,
+static InstructionWalker lowerMemoryReadOnlyFromRegister(Method& method, InstructionWalker it, MemoryInstruction* mem,
     const tools::SmallSortedPointerSet<const MemoryInfo*>& srcInfos,
     const tools::SmallSortedPointerSet<const MemoryInfo*>& destInfos)
 {
-    ASSERT_SINGLE_SOURCE("lowerMemoryReadOnlyToRegister");
+    ASSERT_SINGLE_SOURCE("lowerMemoryReadOnlyFromRegister");
     if(mem->op != MemoryOperation::READ && mem->op != MemoryOperation::COPY)
         throw CompilationError(
             CompilationStep::NORMALIZER, "Cannot perform a non-read operation on constant memory", mem->to_string());
@@ -376,12 +376,12 @@ static InstructionWalker lowerMemoryReadWriteToRegister(Method& method, Instruct
     return it.erase();
 }
 
-static InstructionWalker lowerMemoryCopyToRegister(Method& method, InstructionWalker it, MemoryInstruction* mem,
+static InstructionWalker lowerMemoryCopyFromRegister(Method& method, InstructionWalker it, MemoryInstruction* mem,
     const tools::SmallSortedPointerSet<const MemoryInfo*>& srcInfos,
     const tools::SmallSortedPointerSet<const MemoryInfo*>& destInfos)
 {
-    ASSERT_SINGLE_SOURCE("lowerMemoryCopyToRegister");
-    ASSERT_SINGLE_DESTINATION("lowerMemoryCopyToRegister");
+    ASSERT_SINGLE_SOURCE("lowerMemoryCopyFromRegister");
+    ASSERT_SINGLE_DESTINATION("lowerMemoryCopyFromRegister");
     if(mem->op != MemoryOperation::COPY)
         throw CompilationError(
             CompilationStep::NORMALIZER, "Unhandled case of lowering memory access to register", mem->to_string());

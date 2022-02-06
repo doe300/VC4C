@@ -127,7 +127,7 @@ static bool canRemoveInstructionBetween(
     if(isAborted)
         return false;
 
-    bool hasDelayInstructions = false;
+    std::size_t numInstructionsInBetween = 0;
     auto getRegister = [&](const Value& val) -> Optional<Register> {
         if(auto reg = val.checkRegister())
             return *reg;
@@ -143,9 +143,9 @@ static bool canRemoveInstructionBetween(
     {
         // make sure we do not access any of the written registers in between, neither read from it (in which case we
         // need it defined) nor write to it (in which case we would override any previous value)
-        if(checkIt.has())
+        if(checkIt.has() && checkIt->mapsToASMInstruction())
         {
-            hasDelayInstructions = true;
+            ++numInstructionsInBetween;
             std::vector<const intermediate::IntermediateInstruction*> instructions{checkIt.get()};
             if(auto combined = checkIt.get<const intermediate::CombinedOperation>())
                 instructions = {combined->getFirstOp(), combined->getSecondOp()};
@@ -200,11 +200,11 @@ static bool canRemoveInstructionBetween(
             return false;
         if(isRead && (startIt->hasPackMode() || endIt->hasUnpackMode()))
             return false;
-        if(isRead && endIt->getVectorRotation())
+        if(isRead && numInstructionsInBetween < 2 && endIt->getVectorRotation())
             return false;
     }
 
-    return hasDelayInstructions || !intermediate::needsDelay(startIt.get(), endIt.get());
+    return numInstructionsInBetween > 0 || !intermediate::needsDelay(startIt.get(), endIt.get());
 }
 
 static Optional<Register> getSingleRegister(

@@ -322,12 +322,12 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
     // XXX not enabled with any optimization level for now. TODO also move before repeated optimizations?
     OptimizationPass("CompressWorkGroupInfo", "compress-work-group-info", compressWorkGroupLocals,
         "compresses work-group info into single local", OptimizationType::FINAL),
+    OptimizationPass("LoopInvariantCodeMotion", "move-loop-invariant-code", moveLoopInvariantCode,
+        "move constant loads in (nested) loops outside the loops", OptimizationType::FINAL),
     OptimizationPass("SplitReadAfterWrites", "split-read-write", splitReadAfterWrites,
         "splits read-after-writes (except if the local is used only very locally), so the reordering and "
         "register-allocation have an easier job",
         OptimizationType::FINAL),
-    OptimizationPass("LoopInvariantCodeMotion", "move-loop-invariant-code", moveLoopInvariantCode,
-        "move constant loads in (nested) loops outside the loops", OptimizationType::FINAL),
     OptimizationPass("InstructionScheduler", "schedule-instructions", reorderInstructions,
         "schedule instructions according to their dependencies within basic blocks (WIP, slow)",
         OptimizationType::FINAL),

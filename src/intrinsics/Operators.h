@@ -109,6 +109,7 @@ namespace vc4c
 
         float operator()(float arg0, float arg1) const
         {
+#pragma STDC FENV_ACCESS on
             auto origMode = fegetround();
             // emulate the VideoCore IV rounding mode, truncate to zero
             fesetround(FE_TOWARDZERO);
@@ -127,6 +128,7 @@ namespace vc4c
 
         float operator()(int32_t arg0, int32_t arg1) const
         {
+#pragma STDC FENV_ACCESS on
             auto origMode = fegetround();
             // emulate the VideoCore IV rounding mode, truncate to zero
             fesetround(FE_TOWARDZERO);
@@ -146,6 +148,7 @@ namespace vc4c
     {
         Out operator()(In val) const
         {
+#pragma STDC FENV_ACCESS on
             auto origMode = fegetround();
             // emulate the VideoCore IV rounding mode, truncate to zero
             fesetround(FE_TOWARDZERO);

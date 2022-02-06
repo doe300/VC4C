@@ -549,10 +549,10 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
         }
 
         // schedule all other accesses of the same cache entry for vectorization
-        for(auto* inst : access->cache->accesses)
+        for(auto* accessInst : access->cache->accesses)
         {
-            if(closedInstructions.find(inst) == closedInstructions.end())
-                openInstructions.emplace(inst, vectorWidth);
+            if(closedInstructions.find(accessInst) == closedInstructions.end())
+                openInstructions.emplace(accessInst, vectorWidth);
         }
     }
 
@@ -565,10 +565,10 @@ static void vectorizeInstruction(intermediate::IntermediateInstruction* inst, Me
         }
 
         // schedule all other accesses of the same cache entry for vectorization
-        for(auto* inst : access->cache->accesses)
+        for(auto* accessInst : access->cache->accesses)
         {
-            if(closedInstructions.find(inst) == closedInstructions.end())
-                openInstructions.emplace(inst, vectorWidth);
+            if(closedInstructions.find(accessInst) == closedInstructions.end())
+                openInstructions.emplace(accessInst, vectorWidth);
         }
     }
 
