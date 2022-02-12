@@ -346,7 +346,8 @@ static std::vector<Entry> allKernels = {
     Entry{PASSED, FAST, "./testing/NVIDIA/MedianFilter.cl", "-DLOCAL_SIZE_LIMIT=8"},
     Entry{PASSED, FAST, "./testing/NVIDIA/MersenneTwister.cl", "-DLOCAL_SIZE_LIMIT=8"},
     Entry{PASSED, FAST, "./testing/NVIDIA/oclMatVecMul.cl", "-DLOCAL_SIZE_LIMIT=8"},
-    Entry{PASSED, FAST, "./testing/NVIDIA/oclNbodyKernel.cl",
+    // TODO has problems with command line parsing
+    Entry{PENDING_LLVM | PENDING_SPIRV, FAST, "./testing/NVIDIA/oclNbodyKernel.cl",
         "-DLOCAL_SIZE_LIMIT=8 -DREAL3=float3 -DREAL4=float4 -DREAL=float \"-DZERO3=(float3)0\""},
     Entry{PASSED, FAST, "./testing/NVIDIA/oclReduction_kernel.cl",
         "-DLOCAL_SIZE_LIMIT=8 -DT=float -DblockSize=128 -DnIsPow2=1"},
