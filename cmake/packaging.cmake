@@ -8,7 +8,7 @@ if(NOT SPIRV_CLANG_FOUND AND CLANG_FOUND)
 	# If we build with "default" clang, require its package
 	if(CLANG_VERSION_STRING VERSION_GREATER_EQUAL 7.0)
 		# As of clang 7.0, the package does not list the minor version number (clang-7 instead of clang-7.0), so we need to rewrite the version string
-		string (REGEX REPLACE "([0-9]+)\\.*[0-9]+" "\\1" CLANG_VERSION_STRING "${CLANG_VERSION_STRING}")
+		string (REGEX REPLACE "([0-9]+)\\.?[0-9]*" "\\1" CLANG_VERSION_STRING "${CLANG_VERSION_STRING}")
 	endif()
 	set(PACKAGE_DEPENDENCIES "${PACKAGE_DEPENDENCIES}, clang-${CLANG_VERSION_STRING}")
 	if(LLVMLIB_FRONTEND)
