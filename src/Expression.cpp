@@ -1054,7 +1054,7 @@ std::unique_ptr<intermediate::IntermediateInstruction> Expression::toInstruction
         // a * 2^b = a << b
         auto factorArg = isPowerOfTwo(arg0.getLiteralValue()) ? arg0 : arg1;
         auto otherArg = isPowerOfTwo(arg0.getLiteralValue()) ? arg1 : arg0;
-        auto factor = static_cast<unsigned>(std::log2(factorArg.getLiteralValue().value().unsignedInt()));
+        auto factor = vc4c::log2(factorArg.getLiteralValue().value().unsignedInt());
         Expression tmpExpr{OP_SHL, otherArg, Value(Literal(factor), TYPE_INT32), unpackMode, packMode, deco};
         return tmpExpr.toInstruction(output);
     }

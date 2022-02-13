@@ -547,6 +547,14 @@ InstructionWalker intrinsics::intrinsifySignedIntegerDivisionByConstant(
     return it;
 }
 
+static constexpr double powerOfTwo(uint32_t val) noexcept
+{
+    return static_cast<double>(uint64_t{1} << val);
+}
+
+static_assert(powerOfTwo(3u) == 8.0, "");
+static_assert(powerOfTwo(63u) == 9223372036854775808.0, "");
+
 static std::pair<Literal, Literal> calculateConstant(Literal divisor, unsigned accuracy)
 {
     // See OpenCL 1.2 specification, section 6.2:
@@ -556,9 +564,8 @@ static std::pair<Literal, Literal> calculateConstant(Literal divisor, unsigned a
         // a multiplication by 1 and a shift by 0 should both be able to be eliminated
         return std::make_pair(Literal(1), Literal(0));
 
-    uint32_t shift = static_cast<uint32_t>(std::log2(divisor.unsignedInt() * accuracy)) + 2;
-    uint32_t factor =
-        static_cast<uint32_t>(std::round(std::pow(2.0f, shift) / static_cast<double>(divisor.unsignedInt())));
+    uint32_t shift = vc4c::log2(divisor.unsignedInt() * accuracy) + 2;
+    uint32_t factor = static_cast<uint32_t>(std::round(powerOfTwo(shift) / static_cast<double>(divisor.unsignedInt())));
     if(shift > 31)
         throw CompilationError(CompilationStep::NORMALIZER,
             "Unsigned division by constant generated invalid shift offset", std::to_string(shift));
@@ -580,8 +587,11 @@ static DivisionConstants calculateLongConstant(Literal divisor)
         // a multiplication by 1 and a shift by 0 should both be able to be eliminated
         return DivisionConstants{};
 
-    auto shift = static_cast<uint32_t>(std::ceil(std::log2(divisor.unsignedInt())));
-    auto factor = static_cast<uint64_t>(std::ceil(std::pow(2, 32 + shift) / divisor.unsignedInt()));
+    // shift = ceil(log2(divisor))
+    auto shift = vc4c::log2(divisor.unsignedInt());
+    if(!isPowerTwo(divisor.unsignedInt()))
+        shift += 1u;
+    auto factor = static_cast<uint64_t>(std::ceil(powerOfTwo(32 + shift) / static_cast<double>(divisor.unsignedInt())));
 
     // The factor has a 33rd bit , which needs to be applied separately to not overflow 64-bit multiplication for
     // large nominators
@@ -980,7 +990,7 @@ InstructionWalker intrinsics::insertMultiplication(InstructionWalker it, Method&
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying multiplication with left-shift: " << op->to_string() << logging::endl);
         it.reset(createWithExtras<Operation>(*it.get(), OP_SHL, op->getOutput().value(), arg1,
-            Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt(arg0.type)))), arg0.type)));
+            Value(Literal(vc4c::log2(arg0.getLiteralValue()->unsignedInt(arg0.type))), arg0.type)));
     }
     else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt(arg1.type) > 0 &&
         isPowerTwo(arg1.getLiteralValue()->unsignedInt(arg1.type)))
@@ -989,7 +999,7 @@ InstructionWalker intrinsics::insertMultiplication(InstructionWalker it, Method&
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying multiplication with left-shift: " << op->to_string() << logging::endl);
         it.reset(createWithExtras<Operation>(*it.get(), OP_SHL, op->getOutput().value(), op->getFirstArg(),
-            Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt(arg1.type)))), arg1.type)));
+            Value(Literal(vc4c::log2(arg1.getLiteralValue()->unsignedInt(arg1.type))), arg1.type)));
     }
     else if(std::max(arg0.type.getScalarBitCount(), arg1.type.getScalarBitCount()) <= 24)
     {
@@ -999,7 +1009,7 @@ InstructionWalker intrinsics::insertMultiplication(InstructionWalker it, Method&
             *it.get(), OP_MUL24, op->getOutput().value(), op->getFirstArg(), op->assertArgument(1)));
     }
     else if(arg0.getLiteralValue() && arg0.getLiteralValue()->signedInt(arg0.type) > 0 &&
-        isPowerTwo(arg0.getLiteralValue()->unsignedInt(arg0.type) + 1))
+        isPowerTwo(arg0.getLiteralValue()->unsignedInt(arg0.type) + 1u))
     {
         // x * (2^k - 1) = x * 2^k - x = x << k - x
         // This is a special case of the "binary method", but since the "binary method" only applies shifts and
@@ -1008,19 +1018,17 @@ InstructionWalker intrinsics::insertMultiplication(InstructionWalker it, Method&
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying multiplication with left-shift and minus: " << op->to_string() << logging::endl);
         auto tmp = assign(it, arg1.type, "%mul_shift") =
-            (arg1 << Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt(arg0.type) + 1))),
-                 arg0.type));
+            (arg1 << Value(Literal(vc4c::log2(arg0.getLiteralValue()->unsignedInt(arg0.type) + 1u)), arg0.type));
         it.reset(createWithExtras<Operation>(*it.get(), OP_SUB, op->getOutput().value(), tmp, arg1));
     }
     else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt(arg1.type) > 0 &&
-        isPowerTwo(arg1.getLiteralValue()->unsignedInt(arg1.type) + 1))
+        isPowerTwo(arg1.getLiteralValue()->unsignedInt(arg1.type) + 1u))
     {
         // x * (2^k - 1) = x * 2^k - x = x << k - x
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying multiplication with left-shift and minus: " << op->to_string() << logging::endl);
         auto tmp = assign(it, arg0.type, "%mul_shift") =
-            (arg0 << Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt(arg1.type) + 1))),
-                 arg0.type));
+            (arg0 << Value(Literal(vc4c::log2(arg1.getLiteralValue()->unsignedInt(arg1.type) + 1u)), arg0.type));
         it.reset(createWithExtras<Operation>(*it.get(), OP_SUB, op->getOutput().value(), tmp, arg0));
     }
     else if(canOptimizeMultiplicationWithBinaryMethod(*op))
@@ -1059,19 +1067,7 @@ Literal intrinsics::asr(Literal left, Literal right)
 
 Literal intrinsics::clz(Literal val)
 {
-#ifdef __GNUC__
-    // __builtin_clz(0) is undefined, so check before
-    if(val.unsignedInt() != 0)
-        return Literal(__builtin_clz(val.unsignedInt()));
-#else
-    for(int i = MSB; i >= 0; --i)
-    {
-        if(((val.unsignedInt() >> i) & 0x1) == 0x1)
-            return Literal(static_cast<int32_t>(MSB) - i);
-    }
-#endif
-    // Tests show that VC4 returns 32 for clz(0)
-    return Literal(32);
+    return Literal(vc4c::clz(val.unsignedInt()));
 }
 
 Literal intrinsics::smod(DataType type, const Literal& numerator, const Literal& denominator)

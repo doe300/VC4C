@@ -597,8 +597,7 @@ static bool isUnalignedMemoryVPMAccess(const Value& offset, DataType elementType
         if(auto expression = Expression::createRecursiveExpression(*writer, 3))
         {
             if(expression->code == OP_SHL && expression->arg1.getLiteralValue() &&
-                (expression->arg1.getLiteralValue()->unsignedInt() % 32) >=
-                    static_cast<unsigned>(std::log2(elementType.getInMemoryWidth())))
+                (expression->arg1.getLiteralValue()->unsignedInt() % 32) >= vc4c::log2(elementType.getInMemoryWidth()))
                 return false;
             if(expression->code == Expression::FAKEOP_UMUL &&
                 ((expression->arg0.getLiteralValue() &&

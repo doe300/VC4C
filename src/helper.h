@@ -245,6 +245,31 @@ namespace vc4c
         return val > 0 && (val & (val - 1)) == 0;
     }
 
+    CONST constexpr inline uint32_t clz(uint32_t value) noexcept
+    {
+        if(value != 0)
+            // __builtin_clz(0) is undefined, so check before
+            return static_cast<uint32_t>(__builtin_clz(value));
+        // Tests show that VC4 returns 32 for clz(0)
+        return 32;
+    }
+
+    static_assert(clz(0xFFFFFFFF) == 0, "");
+    static_assert(clz(0x0000FFFF) == 16, "");
+    static_assert(clz(0x0000000F) == 28, "");
+    static_assert(clz(0x00000000) == 32, "");
+
+    CONST constexpr inline uint32_t log2(uint32_t value) noexcept
+    {
+        return value == 0u ? 0u : 31u - clz(value);
+    }
+
+    static_assert(log2(0xFFFFFFFF) == 31, "");
+    static_assert(log2(0x0000FFFF) == 15, "");
+    static_assert(log2(0x10000000) == 28, "");
+    static_assert(log2(0x0000000F) == 3, "");
+    static_assert(log2(0x00000000) == 0, "");
+
     /*
      * To explicitly ignore return values of NODISCARD functions
      */

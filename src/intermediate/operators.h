@@ -313,8 +313,7 @@ namespace vc4c
             if(!isPowerTwo(arg2.unsignedInt()))
                 throw CompilationError(CompilationStep::GENERAL,
                     "Can only insert multiplication by constant powers of two", arg2.to_string());
-            return OperationWrapper{
-                OP_SHL, arg1, Value(Literal(static_cast<int32_t>(std::log2(arg2.unsignedInt()))), TYPE_INT8)};
+            return OperationWrapper{OP_SHL, arg1, Value(Literal(vc4c::log2(arg2.unsignedInt())), TYPE_INT8)};
         }
 
         NODISCARD inline OperationWrapper operator/(const Value& arg1, const Literal& arg2)
@@ -324,8 +323,7 @@ namespace vc4c
             if(!isPowerTwo(arg2.unsignedInt()))
                 throw CompilationError(
                     CompilationStep::GENERAL, "Can only insert division by constant powers of two", arg2.to_string());
-            return OperationWrapper{
-                OP_SHR, arg1, Value(Literal(static_cast<int32_t>(std::log2(arg2.unsignedInt()))), TYPE_INT8)};
+            return OperationWrapper{OP_SHR, arg1, Value(Literal(vc4c::log2(arg2.unsignedInt())), TYPE_INT8)};
         }
 
         NODISCARD inline OperationWrapper operator%(const Value& arg1, const Literal& arg2)

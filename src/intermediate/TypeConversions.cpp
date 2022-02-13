@@ -647,7 +647,7 @@ InstructionWalker intermediate::insertFloatingPointConversion(
             (max(as_float{src}, as_float{src}), UNPACK_HALF_TO_FLOAT);
 
         auto unsignedResult = assign(it) = (normalResult & 0x7FFFFFFF_val, UNSIGNED);
-        auto leadingZeroes = assign(it) = clz(unsignedResult);
+        auto leadingZeroes = assign(it) = operators::clz(unsignedResult);
         // leading zeroes in mantissa = clz(32-bit value) - 9 (sign + exponent)
         auto leadingZeroesPlusOne = assign(it, leadingZeroes.type) = leadingZeroes - 8_val;
         // exponent = 127 - 15 - (clz - 9) = 112 - (clz - 9) = 113 - (clz - 8)
@@ -778,7 +778,7 @@ InstructionWalker intermediate::insertUnsignedToFloatConversion(
         it = insertUnsignedToFloatConversion(it, method, parts->upper->createReference(), upperPart);
         auto lowerPart = method.addNewLocal(dest.type);
         it = insertUnsignedToFloatConversion(it, method, parts->lower->createReference(), lowerPart);
-        auto tmp = assign(it, upperPart.type) = upperPart * Value(Literal(std::pow(2.0f, 32.0f)), TYPE_FLOAT);
+        auto tmp = assign(it, upperPart.type) = upperPart * Value(Literal(std::exp2f(32.0f)), TYPE_FLOAT);
         assign(it, dest) = tmp + lowerPart;
     }
     else // 32-bits
@@ -808,7 +808,7 @@ InstructionWalker intermediate::insertSignedToFloatConversion(
                 "Can't convert long to floating value without having multi-register data", it->to_string());
 
         auto upperPart = assign(it, dest.type) = itof(parts->upper->createReference());
-        upperPart = assign(it, upperPart.type) = upperPart * Value(Literal(std::pow(2.0f, 32.0f)), TYPE_FLOAT);
+        upperPart = assign(it, upperPart.type) = upperPart * Value(Literal(std::exp2f(32.0f)), TYPE_FLOAT);
         /*
          * Case handling:
          * - Upper part positive -> normal flow (upper part to float * 2^32 + unsigned lower part to float)

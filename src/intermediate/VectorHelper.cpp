@@ -1155,7 +1155,7 @@ InstructionWalker intermediate::insertFoldVector(InstructionWalker it, Method& m
         while(partialVector.type.getVectorWidth() > dest.type.getVectorWidth())
         {
             // take the biggest sub-vector (starting from element 0) which is a power of 2 and fold it
-            auto largestPowerOf2 = 31u - intrinsics::clz(Literal{partialVector.type.getVectorWidth()}).unsignedInt();
+            auto largestPowerOf2 = vc4c::log2(partialVector.type.getVectorWidth());
             auto partialSourceType = src.type.toVectorType(static_cast<uint8_t>(1u << largestPowerOf2));
             auto partialSource = assign(it, partialSourceType, "%vector_fold_partial") = (partialVector, decorations);
             addedInstructions.emplace(it.copy().previousInBlock().get());

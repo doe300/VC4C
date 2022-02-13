@@ -27,12 +27,12 @@ InstructionWalker periphery::insertSFUCall(const Register sfuReg, InstructionWal
 
 Literal periphery::precalculateSFUExp2(Literal in)
 {
-    return Literal(std::exp2(in.real()));
+    return Literal(std::exp2f(in.real()));
 }
 
 Literal periphery::precalculateSFULog2(Literal in)
 {
-    return Literal(std::log2(in.real()));
+    return Literal(std::log2f(in.real()));
 }
 
 Literal periphery::precalculateSFURecip(Literal in)

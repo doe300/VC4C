@@ -850,7 +850,7 @@ static bool intrinsifyArithmetic(
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying multiplication with left-shift: " << op.to_string() << logging::endl);
             it.reset(createWithExtras<Operation>(*it.get(), OP_SHL, op.getOutput().value(), arg1,
-                Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt()))), arg0.type)));
+                Value(Literal(vc4c::log2(arg0.getLiteralValue()->unsignedInt())), arg0.type)));
         }
         else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
             isPowerTwo(arg1.getLiteralValue()->unsignedInt()))
@@ -859,7 +859,7 @@ static bool intrinsifyArithmetic(
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying multiplication with left-shift: " << op.to_string() << logging::endl);
             it.reset(createWithExtras<Operation>(*it.get(), OP_SHL, op.getOutput().value(), op.getFirstArg(),
-                Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt()))), arg1.type)));
+                Value(Literal(vc4c::log2(arg1.getLiteralValue()->unsignedInt())), arg1.type)));
         }
         else if(arg0.getLiteralValue() && arg0.getLiteralValue()->signedInt() < 0 &&
             isPowerTwo(static_cast<unsigned>(-arg0.getLiteralValue()->signedInt())))
@@ -869,7 +869,7 @@ static bool intrinsifyArithmetic(
                 log << "Intrinsifying multiplication with left-shift and sign inversion: " << op.to_string()
                     << logging::endl);
             auto mulTmp = assign(it, op.getOutput()->type) = arg1
-                << Value(Literal(static_cast<int32_t>(std::log2(-arg0.getLiteralValue()->signedInt()))), arg0.type);
+                << Value(Literal(vc4c::log2(static_cast<unsigned>(-arg0.getLiteralValue()->signedInt()))), arg0.type);
             it.reset(createWithExtras<Operation>(*it.get(), OP_SUB, op.getOutput().value(), INT_ZERO, mulTmp));
         }
         else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt() < 0 &&
@@ -880,7 +880,7 @@ static bool intrinsifyArithmetic(
                 log << "Intrinsifying multiplication with left-shift and sign inversion: " << op.to_string()
                     << logging::endl);
             auto mulTmp = assign(it, op.getOutput()->type) = arg0
-                << Value(Literal(static_cast<int32_t>(std::log2(-arg1.getLiteralValue()->signedInt()))), arg1.type);
+                << Value(Literal(vc4c::log2(static_cast<unsigned>(-arg1.getLiteralValue()->signedInt()))), arg1.type);
             it.reset(createWithExtras<Operation>(*it.get(), OP_SUB, op.getOutput().value(), INT_ZERO, mulTmp));
         }
         else if(std::max(arg0.type.getScalarBitCount(), arg1.type.getScalarBitCount()) <= 24)
@@ -899,8 +899,8 @@ static bool intrinsifyArithmetic(
             // TODO could make more general, similar to "binary method" implementation/integrate into that
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying multiplication with left-shift and minus: " << op.to_string() << logging::endl);
-            auto tmp = assign(it, arg1.type, "%mul_shift") = (arg1
-                << Value(Literal(static_cast<int32_t>(std::log2(arg0.getLiteralValue()->signedInt() + 1))), arg0.type));
+            auto tmp = assign(it, arg1.type, "%mul_shift") =
+                (arg1 << Value(Literal(vc4c::log2(arg0.getLiteralValue()->unsignedInt() + 1u)), arg0.type));
             it.reset(createWithExtras<Operation>(*it.get(), OP_SUB, op.getOutput().value(), tmp, arg1));
         }
         else if(arg1.getLiteralValue() && arg1.getLiteralValue()->signedInt() > 0 &&
@@ -909,8 +909,8 @@ static bool intrinsifyArithmetic(
             // x * (2^k - 1) = x * 2^k - x = x << k - x
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying multiplication with left-shift and minus: " << op.to_string() << logging::endl);
-            auto tmp = assign(it, arg0.type, "%mul_shift") = (arg0
-                << Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->signedInt() + 1))), arg0.type));
+            auto tmp = assign(it, arg0.type, "%mul_shift") =
+                (arg0 << Value(Literal(vc4c::log2(arg1.getLiteralValue()->unsignedInt() + 1u)), arg0.type));
             it.reset(createWithExtras<Operation>(*it.get(), OP_SUB, op.getOutput().value(), tmp, arg0));
         }
         else if(canOptimizeMultiplicationWithBinaryMethod(op))
@@ -942,9 +942,8 @@ static bool intrinsifyArithmetic(
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
                 log << "Intrinsifying division with right-shift: " << op.to_string() << logging::endl);
-            it
-                .reset(createWithExtras<Operation>(*it.get(), OP_SHR, op.getOutput().value(), op.getFirstArg(),
-                    Value(Literal(static_cast<int32_t>(std::log2(arg1.getLiteralValue()->unsignedInt()))), arg1.type)))
+            it.reset(createWithExtras<Operation>(*it.get(), OP_SHR, op.getOutput().value(), op.getFirstArg(),
+                         Value(Literal(vc4c::log2(arg1.getLiteralValue()->unsignedInt())), arg1.type)))
                 .addDecorations(InstructionDecorations::UNSIGNED_RESULT);
         }
         else if((arg1.isLiteralValue() || arg1.checkVector()) && arg0.type.getScalarBitCount() <= 32)
@@ -995,10 +994,9 @@ static bool intrinsifyArithmetic(
             Value tmp = method.addNewLocal(arg1.type, "%unsigned");
             Value sign = UNDEFINED_VALUE;
             it = insertMakePositive(it, method, arg0, tmp, sign);
-            Value tmpResult = assign(it, op.getOutput()->type) = (as_unsigned{tmp} >>
-                    Value(
-                        Literal(static_cast<int32_t>(std::log2(static_cast<uint32_t>(std::abs(divisor))))), arg1.type),
-                InstructionDecorations::UNSIGNED_RESULT);
+            Value tmpResult = assign(it, op.getOutput()->type) =
+                (as_unsigned{tmp} >> Value(Literal(vc4c::log2(static_cast<uint32_t>(std::abs(divisor)))), arg1.type),
+                    InstructionDecorations::UNSIGNED_RESULT);
             Value tmpResult2 = op.getOutput().value();
             if(divisor < 0)
                 sign = assign(it, sign.type, "%sign") = ~sign;

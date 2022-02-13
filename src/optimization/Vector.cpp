@@ -230,7 +230,7 @@ static int calculateCostsVsBenefits(const ControlFlowLoop& loop, const Induction
     // single insertion of element selection for repetition branch
     ++costs;
     // our folding implementation takes 3 * ceil(log2(vector-width)) instructions per folding
-    auto foldCosts = 3u * static_cast<unsigned>(std::ceil(std::log2(static_cast<double>(vectorizationFactor))));
+    auto foldCosts = 3u * (vc4c::log2(vectorizationFactor) + 1u);
     costs += static_cast<int>(foldCosts * numFoldings);
     // additional calculation of the dynamic element mask
     if(isDynamicIterationCount)
