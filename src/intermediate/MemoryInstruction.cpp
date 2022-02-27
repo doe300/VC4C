@@ -235,6 +235,7 @@ MemoryAccessInstruction::~MemoryAccessInstruction()
     cache->accesses.erase(this);
 }
 
+LCOV_EXCL_START
 qpu_asm::DecoratedInstruction MemoryAccessInstruction::convertToAsm(
     const FastMap<const Local*, Register>& registerMapping, const FastMap<const Local*, std::size_t>& labelMapping,
     std::size_t instructionIndex) const
@@ -248,6 +249,7 @@ std::unique_ptr<IntermediateInstruction> MemoryAccessInstruction::copyFor(
     throw CompilationError(
         CompilationStep::GENERAL, "Memory access instructions cannot be copied for new", to_string());
 }
+LCOV_EXCL_STOP
 
 bool MemoryAccessInstruction::isNormalized() const
 {

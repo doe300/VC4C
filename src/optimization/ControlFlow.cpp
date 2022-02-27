@@ -578,9 +578,9 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
                         logging::error() << "Block has explicit predecessor: " << it->to_string() << logging::endl;
                 });
             });
-            LCOV_EXCL_STOP
             throw CompilationError(
                 CompilationStep::OPTIMIZER, "Failed to remove empty basic block: ", sourceBlock->to_string());
+            LCOV_EXCL_STOP
         }
     }
 
@@ -1130,9 +1130,10 @@ NODISCARD static InstructionWalker insertSingleDimensionRepetitionBlock(Method& 
     BranchCond branchCond = BRANCH_ALWAYS;
     std::tie(it, branchCond) =
         intermediate::insertBranchCondition(method, it, condValue, 1u << std::max(int8_t{0}, mergedValueIndex));
-    it.emplace(std::make_unique<intermediate::Branch>(defaultBlock.getLabel()->getLabel(), branchCond))
-        .addDecorations(InstructionDecorations::WORK_GROUP_LOOP)
-        .addDecorations(dimension);
+    auto branch = std::make_unique<intermediate::Branch>(defaultBlock.getLabel()->getLabel(), branchCond);
+    // need to add the work-group-loop decoration before adding the instruction to correctly update the CFG
+    branch->addDecorations(InstructionDecorations::WORK_GROUP_LOOP).addDecorations(dimension);
+    it.emplace(std::move(branch));
     it.nextInMethod();
     return it;
 }

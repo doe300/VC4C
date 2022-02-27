@@ -36,6 +36,7 @@
 using namespace vc4c;
 using namespace vc4c::precompilation;
 
+LCOV_EXCL_START
 void LLVMModuleWithContext::dumpText(const std::string& fileName) const
 {
     if(module)
@@ -45,11 +46,13 @@ void LLVMModuleWithContext::dumpText(const std::string& fileName) const
         module->print(out, nullptr);
     }
 }
+LCOV_EXCL_STOP
 
 std::shared_ptr<llvm::LLVMContext> precompilation::initializeLLVMContext()
 {
     auto context = std::make_shared<llvm::LLVMContext>();
     context->setDiagnosticHandlerCallBack([](const llvm::DiagnosticInfo& info, void* /* dummy */) {
+        LCOV_EXCL_START
         std::stringstream ss;
         llvm::raw_os_ostream os(ss);
         llvm::DiagnosticPrinterRawOStream dp(os);
@@ -69,6 +72,7 @@ std::shared_ptr<llvm::LLVMContext> precompilation::initializeLLVMContext()
         default:
             logging::info() << "Note/Remark in LLVM/clang: " << text << logging::endl;
         }
+        LCOV_EXCL_STOP
     });
 #ifndef NDEBUG
     context->setDiscardValueNames(false);
@@ -116,6 +120,7 @@ LLVMModuleWithContext precompilation::loadLLVMModule(
     auto expected = llvm::parseBitcodeFile(buffer.getMemBufferRef(), *actualContext);
     if(!expected)
     {
+        LCOV_EXCL_START
 #if LLVM_LIBRARY_VERSION >= 40
         std::string error = "";
         llvm::handleAllErrors(
@@ -124,6 +129,7 @@ LLVMModuleWithContext precompilation::loadLLVMModule(
 #else
         throw std::system_error(expected.getError(), "Error parsing LLVM module");
 #endif
+        LCOV_EXCL_STOP
     }
     else
     {
@@ -267,6 +273,7 @@ LLVMProfilerWrapper::LLVMProfilerWrapper(const std::string& command, std::chrono
 LLVMProfilerWrapper::~LLVMProfilerWrapper()
 {
 #if LLVM_LIBRARY_VERSION >= 90
+    LCOV_EXCL_START
     if(llvm::timeTraceProfilerEnabled())
     {
         CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
@@ -278,6 +285,7 @@ LLVMProfilerWrapper::~LLVMProfilerWrapper()
         });
         llvm::timeTraceProfilerCleanup();
     }
+    LCOV_EXCL_STOP
 #endif
 }
 #endif /* USE_LLVM_LIBRARY */

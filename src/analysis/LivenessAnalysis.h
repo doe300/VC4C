@@ -174,30 +174,6 @@ namespace vc4c
             FastMap<const BasicBlock*, LivenessChangesAnalysis> changes;
         };
 
-        /*
-         * Analyses the usage of locals in granularity of basic blocks.
-         *
-         * Each basic block is analyzed and following information is extracted:
-         * - the locals read by this block (which are written externally)
-         * - the locals written to by this block (and with usages externally)
-         */
-        class LocalUsageAnalysis : public GlobalAnalysis<FastSet<const Local*>>
-        {
-        public:
-            explicit LocalUsageAnalysis();
-
-        private:
-            /*
-             * The initial set of locals contains all locals read by this block (before they are possibly overwritten)
-             *
-             * The final set of locals contains all locals written in this block where there are usages outside of this
-             * block
-             */
-            static std::pair<FastSet<const Local*>, FastSet<const Local*>> analyzeLocalUsage(const BasicBlock& block);
-
-            static std::string to_string(const FastSet<const Local*>& locals);
-        };
-
         /**
          * A single usage-range of a local inside a single basic block
          *

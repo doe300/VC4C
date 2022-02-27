@@ -10,7 +10,6 @@
 #include "../Optional.h"
 #include "../performance.h"
 #include "../tools/SmallSet.h"
-#include "Analysis.h"
 
 #include <algorithm>
 #include <functional>
@@ -22,6 +21,7 @@ namespace vc4c
 {
     class DataType;
     class Local;
+    class BuiltinLocal;
     class Literal;
     class Method;
     struct Value;
@@ -203,8 +203,6 @@ namespace vc4c
             static void processedOpenSet(Method* method, FastMap<const Local*, ValueRange>& ranges,
                 FastMap<const intermediate::IntermediateInstruction*, ValueRange>& closedSet,
                 FastMap<const intermediate::IntermediateInstruction*, Optional<ValueRange>>& openSet);
-
-            friend class ValueRangeAnalysis;
         };
 
         ValueRange min(const ValueRange& one, const ValueRange& other) noexcept;
@@ -237,27 +235,6 @@ namespace vc4c
         {
             FastMap<const Local*, ValueRange> fullRanges;
             FastMap<const Local*, PartialRange> partialRanges;
-        };
-
-        /**
-         * Analysis the value ranges of every local written in a single basic block
-         */
-        class ValueRangeAnalysis : public LocalAnalysis<AnalysisDirection::FORWARD, ValueRanges>
-        {
-        public:
-            explicit ValueRangeAnalysis(ValueRanges&& initialRanges = {});
-
-            static std::string to_string(const ValueRanges& knownRanges);
-
-            /**
-             * Updates the given previously known value ranges with the operation executed in the given instruction.
-             *
-             * NOTE: If only the value ranges at a certain point are of interest (and the value ranges at any point in
-             * the basic block), this function should be directly called instead of the analysis run over the whole
-             * block and the previous result should be passed in as new input to reduce the memory overhead!
-             */
-            static ValueRanges analyzeRanges(
-                const intermediate::IntermediateInstruction* inst, const ValueRanges& previousRanges, void*&);
         };
 
     } /* namespace analysis */

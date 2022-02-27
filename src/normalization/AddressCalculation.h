@@ -44,7 +44,6 @@ namespace vc4c
         };
 
         std::string toString(MemoryAccessType type);
-        MemoryAccessType toMemoryAccessType(periphery::VPMUsage usage);
 
         /*
          * Converts an address (e.g. an index chain) and the corresponding base pointer to the pointer difference

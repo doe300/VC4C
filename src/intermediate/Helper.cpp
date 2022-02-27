@@ -372,44 +372,6 @@ const IntermediateInstruction* intermediate::getSourceInstruction(const Intermed
     return inst;
 }
 
-static const Local* getSourceLocal(const Local* local)
-{
-    while(auto writer = local->getSingleWriter())
-    {
-        if(writer->isSimpleMove() && !writer->hasConditionalExecution() && writer->readsLocal())
-            local = writer->getMoveSource().value().local();
-        else
-            break;
-    }
-    return local;
-}
-
-FastSet<const Local*> intermediate::getEquivalenceClass(const Local* local)
-{
-    FastSet<const Local*> clazz;
-
-    // go backward until the beginning of the class to make sure we get all the branches
-    auto startLocal = getSourceLocal(local);
-    // go forward - this takes all the possible branches
-    std::function<void(const LocalUser*)> processNext = [&](const LocalUser* reader) {
-        if(reader && reader->isSimpleMove() && !reader->hasConditionalExecution() && reader->checkOutputLocal())
-        {
-            auto out = reader->getOutput()->local();
-            if(out->getSingleWriter() == reader)
-            {
-                // if there are multiple writers, the local could take different values
-                clazz.emplace(out);
-                out->forUsers(LocalUse::Type::READER, processNext);
-            }
-        }
-    };
-
-    clazz.emplace(startLocal);
-    startLocal->forUsers(LocalUse::Type::READER, processNext);
-
-    return clazz;
-}
-
 BasicBlock& intermediate::insertLoop(
     Method& method, InstructionWalker& it, const Value& conditionValue, const std::string& label)
 {

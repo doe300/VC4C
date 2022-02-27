@@ -48,9 +48,9 @@ static constexpr auto INPUT_LANGUAGE = clang::Language::OpenCL;
 static constexpr auto INPUT_LANGUAGE = clang::InputKind::OpenCL;
 #endif
 
+LCOV_EXCL_START
 static void logDiagnostics(clang::TextDiagnosticBuffer& diagnostics, clang::SourceManager* sourceManager)
 {
-    LCOV_EXCL_START
     logging::logLazy(logging::Level::WARNING, [&]() {
         if(diagnostics.getNumWarnings() > 0)
         {
@@ -64,7 +64,6 @@ static void logDiagnostics(clang::TextDiagnosticBuffer& diagnostics, clang::Sour
             }
         }
     });
-    LCOV_EXCL_STOP
     if(diagnostics.getNumErrors() > 0)
     {
         logging::error() << "Errors in precompilation:" << logging::endl;
@@ -77,6 +76,7 @@ static void logDiagnostics(clang::TextDiagnosticBuffer& diagnostics, clang::Sour
         }
     }
 }
+LCOV_EXCL_STOP
 
 static std::unique_ptr<clang::CompilerInstance> createInstance(
     const std::vector<const char*>& args, clang::TextDiagnosticBuffer& diagnosticOutput)

@@ -37,10 +37,8 @@ const RoundingMarker intrinsics::ROUND_TO_NEGATIVE_INFINITY{TYPE_INT8, "rtn", Fl
 
 // The function to apply for pre-calculation
 using UnaryInstruction = std::function<Optional<Value>(const Value&)>;
-static const UnaryInstruction NO_OP = [](const Value& val) { return NO_VALUE; };
 // The function to apply for pre-calculation
 using BinaryInstruction = std::function<Optional<Value>(const Value&, const Value&)>;
-static const BinaryInstruction NO_OP2 = [](const Value& val0, const Value& val1) { return NO_VALUE; };
 
 // see VC4CLStdLib (_intrinsics.h)
 static constexpr unsigned char VC4CL_UNSIGNED{1};
@@ -132,37 +130,6 @@ static IntrinsicFunction intrinsifyValueRead(const Value& val)
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying method-call '" << callSite.to_string() << "' to value read" << logging::endl);
         it.reset(createWithExtras<MoveOperation>(callSite, callSite.getOutput().value(), val));
-        return it;
-    };
-}
-
-static IntrinsicFunction intrinsifySemaphoreAccess(bool increment)
-{
-    return [increment](Method& method, TypedInstructionWalker<MethodCall> inIt) -> InstructionWalker {
-        const auto& callSite = *inIt.get();
-        InstructionWalker it = inIt;
-        if(!callSite.assertArgument(0).getLiteralValue())
-            throw CompilationError(CompilationStep::NORMALIZER, "Semaphore-number needs to be a compile-time constant",
-                callSite.to_string());
-        if(callSite.assertArgument(0).getLiteralValue()->signedInt() < 0 ||
-            callSite.assertArgument(0).getLiteralValue()->signedInt() >= 16)
-            throw CompilationError(
-                CompilationStep::NORMALIZER, "Semaphore-number needs to be between 0 and 15", callSite.to_string());
-
-        if(increment)
-        {
-            CPPLOG_LAZY(
-                logging::Level::DEBUG, log << "Intrinsifying semaphore increment with instruction" << logging::endl);
-            it.reset(createWithExtras<SemaphoreAdjustment>(
-                callSite, static_cast<Semaphore>(callSite.assertArgument(0).getLiteralValue()->unsignedInt()), true));
-        }
-        else
-        {
-            CPPLOG_LAZY(
-                logging::Level::DEBUG, log << "Intrinsifying semaphore decrement with instruction" << logging::endl);
-            it.reset(createWithExtras<SemaphoreAdjustment>(
-                callSite, static_cast<Semaphore>(callSite.assertArgument(0).getLiteralValue()->unsignedInt()), false));
-        }
         return it;
     };
 }
@@ -362,40 +329,6 @@ static InstructionWalker intrinsifySaturatedSubtraction(Method& method, TypedIns
     return it;
 }
 
-static ConditionCode toCondition(int c)
-{
-    // for mapping, see _flags.h in VC4CLStdLib
-    switch(c)
-    {
-    case 'z':
-        return COND_ZERO_SET;
-    case 'Z':
-        return COND_ZERO_CLEAR;
-    case 'n':
-        return COND_NEGATIVE_SET;
-    case 'N':
-        return COND_NEGATIVE_CLEAR;
-    case 'c':
-        return COND_CARRY_SET;
-    case 'C':
-        return COND_CARRY_CLEAR;
-    }
-    throw CompilationError(CompilationStep::NORMALIZER, "Unknown key to map to condition code", std::to_string(c));
-}
-
-static InstructionWalker intrinsifyFlagCondition(Method& method, TypedInstructionWalker<MethodCall> inIt)
-{
-    const auto& callSite = *inIt.get();
-    InstructionWalker it = inIt;
-    auto cond = toCondition(callSite.assertArgument(2).getLiteralValue()->signedInt());
-    assign(it, callSite.getOutput().value()) = (callSite.assertArgument(0), cond);
-    assign(it, callSite.getOutput().value()) = (callSite.assertArgument(1), cond.invert());
-    it.erase();
-    // so next instruction is not skipped
-    it.previousInBlock();
-    return it;
-}
-
 static InstructionWalker intrinsifyPopcount(Method& method, TypedInstructionWalker<MethodCall> inIt)
 {
     // This is a generalized implementation parameterized on the type size, adapted from
@@ -527,8 +460,6 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> unaryIn
     {"vc4cl_sfu_recip",
         Intrinsic{intrinsifySFUInstruction(REG_SFU_RECIP),
             [](const Value& val) { return periphery::precalculateSFU(REG_SFU_RECIP, val); }}},
-    {"vc4cl_semaphore_increment", Intrinsic{intrinsifySemaphoreAccess(true)}},
-    {"vc4cl_semaphore_decrement", Intrinsic{intrinsifySemaphoreAccess(false)}},
     {"vc4cl_dma_read", Intrinsic{intrinsifyMemoryAccess(MemoryAccess::READ, false)}},
     {"vc4cl_unpack_sext", Intrinsic{intrinsifyUnaryALUInstruction("mov", false, PACK_NOP, UNPACK_SHORT_TO_INT_SEXT)}},
     {"vc4cl_unpack_color_byte0", Intrinsic{intrinsifyUnaryALUInstruction(OP_FMIN.name, false, PACK_NOP, UNPACK_8A_32)}},
@@ -599,12 +530,6 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryI
     // NOTE: Since 32-bit saturation pack mode works in an unexpected manner for integer subtraction, we cannot simply
     // issue a single subtraction operation
     {"vc4cl_saturated_sub", Intrinsic{intrinsifySaturatedSubtraction}},
-    {"vc4cl_add_flags",
-        Intrinsic{intrinsifyBinaryALUInstruction(OP_ADD.name, false, PACK_NOP, UNPACK_NOP, true),
-            /* can't set flags for pre-calculation, so don't */}},
-    {"vc4cl_sub_flags",
-        Intrinsic{intrinsifyBinaryALUInstruction(OP_SUB.name, false, PACK_NOP, UNPACK_NOP, true),
-            /* can't set flags for pre-calculation, so don't */}},
     {"vc4cl_prefetch", Intrinsic{[](Method& m, TypedInstructionWalker<MethodCall> it) -> InstructionWalker {
          /* for now do nothing, TODO make use of this! */
          CPPLOG_LAZY(logging::Level::DEBUG, log << "Dropping intrinsic function: " << it->to_string() << logging::endl);
@@ -626,8 +551,7 @@ const static std::map<std::string, Intrinsic, std::greater<std::string>> binaryI
     {"vc4cl_mul_hi", Intrinsic{intrinsifyIntegerMultiplicationHighPart}}};
 
 const static std::map<std::string, Intrinsic, std::greater<std::string>> ternaryIntrinsicMapping = {
-    {"vc4cl_dma_copy", Intrinsic{intrinsifyMemoryAccess(MemoryAccess::COPY, false)}},
-    {"vc4cl_flag_cond", Intrinsic{intrinsifyFlagCondition}}};
+    {"vc4cl_dma_copy", Intrinsic{intrinsifyMemoryAccess(MemoryAccess::COPY, false)}}};
 
 const static std::map<std::string, std::pair<Intrinsic, Optional<Value>>, std::greater<std::string>>
     typeCastIntrinsics = {

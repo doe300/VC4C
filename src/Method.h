@@ -154,12 +154,6 @@ namespace vc4c
          */
         const BuiltinLocal* findOrCreateBuiltin(BuiltinLocal::Type type) __attribute__((returns_nonnull));
 
-        /*!
-         * Checks if all usages of this local are within a certain range from the current instruction, but following
-         * branches
-         */
-        bool isLocallyLimited(InstructionWalker curIt, const Local* local, std::size_t threshold) const;
-
         /*
          * Returns an iterator to the beginning of the first basic block
          *

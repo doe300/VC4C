@@ -16,7 +16,6 @@
 #include "Eliminator.h"
 #include "Flags.h"
 #include "InstructionScheduler.h"
-#include "LocalCompression.h"
 #include "Memory.h"
 #include "Reordering.h"
 #include "Vector.h"
@@ -319,9 +318,6 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      * can therefore introduce instructions or constructs (e.g. combined instructions) not supported by
      * the other optimizations.
      */
-    // XXX not enabled with any optimization level for now. TODO also move before repeated optimizations?
-    OptimizationPass("CompressWorkGroupInfo", "compress-work-group-info", compressWorkGroupLocals,
-        "compresses work-group info into single local", OptimizationType::FINAL),
     OptimizationPass("LoopInvariantCodeMotion", "move-loop-invariant-code", moveLoopInvariantCode,
         "move constant loads in (nested) loops outside the loops", OptimizationType::FINAL),
     OptimizationPass("SplitReadAfterWrites", "split-read-write", splitReadAfterWrites,

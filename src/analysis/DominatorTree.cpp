@@ -176,6 +176,7 @@ static std::unique_ptr<DominatorTree> createTreeInner(ControlFlowGraph& cfg,
 
         if(!didChanges)
         {
+            LCOV_EXCL_START
             for(const auto& chain : dominatorChains)
                 logging::warn() << "Dominator chain: " << chain.first->key->to_string() << ": "
                                 << to_string<const CFGNode*>(chain.second,
@@ -187,6 +188,7 @@ static std::unique_ptr<DominatorTree> createTreeInner(ControlFlowGraph& cfg,
                                        [](const CFGNode* node) { return node ? node->key->to_string() : "(null)"; })
                                 << logging::endl;
             throw CompilationError(CompilationStep::GENERAL, "Dominator tree analysis is stuck, aborting!");
+            LCOV_EXCL_STOP
         }
     }
 

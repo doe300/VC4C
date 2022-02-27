@@ -80,6 +80,7 @@ namespace vc4c
 
             void dumpResults(const BasicBlock& block) const
             {
+                LCOV_EXCL_START
                 logging::logLazy(logging::Level::DEBUG, [&]() {
                     for(const auto& inst : block)
                     {
@@ -88,6 +89,7 @@ namespace vc4c
                                 << inst->to_string() << " : " << dumpFunction(getResult(inst.get())) << logging::endl;
                     }
                 });
+                LCOV_EXCL_STOP
             }
 
         protected:

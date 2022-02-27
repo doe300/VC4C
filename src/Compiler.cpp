@@ -223,6 +223,7 @@ std::pair<CompilationData, std::size_t> Compiler::compile(const CompilationData&
     }
 }
 
+LCOV_EXCL_START
 std::unique_ptr<logging::Logger> logging::DEFAULT_LOGGER(
     new logging::ColoredLogger(std::wcout, logging::Level::WARNING));
 
@@ -238,3 +239,4 @@ void vc4c::setLogger(std::wostream& outputStream, const bool coloredOutput, cons
         THREAD_LOGGER = std::make_unique<logging::StreamLogger>(outputStream, static_cast<logging::Level>(level));
     logging::setThreadLogger(THREAD_LOGGER.get());
 }
+LCOV_EXCL_STOP

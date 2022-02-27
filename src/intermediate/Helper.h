@@ -62,20 +62,6 @@ namespace vc4c
         const IntermediateInstruction* getSourceInstruction(const IntermediateInstruction* inst);
 
         /**
-         * For a given local, return all locals which are in the same equivalence class as the given input.
-         *
-         * This function defines the equivalence class as such:
-         * - Locals L and K are equivalent, if L is the result of an unconditional simple move from K.
-         * - Due to the transitive property, all locals in a unconditional and simple move-chain are in one
-         *   class.
-         * - Due to the symmetric property, the resulting class is the same for any given input local part of this
-         *   class.
-         *
-         * See https://en.wikipedia.org/wiki/Equivalence_class
-         */
-        FastSet<const Local*> getEquivalenceClass(const Local* local);
-
-        /**
          * Inserts a tight loop into the given method at the given position
          *
          * The input instruction walker will be set to the first instruction (the label) in the block FOLLOWING the

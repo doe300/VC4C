@@ -602,6 +602,11 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping,
                     logging::warn() << "Found single stack-allocation writer, but source is not a local: "
                                     << singleWriter->to_string() << logging::endl;
             }
+            else if(!stackAllocation->residesInMemory() && stackAllocation->getBase(true)->residesInMemory())
+                // if the address loaded has a single source which is located in memory (e.g. a stack allocation), just
+                // use this as base. Take any (intermediate) base without offsets, since the check below will handle
+                // offsets correctly.
+                sourceLocal = stackAllocation->getBase(false);
         }
 
         if(sourceLocal)

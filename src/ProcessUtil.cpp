@@ -150,6 +150,7 @@ static int runReadOnlySubprocess(const std::string& command, std::ostream* outpu
             pclose(fd);
             throw CompilationError(CompilationStep::GENERAL, "Error reading from sub-process", strerror(err));
         }
+        output->flush();
     }
     return pclose(fd);
 }
@@ -365,12 +366,14 @@ int vc4c::runProcess(const std::string& command, std::istream* stdin, std::ostre
     {
         closePipe(pipes[STD_OUT][READ]);
         closePipe(pipes[STD_OUT][WRITE]);
+        stdout->flush();
     }
 
     if(stderr)
     {
         closePipe(pipes[STD_ERR][READ]);
         closePipe(pipes[STD_ERR][WRITE]);
+        stderr->flush();
     }
 
     if(!childFinished)

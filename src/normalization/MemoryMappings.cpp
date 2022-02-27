@@ -215,11 +215,13 @@ static InstructionWalker lowerMemoryReadOnlyFromRegister(Method& method, Instruc
         {
             if(!wholeRegister && mem->getNumEntries() != INT_ONE)
             {
+                LCOV_EXCL_START
                 logging::error() << mem->getSource().to_string() << " - " << srcInfo.to_string() << " -> "
                                  << mem->getDestination().to_string() << " - "
                                  << to_string<const MemoryInfo*>(destInfos) << logging::endl;
                 throw CompilationError(CompilationStep::NORMALIZER,
                     "Mapping copy with more than 1 entry is not yet implemented", mem->to_string());
+                LCOV_EXCL_STOP
             }
             MemoryInstruction* memFill = nullptr;
             if(wholeRegister && srcInfo.mappedRegisterOrConstant->isAllSame() &&
@@ -265,11 +267,13 @@ static InstructionWalker lowerMemoryReadOnlyFromRegister(Method& method, Instruc
         {
             if(!wholeRegister && mem->getNumEntries() != INT_ONE)
             {
+                LCOV_EXCL_START
                 logging::error() << mem->getSource().to_string() << " - " << srcInfo.to_string() << " -> "
                                  << mem->getDestination().to_string() << " - "
                                  << to_string<const MemoryInfo*>(destInfos) << logging::endl;
                 throw CompilationError(CompilationStep::NORMALIZER,
                     "Mapping copy with more than 1 entry is not yet implemented", mem->to_string());
+                LCOV_EXCL_STOP
             }
             auto memWrite = &it.reset(std::make_unique<MemoryInstruction>(
                 MemoryOperation::WRITE, Value(mem->getDestination()), std::move(tmpVal)));
@@ -286,11 +290,13 @@ static InstructionWalker lowerMemoryReadOnlyFromRegister(Method& method, Instruc
         {
             if(mem->getNumEntries() != INT_ONE)
             {
+                LCOV_EXCL_START
                 logging::error() << mem->getSource().to_string() << " - " << srcInfo.to_string() << " -> "
                                  << mem->getDestination().to_string() << " - "
                                  << to_string<const MemoryInfo*>(destInfos) << logging::endl;
                 throw CompilationError(CompilationStep::NORMALIZER,
                     "Mapping copy with more than 1 entry is not yet implemented", mem->to_string());
+                LCOV_EXCL_STOP
             }
             // since a copy always involves another memory object, this rewrite is picked up when the other
             // object is processed
@@ -420,12 +426,14 @@ static InstructionWalker lowerMemoryCopyFromRegister(Method& method, Instruction
                     auto numElements = lit->unsignedInt() / typeFactor;
                     if(numElements == 0 || numElements > NATIVE_VECTOR_SIZE)
                     {
+                        LCOV_EXCL_START
                         logging::error() << "Cannot copy " << numElements << " elements of "
                                          << mem->getSourceElementType().to_string() << " from "
                                          << mem->getSource().to_string() << " into "
                                          << mem->getDestination().to_string() << logging::endl;
                         throw CompilationError(
                             CompilationStep::NORMALIZER, "Invalid copied number of elements", mem->to_string());
+                        LCOV_EXCL_STOP
                     }
                     tmp = method.addNewLocal(
                         srcInfo.mappedRegisterOrConstant->type.toVectorType(static_cast<uint8_t>(numElements)));

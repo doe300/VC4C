@@ -41,22 +41,6 @@ std::string normalization::toString(MemoryAccessType type)
 }
 LCOV_EXCL_STOP
 
-MemoryAccessType normalization::toMemoryAccessType(periphery::VPMUsage usage)
-{
-    switch(usage)
-    {
-    case periphery::VPMUsage::SCRATCH:
-    case periphery::VPMUsage::LOCAL_MEMORY:
-    case periphery::VPMUsage::RAM_CACHE:
-        return MemoryAccessType::VPM_SHARED_ACCESS;
-    case periphery::VPMUsage::REGISTER_SPILLING:
-    case periphery::VPMUsage::STACK:
-        return MemoryAccessType::VPM_PER_QPU;
-    }
-    throw CompilationError(CompilationStep::NORMALIZER,
-        "Unknown VPM usage type to map to memory type: ", std::to_string(static_cast<int>(usage)));
-}
-
 /**
  * Calculates the offset (in bytes) from the given address to the given baseAddress and converts negative values to
  * large positive values.
@@ -264,10 +248,12 @@ InstructionWalker normalization::insertAddressToWorkItemSpecificOffset(
     auto dynamicParts = combineAdditions(method, it, range.dynamicAddressParts);
     if(!dynamicParts)
     {
+        LCOV_EXCL_START
         for(const auto& part : range.dynamicAddressParts)
             logging::error() << part.first.to_string() << " - " << toString(part.second) << logging::endl;
         throw CompilationError(CompilationStep::NORMALIZER,
             "Failed to calculate dynamic parts of work-item specific offset", range.to_string());
+        LCOV_EXCL_STOP
     }
     out = dynamicParts->first;
     if(range.typeSizeShift)
@@ -282,10 +268,12 @@ InstructionWalker normalization::insertAddressToWorkGroupUniformOffset(
     auto uniformParts = combineAdditions(method, it, range.groupUniformAddressParts);
     if(!uniformParts)
     {
+        LCOV_EXCL_START
         for(const auto& part : range.groupUniformAddressParts)
             logging::error() << part.first.to_string() << " - " << toString(part.second) << logging::endl;
         throw CompilationError(CompilationStep::NORMALIZER,
             "Failed to calculate uniform parts of work-group uniform offset", range.to_string());
+        LCOV_EXCL_STOP
     }
     out = uniformParts->first;
     if(range.constantOffset)
