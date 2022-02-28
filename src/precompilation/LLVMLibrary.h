@@ -100,7 +100,7 @@ namespace vc4c
          */
         struct LLVMProfilerWrapper
         {
-            explicit LLVMProfilerWrapper(const std::string& command = CLANG_PATH,
+            explicit LLVMProfilerWrapper(const std::string& command = CLANG_TOOL.defaultPath,
                 std::chrono::microseconds granularity = std::chrono::microseconds{500});
             ~LLVMProfilerWrapper();
         };

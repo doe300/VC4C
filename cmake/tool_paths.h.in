@@ -11,6 +11,20 @@
 
 namespace vc4c
 {
+    struct FrontendTool
+    {
+        const char* name;
+        const char* defaultPath;
+
+        explicit constexpr FrontendTool(const char* name) : name(name), defaultPath(nullptr) {}
+        constexpr FrontendTool(const char* name, const char* path) : name(name), defaultPath(path) {}
+
+        constexpr bool hasDefaultPath() const noexcept
+        {
+            return defaultPath;
+        }
+    };
+
 #cmakedefine VC4CL_STDLIB_DIR "@VC4CL_STDLIB_DIR@"
 #ifdef VC4CL_STDLIB_DIR
     static const std::string VC4CL_STDLIB_FOLDER = VC4CL_STDLIB_DIR;
@@ -29,53 +43,53 @@ namespace vc4c
 #cmakedefine CLANG_FOUND "@CLANG_FOUND@"
 #cmakedefine SPIRV_CLANG_FOUND "@SPIRV_CLANG_FOUND@"
 #ifdef SPIRV_CLANG_FOUND
-    static const std::string CLANG_PATH = SPIRV_CLANG_FOUND;
+    static constexpr FrontendTool CLANG_TOOL{"clang", SPIRV_CLANG_FOUND};
 #undef SPIRV_CLANG_FOUND
 #elif defined CLANG_FOUND
-    static const std::string CLANG_PATH = CLANG_FOUND;
+    static constexpr FrontendTool CLANG_TOOL{"clang", CLANG_FOUND};
 #undef CLANG_FOUND
 #endif
 
 #cmakedefine LLVM_LINK_FOUND "@LLVM_LINK_FOUND@"
 #ifdef LLVM_LINK_FOUND
-    static const std::string LLVM_LINK_PATH = LLVM_LINK_FOUND;
+    static constexpr FrontendTool LLVM_LINK_TOOL{"llvm-link", LLVM_LINK_FOUND};
 #undef LLVM_LINK_FOUND
 #else
-    static const std::string LLVM_LINK_PATH = "";
+    static constexpr FrontendTool LLVM_LINK_TOOL{"llvm-link"};
 #endif
 
 #cmakedefine LLVM_DIS_FOUND "@LLVM_DIS_FOUND@"
 #ifdef LLVM_DIS_FOUND
-    static const std::string LLVM_DIS_PATH = LLVM_DIS_FOUND;
+    static constexpr FrontendTool LLVM_DIS_TOOL{"llvm-dis", LLVM_DIS_FOUND};
 #undef LLVM_DIS_FOUND
 #else
-    static const std::string LLVM_DIS_PATH = "";
+    static constexpr FrontendTool LLVM_DIS_TOOL{"llvm-dis"};
 #endif
 
 #cmakedefine LLVM_AS_FOUND "@LLVM_AS_FOUND@"
 #ifdef LLVM_AS_FOUND
-    static const std::string LLVM_AS_PATH = LLVM_AS_FOUND;
+    static constexpr FrontendTool LLVM_AS_TOOL{"llvm-as", LLVM_AS_FOUND};
 #undef LLVM_AS_FOUND
 #else
-    static const std::string LLVM_AS_PATH = "";
+    static constexpr FrontendTool LLVM_AS_TOOL{"llvm-as"};
 #endif
 
 #cmakedefine SPIRV_LINK_MODULES 1
 
 #cmakedefine SPIRV_LLVM_SPIR_FOUND "@SPIRV_LLVM_SPIR_FOUND@"
 #ifdef SPIRV_LLVM_SPIR_FOUND
-    static const std::string SPIRV_LLVM_SPIRV_PATH = SPIRV_LLVM_SPIR_FOUND;
+    static constexpr FrontendTool SPIRV_LLVM_SPIRV_TOOL{"llvm-spirv", SPIRV_LLVM_SPIR_FOUND};
 #undef SPIRV_LLVM_SPIR_FOUND
 #else
-    static const std::string SPIRV_LLVM_SPIRV_PATH = "";
+    static constexpr FrontendTool SPIRV_LLVM_SPIRV_TOOL{"llvm-spirv"};
 #endif
 
 #cmakedefine SPIRV_LINK_FOUND "@SPIRV_LINK_FOUND@"
 #ifdef SPIRV_LINK_FOUND
-    static const std::string SPIRV_LINK_PATH = SPIRV_LINK_FOUND;
+    static constexpr FrontendTool SPIRV_LINK_TOOL{"spirv-link", SPIRV_LINK_FOUND};
 #undef SPIRV_LINK_FOUND
 #else
-    static const std::string SPIRV_LINK_PATH = "";
+    static constexpr FrontendTool SPIRV_LINK_TOOL{"spirv-link"};
 #endif
 
 #cmakedefine VC4C_ENABLE_SPIRV_TOOLS_FRONTEND

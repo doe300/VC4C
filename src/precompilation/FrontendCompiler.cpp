@@ -194,12 +194,13 @@ template <typename EmitterTag, SourceType OutputType>
 static void compileOpenCLToLLVMIR0(const OpenCLSource& input, PrecompilationResult<OutputType>& output,
     const std::string& options, PrecompilationConfig& config, EmitterTag tag = {})
 {
+    auto clangPath = findToolLocation(CLANG_TOOL).value();
     // in both instances, compile to SPIR to match the "architecture" the PCH was compiled for
     const std::string defaultOptions = "-cc1 -triple spir-unknown-unknown";
     // only run preprocessor and compilation, no linking and code-generation
     // emit LLVM IR
     auto command =
-        buildClangCommand(CLANG_PATH, defaultOptions, options, std::string("-S ").append(EmitterTag::argument),
+        buildClangCommand(clangPath, defaultOptions, options, std::string("-S ").append(EmitterTag::argument),
             output.getOutputPath("/dev/stdout"), input.getInputPath("-"), config);
 
     auto commandString = to_string<std::string>(command, std::string{" "});
@@ -235,7 +236,7 @@ template <SourceType OutputType>
 static void compileLLVMIRToSPIRV0(const LLVMIRSource& input, PrecompilationResult<OutputType>& output,
     const std::string& options, const bool toText = false)
 {
-    auto llvm_spirv = findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH);
+    auto llvm_spirv = findToolLocation(SPIRV_LLVM_SPIRV_TOOL);
     if(!llvm_spirv)
         throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not found, can't compile to SPIR-V!");
 
@@ -254,7 +255,7 @@ template <SourceType InputType, SourceType OutputType>
 static void compileSPIRVToSPIRV(const PrecompilationSource<InputType>& input, PrecompilationResult<OutputType>& output,
     const std::string& options, const bool toText = false)
 {
-    auto llvm_spirv = findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH);
+    auto llvm_spirv = findToolLocation(SPIRV_LLVM_SPIRV_TOOL);
     if(!llvm_spirv)
         throw CompilationError(CompilationStep::PRECOMPILATION, "SPIRV-LLVM not found, can't compile to SPIR-V!");
 
@@ -539,7 +540,7 @@ LLVMIRTextResult precompilation::disassembleLLVM(
         disassembleLLVMLibrary(source.inner(), result.inner());
         return result;
     }
-    auto llvm_dis = findToolLocation("llvm-dis", LLVM_DIS_PATH);
+    auto llvm_dis = findToolLocation(LLVM_DIS_TOOL);
     if(!llvm_dis)
         throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-dis not found, can't disassemble LLVM IR!");
 
@@ -566,7 +567,7 @@ LLVMIRResult precompilation::assembleLLVM(
         assembleLLVMLibrary(source.inner(), result.inner());
         return result;
     }
-    auto llvm_as = findToolLocation("llvm-as", LLVM_AS_PATH);
+    auto llvm_as = findToolLocation(LLVM_AS_TOOL);
     if(!llvm_as)
         throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-as not found, can't assemble LLVM IR!");
 
@@ -644,7 +645,7 @@ LLVMIRResult precompilation::linkLLVMModules(
     // TODO add call to llvm-lto??!
     PROFILE_SCOPE_EXTREMA(LinkLLVMModules, desiredOutput.to_string());
 
-    auto llvm_link = findToolLocation("llvm-link", LLVM_LINK_PATH);
+    auto llvm_link = findToolLocation(LLVM_LINK_TOOL);
     if(!llvm_link)
         throw CompilationError(CompilationStep::PRECOMPILATION, "llvm-link not found, can't link LLVM IR modules!");
 
@@ -696,7 +697,7 @@ SPIRVResult precompilation::linkSPIRVModules(
     const std::vector<SPIRVSource>& sources, const std::string& userOptions, SPIRVResult&& desiredOutput)
 {
     PROFILE_SCOPE_EXTREMA(LinkSPIRVModules, desiredOutput.to_string());
-    if(auto spirv_link = findToolLocation("spirv-link", SPIRV_LINK_PATH))
+    if(auto spirv_link = findToolLocation(SPIRV_LINK_TOOL))
     {
         // only one input can be from a stream
         std::unique_ptr<std::istream> inputStream = nullptr;
@@ -754,7 +755,7 @@ LLVMIRResult precompilation::compileOpenCLToLLVMIR(
 {
     // This check has the positive side-effect that if the VC4CLStdLib LLVM module is missing but the PCH exists,
     // then the compilation with PCH (a bit slower but functional) will be used.
-    auto llvm_link = findToolLocation("llvm-link", LLVM_LINK_PATH, true);
+    auto llvm_link = findToolLocation(LLVM_LINK_TOOL, true);
     auto config = parseConfig(userOptions);
     if(llvm_link && !findStandardLibraryFiles().llvmModule.empty())
         return compileOpenCLAndLinkModule(source, userOptions, config, std::move(desiredOutput));
@@ -799,25 +800,24 @@ SPIRVTextResult precompilation::compileOpenCLToSPIRVText(
     }
 }
 
-Optional<std::string> precompilation::findToolLocation(
-    const std::string& name, const std::string& preferredPath, bool skipPathLookup)
+Optional<std::string> precompilation::findToolLocation(const FrontendTool& tool, bool skipPathLookup)
 {
     static std::mutex cacheLock;
     static FastMap<std::string, Optional<std::string>> cachedTools;
 
     std::lock_guard<std::mutex> guard(cacheLock);
-    if(cachedTools.find(name) != cachedTools.end())
-        return cachedTools.at(name);
+    if(cachedTools.find(tool.name) != cachedTools.end())
+        return cachedTools.at(tool.name);
 
-    if(!preferredPath.empty() && access(preferredPath.data(), X_OK) == 0)
+    if(tool.hasDefaultPath() && access(tool.defaultPath, X_OK) == 0)
     {
-        cachedTools.emplace(name, preferredPath);
-        return preferredPath;
+        cachedTools.emplace(tool.name, tool.defaultPath);
+        return std::string{tool.defaultPath};
     }
 
-    if(!preferredPath.empty())
-        logging::warn() << "Failed to find executable file for tool '" << name
-                        << "' at configured location: " << preferredPath << logging::endl;
+    if(tool.hasDefaultPath())
+        logging::warn() << "Failed to find executable file for tool '" << tool.name
+                        << "' at configured location: " << tool.defaultPath << logging::endl;
 
     if(skipPathLookup)
         // don't cache here, since we might want to lookup another time, this time with searching in PATH
@@ -825,25 +825,25 @@ Optional<std::string> precompilation::findToolLocation(
 
     std::ostringstream outputStream;
     std::ostringstream errorStream;
-    int status = runProcess("which " + name, nullptr, &outputStream, &errorStream);
+    int status = runProcess(std::string{"which "} + tool.name, nullptr, &outputStream, &errorStream);
     if(status == 0) // success
     {
         auto result = outputStream.str();
         result = result.substr(0, result.find_first_of('\n'));
         CPPLOG_LAZY(logging::Level::WARNING,
-            log << "Using detected executable for tool '" << name << "', might cause version conflicts: " << result
+            log << "Using detected executable for tool '" << tool.name << "', might cause version conflicts: " << result
                 << logging::endl);
-        cachedTools.emplace(name, result);
+        cachedTools.emplace(tool.name, result);
         return result;
     }
     if(!errorStream.str().empty())
     {
-        logging::error() << "Errors trying to find executable path for: " << name << logging::endl;
+        logging::error() << "Errors trying to find executable path for: " << tool.name << logging::endl;
         logging::error() << errorStream.str() << logging::endl;
     }
 
     // so we also don't look up again on failure
-    cachedTools.emplace(name, Optional<std::string>{});
+    cachedTools.emplace(tool.name, Optional<std::string>{});
     return {};
 }
 
@@ -867,10 +867,10 @@ static std::string determineFilePath(const std::string& fileName, const std::vec
     return "";
 }
 
-const StdlibFiles& precompilation::findStandardLibraryFiles(const std::vector<std::string>& additionalFolders)
+const StdlibFiles& precompilation::findStandardLibraryFiles()
 {
     static const StdlibFiles paths = [&]() {
-        std::vector<std::string> allPaths(additionalFolders);
+        std::vector<std::string> allPaths{};
         if(!VC4CL_STDLIB_FOLDER.empty())
             allPaths.emplace_back(VC4CL_STDLIB_FOLDER);
         if(auto homeDir = std::getenv("HOME"))
@@ -882,6 +882,7 @@ const StdlibFiles& precompilation::findStandardLibraryFiles(const std::vector<st
         allPaths.emplace_back("/usr/local/include/vc4cl-stdlib/");
         allPaths.emplace_back("/usr/include/vc4cl-stdlib/");
         StdlibFiles tmp;
+        tmp.mainHeader = determineFilePath("VC4CLStdLib.h", allPaths);
         tmp.configurationHeader = determineFilePath("defines.h", allPaths);
         tmp.llvmModule = determineFilePath("VC4CLStdLib.bc", allPaths);
         tmp.precompiledHeader = determineFilePath("VC4CLStdLib.h.pch", allPaths);
@@ -900,6 +901,8 @@ const StdlibFiles& precompilation::findStandardLibraryFiles(const std::vector<st
 void precompilation::precompileStandardLibraryFiles(const std::string& sourceFile, const std::string& destinationFolder)
 {
     PROFILE_SCOPE(PrecompileStandardLibraryFiles);
+    auto clangPath = findToolLocation(CLANG_TOOL).value();
+
     // TODO merge with creating of parameters in FrontendCompiler#buildClangCommand
     auto pchArgs =
         " -cc1 -triple spir-unknown-unknown -O3 -ffp-contract=off -cl-std=CL1.2 -cl-kernel-arg-info "
@@ -915,14 +918,8 @@ void precompilation::precompileStandardLibraryFiles(const std::string& sourceFil
         "-emit-llvm-bc -o ";
     auto spirvArgs = " --spirv-lower-const-expr --spirv-mem2reg -o ";
 
-    auto pchCommand = CLANG_PATH + pchArgs + destinationFolder + "/VC4CLStdLib.h.pch " + sourceFile;
-    auto moduleCommand = CLANG_PATH + moduleArgs + destinationFolder + "/VC4CLStdLib.bc " + sourceFile;
-    auto spirvCommand = CLANG_PATH + moduleArgs + "/dev/stdout " + sourceFile + " | " + SPIRV_LLVM_SPIRV_PATH +
-        spirvArgs + destinationFolder + "/VC4CLStdLib.spv -";
-    // SPIRV-LLVM-Translator does not support (all) LLVM intrinsic functions, so we need to create the temporary
-    // LLVM module without any optimization enabled. Instead we at least run some optimizations in the
-    // SPIRV-LLVM-Translator.
-    spirvCommand.replace(spirvCommand.find("-O3"), 3, "-O0");
+    auto pchCommand = clangPath + pchArgs + destinationFolder + "/VC4CLStdLib.h.pch " + sourceFile;
+    auto moduleCommand = clangPath + moduleArgs + destinationFolder + "/VC4CLStdLib.bc " + sourceFile;
 
     CPPLOG_LAZY(logging::Level::INFO, log << "Pre-compiling standard library with: " << pchCommand << logging::endl);
     std::ignore = runPrecompiler(pchCommand, nullptr, nullptr);
@@ -930,8 +927,15 @@ void precompilation::precompileStandardLibraryFiles(const std::string& sourceFil
     CPPLOG_LAZY(logging::Level::INFO, log << "Pre-compiling standard library with: " << moduleCommand << logging::endl);
     std::ignore = runPrecompiler(moduleCommand, nullptr, nullptr);
 
-    if(!SPIRV_LLVM_SPIRV_PATH.empty())
+    if(auto llvmSpirvTranslator = findToolLocation(SPIRV_LLVM_SPIRV_TOOL))
     {
+        auto spirvCommand = clangPath + moduleArgs + "/dev/stdout " + sourceFile + " | " + *llvmSpirvTranslator +
+            spirvArgs + destinationFolder + "/VC4CLStdLib.spv -";
+
+        // SPIRV-LLVM-Translator does not support (all) LLVM intrinsic functions, so we need to create the temporary
+        // LLVM module without any optimization enabled. Instead we at least run some optimizations in the
+        // SPIRV-LLVM-Translator.
+        spirvCommand.replace(spirvCommand.find("-O3"), 3, "-O0");
         CPPLOG_LAZY(
             logging::Level::INFO, log << "Pre-compiling standard library with: " << spirvCommand << logging::endl);
         std::ignore = runPrecompiler(spirvCommand, nullptr, nullptr);

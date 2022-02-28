@@ -208,14 +208,15 @@ namespace vc4c
          * First looks up the preferredPath and if the tool does not exist at that path (or if the path is not set),
          * tries to look up the tool in the $PATH environment variable.
          */
-        Optional<std::string> findToolLocation(
-            const std::string& name, const std::string& preferredPath = "", bool skipPathLookup = false);
+        Optional<std::string> findToolLocation(const FrontendTool& tool, bool skipPathLookup = false);
 
         /*
          * Container for the paths used to look up the VC4CL OpenCL C standard-library implementation files
          */
         struct StdlibFiles
         {
+            // The path to the main VC4CLStdLib.h header file, empty if not found.
+            std::string mainHeader;
             // The path to the defines.h header file, empty if not found. This is always required
             std::string configurationHeader;
             // The path to the pre-compiled header (PCH), empty if not found. Only required for SPIR-V front-end
@@ -228,14 +229,8 @@ namespace vc4c
 
         /*
          * Determines and returns the paths to the VC4CL OpenCL C standard library files to be used for compilations
-         *
-         * The optional parameter specifies additional folder to look up the required files. If it is not given, only
-         * the default locations will be searched.
-         *
-         * NOTE: The locations of the files are cached, therefore only the first call has any effect of specifying the
-         * locations.
          */
-        const StdlibFiles& findStandardLibraryFiles(const std::vector<std::string>& additionalFolders = {});
+        const StdlibFiles& findStandardLibraryFiles();
 
         /*
          * Pre-compiles the given VC4CL OpenCL C standard-library file (the VC4CLStdLib.h header) into a PCH and an LLVM

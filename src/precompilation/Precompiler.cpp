@@ -202,22 +202,22 @@ const std::shared_ptr<CompilationDataPrivate>& CompilationData::inner() const no
     return data;
 }
 
-static NODISCARD CompilationData runPrecompiler(const CompilationData& input, const Configuration& config,
-    SourceType outputType, const std::string& options, std::unique_ptr<CompilationDataPrivate>&& desiredOutput);
+static NODISCARD CompilationData runPrecompiler(
+    const CompilationData& input, const Configuration& config, SourceType outputType, const std::string& options);
 
 CompilationData Precompiler::precompile(const CompilationData& input, Configuration config, const std::string& options)
 {
     if(config.frontend != Frontend::DEFAULT)
     {
         auto outputType = config.frontend == Frontend::LLVM_IR ? SourceType::LLVM_IR_BIN : SourceType::SPIRV_BIN;
-        return runPrecompiler(input, config, outputType, options, nullptr);
+        return runPrecompiler(input, config, outputType, options);
     }
     // we have both front-ends, select the front-end which can handle the input type
     else if(hasLLVMFrontend() && isSupportedByFrontend(input.getType(), Frontend::LLVM_IR))
         // prefer LLVM library front-end
-        return runPrecompiler(input, config, SourceType::LLVM_IR_BIN, options, nullptr);
-    else if(findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
-        return runPrecompiler(input, config, SourceType::SPIRV_BIN, options, nullptr);
+        return runPrecompiler(input, config, SourceType::LLVM_IR_BIN, options);
+    else if(findToolLocation(SPIRV_LLVM_SPIRV_TOOL))
+        return runPrecompiler(input, config, SourceType::SPIRV_BIN, options);
     else
         throw CompilationError(CompilationStep::PRECOMPILATION, "No matching precompiler available!");
 }
@@ -225,7 +225,7 @@ CompilationData Precompiler::precompile(const CompilationData& input, Configurat
 CompilationData Precompiler::precompile(
     const CompilationData& input, SourceType outputType, Configuration config, const std::string& options)
 {
-    return runPrecompiler(input, config, outputType, options, nullptr);
+    return runPrecompiler(input, config, outputType, options);
 }
 
 SourceType Precompiler::getSourceType(std::istream& stream)
@@ -279,8 +279,8 @@ SourceType Precompiler::getSourceType(std::istream& stream)
 
 static std::pair<bool, bool> determinePossibleLinkers(const std::vector<CompilationData>& inputs)
 {
-    bool llvmLinkerPossible = findToolLocation("llvm-link", LLVM_LINK_PATH).has_value();
-    bool spirvLinkerPossible = hasSPIRVToolsFrontend() || findToolLocation("spirv-link", SPIRV_LINK_PATH);
+    bool llvmLinkerPossible = findToolLocation(LLVM_LINK_TOOL).has_value();
+    bool spirvLinkerPossible = hasSPIRVToolsFrontend() || findToolLocation(SPIRV_LINK_TOOL);
 
     for(const auto& input : inputs)
     {
@@ -330,7 +330,7 @@ static NODISCARD LLVMIRSource compileToLLVM(const CompilationData& source)
     {
         return LLVMIRSource(compileOpenCLToLLVMIR(assertSource<SourceType::OPENCL_C>(source), ""));
     }
-    else if(source.getType() == SourceType::LLVM_IR_TEXT && findToolLocation("llvm-as", LLVM_AS_PATH))
+    else if(source.getType() == SourceType::LLVM_IR_TEXT && findToolLocation(LLVM_AS_TOOL))
     {
         return LLVMIRSource(assembleLLVM(assertSource<SourceType::LLVM_IR_TEXT>(source), ""));
     }
@@ -377,7 +377,7 @@ CompilationData Precompiler::linkSourceCode(const std::vector<CompilationData>& 
         {
             if(!findStandardLibraryFiles().spirvModule.empty())
                 sources.emplace_back(SPIRVSource(findStandardLibraryFiles().spirvModule));
-            else if(auto llvm_spirv = findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
+            else if(auto llvm_spirv = findToolLocation(SPIRV_LLVM_SPIRV_TOOL))
                 sources.emplace_back(compileLLVMToSPIRV(LLVMIRSource(findStandardLibraryFiles().llvmModule), ""));
             else
                 throw CompilationError(
@@ -398,11 +398,11 @@ bool Precompiler::isLinkerAvailable(const std::vector<CompilationData>& inputs)
         {
         case SourceType::OPENCL_C:
         case SourceType::LLVM_IR_BIN:
-            return findToolLocation("llvm-link", LLVM_LINK_PATH).has_value();
+            return findToolLocation(LLVM_LINK_TOOL).has_value();
         case SourceType::LLVM_IR_TEXT:
         case SourceType::SPIRV_BIN:
         case SourceType::SPIRV_TEXT:
-            return hasSPIRVToolsFrontend() || findToolLocation("spirv-link", SPIRV_LINK_PATH);
+            return hasSPIRVToolsFrontend() || findToolLocation(SPIRV_LINK_TOOL);
         default:
             return false;
         }
@@ -413,26 +413,15 @@ bool Precompiler::isLinkerAvailable()
 {
     if(hasSPIRVToolsFrontend())
         return true;
-    if(findToolLocation("llvm-link", LLVM_LINK_PATH))
+    if(findToolLocation(LLVM_LINK_TOOL))
         return true;
-    if(findToolLocation("spirv-link", SPIRV_LINK_PATH))
+    if(findToolLocation(SPIRV_LINK_TOOL))
         return true;
     return false;
 }
 
-template <SourceType Type>
-static PrecompilationResult<Type> getResult(std::unique_ptr<CompilationDataPrivate>&& result)
-{
-    if(auto ptr = dynamic_cast<TypedCompilationData<Type>*>(result.get()))
-    {
-        result.release();
-        return PrecompilationResult<Type>{std::unique_ptr<TypedCompilationData<Type>>{ptr}};
-    }
-    return PrecompilationResult<Type>{};
-}
-
-static CompilationData runPrecompiler(const CompilationData& input, const Configuration& config, SourceType outputType,
-    const std::string& options, std::unique_ptr<CompilationDataPrivate>&& desiredOutput)
+static CompilationData runPrecompiler(
+    const CompilationData& input, const Configuration& config, SourceType outputType, const std::string& options)
 {
     if(outputType == SourceType::QPUASM_BIN || outputType == SourceType::QPUASM_HEX ||
         outputType == SourceType::UNKNOWN)
@@ -452,100 +441,66 @@ static CompilationData runPrecompiler(const CompilationData& input, const Config
     }
 
     if(input.getType() == outputType)
-    {
-        if(desiredOutput)
-        {
-            std::stringstream ss;
-            input.readInto(ss);
-            desiredOutput->writeFrom(ss);
-            return CompilationData{std::move(desiredOutput)};
-        }
-        else
-            return input;
-    }
+        return input;
 
     if(input.getType() == SourceType::OPENCL_C)
     {
         if(outputType == SourceType::LLVM_IR_TEXT)
         {
-            return compileOpenCLToLLVMText(assertSource<SourceType::OPENCL_C>(input), extendedOptions,
-                getResult<SourceType::LLVM_IR_TEXT>(std::move(desiredOutput)))
-                .publish();
+            return compileOpenCLToLLVMText(assertSource<SourceType::OPENCL_C>(input), extendedOptions).publish();
         }
         else if(outputType == SourceType::LLVM_IR_BIN)
         {
-            return compileOpenCLToLLVMIR(assertSource<SourceType::OPENCL_C>(input), extendedOptions,
-                getResult<SourceType::LLVM_IR_BIN>(std::move(desiredOutput)))
-                .publish();
+            return compileOpenCLToLLVMIR(assertSource<SourceType::OPENCL_C>(input), extendedOptions).publish();
         }
         else if(outputType == SourceType::SPIRV_BIN)
         {
-            return compileOpenCLToSPIRV(assertSource<SourceType::OPENCL_C>(input), extendedOptions,
-                getResult<SourceType::SPIRV_BIN>(std::move(desiredOutput)))
-                .publish();
+            return compileOpenCLToSPIRV(assertSource<SourceType::OPENCL_C>(input), extendedOptions).publish();
         }
         else if(outputType == SourceType::SPIRV_TEXT)
         {
-            return compileOpenCLToSPIRVText(assertSource<SourceType::OPENCL_C>(input), extendedOptions,
-                getResult<SourceType::SPIRV_TEXT>(std::move(desiredOutput)))
-                .publish();
+            return compileOpenCLToSPIRVText(assertSource<SourceType::OPENCL_C>(input), extendedOptions).publish();
         }
     }
     else if(input.getType() == SourceType::LLVM_IR_TEXT)
     {
-        if(outputType == SourceType::SPIRV_BIN && findToolLocation("llvm-as", LLVM_AS_PATH))
+        if(outputType == SourceType::SPIRV_BIN && findToolLocation(LLVM_AS_TOOL))
         {
             auto tmp = assembleLLVM(assertSource<SourceType::LLVM_IR_TEXT>(input), extendedOptions);
-            return compileLLVMToSPIRV(LLVMIRSource(std::move(tmp)), extendedOptions,
-                getResult<SourceType::SPIRV_BIN>(std::move(desiredOutput)))
-                .publish();
+            return compileLLVMToSPIRV(LLVMIRSource(std::move(tmp)), extendedOptions).publish();
         }
-        else if(outputType == SourceType::SPIRV_TEXT && findToolLocation("llvm-as", LLVM_AS_PATH))
+        else if(outputType == SourceType::SPIRV_TEXT && findToolLocation(LLVM_AS_TOOL))
         {
             auto tmp = assembleLLVM(assertSource<SourceType::LLVM_IR_TEXT>(input), extendedOptions);
-            return compileLLVMToSPIRVText(LLVMIRSource(std::move(tmp)), extendedOptions,
-                getResult<SourceType::SPIRV_TEXT>(std::move(desiredOutput)))
-                .publish();
+            return compileLLVMToSPIRVText(LLVMIRSource(std::move(tmp)), extendedOptions).publish();
         }
-        else if(outputType == SourceType::LLVM_IR_BIN && findToolLocation("llvm-as", LLVM_AS_PATH))
+        else if(outputType == SourceType::LLVM_IR_BIN && findToolLocation(LLVM_AS_TOOL))
         {
-            return assembleLLVM(assertSource<SourceType::LLVM_IR_TEXT>(input), extendedOptions,
-                getResult<SourceType::LLVM_IR_BIN>(std::move(desiredOutput)))
-                .publish();
+            return assembleLLVM(assertSource<SourceType::LLVM_IR_TEXT>(input), extendedOptions).publish();
         }
     }
     else if(input.getType() == SourceType::LLVM_IR_BIN)
     {
         if(outputType == SourceType::SPIRV_BIN)
         {
-            return compileLLVMToSPIRV(assertSource<SourceType::LLVM_IR_BIN>(input), extendedOptions,
-                getResult<SourceType::SPIRV_BIN>(std::move(desiredOutput)))
-                .publish();
+            return compileLLVMToSPIRV(assertSource<SourceType::LLVM_IR_BIN>(input), extendedOptions).publish();
         }
         else if(outputType == SourceType::SPIRV_TEXT)
         {
-            return compileLLVMToSPIRVText(assertSource<SourceType::LLVM_IR_BIN>(input), extendedOptions,
-                getResult<SourceType::SPIRV_TEXT>(std::move(desiredOutput)))
-                .publish();
+            return compileLLVMToSPIRVText(assertSource<SourceType::LLVM_IR_BIN>(input), extendedOptions).publish();
         }
-        else if(outputType == SourceType::LLVM_IR_TEXT && findToolLocation("llvm-dis", LLVM_DIS_PATH))
+        else if(outputType == SourceType::LLVM_IR_TEXT && findToolLocation(LLVM_DIS_TOOL))
         {
-            return disassembleLLVM(assertSource<SourceType::LLVM_IR_BIN>(input), extendedOptions,
-                getResult<SourceType::LLVM_IR_TEXT>(std::move(desiredOutput)))
-                .publish();
+            return disassembleLLVM(assertSource<SourceType::LLVM_IR_BIN>(input), extendedOptions).publish();
         }
     }
     else if(input.getType() == SourceType::SPIRV_BIN && outputType == SourceType::SPIRV_TEXT)
     {
-        return disassembleSPIRV(assertSource<SourceType::SPIRV_BIN>(input), extendedOptions,
-            getResult<SourceType::SPIRV_TEXT>(std::move(desiredOutput)))
-            .publish();
+        return disassembleSPIRV(assertSource<SourceType::SPIRV_BIN>(input), extendedOptions).publish();
     }
     else if(input.getType() == SourceType::SPIRV_TEXT && outputType == SourceType::SPIRV_BIN)
     {
-        return assembleSPIRV(assertSource<SourceType::SPIRV_TEXT>(input), extendedOptions,
-            getResult<SourceType::SPIRV_BIN>(std::move(desiredOutput)))
-            .publish();
+        return assembleSPIRV(assertSource<SourceType::SPIRV_TEXT>(input), extendedOptions).publish();
     }
     throw CompilationError(CompilationStep::PRECOMPILATION, "Unhandled pre-compilation");
 }

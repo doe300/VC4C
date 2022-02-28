@@ -6,6 +6,7 @@
 
 #include "TestFrontends.h"
 
+#include "CompilerInstance.h"
 #include "GlobalValues.h"
 #include "Profiler.h"
 #include "VC4C.h"
@@ -28,6 +29,8 @@ using namespace vc4c::spirv;
 #include <fstream>
 #include <memory>
 #include <sstream>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 using namespace vc4c;
 
@@ -55,7 +58,7 @@ TestFrontends::TestFrontends()
         TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::LLVM_IR_TEXT);
     }
     TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::LLVM_IR_BIN);
-    if(precompilation::findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
+    if(precompilation::findToolLocation(SPIRV_LLVM_SPIRV_TOOL))
     {
         TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::SPIRV_BIN);
         TEST_ADD_SINGLE_ARGUMENT(TestFrontends::testCompilation, SourceType::SPIRV_TEXT);
@@ -68,7 +71,7 @@ TestFrontends::TestFrontends()
         TestFrontends::testFrontendConversions, std::string{"./example/fibonacci.ir"}, SourceType::LLVM_IR_BIN);
     TEST_ADD_TWO_ARGUMENTS(
         TestFrontends::testFrontendConversions, std::string{"./testing/formats/test.bc"}, SourceType::LLVM_IR_TEXT);
-    if(precompilation::findToolLocation("llvm-spirv", SPIRV_LLVM_SPIRV_PATH))
+    if(precompilation::findToolLocation(SPIRV_LLVM_SPIRV_TOOL))
     {
         TEST_ADD_TWO_ARGUMENTS(
             TestFrontends::testFrontendConversions, std::string{"./example/fibonacci.ir"}, SourceType::SPIRV_BIN);
@@ -85,6 +88,7 @@ TestFrontends::TestFrontends()
     }
 
     TEST_ADD(TestFrontends::testCompilationDataSerialization);
+    TEST_ADD(TestFrontends::testPrecompileStandardLibrary);
     TEST_ADD(TestFrontends::printProfilingInfo);
 }
 
@@ -388,6 +392,55 @@ void TestFrontends::testCompilationDataSerialization()
         TEST_ASSERT_EQUALS(ssIn.str().size(), ssOut.str().size());
     }
 #endif
+}
+
+void TestFrontends::testPrecompileStandardLibrary()
+{
+    auto srcHeader = precompilation::findStandardLibraryFiles().mainHeader;
+    TEST_ASSERT(!srcHeader.empty());
+
+    if(mkdir("/tmp/vc4cc-testing", 0777) != 0 && errno != EEXIST)
+        TEST_ASSERT_EQUALS("", strerror(errno));
+    precompilation::precompileStandardLibraryFiles(srcHeader, "/tmp/vc4cc-testing");
+
+    struct stat info
+    {
+    };
+    if(stat("/tmp/vc4cc-testing/VC4CLStdLib.h.pch", &info) != 0)
+        TEST_ASSERT_EQUALS("", strerror(errno));
+    TEST_ASSERT(S_ISREG(info.st_mode));
+
+    if(stat("/tmp/vc4cc-testing/VC4CLStdLib.bc", &info) != 0)
+        TEST_ASSERT_EQUALS("", strerror(errno));
+    TEST_ASSERT(S_ISREG(info.st_mode));
+
+    if(precompilation::findToolLocation(SPIRV_LLVM_SPIRV_TOOL))
+    {
+        if(stat("/tmp/vc4cc-testing/VC4CLStdLib.spv", &info) != 0)
+            TEST_ASSERT_EQUALS("", strerror(errno));
+        TEST_ASSERT(S_ISREG(info.st_mode));
+    }
+
+    // Test we can actually read the generated module files (although they have no kernels)
+    if(hasLLVMFrontend())
+    {
+        CompilerInstance llvmCompiler{Configuration{}};
+        llvmCompiler.parseInput(CompilationData("/tmp/vc4cc-testing/VC4CLStdLib.bc"));
+        TEST_ASSERT(llvmCompiler.module.getKernels().empty());
+    }
+
+    if(precompilation::findToolLocation(SPIRV_LLVM_SPIRV_TOOL))
+    {
+        CompilerInstance spirvCompiler{Configuration{}};
+        spirvCompiler.parseInput(CompilationData("/tmp/vc4cc-testing/VC4CLStdLib.spv"));
+        TEST_ASSERT(spirvCompiler.module.getKernels().empty());
+    }
+
+    // Clean up only after successful test
+    remove("/tmp/vc4cc-testing/VC4CLStdLib.h.pch");
+    remove("/tmp/vc4cc-testing/VC4CLStdLib.bc");
+    remove("/tmp/vc4cc-testing/VC4CLStdLib.spv");
+    remove("/tmp/vc4cc-testing/");
 }
 
 void TestFrontends::printProfilingInfo()

@@ -7,6 +7,7 @@
 #ifndef VC4C_COMPILATION_DATA
 #define VC4C_COMPILATION_DATA
 
+#include "../Optional.h"
 #include "Precompiler.h"
 #include "tool_paths.h"
 
