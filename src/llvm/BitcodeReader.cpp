@@ -1320,15 +1320,31 @@ Value BitcodeReader::toConstant(
         std::vector<Value> elements;
         elements.reserve(constant->getNumOperands());
         bool allElementsAreLiterals = true;
-        for(unsigned i = 0; i < constant->getNumOperands(); ++i)
+#if LLVM_LIBRARY_VERSION >= 100
+        if(auto splatConstant = constant->getSplatValue(true /* ignore UNDEFINED elements */))
+#else
+        if(auto splatConstant = constant->getSplatValue())
+#endif
         {
-            auto element = toConstant(module, constant->getOperand(i), method, instructions);
-            // don't check for Value#getLiteralValue(), since we want to allow UNDEFINED literal elements
+            auto element = toConstant(module, splatConstant, method, instructions);
             if(element.checkLocal())
                 allElementsAreLiterals = false;
             else
-                aggregate[i] = *element.getLiteralValue();
-            elements.emplace_back(std::move(element));
+                aggregate = SIMDVector(*element.getLiteralValue());
+            elements.assign(constant->getNumOperands(), element);
+        }
+        else
+        {
+            for(unsigned i = 0; i < constant->getNumOperands(); ++i)
+            {
+                auto element = toConstant(module, constant->getOperand(i), method, instructions);
+                // don't check for Value#getLiteralValue(), since we want to allow UNDEFINED literal elements
+                if(element.checkLocal())
+                    allElementsAreLiterals = false;
+                else
+                    aggregate[i] = *element.getLiteralValue();
+                elements.emplace_back(std::move(element));
+            }
         }
         if(allElementsAreLiterals)
             return module.storeVector(std::move(aggregate), type);
@@ -1354,15 +1370,31 @@ Value BitcodeReader::toConstant(
         std::vector<Value> elements;
         elements.reserve(constant->getNumElements());
         bool allElementsAreLiterals = true;
-        for(unsigned i = 0; i < constant->getNumElements(); ++i)
+#if LLVM_LIBRARY_VERSION >= 100
+        if(auto splatConstant = constant->getSplatValue(true /* ignore UNDEFINED elements */))
+#else
+        if(auto splatConstant = constant->getSplatValue())
+#endif
         {
-            auto element = toConstant(module, constant->getElementAsConstant(i), method, instructions);
-            // don't check for Value#getLiteralValue(), since we want to allow UNDEFINED literal elements
+            auto element = toConstant(module, splatConstant, method, instructions);
             if(element.checkLocal())
                 allElementsAreLiterals = false;
             else
-                aggregate[i] = *element.getLiteralValue();
-            elements.emplace_back(std::move(element));
+                aggregate = SIMDVector(*element.getLiteralValue());
+            elements.assign(constant->getNumElements(), element);
+        }
+        else
+        {
+            for(unsigned i = 0; i < constant->getNumElements(); ++i)
+            {
+                auto element = toConstant(module, constant->getElementAsConstant(i), method, instructions);
+                // don't check for Value#getLiteralValue(), since we want to allow UNDEFINED literal elements
+                if(element.checkLocal())
+                    allElementsAreLiterals = false;
+                else
+                    aggregate[i] = *element.getLiteralValue();
+                elements.emplace_back(std::move(element));
+            }
         }
         if(allElementsAreLiterals)
             return module.storeVector(std::move(aggregate), type);

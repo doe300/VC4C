@@ -134,6 +134,20 @@ namespace test_data
         return result;
     }
 
+    template <typename R, typename T = R, typename U = R, typename V = R, typename W = R,
+        typename Func = std::function<R(T, U, V, W)>>
+    std::vector<R> transform(const std::vector<T>& arg0, const std::vector<U>& arg1, const std::vector<V>& arg2,
+        const std::vector<W>& arg3, const Func& func)
+    {
+        auto numElements = std::min(std::min(std::min(arg0.size(), arg1.size()), arg2.size()), arg3.size());
+        std::vector<R> result(numElements);
+        for(std::size_t i = 0; i < numElements; ++i)
+        {
+            result[i] = func(arg0[i], arg1[i], arg2[i], arg3[i]);
+        }
+        return result;
+    }
+
     template <typename R, std::size_t GroupSize, typename T = R,
         typename Func = std::function<std::array<R, GroupSize>(const T*, std::size_t)>>
     std::vector<R> transform(const std::vector<T>& arg0, const Func& func)
@@ -226,6 +240,20 @@ namespace test_data
             // emulate the VideoCore IV rounding mode, truncate to zero
             fesetround(FE_TOWARDZERO);
             auto tmp = func(in1, in2);
+            fesetround(origMode);
+            return tmp;
+        };
+    }
+
+    template <typename R>
+    static std::function<R(float, float, float)> roundToZero(const std::function<R(float, float, float)>& func)
+    {
+        return [&](float in1, float in2, float in3) -> R {
+#pragma STDC FENV_ACCESS on
+            auto origMode = fegetround();
+            // emulate the VideoCore IV rounding mode, truncate to zero
+            fesetround(FE_TOWARDZERO);
+            auto tmp = func(in1, in2, in3);
             fesetround(origMode);
             return tmp;
         };

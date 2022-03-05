@@ -85,7 +85,7 @@ static Test::Suite* newRegisterFixupTest()
 }
 
 /*
- * 
+ *
  */
 int main(int argc, char** argv)
 {
@@ -106,7 +106,7 @@ int main(int argc, char** argv)
     Test::registerSuite(newLLVMCompilationTest<false>, "test-compilation-llvm", "Runs all the compilation tests using the LLVM-IR front-end", false);
     Test::registerSuite(newSPIRVCompiltionTest<false>, "test-compilation-spirv", "Runs all the compilation tests using the SPIR-V front-end", false);
     Test::registerSuite(newFastRegressionTest, "fast-regressions", "Runs regression test-cases marked as fast", false);
-    
+
     Test::registerSuite(newEmulatorTest, "test-emulator", "Runs selected code-samples through the emulator");
     Test::registerSuite(newMathFunctionsTest, "emulate-math", "Runs emulation tests for the OpenCL standard-library math functions");
     Test::registerSuite(Test::newInstance<TestGraph>, "test-graph", "Runs basic test for the graph data structure");

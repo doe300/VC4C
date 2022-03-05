@@ -123,7 +123,8 @@ namespace vc4c
          * NOTE: In contrast to #addNewLocal(...), this does not create an unique name, but takes the given name as-is!
          * NOTE: The name of a local must be unique within a method (for parameter, globals, stack-allocations too)
          */
-        const Local* createLocal(DataType type, const std::string& name) __attribute__((returns_nonnull));
+        const Local* createLocal(DataType type, const std::string& name, const Local* lowerPart = nullptr,
+            const Local* upperPart = nullptr) __attribute__((returns_nonnull));
 
         /**
          * Adds the given parameter to the list of tracked parameters for this function.
@@ -354,7 +355,7 @@ namespace vc4c
         void updateCFGOnBranchInsertion(InstructionWalker it);
         void updateCFGOnBranchRemoval(BasicBlock& affectedBlock, const FastSet<const Local*>& branchTargets);
 
-        void addLocalData(Local& loc);
+        void addLocalData(Local& loc, const Local* lowerPart = nullptr, const Local* upperPart = nullptr);
 
         friend class BasicBlock;
         friend class InstructionWalker;

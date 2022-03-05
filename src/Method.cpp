@@ -63,10 +63,10 @@ const StackAllocation* Method::findStackAllocation(const std::string& name) cons
     return nullptr;
 }
 
-const Local* Method::createLocal(DataType type, const std::string& name)
+const Local* Method::createLocal(DataType type, const std::string& name, const Local* lowerPart, const Local* upperPart)
 {
     Local loc(type, name);
-    addLocalData(loc);
+    addLocalData(loc, lowerPart, upperPart);
     locals.emplace_back(std::move(loc));
     return &locals.back();
 }
@@ -615,15 +615,24 @@ void Method::updateCFGOnBranchRemoval(BasicBlock& affectedBlock, const FastSet<c
     cfg->updateOnBranchRemoval(*this, affectedBlock, branchTargets);
 }
 
-void Method::addLocalData(Local& loc)
+void Method::addLocalData(Local& loc, const Local* lowerPart, const Local* upperPart)
 {
     if(loc.type.isSimpleType() && loc.type.getScalarBitCount() > 32 && loc.type.getScalarBitCount() <= 64)
     {
         auto elementType = TYPE_INT32.toVectorType(loc.type.getVectorWidth());
-        locals.emplace_back(Local(elementType, loc.name + ".lower"));
-        auto lower = &locals.back();
-        locals.emplace_back(Local(elementType, loc.name + ".upper"));
-        auto upper = &locals.back();
-        loc.set(MultiRegisterData(lower, upper));
+        if(!lowerPart)
+        {
+            locals.emplace_back(Local(elementType, loc.name + ".lower"));
+            lowerPart = &locals.back();
+        }
+        if(!upperPart)
+        {
+            locals.emplace_back(Local(elementType, loc.name + ".upper"));
+            upperPart = &locals.back();
+        }
+        loc.set(MultiRegisterData(lowerPart, upperPart));
     }
+    else if(lowerPart || upperPart)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Can only set lower/upper parts for locals of multi-part type", loc.to_string());
 }

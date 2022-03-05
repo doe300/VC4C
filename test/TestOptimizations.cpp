@@ -12,27 +12,6 @@
 #include "emulation_helper.h"
 #include "intermediate/IntermediateInstruction.h"
 #include "optimization/Optimizer.h"
-#include "tools.h"
-
-static std::function<unsigned(unsigned)> get_local_id;
-static std::function<unsigned(unsigned)> get_local_size;
-static std::function<unsigned(unsigned)> get_group_id;
-#define CLK_LOCAL_MEM_FENCE 0
-void barrier(unsigned) {}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-function"
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-#pragma GCC diagnostic ignored "-Wconversion"
-#pragma GCC diagnostic ignored "-Wunused-variable"
-#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
-#define __kernel static
-#define __constant static const
-#define __global
-#define __local
-#define __private
-#include "../testing/test_hashes.cl"
-#pragma GCC diagnostic pop
 
 using namespace vc4c;
 using namespace vc4c::tools;

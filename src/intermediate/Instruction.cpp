@@ -378,13 +378,32 @@ Value IntermediateInstruction::renameValue(
     auto it = localMapping.find(origLocal);
     if(it != localMapping.end())
         return it->second->createReference();
-    const Local* copy = method.createLocal(orig.type, prefix + origLocal->name);
+    const Local* lowerPart = nullptr;
+    const Local* upperPart = nullptr;
+    if(auto data = origLocal->get<MultiRegisterData>())
+    {
+        // it is possible for the parts to be mapped already, so need to associate them
+        auto it = localMapping.find(data->lower);
+        if(it != localMapping.end())
+            lowerPart = it->second;
+        it = localMapping.find(data->upper);
+        if(it != localMapping.end())
+            upperPart = it->second;
+    }
+    const Local* copy = method.createLocal(orig.type, prefix + origLocal->name, lowerPart, upperPart);
     localMapping.emplace(origLocal, copy);
     if(auto data = origLocal->get<ReferenceData>())
     {
         // copy the reference of the original local with updated base
         auto& copyData = const_cast<Local*>(copy)->set(ReferenceData(*data));
         copyData.base = renameValue(method, data->base->createReference(), prefix, localMapping).local();
+    }
+    if(auto origData = origLocal->get<MultiRegisterData>())
+    {
+        // XXX not sure if this is possible, but for safety we do it anyway
+        auto mappedData = copy->get<MultiRegisterData>();
+        localMapping.emplace(origData->lower, mappedData->lower);
+        localMapping.emplace(origData->upper, mappedData->upper);
     }
     return copy->createReference();
 }

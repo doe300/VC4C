@@ -69,6 +69,7 @@ struct MathFunction
 
 using UnaryFunction = MathFunction<std::function<float(float)>>;
 using BinaryFunction = MathFunction<std::function<float(float, float)>>;
+using TernaryFunction = MathFunction<std::function<float(float, float, float)>>;
 
 static float acospi(float f)
 {
@@ -171,10 +172,10 @@ void test_data::registerMathTests()
         {"cospi", cospi, 4, DataFilter::DISABLED},
         {"erfc", erfcf, 16, DataFilter::DISABLED},
         {"erf", erff, 16, DataFilter::DISABLED},
-        {"exp", expf, 4, DataFilter::DISABLED},
-        {"exp2", exp2f, 4, DataFilter::DISABLED},
-        {"exp10", exp10f, 4, DataFilter::DISABLED},
-        {"expm1", expm1f, 4, DataFilter::DISABLED},
+        {"exp", expf, 4},
+        {"exp2", exp2f, 4},
+        {"exp10", exp10f, 4},
+        {"expm1", expm1f, 4},
         {"fabs", fabsf, 0},
         {"floor", floorf, 0},
         {"lgamma", lgammaf, 1024 /* maximum error is undefined */, DataFilter::DISABLED},
@@ -275,6 +276,25 @@ void test_data::registerMathTests()
             frexpf(x, &exp);
             return exp;
         }));
+    }
+
+    const std::vector<TernaryFunction> ternaryFunctions = {
+        {"fma", fmaf, 0, DataFilter::DISABLED},
+    };
+
+    for(const auto& func : ternaryFunctions)
+    {
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            std::string(func.name), TERNARY_FUNCTION, "test", "-DFUNC=" + func.name);
+        builder.setFlags(defaultFlags | func.flags);
+        builder.calculateDimensions(productLeft.size());
+        builder.allocateParameter<0>(productLeft.size(), 42.0f);
+        builder.setParameter<1>(std::vector<float>(productLeft));
+        builder.setParameter<2>(std::vector<float>(productRight));
+        builder.setParameter<3>(std::vector<float>(values));
+        builder.checkParameter<0, CompareDynamicULP>(
+            transform<float>(productLeft, productRight, values, test_data::roundToZero(func.func)),
+            CompareDynamicULP{func.ulp});
     }
 
     {

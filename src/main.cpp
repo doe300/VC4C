@@ -143,18 +143,20 @@ static void printInfo()
     }
 
     std::cout << "Tool locations:" << std::endl;
-    for(const auto& tool : std::vector<std::pair<std::string, std::string>>{{"clang", CLANG_PATH},
-            {"llvm-spirv", SPIRV_LLVM_SPIRV_PATH}, {"llvm-link", LLVM_LINK_PATH}, {"llvm-dis", LLVM_DIS_PATH},
-            {"llvm-as", LLVM_AS_PATH}, {"spirv-link", SPIRV_LINK_PATH}})
+    for(const auto& tool : std::vector<FrontendTool>{
+            CLANG_TOOL, SPIRV_LLVM_SPIRV_TOOL, LLVM_LINK_TOOL, LLVM_DIS_TOOL, LLVM_AS_TOOL, SPIRV_LINK_TOOL})
     {
-        if(auto tool_found = precompilation::findToolLocation(tool.first, tool.second))
+        if(auto tool_found = precompilation::findToolLocation(tool))
         {
-            std::cout << "\t" << tool.first << " in " << *tool_found << " (default"
-                      << (tool_found == tool.second ? ")" : (" '" + tool.second + "')")) << std::endl;
+            std::cout << "\t" << tool.name << " in " << *tool_found << " (default"
+                      << (tool_found == std::string{tool.defaultPath} ? ")" :
+                                                                        (" '" + std::string{tool.defaultPath} + "')"))
+                      << std::endl;
         }
         else
-            std::cout << "\t" << tool.first << " not in "
-                      << (!tool.second.empty() ? (tool.second + ", neither in ") : "") << "$PATH" << std::endl;
+            std::cout << "\t" << tool.name << " not in "
+                      << (tool.hasDefaultPath() ? (std::string{tool.defaultPath} + ", neither in ") : "") << "$PATH"
+                      << std::endl;
     }
 }
 

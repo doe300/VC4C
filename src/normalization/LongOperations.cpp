@@ -460,16 +460,11 @@ void normalization::lowerLongOperation(
 {
     if(!it.has())
         return;
-    bool writesLongLocal = false;
-    bool readsLongLocal = false;
-    it->forUsedLocals([&](const Local* loc, LocalUse::Type type, auto& inst) {
-        if(loc->get<MultiRegisterData>())
-        {
-            writesLongLocal |= has_flag(type, LocalUse::Type::WRITER);
-            readsLongLocal |= has_flag(type, LocalUse::Type::READER);
-        }
+    bool writesLong = Local::getLocalData<MultiRegisterData>(it->checkOutputLocal());
+    bool readsLong = std::any_of(it->getArguments().begin(), it->getArguments().end(), [](const Value& arg) {
+        return Local::getLocalData<MultiRegisterData>(arg.checkLocal()) || arg.type.getScalarBitCount() > 32;
     });
-    if(!writesLongLocal && !readsLongLocal)
+    if(!writesLong && !readsLong)
         return;
 
     if(auto op = it.get<intermediate::Operation>())
@@ -511,9 +506,12 @@ void normalization::lowerLongOperation(
         else if(!move->hasOtherSideEffects(intermediate::SideEffectType::FLAGS) &&
             (move->getSource().type.getScalarBitCount() <= 32 || move->getSource().getConstantValue()))
         {
-            assign(it, out->lower->createReference()) = (move->getSource(), move->getCondition());
+            auto source = move->getSource();
+            if(source.type.getScalarBitCount() > 32)
+                source.type = TYPE_INT32.toVectorType(source.type.getVectorWidth());
+            assign(it, out->lower->createReference()) = (source, move->getCondition());
             move->setOutput(out->upper->createReference());
-            move->setSource(Value(0_lit, move->getSource().type));
+            move->setSource(Value(0_lit, source.type));
         }
         else if(!move->hasOtherSideEffects(intermediate::SideEffectType::FLAGS) && src)
         {
@@ -596,11 +594,24 @@ void normalization::lowerLongOperation(
             }
             it.erase();
         }
-        else if(src && call->methodName.find("vc4cl_long_to_int") != std::string::npos)
+        else if(call->methodName.find("vc4cl_long_to_int") != std::string::npos)
         {
             // TODO correct for signed??
-            assign(it, call->getOutput().value()) = (src->lower->createReference(), call->decoration);
-            it.erase();
+            if(src)
+            {
+                assign(it, call->getOutput().value()) = (src->lower->createReference(), call->decoration);
+                it.erase();
+            }
+            else if(auto srcLit = call->assertArgument(0).getConstantValue() & &Value::getLiteralValue)
+            {
+                if(srcLit->type == LiteralType::LONG_LEADING_ONES)
+                    // simply cut off leading ones
+                    srcLit->type = LiteralType::INTEGER;
+                assign(it, call->getOutput().value()) =
+                    (Value(*srcLit, TYPE_INT32.toVectorType(call->assertArgument(0).type.getVectorWidth())),
+                        call->decoration);
+                it.erase();
+            }
         }
         else if(src && call->methodName.find("vc4cl_ulong_to_float") != std::string::npos)
         {
