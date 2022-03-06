@@ -7,6 +7,8 @@
 #ifndef REORDERING_H
 #define REORDERING_H
 
+#include <cstdint>
+
 namespace vc4c
 {
     class Method;
@@ -20,7 +22,7 @@ namespace vc4c
          * mapped to an accumulator by inserting nop-instructions. This optimization-pass on its own is actually an
          * de-optimization, but is required for the #reorderWithinBasicBlocks pass to work properly.
          */
-        bool splitReadAfterWrites(const Module& module, Method& method, const Configuration& config);
+        std::size_t splitReadAfterWrites(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Removes nop-instructions inserted for various reasons (waiting on TMU, SFU, splitting up read-after-write) by
@@ -41,7 +43,7 @@ namespace vc4c
          * NOTE: This optimization is a very limited implementation of instruction-scheduling and should be replaced by
          * a more general version which can actually re-order instructions
          */
-        bool reorderWithinBasicBlocks(const Module& module, Method& method, const Configuration& config);
+        std::size_t reorderWithinBasicBlocks(const Module& module, Method& method, const Configuration& config);
     } // namespace optimizations
 } // namespace vc4c
 

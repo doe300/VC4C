@@ -10,6 +10,7 @@
 #include "../Module.h"
 #include "../Profiler.h"
 #include "../intermediate/VectorHelper.h"
+#include "../intermediate/operators.h"
 #include "log.h"
 
 #include <algorithm>
@@ -18,6 +19,7 @@
 
 using namespace vc4c;
 using namespace vc4c::normalization;
+using namespace vc4c::operators;
 
 static NODISCARD InstructionWalker insertCopyVector(
     Method& method, InstructionWalker it, const Value& out, const Value& in)
@@ -620,6 +622,25 @@ static NODISCARD InstructionWalker handleImmediateInOperation(
                 }
             }
         }
+    }
+
+    FastSet<SmallImmediate> immediateArguments;
+    for(const auto& arg : op.getArguments())
+    {
+        if(auto imm = arg.checkImmediate())
+            immediateArguments.emplace(*imm);
+    }
+    if(immediateArguments.size() > 1)
+    {
+        // This should never actually happen in normal compilation flow, thus we warn on it. But for special tests,
+        // where the optimizations rewriting this are not enabled, this prevents errors lowering these functions to
+        // assembler.
+        CPPLOG_LAZY(logging::Level::WARNING,
+            log << "Fixing operation with multiple immediate arguments by inserting load: " << it->to_string()
+                << logging::endl);
+        auto immediateArg = op.findLiteralArgument();
+        auto tmp = assign(it, immediateArg->type) = load(immediateArg->getLiteralValue().value());
+        op.replaceValue(*immediateArg, tmp, LocalUse::Type::READER);
     }
 
     return it;

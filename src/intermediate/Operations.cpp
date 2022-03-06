@@ -235,7 +235,7 @@ qpu_asm::DecoratedInstruction Operation::convertToAsm(const FastMap<const Local*
                 // both operands have literal
                 if(input0.second.value() != input1.second.value())
                     throw CompilationError(CompilationStep::CODE_GENERATION,
-                        "Can't perform operation with two distinguish literals", to_string());
+                        "Can't perform operation with two distinct literals", to_string());
                 regA = REG_NOP;
             }
             else if(input0 != input1 &&

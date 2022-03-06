@@ -163,9 +163,9 @@ static bool rewriteSettingOfFlags(
     return false;
 }
 
-bool optimizations::removeUselessFlags(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::removeUselessFlags(const Module& module, Method& method, const Configuration& config)
 {
-    bool changedSomething = false;
+    std::size_t numChanges = 0;
     for(auto& block : method)
     {
         Optional<InstructionWalker> lastSettingOfFlags;
@@ -191,7 +191,7 @@ bool optimizations::removeUselessFlags(const Module& module, Method& method, con
                     FastAccessList<InstructionWalker> tmp;
                     std::swap(tmp, conditionalInstructions);
                     if(rewriteSettingOfFlags(*lastSettingOfFlags, std::move(tmp)))
-                        changedSomething = true;
+                        ++numChanges;
                 }
                 lastSettingOfFlags = it;
             }
@@ -202,10 +202,10 @@ bool optimizations::removeUselessFlags(const Module& module, Method& method, con
         {
             // process last setting of flags of block
             if(rewriteSettingOfFlags(*lastSettingOfFlags, std::move(conditionalInstructions)))
-                changedSomething = true;
+                ++numChanges;
         }
     }
-    return changedSomething;
+    return numChanges;
 }
 
 InstructionWalker optimizations::combineSameFlags(
@@ -559,9 +559,9 @@ static bool checkAllConditionalsMatchingCondition(
     return true;
 }
 
-bool optimizations::removeConditionalFlags(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::removeConditionalFlags(const Module& module, Method& method, const Configuration& config)
 {
-    bool rewroteFlags = false;
+    std::size_t numChanges = 0;
     for(auto& block : method)
     {
         if(block.empty())
@@ -605,8 +605,9 @@ bool optimizations::removeConditionalFlags(const Module& module, Method& method,
                         else
                             throw CompilationError(CompilationStep::OPTIMIZER,
                                 "Unhandled type of conditional instruction", condIt->to_string());
+                        ++numChanges;
                     }
-                    rewroteFlags = true;
+                    ++numChanges;
                     it.erase();
                     // to not skip the next instruction
                     it.previousInBlock();
@@ -616,5 +617,5 @@ bool optimizations::removeConditionalFlags(const Module& module, Method& method,
         }
     }
 
-    return rewroteFlags;
+    return numChanges;
 }

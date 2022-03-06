@@ -278,13 +278,13 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
     generateStopSegment(method);
 }
 
-bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::moveLoopInvariantCode(const Module& module, Method& method, const Configuration& config)
 {
-    bool hasChanged = false;
+    std::size_t numChanges = 0;
 
     auto& cfg = method.getCFG();
     if(cfg.getNodes().empty())
-        return false;
+        return numChanges;
 
     // 2. Find loops
     auto dominatorTree = cfg.getDominatorTree();
@@ -376,7 +376,7 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
                 {
                     // can only move constant writes of locals only written exactly here
                     instMapper[&node].emplace_back(it);
-                    hasChanged = true;
+                    ++numChanges;
                 }
                 const auto& args = it->getArguments();
                 if(!it->hasSideEffects() && !it->hasConditionalExecution() &&
@@ -385,7 +385,7 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
                     // not a constant calculation, but does not depend on anything written in this loop, so we can move
                     // it too
                     instMapper[&node].emplace_back(it);
-                    hasChanged = true;
+                    ++numChanges;
                 }
             }
         }
@@ -471,7 +471,7 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
         });
 #endif
 
-    if(hasChanged)
+    if(numChanges)
     {
         logging::debug() << "Combining hoisted loop invariant constant loads..." << logging::endl;
         method.cleanEmptyInstructions();
@@ -482,7 +482,7 @@ bool optimizations::moveLoopInvariantCode(const Module& module, Method& method, 
         combineLoadingConstants(method, config, processedInsts);
     }
 
-    return hasChanged;
+    return numChanges;
 }
 
 static const Local* findSourceBlock(const Local* label, const FastMap<const Local*, const Local*>& blockMap)
@@ -493,10 +493,10 @@ static const Local* findSourceBlock(const Local* label, const FastMap<const Loca
     return findSourceBlock(it->second, blockMap);
 }
 
-bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config)
 {
     if(method.empty())
-        return false;
+        return 0u;
     auto& graph = method.getCFG();
 
     std::vector<std::pair<const Local*, const Local*>> blocksToMerge;
@@ -585,21 +585,23 @@ bool optimizations::mergeAdjacentBasicBlocks(const Module& module, Method& metho
     }
 
     CPPLOG_LAZY(logging::Level::DEBUG, log << "Merged " << blocksToMerge.size() << " pair of blocks!" << logging::endl);
-    return !blocksToMerge.empty();
+    return blocksToMerge.size();
 }
 
 using BasicBlockIterator = decltype(std::declval<Method>().begin());
 
-static void reorderNode(Method& method, const DominatorTreeNode& node,
+static std::size_t reorderNode(Method& method, const DominatorTreeNode& node,
     const FastMap<const BasicBlock*, BasicBlockIterator>& blockIterators, BasicBlockIterator& insertIt,
     const FastMap<const CFGNode*, std::size_t>& visitedNodes)
 {
     auto blockIt = blockIterators.at(node.key->key);
+    std::size_t numChanges = 0;
     if(blockIt != insertIt)
     {
         CPPLOG_LAZY(
             logging::Level::DEBUG, log << "Reordering basic block: " << node.key->key->to_string() << logging::endl);
         method.moveBlock(blockIt, insertIt);
+        ++numChanges;
     }
     else if(insertIt != method.end())
         ++insertIt;
@@ -617,14 +619,18 @@ static void reorderNode(Method& method, const DominatorTreeNode& node,
 
     for(auto& successor : sortedSuccessors)
         // run this reordering recursively to keep all (small) sub-trees together and not interleave them
-        reorderNode(method, *successor.first, blockIterators, insertIt, visitedNodes);
+        numChanges += reorderNode(method, *successor.first, blockIterators, insertIt, visitedNodes);
+
+    return numChanges;
 };
 
-bool optimizations::reorderBasicBlocks(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::reorderBasicBlocks(const Module& module, Method& method, const Configuration& config)
 {
     if(method.empty())
-        return false;
+        return 0u;
     auto& cfg = method.getCFG();
+
+    std::size_t numChanges = 0;
 
     // 1. create and walk dominator tree to determine length of dominator sub-paths
     FastMap<const CFGNode*, std::size_t> visitedNodes;
@@ -659,7 +665,7 @@ bool optimizations::reorderBasicBlocks(const Module& module, Method& method, con
     // 3. reorder the blocks according to the determined order
     auto insertIt = method.begin();
     dominatorTree->forAllSources([&](const DominatorTreeNode& node) {
-        reorderNode(method, node, blockIterators, insertIt, visitedNodes);
+        numChanges += reorderNode(method, node, blockIterators, insertIt, visitedNodes);
         return true;
     });
 
@@ -700,7 +706,7 @@ bool optimizations::reorderBasicBlocks(const Module& module, Method& method, con
 #ifndef NDEBUG
     cfg.dumpGraph("/tmp/vc4c-cfg-reordered.dot");
 #endif
-    return false;
+    return numChanges;
 }
 
 struct IfElseBlock
@@ -842,12 +848,12 @@ static FastAccessList<IfElseBlock> findIfElseBlocks(ControlFlowGraph& graph)
     return blocks;
 }
 
-bool optimizations::simplifyConditionalBlocks(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::simplifyConditionalBlocks(const Module& module, Method& method, const Configuration& config)
 {
     if(method.empty())
-        return false;
+        return 0u;
     // NOTE: boost-compute/test_binary_search.cl/calls to atomic_min are good test candidates!
-    bool changedCode = false;
+    std::size_t numChanges = 0;
     for(const auto& block : findIfElseBlocks(method.getCFG()))
     {
         CPPLOG_LAZY_BLOCK(logging::Level::DEBUG, {
@@ -1004,10 +1010,10 @@ bool optimizations::simplifyConditionalBlocks(const Module& module, Method& meth
         block.predecessor->key->walkEnd().emplace(
             std::make_unique<intermediate::Branch>(block.successor->key->getLabel()->getLabel()));
 
-        changedCode = true;
+        ++numChanges;
     }
 
-    return changedCode;
+    return numChanges;
 }
 
 // If we loop through all work-groups, the initial work-group id for all dimensions is always zero
@@ -1258,17 +1264,17 @@ static bool insertSynchronizationBlock(Method& method, BasicBlock& lastBlock)
     return true;
 }
 
-bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::addWorkGroupLoop(const Module& module, Method& method, const Configuration& config)
 {
     if(method.walkAllInstructions().isEndOfMethod())
-        return false;
+        return 0u;
     CPPLOG_LAZY(
         logging::Level::DEBUG, log << "Wrapping kernel " << method.name << " in a work-group loop..." << logging::endl);
 
     // The old head block, the head block of the actual kernel execution
     auto& defaultBlock = *method.begin();
     if(defaultBlock.empty())
-        return false;
+        return 0u;
 
     // The new head block, the block initializing the group ids
     auto startIt = method.emplaceLabel(method.walkAllInstructions(),
@@ -1282,7 +1288,7 @@ bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const
     {
         CPPLOG_LAZY(
             logging::Level::WARNING, log << "Failed to find the default last block, aborting!" << logging::endl);
-        return false;
+        return 0u;
     }
 
     // Remove reads of UNIFORMs for group ids and move initializing to zero out of loop
@@ -1306,5 +1312,5 @@ bool optimizations::addWorkGroupLoop(const Module& module, Method& method, const
     method.metaData.uniformsUsed.setMaxGroupIDYUsed(true);
     method.metaData.uniformsUsed.setMaxGroupIDZUsed(true);
 
-    return true;
+    return 1u;
 }

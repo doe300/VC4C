@@ -7,6 +7,8 @@
 #ifndef ELIMINATOR_H
 #define ELIMINATOR_H
 
+#include <cstdint>
+
 namespace vc4c
 {
     class Method;
@@ -21,7 +23,7 @@ namespace vc4c
          * When an instruction is removed, the previous instruction is re-checked since it could have become obsolete
          * just now.
          */
-        bool eliminateDeadCode(const Module& module, Method& method, const Configuration& config);
+        std::size_t eliminateDeadCode(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Simplifies instructions which have no semantical meaning (e.g. addition with 0, xor with 0, and with all bits
@@ -103,7 +105,7 @@ namespace vc4c
          *
          * remove it
          */
-        bool eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config);
+        std::size_t eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Transform bit operations where some calculations are redundant
@@ -155,7 +157,7 @@ namespace vc4c
          * becomes:
          *  %c = and %a, 2^sameConst
          */
-        bool eliminateRedundantBitOp(const Module& module, Method& method, const Configuration& config);
+        std::size_t eliminateRedundantBitOp(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Propagate source value of move operation in a basic block.
@@ -178,7 +180,7 @@ namespace vc4c
          *  [...]
          *  %x = add %a, %y => this `a` cannot be replaced
          */
-        bool propagateMoves(const Module& module, Method& method, const Configuration& config);
+        std::size_t propagateMoves(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Common Subexpression Elimination (CSE)
@@ -197,7 +199,7 @@ namespace vc4c
          *   %d = %a
          *
          */
-        bool eliminateCommonSubexpressions(const Module& module, Method& method, const Configuration& config);
+        std::size_t eliminateCommonSubexpressions(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Replaces calls to the SFU registers with constant input to a move of the result

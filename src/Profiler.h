@@ -130,6 +130,7 @@ namespace vc4c
         Counter* createCounter(HashKey key, std::size_t baseIndex, std::string name, std::string file, std::size_t line,
             const Counter* prevCounter = nullptr);
         void increaseCounter(Counter* counter, std::size_t value);
+        uint64_t getCounterValue(const std::string& name);
 
         struct ProfilingScope
         {

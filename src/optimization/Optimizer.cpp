@@ -36,9 +36,9 @@ OptimizationPass::OptimizationPass(const std::string& name, const std::string& p
 {
 }
 
-bool OptimizationPass::operator()(const Module& module, Method& method, const Configuration& config) const
+std::size_t OptimizationPass::operator()(const Module& module, Method& method, const Configuration& config) const
 {
-    return pass && pass(module, method, config);
+    return pass ? pass(module, method, config) : 0u;
 }
 
 OptimizationStep::OptimizationStep(const std::string& name, const Step& step) : name(name), step(step) {}
@@ -67,7 +67,7 @@ static const std::vector<OptimizationStep> SINGLE_STEPS = {
     // removes calls to SFU registers with constant input
     OptimizationStep("RewriteConstantSFU", rewriteConstantSFUCall)};
 
-static bool runSingleSteps(const Module& module, Method& method, const Configuration& config)
+static std::size_t runSingleSteps(const Module& module, Method& method, const Configuration& config)
 {
     LCOV_EXCL_START
     logging::logLazy(logging::Level::DEBUG, [&](std::wostream& log) {
@@ -86,6 +86,7 @@ static bool runSingleSteps(const Module& module, Method& method, const Configura
     // this construct with previous iterator is required, because the iterator could be invalidated (if the underlying
     // node is removed)
     auto prevIt = it;
+    std::size_t numChanges = 0;
     while(!it.isEndOfMethod())
     {
         for(const OptimizationStep& step : SINGLE_STEPS)
@@ -95,15 +96,17 @@ static bool runSingleSteps(const Module& module, Method& method, const Configura
             // we can't just test newIt == it here, since if we replace the content of the iterator instead of deleting
             // it, the iterators are still the same, even if we emplace instructions before
             if(newIt.copy().previousInMethod() != prevIt || newIt != it)
+            {
                 it = prevIt;
+                ++numChanges;
+            }
             PROFILE_END_DYNAMIC_EXTREMA(step.name, method.name);
         }
         it.nextInMethod();
         prevIt = it.copy().previousInMethod();
     }
 
-    // XXX
-    return true;
+    return numChanges;
 }
 
 static void addToPasses(const OptimizationPass& pass, std::vector<const OptimizationPass*>& initialPasses,
@@ -156,13 +159,18 @@ static bool runPass(
         logging::debug() << logging::endl;
         logging::debug() << "Running pass: " << pass.name << logging::endl;
     });
-    PROFILE_COUNTER_DYNAMIC(vc4c::profiler::COUNTER_OPTIMIZATION, pass.name + " (before)", method.countInstructions());
-    PROFILE_START_DYNAMIC(pass.name);
-    bool changedMethod = (pass)(module, method, config);
-    PROFILE_END_DYNAMIC(pass.name);
-    PROFILE_COUNTER_DYNAMIC_WITH_PREV(
-        vc4c::profiler::COUNTER_OPTIMIZATION, pass.name + " (after)", method.countInstructions());
-    return changedMethod;
+    std::size_t numChanges = 0;
+    {
+        PROFILE_COUNTER_DYNAMIC(
+            vc4c::profiler::COUNTER_OPTIMIZATION, pass.name + " (before)", method.countInstructions());
+        PROFILE_START_DYNAMIC(pass.name);
+        numChanges = (pass) (module, method, config);
+        PROFILE_END_DYNAMIC(pass.name);
+        PROFILE_COUNTER_DYNAMIC_WITH_PREV(
+            vc4c::profiler::COUNTER_OPTIMIZATION, pass.name + " (after)", method.countInstructions());
+    }
+    PROFILE_COUNTER_DYNAMIC(vc4c::profiler::COUNTER_OPTIMIZATION, pass.name + " (changes)", numChanges);
+    return numChanges > 0;
 }
 
 static void runOptimizationPasses(const Module& module, Method& method, const Configuration& config,
@@ -251,8 +259,9 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
      */
     // XXX not enabled with any optimization level for now, since we cannot yet preload (or determine that this is not
     // necessary!)
-    OptimizationPass("CacheMemoryInVPM", PASS_CACHE_MEMORY, nullptr, "caches memory accesses in VPM where applicable",
-        OptimizationType::INITIAL),
+    // OptimizationPass("CacheMemoryInVPM", PASS_CACHE_MEMORY, nullptr, "caches memory accesses in VPM where
+    // applicable",
+    //     OptimizationType::INITIAL),
     OptimizationPass("AddWorkGroupLoops", PASS_WORK_GROUP_LOOP, addWorkGroupLoop,
         "merges all work-group executions into a single kernel execution", OptimizationType::INITIAL),
     OptimizationPass("ReorderBasicBlocks", "reorder-blocks", reorderBasicBlocks,

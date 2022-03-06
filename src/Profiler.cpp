@@ -435,6 +435,17 @@ void profiler::increaseCounter(Counter* counter, std::size_t value)
     ++counter->invocations;
 }
 
+uint64_t profiler::getCounterValue(const std::string& name)
+{
+    std::lock_guard<std::mutex> guard(lockCounters);
+    for(const auto& counter : counters)
+    {
+        if(counter.second.name == name)
+            return counter.second.count;
+    }
+    return 0;
+}
+
 void profiler::startThreadCache()
 {
     threadCache = std::make_unique<ThreadResultCache>();

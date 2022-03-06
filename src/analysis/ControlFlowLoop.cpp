@@ -52,12 +52,37 @@ Optional<Literal> InductionVariable::getUpperBound() const
 
 Optional<Literal> InductionVariable::getStep() const
 {
-    if(auto stepValue = inductionStep->findOtherArgument(local->createReference()))
+    const Local* stepInput = nullptr;
+    Optional<Value> otherArgument = NO_VALUE;
+    for(const auto& arg : inductionStep->getArguments())
     {
-        if(auto stepWriter = stepValue->getSingleWriter())
-            return stepWriter->precalculate(4).first & &Value::getLiteralValue;
-        return stepValue->getConstantValue() & &Value::getLiteralValue;
+        auto loc = arg.checkLocal();
+        if(loc == local)
+        {
+            // the induction variable is direct argument to the step instruction
+            stepInput = local;
+            continue;
+        }
+
+        auto writer = loc ? loc->getSingleWriter() : nullptr;
+        if(writer && writer->isSimpleMove() && writer->readsLocal(local))
+            // the step instruction takes a derivative (i.e. copy) of the induction  variable as argument
+            stepInput = loc;
+        else
+            otherArgument = arg;
     }
+
+    if(!stepInput)
+        throw CompilationError(CompilationStep::GENERAL,
+            "Failed to determine induction variable as input to step instruction", to_string());
+    if(!otherArgument)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Failed to determine step value as input to step instruction", to_string());
+
+    if(auto stepWriter = otherArgument->getSingleWriter())
+        return stepWriter->precalculate(4).first & &Value::getLiteralValue;
+    return otherArgument->getConstantValue() & &Value::getLiteralValue;
+
     return {};
 }
 

@@ -56,9 +56,13 @@ public:
     void testVectorizations(std::string passParamName);
     void testStructTypeHandling(std::string passParamName);
 
+    void checkTestQuality();
+
 private:
     void testSHA1();
     void testSHA256();
+
+    std::set<std::string> counterNames;
 };
 
 #endif /* VC4C_TEST_OPTIMIZATIONS_H */

@@ -38,9 +38,9 @@ static_assert((rotate_left_halfword(0x12340000 >> 16, 4) << 16) == 0x23410000, "
 
 static const std::string combineLoadLiteralsThreshold = "combine-load-threshold";
 
-bool optimizations::simplifyBranches(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::simplifyBranches(const Module& module, Method& method, const Configuration& config)
 {
-    bool hasChanged = false;
+    std::size_t numChanges = 0;
     for(auto it = method.walkAllInstructions(); !it.isEndOfBlock(); it.nextInMethod())
     {
         if(Branch* thisBranch = it.get<Branch>())
@@ -81,7 +81,7 @@ bool optimizations::simplifyBranches(const Module& module, Method& method, const
             while(!nextIt.isEndOfMethod() && nextIt.get<BranchLabel>())
                 nextIt.nextInMethod();
             if(nextIt.isEndOfMethod())
-                return hasChanged;
+                return numChanges;
             if(Branch* nextBranch = nextIt.get<Branch>())
             {
                 if(skippedOtherBranch || thisBranch->getSingleTargetLabel() != nextBranch->getSingleTargetLabel())
@@ -94,11 +94,11 @@ bool optimizations::simplifyBranches(const Module& module, Method& method, const
                 it = it.erase();
                 // don't skip next instruction
                 it.previousInMethod();
-                hasChanged = true;
+                ++numChanges;
             }
         }
     }
-    return hasChanged;
+    return numChanges;
 }
 
 bool MergeConditionData::isPeepholeRun() const noexcept
@@ -716,10 +716,10 @@ bool optimizations::combineOperationsInner(InstructionWalker it, InstructionWalk
     return false;
 }
 
-bool optimizations::combineOperations(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::combineOperations(const Module& module, Method& method, const Configuration& config)
 {
     // TODO can combine operation x and y if y is something like (result of x & 0xFF/0xFFFF) -> pack-mode
-    bool hasChanged = false;
+    std::size_t numChanges = 0;
     for(BasicBlock& bb : method)
     {
         auto it = bb.walk();
@@ -855,14 +855,14 @@ bool optimizations::combineOperations(const Module& module, Method& method, cons
                     }
 
                     if(conditionsMet && combineOperationsInner(it, nextIt))
-                        hasChanged = true;
+                        ++numChanges;
                 }
             }
             it.nextInBlock();
         }
     }
 
-    return hasChanged;
+    return numChanges;
 }
 
 static Optional<Literal> getSourceLiteral(InstructionWalker it)
@@ -917,7 +917,7 @@ static bool canReplaceConstantLoad(InstructionWalker it, const InstructionWalker
     return false;
 }
 
-bool optimizations::combineLoadingConstants(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::combineLoadingConstants(const Module& module, Method& method, const Configuration& config)
 {
     return combineLoadingConstants(method, config, {});
 }
@@ -930,11 +930,11 @@ static bool isApplicableInstruction(InstructionWalker it, const BasicBlock& bloc
     return block.isLocallyLimited(it, it->getOutput()->local(), threshold);
 }
 
-bool optimizations::combineLoadingConstants(Method& method, const Configuration& config,
+std::size_t optimizations::combineLoadingConstants(Method& method, const Configuration& config,
     const FastSet<const intermediate::IntermediateInstruction*>& applicableInstructions)
 {
     std::size_t threshold = config.additionalOptions.combineLoadThreshold;
-    bool hasChanged = false;
+    std::size_t numChanges = 0;
 
     for(BasicBlock& block : method)
     {
@@ -966,7 +966,7 @@ bool optimizations::combineLoadingConstants(Method& method, const Configuration&
                         for(const LocalUser* reader : readers)
                             const_cast<LocalUser*>(reader)->replaceLocal(oldLocal, newLocal);
                         it.erase();
-                        hasChanged = true;
+                        ++numChanges;
                         continue;
                     }
                     else
@@ -988,7 +988,7 @@ bool optimizations::combineLoadingConstants(Method& method, const Configuration&
                         for(const LocalUser* reader : readers)
                             const_cast<LocalUser*>(reader)->replaceLocal(oldLocal, newLocal);
                         it.erase();
-                        hasChanged = true;
+                        ++numChanges;
                         continue;
                     }
                     else
@@ -999,7 +999,7 @@ bool optimizations::combineLoadingConstants(Method& method, const Configuration&
         }
     }
 
-    return hasChanged;
+    return numChanges;
 }
 
 InstructionWalker optimizations::combineSelectionWithZero(
@@ -1064,9 +1064,9 @@ InstructionWalker optimizations::combineSelectionWithZero(
     return it;
 }
 
-bool optimizations::combineVectorRotations(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::combineVectorRotations(const Module& module, Method& method, const Configuration& config)
 {
-    bool hasChanged = false;
+    std::size_t numChanges = 0;
     for(BasicBlock& block : method)
     {
         InstructionWalker it = block.walk();
@@ -1147,7 +1147,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                             // offset, unless we move a literal value, otherwise the register-file B gets mapped to a
                             // literal instead
                             newMove->setSignaling(SIGNAL_NONE);
-                        hasChanged = true;
+                        ++numChanges;
                         continue;
                     }
                     else if(staticOffset->getLiteralValue() &&
@@ -1161,7 +1161,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                       static_cast<uint8_t>(staticOffset->getLiteralValue()->unsignedInt())),
                                 TYPE_INT8),
                             LocalUse::Type::READER);
-                        hasChanged = true;
+                        ++numChanges;
                         continue;
                     }
                 }
@@ -1181,7 +1181,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                         auto newLoad = std::make_unique<LoadImmediate>(it->getOutput().value(), writer->getImmediate());
                         newLoad->copyExtrasFrom(*rot, true);
                         it.reset(std::move(newLoad));
-                        hasChanged = true;
+                        ++numChanges;
                         continue;
                     }
                     else if(rot->type == RotationType::FULL && rot->getOffset() != VECTOR_ROTATE_R5)
@@ -1198,7 +1198,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                             std::make_unique<LoadImmediate>(it->getOutput().value(), upper | lower, writer->type);
                         newLoad->copyExtrasFrom(*rot, true);
                         it.reset(std::move(newLoad));
-                        hasChanged = true;
+                        ++numChanges;
                         continue;
                     }
                     // TODO support for per-quad rotation
@@ -1221,7 +1221,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                         // offset, unless we move a literal value, otherwise the register-file B gets mapped to a
                         // literal instead
                         newMove->setSignaling(SIGNAL_NONE);
-                    hasChanged = true;
+                    ++numChanges;
                     continue;
                 }
             }
@@ -1240,7 +1240,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
                                 it.getBasicBlock()->findWalkerForInstruction(firstRot, it.getBasicBlock()->walk(), it);
                             if(firstIt)
                             {
-                                hasChanged = true;
+                                ++numChanges;
                                 /*
                                  * Can combine the offsets of two rotations,
                                  * - if the only source of a vector rotation is only written once,
@@ -1296,7 +1296,7 @@ bool optimizations::combineVectorRotations(const Module& module, Method& method,
             it.nextInBlock();
         }
     }
-    return hasChanged;
+    return numChanges;
 }
 
 InstructionWalker optimizations::combineArithmeticOperations(

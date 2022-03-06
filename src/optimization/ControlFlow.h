@@ -7,6 +7,8 @@
 #ifndef VC4C_OPTIMIZATION_CONTROLFLOW_H
 #define VC4C_OPTIMIZATION_CONTROLFLOW_H
 
+#include <cstdint>
+
 namespace vc4c
 {
     class Method;
@@ -28,7 +30,7 @@ namespace vc4c
         /*
          * Move constant load operations in (nested) loops to the block before head block of the outer-most loop.
          */
-        bool moveLoopInvariantCode(const Module& module, Method& method, const Configuration& config);
+        std::size_t moveLoopInvariantCode(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Concatenates "adjacent" basic blocks if the preceding block has only one successor and the succeeding block
@@ -48,7 +50,7 @@ namespace vc4c
          *   yyy
          *
          */
-        bool mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config);
+        std::size_t mergeAdjacentBasicBlocks(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Reorders basic blocks so as much transitions as possible can be replaced by implicit transitions in
@@ -74,7 +76,7 @@ namespace vc4c
          *   br %5
          *   label: %5
          */
-        bool reorderBasicBlocks(const Module& module, Method& method, const Configuration& config);
+        std::size_t reorderBasicBlocks(const Module& module, Method& method, const Configuration& config);
 
         /**
          * Simplifies selected conditional control-flow patterns (e.g. if-else, switch-case) by rewriting the control
@@ -113,7 +115,7 @@ namespace vc4c
          *   [...]
          *   label: %4
          */
-        bool simplifyConditionalBlocks(const Module& module, Method& method, const Configuration& config);
+        std::size_t simplifyConditionalBlocks(const Module& module, Method& method, const Configuration& config);
 
         /**
          * Extends kernel code to be able to run for all work-groups without the need to return to host-code.
@@ -163,7 +165,7 @@ namespace vc4c
          * NOTE: As of this step, there are several control-flow loop around the whole kernel code.
          * NOTE: This optimization step might increase register pressure!
          */
-        bool addWorkGroupLoop(const Module& module, Method& method, const Configuration& config);
+        std::size_t addWorkGroupLoop(const Module& module, Method& method, const Configuration& config);
 
     } /* namespace optimizations */
 } /* namespace vc4c */

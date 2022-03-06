@@ -302,12 +302,12 @@ static bool replaceNOPs(BasicBlock& basicBlock, Method& method, const Configurat
     return hasChanged;
 }
 
-bool optimizations::splitReadAfterWrites(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::splitReadAfterWrites(const Module& module, Method& method, const Configuration& config)
 {
     // try to split up consecutive instructions writing/reading to the same local (so less locals are forced to
     // accumulators) by inserting NOPs  the NOP then can be replaced with other instructions by the next optimization
     // (#reorderWithinBasicBlocks)
-    bool hasChanged = false;
+    std::size_t numChanges = 0;
     auto it = method.walkAllInstructions();
     InstructionWalker lastInstruction = it;
     // at the beginning, the last parameter read is the last local written
@@ -333,7 +333,7 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                         // wrote-label-read, which then becomes  write-nop-label-read instead of write-label-nop-read
                         // and the combiner can find a reason for the NOP
                         lastInstruction.copy().nextInBlock().emplace(std::make_unique<Nop>(DelayType::WAIT_REGISTER));
-                        hasChanged = true;
+                        ++numChanges;
                     }
                 }
             }
@@ -358,7 +358,7 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                 {
                     it.emplace(std::make_unique<Nop>(DelayType::WAIT_VPM));
                     it.nextInBlock();
-                    hasChanged = true;
+                    ++numChanges;
                 }
             }
             if(it->getSignal() == SIGNAL_LOAD_TMU0 || it->getSignal() == SIGNAL_LOAD_TMU1)
@@ -368,16 +368,16 @@ bool optimizations::splitReadAfterWrites(const Module& module, Method& method, c
                 {
                     it.emplace(std::make_unique<Nop>(DelayType::WAIT_TMU));
                     it.nextInBlock();
-                    hasChanged = true;
+                    ++numChanges;
                 }
             }
         }
         it.nextInMethod();
     }
-    return hasChanged;
+    return numChanges;
 }
 
-bool optimizations::reorderWithinBasicBlocks(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::reorderWithinBasicBlocks(const Module& module, Method& method, const Configuration& config)
 {
     /*
      * TODO re-order instructions to:
@@ -385,16 +385,16 @@ bool optimizations::reorderWithinBasicBlocks(const Module& module, Method& metho
      * 3. split up VPM setup and wait VPM wait, so the delay can be used productively (only possible if we allow
      * reordering over mutex-release). How many instructions to try to insert? 3?
      */
-    bool hasChanged = false;
+    std::size_t numChanges = 0;
     for(BasicBlock& block : method)
     {
         // remove NOPs by inserting instructions which do not violate the reason for the NOP
         PROFILE_SCOPE(replaceNOPs);
         if(replaceNOPs(block, method, config))
-            hasChanged = true;
+            ++numChanges;
     }
 
     // after all re-orders are done, remove empty instructions
     method.cleanEmptyInstructions();
-    return hasChanged;
+    return numChanges;
 }

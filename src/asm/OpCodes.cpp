@@ -1477,16 +1477,19 @@ analysis::ValueRange OpCode::operator()(
     if(firstRange.getSingletonValue() && (numOperands == 1 || secondRange.getSingletonValue()))
     {
         // if we can precalculate the single result, we also know the single result range
-        auto firstSingleton = firstRange.getSingletonValue().value();
-        auto firstLiteral =
-            acceptsFloat ? Literal(static_cast<float>(firstSingleton)) : Literal(static_cast<int32_t>(firstSingleton));
+        auto firstLiteral = firstRange.getLowerLimit(acceptsFloat ? TYPE_FLOAT : TYPE_INT32).value().literal();
         auto secondLiteral = UNDEFINED_LITERAL;
-        if(auto secondSingleton = secondRange.getSingletonValue())
-            secondLiteral = acceptsFloat ? Literal(static_cast<float>(*secondSingleton)) :
-                                           Literal(static_cast<int32_t>(*secondSingleton));
+        if(auto secondValue = secondRange.getLowerLimit(acceptsFloat ? TYPE_FLOAT : TYPE_INT32))
+            secondLiteral = secondValue->literal();
         if(auto result = calcLiteral(*this, firstLiteral, secondLiteral).first)
+        {
+            if(*this == OP_SHL)
+                // We can't distinguish between unsigned and signed result (and except for ValueRange also don't have
+                // to), so treat as special case
+                return ValueRange(static_cast<double>(result->unsignedInt()));
             return returnsFloat ? ValueRange(static_cast<double>(result->real())) :
                                   ValueRange(static_cast<double>(result->signedInt()));
+        }
     }
 
     switch(opAdd)
@@ -1561,26 +1564,88 @@ analysis::ValueRange OpCode::operator()(
             return ValueRange(0.0, static_cast<double>(max));
         }
         return RANGE_UINT;
+    case OP_ASR.opAdd:
+        if(auto fixedOffset = secondRange.getSingletonValue())
+        {
+            auto offset = static_cast<uint32_t>(*fixedOffset) % 32;
+            if(offset == 31)
+            {
+                if(firstRange.isUnsigned())
+                    // x >> 31 = [0, 0]
+                    return ValueRange(0.0);
+                if(firstRange.hasExplicitBoundaries() && firstRange.minValue <= 0.0 && firstRange.maxValue <= 0.0)
+                    // -x >> 31 = [-1, -1]
+                    return ValueRange(-1.0);
+                // +-x >> 31 = [-1, 0]
+                return ValueRange(-1.0, 0.0);
+            }
+            if(offset == 0)
+                return firstRange;
+        }
+        if(secondRange.isUnsigned() &&
+            static_cast<int64_t>(secondRange.minValue) / 32 == static_cast<int64_t>(secondRange.maxValue) / 32)
+        {
+            // if there is no modulo 32 overflow within the values of the second range, we can use the following:
+            // [a, b] >> [c, d] -> [a >> d, b >> c]
+            auto minOffset = static_cast<int64_t>(secondRange.minValue) % 32;
+            auto minFactor = static_cast<double>(1 << minOffset);
+            auto maxOffset = static_cast<int64_t>(secondRange.maxValue) % 32;
+            auto maxFactor = static_cast<double>(1 << maxOffset);
+            if(firstRange.isUnsigned())
+                return ValueRange(
+                    std::trunc(firstRange.minValue / maxFactor), std::trunc(firstRange.maxValue / minFactor));
+            if(firstRange.hasExplicitBoundaries() && firstRange.minValue <= 0.0 && firstRange.maxValue <= 0.0)
+                return ValueRange(std::trunc(std::min(firstRange.minValue / minFactor, -1.0)),
+                    std::trunc(std::min(firstRange.maxValue / maxFactor, -1.0)));
+            if(firstRange.hasExplicitBoundaries() && firstRange.minValue <= 0.0 && firstRange.maxValue >= 0.0)
+                return ValueRange(
+                    std::trunc(firstRange.minValue / minFactor), std::trunc(firstRange.maxValue / minFactor));
+        }
+        if(firstRange.isUnsigned())
+            // [a, b] >> [?, ?] -> [0, b]
+            return ValueRange(0.0) | firstRange;
+        if(firstRange.hasExplicitBoundaries() && firstRange.minValue <= 0.0 && firstRange.maxValue <= 0.0)
+            // [-a, -b] >> [?, ?] -> [-a, -1]
+            return ValueRange(-1.0) | firstRange;
+        if(firstRange.hasExplicitBoundaries() && firstRange.minValue <= 0.0 && firstRange.maxValue >= 0.0)
+            // right shift can only produce values with smaller absolute values, so the maximum is the input
+            return firstRange;
+        return RANGE_INT;
     case OP_SHL.opAdd:
         if(firstRange.getSingletonValue() == 0.0)
             return ValueRange{0.0};
         if(firstRange.isUnsigned() && secondRange.getSingletonValue() == 0.0)
             return firstRange;
         if(firstRange.isUnsigned() && secondRange.isUnsigned() &&
-            static_cast<int64_t>(secondRange.minValue) / 32 == static_cast<int64_t>(secondRange.maxValue) / 32)
+            static_cast<uint64_t>(secondRange.minValue) / 32 == static_cast<uint64_t>(secondRange.maxValue) / 32)
         {
             // if there is no modulo 32 overflow within the values of the second range, we can use the following:
             // [a, b] << [c, d] -> [a << c, b << d]
-            auto minOffset = static_cast<int64_t>(secondRange.minValue) % 32;
-            auto newMin = static_cast<int64_t>(firstRange.minValue) << minOffset;
-            auto maxOffset = static_cast<int64_t>(secondRange.maxValue) % 32;
-            auto newMax = static_cast<int64_t>(firstRange.maxValue) << maxOffset;
+            auto minOffset = static_cast<uint64_t>(secondRange.minValue) % 32;
+            auto newMin = static_cast<uint64_t>(firstRange.minValue) << minOffset;
+            auto maxOffset = static_cast<uint64_t>(secondRange.maxValue) % 32;
+            auto newMax = static_cast<uint64_t>(firstRange.maxValue) << maxOffset;
+            if(!firstRange.getSingletonValue() && truncate<uint32_t>(newMin) == 0 && truncate<uint32_t>(newMax) == 0)
+                // if we have a (non-singleton) range where both bounds are shifted completely out of the word (have no
+                // low bit set), there is at least one value in between them with the low bit set, which is not shifted
+                // out.
+                return ValueRange(0.0, static_cast<double>(0x80000000u));
             return ValueRange(
-                static_cast<double>(saturate<uint32_t>(newMin)), static_cast<double>(saturate<uint32_t>(newMax)));
+                static_cast<double>(truncate<uint32_t>(newMin)), static_cast<double>(truncate<uint32_t>(newMax)));
         }
         if(firstRange.isUnsigned())
+        {
+            bool secondRangeWraps = secondRange &&
+                static_cast<int64_t>(secondRange.minValue) / 32 != static_cast<int64_t>(secondRange.maxValue) / 32;
+            if(secondRangeWraps && firstRange.minValue <= 1.0 && firstRange.maxValue <= 1.0)
+                // [0, 1] << [?, ?] -> [0, 0x80000000]
+                return ValueRange(0.0, static_cast<double>(0x80000000u));
+            if(secondRangeWraps && (static_cast<uint32_t>(firstRange.getSingletonValue().value_or(0.0)) & 0x1u) == 0u)
+                // last bit clear << [..., 31, ...] -> [0, UINT_MAX]
+                return RANGE_UINT;
             // [a, b] << [?, ?] -> [a, UINT_MAX]
             return firstRange | ValueRange(static_cast<double>(std::numeric_limits<uint32_t>::max()));
+        }
         return RANGE_UINT;
     case OP_MIN.opAdd:
         if(!firstRange || !secondRange)

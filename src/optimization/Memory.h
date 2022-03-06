@@ -7,6 +7,8 @@
 #ifndef VC4C_OPTIMIZATION_MEMORY_H
 #define VC4C_OPTIMIZATION_MEMORY_H
 
+#include <cstdint>
+
 namespace vc4c
 {
     class Method;
@@ -24,7 +26,7 @@ namespace vc4c
          * optimizations to rewrite the low-level access functions requires this to be run in between the optimization
          * steps.
          */
-        bool lowerMemoryAccess(const Module& module, Method& method, const Configuration& config);
+        std::size_t lowerMemoryAccess(const Module& module, Method& method, const Configuration& config);
 
         /**
          * Combine consecutive configuration of VPW/VPR with the same settings
@@ -36,23 +38,23 @@ namespace vc4c
          * time. Also, this optimization currently only supports access memory <-> QPU, data exchange between only
          * memory and VPM are not optimized
          */
-        bool groupVPMAccess(const Module& module, Method& method, const Configuration& config);
+        std::size_t groupVPMAccess(const Module& module, Method& method, const Configuration& config);
 
         /**
          * Tries to find and group memory accesses to reduce the number of accesses while increasing utilization.
          */
-        bool groupTMUAccess(const Module& module, Method& method, const Configuration& config);
+        std::size_t groupTMUAccess(const Module& module, Method& method, const Configuration& config);
 
         /**
          * Tries to find TMU loads within loops where we can pre-calculate the address for loads in the next loop
          * iteration and thus we can pre-fetch the data loaded for the next loop iteration into the TMU FIFO.
          */
-        bool prefetchTMULoads(const Module& module, Method& method, const Configuration& config);
+        std::size_t prefetchTMULoads(const Module& module, Method& method, const Configuration& config);
 
         /**
          * Tries to find and group memory accesses to reduce the number of accesses while increasing utilization.
          */
-        bool groupLoweredRegisterAccess(const Module& module, Method& method, const Configuration& config);
+        std::size_t groupLoweredRegisterAccess(const Module& module, Method& method, const Configuration& config);
     } // namespace optimizations
 } // namespace vc4c
 

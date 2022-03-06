@@ -20,12 +20,12 @@
 using namespace vc4c;
 using namespace vc4c::optimizations;
 
-bool optimizations::eliminateDeadCode(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::eliminateDeadCode(const Module& module, Method& method, const Configuration& config)
 {
     // TODO (additionally or instead of this) walk through locals, check whether they are never read and writings have
     // no side-effects  then walk through all writings of such locals and remove them (example:
     // ./testing/test_vpm_write.cl)
-    bool hasChanged = false;
+    std::size_t numChanges = 0;
     auto it = method.walkAllInstructions();
     while(!it.isEndOfMethod())
     {
@@ -59,7 +59,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                         it.erase();
                         // if we removed this instruction, maybe the previous one can be removed too??
                         it.previousInBlock();
-                        hasChanged = true;
+                        ++numChanges;
                         continue;
                     }
                 }
@@ -103,7 +103,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                         });
                         // skip ++it, so next instructions is looked at too
                         it.erase();
-                        hasChanged = true;
+                        ++numChanges;
                         continue;
                     }
                 }
@@ -151,7 +151,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                             // disable work-group UNIFORM from method
                             (method.metaData.uniformsUsed.*disableFunc)(false);
                             it.erase();
-                            hasChanged = true;
+                            ++numChanges;
                             continue;
                         }
                     }
@@ -197,7 +197,7 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                     log << "Removing write to special purpose register which is never used: " << it->to_string()
                         << logging::endl);
                 it.erase();
-                hasChanged = true;
+                ++numChanges;
                 continue;
             }
         }
@@ -220,13 +220,13 @@ bool optimizations::eliminateDeadCode(const Module& module, Method& method, cons
                     log << "Removing write to local which is overridden before the next read: " << it->to_string()
                         << logging::endl);
                 it.erase();
-                hasChanged = true;
+                ++numChanges;
                 continue;
             }
         }
         it.nextInMethod();
     }
-    return hasChanged;
+    return numChanges;
 }
 
 InstructionWalker optimizations::simplifyOperation(
@@ -510,10 +510,10 @@ static RegisterCheck createRegisterCheck(InstructionWalker it, const Value& src)
  *   \  /
  *    D
  */
-bool optimizations::propagateMoves(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::propagateMoves(const Module& module, Method& method, const Configuration& config)
 {
     auto it = method.walkAllInstructions();
-    auto replaced = false;
+    std::size_t numChanges = 0;
     auto groupIdsLocal = method.findBuiltin(BuiltinLocal::Type::GROUP_IDS);
     while(!it.isEndOfMethod())
     {
@@ -529,7 +529,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
         // - mov r0, vpm
         // - mov r0, unif
         //
-        // very side-effects are mattered here.
+        // side-effects are considered
         //
         // - mov.setf r0, r1
         // - mov r0, r1, load_tmu0
@@ -564,7 +564,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
                     {
                         if(arg == oldValue && !arg.checkLiteral() && !arg.checkImmediate())
                         {
-                            replaced = true;
+                            ++numChanges;
                             replacedThisInstruction = true;
                             it2->replaceValue(oldValue, newValue, LocalUse::Type::READER);
                             remainingLocalReads.erase(it2.get());
@@ -589,7 +589,7 @@ bool optimizations::propagateMoves(const Module& module, Method& method, const C
         it.nextInMethod();
     }
 
-    return replaced;
+    return numChanges;
 }
 
 static bool canMoveInstruction(InstructionWalker source, InstructionWalker destination)
@@ -611,7 +611,7 @@ static bool canMoveInstruction(InstructionWalker source, InstructionWalker desti
     return true;
 }
 
-bool optimizations::eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::eliminateRedundantMoves(const Module& module, Method& method, const Configuration& config)
 {
     /*
      * XXX can be improved to move UNIFORM reads,
@@ -622,7 +622,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
      * behavior can be tested on CTS: api/test_api min_max_constant_args
      */
 
-    bool codeChanged = false;
+    std::size_t numChanges = 0;
     auto it = method.walkAllInstructions();
     while(!it.isEndOfMethod())
     {
@@ -664,7 +664,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                     it.erase();
                     // don't skip next instruction
                     it.previousInBlock();
-                    codeChanged = true;
+                    ++numChanges;
                 }
                 else
                 {
@@ -672,7 +672,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                         log << "Removing obsolete move with nop: " << it->to_string() << logging::endl);
                     it.reset(
                         std::make_unique<intermediate::Nop>(intermediate::DelayType::WAIT_REGISTER, move->getSignal()));
-                    codeChanged = true;
+                    ++numChanges;
                 }
             }
 
@@ -693,7 +693,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 it.erase();
                 // to not skip the next instruction
                 it.previousInBlock();
-                codeChanged = true;
+                ++numChanges;
             }
             else if(it->checkOutputRegister() && sourceUsedOnce && sourceWriter &&
                 (!(*sourceWriter)->hasSideEffects()
@@ -728,7 +728,7 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 if(auto extended = it.get<intermediate::ExtendedInstruction>())
                     extended->setSetFlags(setFlags ? SetFlag::SET_FLAGS : SetFlag::DONT_SET);
                 it->addDecorations(sourceDecorations);
-                codeChanged = true;
+                ++numChanges;
             }
             else if(move->getSource().checkRegister() && destUsedOnce &&
                 (destUsedOnceWithoutLiteral || has_flag(move->getSource().reg().file, RegisterFile::PHYSICAL_ANY) ||
@@ -766,13 +766,13 @@ bool optimizations::eliminateRedundantMoves(const Module& module, Method& method
                 it.erase();
                 // to not skip the next instruction
                 it.previousInBlock();
-                codeChanged = true;
+                ++numChanges;
             }
         }
         it.nextInMethod();
     }
 
-    return codeChanged;
+    return numChanges;
 }
 
 static bool canReplaceBitOp(const intermediate::Operation& op)
@@ -794,10 +794,10 @@ static bool hasSingleByteExtractionWriter(const Value& val)
         hasByteExtractionMode(*writer);
 }
 
-bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::eliminateRedundantBitOp(const Module& module, Method& method, const Configuration& config)
 {
     // See https://en.wikipedia.org/wiki/Boolean_algebra#Monotone_laws
-    bool replaced = false;
+    std::size_t numChanges = 0;
     auto it = method.walkAllInstructions();
     while(!it.isEndOfMethod())
     {
@@ -827,7 +827,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                                     << logging::endl);
                             it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(
                                 *it.get(), op2->getOutput().value(), out->createReference()));
-                            replaced = true;
+                            ++numChanges;
                         }
                         else if(op2 && op2->op == OP_OR && canReplaceBitOp(*op2) && op2->readsLocal(out) &&
                             op2->readsLocal(in))
@@ -836,7 +836,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                                 log << "Replacing (%a AND %b) OR %a with %a: " << op2->to_string() << logging::endl);
                             it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(
                                 *it.get(), op2->getOutput().value(), in->createReference()));
-                            replaced = true;
+                            ++numChanges;
                         }
 
                         it.nextInBlock();
@@ -867,7 +867,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                         logging::debug() << "Replacing redundant byte masking for value already extracted from single "
                                             "byte with move: "
                                          << op->to_string() << logging::endl;
-                        replaced = true;
+                        ++numChanges;
                         it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(
                             *op, *op->getOutput(), *otherArg));
                     }
@@ -895,7 +895,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                                 log << "Replacing (%a OR %b) AND %a with %a: " << op2->to_string() << logging::endl);
                             it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(
                                 *it.get(), op2->getOutput().value(), in->createReference()));
-                            replaced = true;
+                            ++numChanges;
                         }
                         else if(op2 && op2->op == OP_OR && canReplaceBitOp(*op2) && op2->readsLocal(out) &&
                             op2->readsLocal(in))
@@ -905,7 +905,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                                     << logging::endl);
                             it.reset(intermediate::createWithExtras<intermediate::MoveOperation>(
                                 *it.get(), op2->getOutput().value(), out->createReference()));
-                            replaced = true;
+                            ++numChanges;
                         }
 
                         it.nextInBlock();
@@ -965,7 +965,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                         log << "Replacing arithmetic shift with simpler bit-wise shift: " << op->to_string()
                             << logging::endl);
                     op->op = OP_SHR;
-                    replaced = true;
+                    ++numChanges;
                 }
             }
             // we need to recheck the operation, since we might have reset it above
@@ -1003,7 +1003,7 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
                     op->replaceValue(op->getFirstArg(), input, LocalUse::Type::READER);
                     op->replaceValue(*op->getSecondArg(), Value(Literal(mask), TYPE_INT32), LocalUse::Type::READER);
                     op->op = OP_AND;
-                    replaced = true;
+                    ++numChanges;
                 }
             }
         }
@@ -1011,12 +1011,13 @@ bool optimizations::eliminateRedundantBitOp(const Module& module, Method& method
         it.nextInMethod();
     }
 
-    return replaced;
+    return numChanges;
 }
 
-bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::eliminateCommonSubexpressions(
+    const Module& module, Method& method, const Configuration& config)
 {
-    bool replacedSomething = false;
+    std::size_t numChanges = 0;
     for(auto& block : method)
     {
         // we do not run the whole analysis in front, but only the next step to save on memory usage
@@ -1049,7 +1050,7 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                             << exprIt->second.first->to_string() << logging::endl);
                     it.reset(std::make_unique<intermediate::MoveOperation>(
                         it->getOutput().value(), exprIt->second.first->getOutput().value()));
-                    replacedSomething = true;
+                    ++numChanges;
                 }
                 else if(*(newExpr = expr->combineWith(calculatingExpressions)) != *expr)
                 {
@@ -1068,7 +1069,7 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
                         it.previousInBlock();
                         if(auto loc = it->checkOutputLocal())
                             calculatingExpressions.emplace(loc, newExpr);
-                        replacedSomething = true;
+                        ++numChanges;
                         expressions.emplace(newExpr, std::make_pair(it.get(), 0));
                     }
                 }
@@ -1087,7 +1088,7 @@ bool optimizations::eliminateCommonSubexpressions(const Module& module, Method& 
             }
         }
     }
-    return replacedSomething;
+    return numChanges;
 }
 
 InstructionWalker optimizations::rewriteConstantSFUCall(

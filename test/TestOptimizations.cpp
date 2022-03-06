@@ -9,6 +9,7 @@
 #include "InstructionWalker.h"
 #include "Method.h"
 #include "Module.h"
+#include "Profiler.h"
 #include "emulation_helper.h"
 #include "intermediate/IntermediateInstruction.h"
 #include "optimization/Optimizer.h"
@@ -88,7 +89,9 @@ TestOptimizations::TestOptimizations(const vc4c::Configuration& config) : TestEm
         TEST_ADD_WITH_STRING(TestOptimizations::testIntGlobalStorage, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testVectorizations, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testStructTypeHandling, pass.parameterName);
+        counterNames.emplace(pass.name);
     }
+    TEST_ADD(TestOptimizations::checkTestQuality);
     TEST_ADD(TestOptimizations::printProfilingInfo);
 }
 
@@ -476,4 +479,26 @@ void TestOptimizations::testStructTypeHandling(std::string passParamName)
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::runTestData("boost_user_defined_types", false);
+}
+
+void TestOptimizations::checkTestQuality()
+{
+    bool anyCounterValues = false;
+    std::map<std::string, uint64_t> counterValues;
+    for(const auto& name : counterNames)
+    {
+        auto val = counterValues.emplace(name, profiler::getCounterValue(name + " (changes)")).first->second;
+        anyCounterValues = anyCounterValues || val != 0;
+    }
+
+    if(!anyCounterValues)
+        // profiling not enabled
+        return;
+
+    for(const auto& entry : counterValues)
+    {
+        if(entry.second == 0)
+            TEST_ASSERT_EQUALS("",
+                "Optimization pass '" + entry.first + "' never had any effect, pass correctness could not be tested!");
+    }
 }

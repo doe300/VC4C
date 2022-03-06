@@ -7,6 +7,8 @@
 #ifndef VC4C_INSTRUCTION_SCHEDULER_H
 #define VC4C_INSTRUCTION_SCHEDULER_H
 
+#include <cstdint>
+
 namespace vc4c
 {
     class Method;
@@ -15,7 +17,7 @@ namespace vc4c
 
     namespace optimizations
     {
-        bool reorderInstructions(const Module& module, Method& kernel, const Configuration& config);
+        std::size_t reorderInstructions(const Module& module, Method& kernel, const Configuration& config);
 
     } /* namespace optimizations */
 } /* namespace vc4c */

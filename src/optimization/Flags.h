@@ -6,6 +6,8 @@
 #ifndef VC4C_OPTIMIZATION_FLAGS
 #define VC4C_OPTIMIZATION_FLAGS
 
+#include <cstdint>
+
 namespace vc4c
 {
     class Method;
@@ -49,7 +51,7 @@ namespace vc4c
          *   [...]
          *   - = xor 0, %4 (setf)
          */
-        bool removeUselessFlags(const Module& module, Method& method, const Configuration& config);
+        std::size_t removeUselessFlags(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Combines successive setting of the same flag (e.g. introduced by PHI-nodes)
@@ -129,7 +131,7 @@ namespace vc4c
          *   - = max %iterator, %limit (setf)
          *   %out = %in (ifc)
          */
-        bool removeConditionalFlags(const Module& module, Method& method, const Configuration& config);
+        std::size_t removeConditionalFlags(const Module& module, Method& method, const Configuration& config);
     } /* namespace optimizations */
 } /* namespace vc4c */
 

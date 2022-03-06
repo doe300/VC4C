@@ -20,6 +20,7 @@
 #include "../normalization/LiteralValues.h"
 #include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
+#include "Eliminator.h"
 #include "log.h"
 
 #include <algorithm>
@@ -1254,6 +1255,20 @@ static Optional<AccumulationInfo> determineAccumulation(const Local* loc, const 
         return {};
     }
 
+    while(loopOperationRead->isSimpleMove() && loopOperationRead->checkOutputLocal())
+    {
+        auto readers = loopOperationRead->checkOutputLocal()->getUsers(LocalUse::Type::READER);
+        if(readers.size() == 1 && loop.findInLoop(*readers.begin()))
+        {
+            // actualAccumulatedLocal = loopOperationRead->checkOutputLocal();
+            loopOperationRead = *readers.begin();
+            // loopTemporaries.emplace(loc);
+            // return determineAccumulation(loopOperationRead->checkOutputLocal(), loop);
+        }
+        else
+            break;
+    }
+
     auto op = dynamic_cast<const intermediate::Operation*>(loopOperationRead);
     if(!op || op->op.numOperands != 2)
     {
@@ -1354,14 +1369,17 @@ static Optional<AccumulationInfo> determineAccumulation(const Local* loc, const 
         initialValue, const_cast<IntermediateInstruction*>(initialWrite)};
 }
 
-bool optimizations::vectorizeLoops(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::vectorizeLoops(const Module& module, Method& method, const Configuration& config)
 {
     if(method.empty())
-        return false;
+        return 0u;
+    // try to merge some induction variable locals with their phi-node locals
+    if(propagateMoves(module, method, config))
+        eliminateDeadCode(module, method, config);
     // 1. find loops
     auto& cfg = method.getCFG();
     auto loops = cfg.findLoops(false);
-    bool hasChanged = false;
+    std::size_t numChanges = 0;
 
     // 2. determine data dependencies of loop bodies
     auto dependencyGraph = DataDependencyGraph::createDependencyGraph(method);
@@ -1505,7 +1523,7 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
         // increasing the iteration step might create a value not fitting into small immediate
         normalization::handleImmediate(
             module, method, loop.findInLoop(inductionVariable.inductionStep).value(), config);
-        hasChanged = true;
+        ++numChanges;
 
         if(dynamicElementCount)
             PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_OPTIMIZATION, "Dynamic-sized vectorizations", 1);
@@ -1513,7 +1531,7 @@ bool optimizations::vectorizeLoops(const Module& module, Method& method, const C
             PROFILE_COUNTER_SCOPE(vc4c::profiler::COUNTER_OPTIMIZATION, "Vectorization factors", vectorizationFactor);
     }
 
-    return hasChanged;
+    return numChanges;
 }
 
 struct VectorFolding
@@ -1653,9 +1671,9 @@ static Optional<VectorFolding> findElementwiseVectorFolding(InstructionWalker& i
     return {};
 }
 
-bool optimizations::compactVectorFolding(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::compactVectorFolding(const Module& module, Method& method, const Configuration& config)
 {
-    bool didRewrites = false;
+    std::size_t numChanges = 0;
 
     for(auto& block : method)
     {
@@ -1690,12 +1708,12 @@ bool optimizations::compactVectorFolding(const Module& module, Method& method, c
                 // remove original last write so our new code is used and the whole original folding cascade can be
                 // removed as unused code
                 folding->lastFoldIt.erase();
-                didRewrites = true;
+                ++numChanges;
             }
         }
     }
 
-    return didRewrites;
+    return numChanges;
 }
 
 struct VectorElementCopy
@@ -1739,9 +1757,9 @@ static SIMDVector toVectorMask(const std::bitset<NATIVE_VECTOR_SIZE>& mask, Cond
     return result;
 }
 
-bool optimizations::combineVectorElementCopies(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::combineVectorElementCopies(const Module& module, Method& method, const Configuration& config)
 {
-    bool didChanges = false;
+    std::size_t numChanges = 0;
 
     // run within all basic blocks
     for(auto& block : method)
@@ -1794,6 +1812,7 @@ bool optimizations::combineVectorElementCopies(const Module& module, Method& met
                         previousCopy->staticElementMask |= *staticMask;
                         previousCopy->copyInstruction.erase();
                         previousCopy->copyInstruction = it;
+                        ++numChanges;
                     }
                     else if(auto src = it->getMoveSource())
                         previousCopy = VectorElementCopy{*flagsSetter, *staticMask, it, cond, src.value(),
@@ -1809,5 +1828,5 @@ bool optimizations::combineVectorElementCopies(const Module& module, Method& met
         }
     }
 
-    return didChanges;
+    return numChanges;
 }

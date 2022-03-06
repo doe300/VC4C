@@ -37,8 +37,9 @@ using namespace vc4c::operators;
 // TODO rewrite combination of VPM accesses to use MemoryAccessInstructions instead? Need to move before memory lowering
 // and somehow be able to explicitly set stride/etc. If rewritten, merge with groupTMUAccess optimization step
 
-bool optimizations::lowerMemoryAccess(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::lowerMemoryAccess(const Module& module, Method& method, const Configuration& config)
 {
+    std::size_t numChanges = 0;
     for(auto& block : method)
     {
         auto it = block.walk();
@@ -46,6 +47,7 @@ bool optimizations::lowerMemoryAccess(const Module& module, Method& method, cons
         {
             if(auto memoryAccess = it.get<intermediate::MemoryAccessInstruction>())
             {
+                ++numChanges;
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Lowering memory access: " << memoryAccess->to_string() << logging::endl);
                 if(memoryAccess->getTMUCacheEntry())
@@ -62,8 +64,7 @@ bool optimizations::lowerMemoryAccess(const Module& module, Method& method, cons
                 it.nextInBlock();
         }
     }
-    // a kernel without a single memory access does not make sense at all
-    return true;
+    return numChanges;
 }
 
 struct BaseAndOffset
@@ -702,10 +703,10 @@ NODISCARD static bool groupVPMReads(periphery::VPM& vpm, VPMAccessGroup& group)
     return true;
 }
 
-bool optimizations::groupVPMAccess(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::groupVPMAccess(const Module& module, Method& method, const Configuration& config)
 {
     // TODO for now, this cannot handle RAM->VPM, VPM->RAM only access as well as VPM->QPU or QPU->VPM
-    bool didChanges = false;
+    std::size_t numChanges = 0;
 
     // run within all basic blocks
     for(auto& block : method)
@@ -721,7 +722,7 @@ bool optimizations::groupVPMAccess(const Module& module, Method& method, const C
                 auto func = group.isVPMWrite ? groupVPMWrites : groupVPMReads;
                 if(func(*method.vpm, group))
                 {
-                    didChanges = true;
+                    ++numChanges;
                     PROFILE_COUNTER(
                         vc4c::profiler::COUNTER_OPTIMIZATION, "DMA access groups", group.genericSetups.size());
                 }
@@ -730,9 +731,9 @@ bool optimizations::groupVPMAccess(const Module& module, Method& method, const C
     }
 
     // clean up empty instructions
-    if(didChanges)
+    if(numChanges)
         method.cleanEmptyInstructions();
-    return didChanges;
+    return numChanges;
 }
 
 struct TMUAccessGroup
@@ -1343,9 +1344,9 @@ NODISCARD static bool groupTMUReads(Method& method, TMUAccessGroup& group)
     return true;
 }
 
-bool optimizations::groupTMUAccess(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::groupTMUAccess(const Module& module, Method& method, const Configuration& config)
 {
-    bool didChanges = false;
+    std::size_t numChanges = 0;
 
     // run within all basic blocks
     for(auto& block : method)
@@ -1359,7 +1360,7 @@ bool optimizations::groupTMUAccess(const Module& module, Method& method, const C
             {
                 if(groupTMUReads(method, group))
                 {
-                    didChanges = true;
+                    ++numChanges;
                     PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION, "TMU access groups", group.ramReads.size());
                 }
             }
@@ -1367,10 +1368,10 @@ bool optimizations::groupTMUAccess(const Module& module, Method& method, const C
     }
 
     // clean up empty instructions
-    if(didChanges)
+    if(numChanges)
         method.cleanEmptyInstructions();
 
-    return didChanges;
+    return numChanges;
 }
 
 struct TMULoadOffset
@@ -1642,7 +1643,7 @@ static bool containsSynchronizationInstruction(const analysis::ControlFlowLoop& 
     return false;
 }
 
-bool optimizations::prefetchTMULoads(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::prefetchTMULoads(const Module& module, Method& method, const Configuration& config)
 {
     // 1. find (innermost) loops
     // 2. check number of TMU loads (per TMU)
@@ -1656,7 +1657,7 @@ bool optimizations::prefetchTMULoads(const Module& module, Method& method, const
     auto loops = cfg.findLoops(false, true);
     auto dependencyGraph = analysis::DataDependencyGraph::createDependencyGraph(method);
 
-    bool movedLoads = false;
+    std::size_t numChanges = 0;
 
     for(auto& loop : loops)
     {
@@ -1675,13 +1676,13 @@ bool optimizations::prefetchTMULoads(const Module& module, Method& method, const
         if(containsSynchronizationInstruction(loop))
             continue;
         if(prefetchTMULoadsInLoop(loop, method, *dependencyGraph, *dominatorTree))
-            movedLoads = true;
+            ++numChanges;
     }
 
-    if(movedLoads)
+    if(numChanges)
         method.cleanEmptyInstructions();
 
-    return movedLoads;
+    return numChanges;
 }
 
 struct LoweredRegisterAccessGroup
@@ -1855,9 +1856,9 @@ NODISCARD static bool groupLoweredRegisterWrites(Method& method, LoweredRegister
     return true;
 }
 
-bool optimizations::groupLoweredRegisterAccess(const Module& module, Method& method, const Configuration& config)
+std::size_t optimizations::groupLoweredRegisterAccess(const Module& module, Method& method, const Configuration& config)
 {
-    bool didChanges = false;
+    std::size_t numChanges = 0;
 
     // run within all basic blocks
     for(auto& block : method)
@@ -1871,7 +1872,7 @@ bool optimizations::groupLoweredRegisterAccess(const Module& module, Method& met
             {
                 if(groupLoweredRegisterWrites(method, group))
                 {
-                    didChanges = true;
+                    ++numChanges;
                     PROFILE_COUNTER(
                         vc4c::profiler::COUNTER_OPTIMIZATION, "Register write groups", group.accessInstructions.size());
                 }
@@ -1880,8 +1881,8 @@ bool optimizations::groupLoweredRegisterAccess(const Module& module, Method& met
     }
 
     // clean up empty instructions
-    if(didChanges)
+    if(numChanges)
         method.cleanEmptyInstructions();
 
-    return didChanges;
+    return numChanges;
 }

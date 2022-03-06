@@ -1010,7 +1010,8 @@ void TestInstructions::testOpCodeRanges()
     ValueRange emptyRange{TYPE_UNKNOWN};
 
     std::vector<ValueRange> ranges = {ValueRange{-1024.0, -256.0}, ValueRange{-42.0, 28.0}, ValueRange{17.0, 42.0},
-        ValueRange{0.0, 0.0}, ValueRange{20000000.0, 20000010.0} /* < for mul24 */};
+        ValueRange{0.0, 0.0}, ValueRange{20000000.0, 20000010.0} /* < for mul24 */,
+        ValueRange{31.0} /* for shift offsets */, ValueRange{0.0, 1.0}};
 
     TEST_ASSERT_EQUALS(RANGE_FLOAT, OP_FADD(ValueRange{}, ValueRange{}))
     TEST_ASSERT_EQUALS(RANGE_FLOAT, OP_FSUB(ValueRange{}, ValueRange{}))
@@ -1024,6 +1025,7 @@ void TestInstructions::testOpCodeRanges()
     TEST_ASSERT_EQUALS(RANGE_INT | RANGE_UINT, OP_ADD(ValueRange{}, ValueRange{}))
     TEST_ASSERT_EQUALS(RANGE_INT, OP_SUB(ValueRange{}, ValueRange{}))
     TEST_ASSERT_EQUALS(RANGE_UINT, OP_SHR(ValueRange{}, ValueRange{}))
+    TEST_ASSERT_EQUALS(RANGE_INT, OP_ASR(ValueRange{}, ValueRange{}))
     TEST_ASSERT_EQUALS(RANGE_UINT, OP_SHL(ValueRange{}, ValueRange{}))
     TEST_ASSERT_EQUALS(RANGE_INT, OP_MIN(ValueRange{}, ValueRange{}))
     TEST_ASSERT_EQUALS(RANGE_INT, OP_MAX(ValueRange{}, ValueRange{}))
@@ -1081,6 +1083,10 @@ void TestInstructions::testOpCodeRanges()
                                        }),
                     OP_SHR(intRange0, intRange1))
             }
+            else if(innerInt1.getSingletonValue() == 31.0)
+            {
+                TEST_ASSERT_EQUALS(ValueRange(0.0, 1.0), OP_SHR(intRange0, intRange1))
+            }
             else
             {
                 TEST_ASSERT_EQUALS(RANGE_UINT, OP_SHR(intRange0, intRange1))
@@ -1088,9 +1094,17 @@ void TestInstructions::testOpCodeRanges()
             if(innerInt0.minValue >= 0)
             {
                 TEST_ASSERT_EQUALS(calculateRange<int64_t>(innerInt0, innerInt1,
-                                       [](auto a, auto b) {
-                                           return saturate<uint32_t>(static_cast<int64_t>(
-                                               static_cast<uint64_t>(a) << (0x1Fu & static_cast<uint64_t>(b))));
+                                       [&](auto a, auto b) {
+                                           auto extended = static_cast<uint64_t>(a)
+                                               << (0x1Fu & static_cast<uint64_t>(b));
+                                           auto truncated = truncate<uint32_t>(extended);
+                                           if(extended != truncated &&
+                                               static_cast<uint64_t>(innerInt1.minValue) / 32 !=
+                                                   static_cast<uint64_t>(innerInt1.maxValue) / 32)
+                                               // XXX This is a pessimisation, but we cannot prove more precise ranges
+                                               // for now
+                                               return truncated == 0u ? 0u : std::numeric_limits<uint32_t>::max();
+                                           return truncated;
                                        }),
                     OP_SHL(intRange0, intRange1))
             }
@@ -1098,6 +1112,9 @@ void TestInstructions::testOpCodeRanges()
             {
                 TEST_ASSERT_EQUALS(RANGE_UINT, OP_SHL(intRange0, intRange1))
             }
+            TEST_ASSERT_EQUALS(
+                calculateRange<int64_t>(innerInt0, innerInt1, [](auto a, auto b) { return a >> (b & 0x1F); }),
+                OP_ASR(intRange0, intRange1))
             TEST_ASSERT_EQUALS(
                 calculateRange<int64_t>(innerInt0, innerInt1, [](auto a, auto b) { return std::min(a, b); }),
                 OP_MIN(intRange0, intRange1))
@@ -1117,6 +1134,8 @@ void TestInstructions::testOpCodeRanges()
             }
             if(intRange0.getSingletonValue() == 0.0)
                 TEST_ASSERT_EQUALS(ValueRange(32.0), OP_CLZ(intRange0, emptyRange))
+            else if(auto val = intRange0.getSingletonValue())
+                TEST_ASSERT_EQUALS(ValueRange(32.0 - std::ceil(std::log2(*val))), OP_CLZ(intRange0, emptyRange))
             else
                 TEST_ASSERT_EQUALS(ValueRange(0.0, 32.0), OP_CLZ(intRange0, emptyRange))
             if(innerInt0.minValue >= 0 && innerInt1.minValue >= 0 && innerInt0.maxValue < 0xFFFFFF &&
@@ -1624,11 +1643,11 @@ void TestInstructions::testTypes()
     TEST_ASSERT(type.getElementType().isScalarType())
     TEST_ASSERT_EQUALS(17, type.getElementType().getScalarBitCount())
     TEST_ASSERT_EQUALS(0x1FFFFu, type.getScalarWidthMask())
-    TEST_ASSERT_EQUALS(9, type.getLogicalWidth())
-    TEST_ASSERT_EQUALS(12, type.getInMemoryWidth())
-    TEST_ASSERT_EQUALS(3, type.getVectorWidth(false))
-    TEST_ASSERT_EQUALS(4, type.getVectorWidth(true))
-    TEST_ASSERT_EQUALS(12, type.getInMemoryAlignment())
+    TEST_ASSERT_EQUALS(9u, type.getLogicalWidth())
+    TEST_ASSERT_EQUALS(12u, type.getInMemoryWidth())
+    TEST_ASSERT_EQUALS(3u, type.getVectorWidth(false))
+    TEST_ASSERT_EQUALS(4u, type.getVectorWidth(true))
+    TEST_ASSERT_EQUALS(12u, type.getInMemoryAlignment())
 
     TEST_ASSERT(TYPE_INT32.containsType(TYPE_INT16))
     TEST_ASSERT(TYPE_INT32.containsType(TYPE_INT32))
@@ -1657,15 +1676,15 @@ void TestInstructions::testTypes()
         TEST_ASSERT(!type.getImageType())
         TEST_ASSERT(type.isIntegralType())
         TEST_ASSERT_EQUALS(TYPE_INT16.toVectorType(3), type.getElementType())
-        TEST_ASSERT_EQUALS(4, type.getLogicalWidth())
-        TEST_ASSERT_EQUALS(4, type.getInMemoryWidth())
-        TEST_ASSERT_EQUALS(4, type.getInMemoryAlignment())
-        TEST_ASSERT_EQUALS(32, type.getScalarBitCount())
+        TEST_ASSERT_EQUALS(4u, type.getLogicalWidth())
+        TEST_ASSERT_EQUALS(4u, type.getInMemoryWidth())
+        TEST_ASSERT_EQUALS(4u, type.getInMemoryAlignment())
+        TEST_ASSERT_EQUALS(32u, type.getScalarBitCount())
         TEST_ASSERT_EQUALS("(p) <3 x i16>*", type.to_string())
         auto ptr = type.getPointerType();
         TEST_ASSERT_EQUALS(TYPE_INT16.toVectorType(3), ptr->elementType)
         TEST_ASSERT_EQUALS(AddressSpace::PRIVATE, ptr->addressSpace)
-        TEST_ASSERT_EQUALS(8, ptr->getAlignment())
+        TEST_ASSERT_EQUALS(8u, ptr->getAlignment())
         TEST_ASSERT(*ptr == *type.getPointerType())
         TEST_ASSERT(!(*ptr == *TYPE_VOID_POINTER.getPointerType()))
     }
@@ -1684,13 +1703,13 @@ void TestInstructions::testTypes()
         TEST_ASSERT(!!type.getStructType())
         TEST_ASSERT(!type.getImageType())
         TEST_ASSERT_EQUALS(TYPE_INT16, type.getElementType(3))
-        TEST_ASSERT_EQUALS(12, type.getLogicalWidth())
-        TEST_ASSERT_EQUALS(11, packedType.getLogicalWidth())
-        TEST_ASSERT_EQUALS(12, type.getInMemoryWidth())
-        TEST_ASSERT_EQUALS(11, packedType.getInMemoryWidth())
-        TEST_ASSERT_EQUALS(12, type.getInMemoryAlignment())
+        TEST_ASSERT_EQUALS(12u, type.getLogicalWidth())
+        TEST_ASSERT_EQUALS(11u, packedType.getLogicalWidth())
+        TEST_ASSERT_EQUALS(12u, type.getInMemoryWidth())
+        TEST_ASSERT_EQUALS(11u, packedType.getInMemoryWidth())
+        TEST_ASSERT_EQUALS(12u, type.getInMemoryAlignment())
         // This can e.g. be tested in compiler explorer
-        TEST_ASSERT_EQUALS(1, packedType.getInMemoryAlignment())
+        TEST_ASSERT_EQUALS(1u, packedType.getInMemoryAlignment())
         TEST_ASSERT_EQUALS("MyStruct", type.to_string())
         TEST_ASSERT_EQUALS("MyPackedStruct", packedType.to_string())
         auto struct0 = type.getStructType();
@@ -1698,10 +1717,10 @@ void TestInstructions::testTypes()
         TEST_ASSERT(struct0->elementTypes == struct1->elementTypes)
         TEST_ASSERT(!struct0->isPacked)
         TEST_ASSERT(struct1->isPacked)
-        TEST_ASSERT_EQUALS(10, struct0->getStructSize(3))
-        TEST_ASSERT_EQUALS(9, struct1->getStructSize(3))
-        TEST_ASSERT_EQUALS(12, struct0->getStructSize())
-        TEST_ASSERT_EQUALS(11, struct1->getStructSize())
+        TEST_ASSERT_EQUALS(10u, struct0->getStructSize(3))
+        TEST_ASSERT_EQUALS(9u, struct1->getStructSize(3))
+        TEST_ASSERT_EQUALS(12u, struct0->getStructSize())
+        TEST_ASSERT_EQUALS(11u, struct1->getStructSize())
         TEST_ASSERT_EQUALS("{i32, f32, i8, i16}", struct0->getContent())
         TEST_ASSERT_EQUALS("<{i32, f32, i8, i16}>", struct1->getContent())
         TEST_ASSERT(*struct0 == *type.getStructType())
@@ -1717,9 +1736,9 @@ void TestInstructions::testTypes()
         TEST_ASSERT(!type.getStructType())
         TEST_ASSERT(!type.getImageType())
         TEST_ASSERT_EQUALS(TYPE_INT8.toVectorType(3), type.getElementType())
-        TEST_ASSERT_EQUALS(3 * 17, type.getLogicalWidth())
-        TEST_ASSERT_EQUALS(4 * 17, type.getInMemoryWidth())
-        TEST_ASSERT_EQUALS(4, type.getInMemoryAlignment())
+        TEST_ASSERT_EQUALS(3u * 17u, type.getLogicalWidth())
+        TEST_ASSERT_EQUALS(4u * 17u, type.getInMemoryWidth())
+        TEST_ASSERT_EQUALS(4u, type.getInMemoryAlignment())
         TEST_ASSERT_EQUALS("<3 x i8>[17]", type.to_string())
         auto array = type.getArrayType();
         TEST_ASSERT_EQUALS(TYPE_INT8.toVectorType(3), array->elementType)
@@ -1736,13 +1755,13 @@ void TestInstructions::testTypes()
         TEST_ASSERT(!type.getArrayType())
         TEST_ASSERT(!type.getStructType())
         TEST_ASSERT(!!type.getImageType())
-        TEST_ASSERT_EQUALS(4, type.getLogicalWidth())
-        TEST_ASSERT_EQUALS(4, type.getInMemoryWidth())
+        TEST_ASSERT_EQUALS(4u, type.getLogicalWidth())
+        TEST_ASSERT_EQUALS(4u, type.getInMemoryWidth())
         // TODO TEST_ASSERT_EQUALS(4, type.getInMemoryAlignment())
-        TEST_ASSERT_EQUALS(32, type.getScalarBitCount())
+        TEST_ASSERT_EQUALS(32u, type.getScalarBitCount())
         TEST_ASSERT_EQUALS("image3D_array", type.to_string())
         auto image = type.getImageType();
-        TEST_ASSERT_EQUALS(3, image->dimensions)
+        TEST_ASSERT_EQUALS(3u, image->dimensions)
         TEST_ASSERT(image->isImageArray)
         TEST_ASSERT(!image->isImageBuffer)
         TEST_ASSERT(image->isSampled)
@@ -1849,9 +1868,9 @@ void TestInstructions::testLoadInstruction()
         TEST_ASSERT_EQUALS(COND_ZERO_SET, ins.getMulCondition())
         TEST_ASSERT_EQUALS(SetFlag::SET_FLAGS, ins.getSetFlag())
         TEST_ASSERT_EQUALS(WriteSwap::DONT_SWAP, ins.getWriteSwap())
-        TEST_ASSERT_EQUALS(17, ins.getAddOut())
-        TEST_ASSERT_EQUALS(34, ins.getMulOut())
-        TEST_ASSERT_EQUALS(42, ins.getImmediateInt())
+        TEST_ASSERT_EQUALS(17u, ins.getAddOut())
+        TEST_ASSERT_EQUALS(34u, ins.getMulOut())
+        TEST_ASSERT_EQUALS(42u, ins.getImmediateInt())
 
         TEST_ASSERT_EQUALS(Register(RegisterFile::PHYSICAL_A, 17), ins.getAddOutput())
         TEST_ASSERT_EQUALS(REG_ACC2, ins.getMulOutput())
@@ -1870,8 +1889,8 @@ void TestInstructions::testLoadInstruction()
         TEST_ASSERT_EQUALS(COND_ZERO_SET, ins.getMulCondition())
         TEST_ASSERT_EQUALS(SetFlag::SET_FLAGS, ins.getSetFlag())
         TEST_ASSERT_EQUALS(WriteSwap::DONT_SWAP, ins.getWriteSwap())
-        TEST_ASSERT_EQUALS(17, ins.getAddOut())
-        TEST_ASSERT_EQUALS(34, ins.getMulOut())
+        TEST_ASSERT_EQUALS(17u, ins.getAddOut())
+        TEST_ASSERT_EQUALS(34u, ins.getMulOut())
         TEST_ASSERT_EQUALS(0xFFu, ins.getImmediateInt())
         TEST_ASSERT_EQUALS(0, ins.getImmediateShort0())
         TEST_ASSERT_EQUALS(0xFF, ins.getImmediateShort1())
@@ -1893,11 +1912,11 @@ void TestInstructions::testLoadInstruction()
         TEST_ASSERT_EQUALS(COND_ZERO_SET, ins.getMulCondition())
         TEST_ASSERT_EQUALS(SetFlag::SET_FLAGS, ins.getSetFlag())
         TEST_ASSERT_EQUALS(WriteSwap::DONT_SWAP, ins.getWriteSwap())
-        TEST_ASSERT_EQUALS(17, ins.getAddOut())
-        TEST_ASSERT_EQUALS(34, ins.getMulOut())
-        TEST_ASSERT_EQUALS(0xFFFF, ins.getImmediateInt())
-        TEST_ASSERT_EQUALS(0, ins.getImmediateShort0())
-        TEST_ASSERT_EQUALS(0xFFFF, ins.getImmediateShort1())
+        TEST_ASSERT_EQUALS(17u, ins.getAddOut())
+        TEST_ASSERT_EQUALS(34u, ins.getMulOut())
+        TEST_ASSERT_EQUALS(0xFFFFu, ins.getImmediateInt())
+        TEST_ASSERT_EQUALS(0u, ins.getImmediateShort0())
+        TEST_ASSERT_EQUALS(0xFFFFu, ins.getImmediateShort1())
         TEST_ASSERT_EQUALS(0, ins.getImmediateSignedShort0())
         TEST_ASSERT_EQUALS(-1, ins.getImmediateSignedShort1())
 
@@ -2357,7 +2376,7 @@ void TestInstructions::testSpecialInstructionMembers()
         auto values = intermediate::LoadImmediate::toLoadedValues(12345, intermediate::LoadType::REPLICATE_INT32);
         TEST_ASSERT_EQUALS(Literal(12345), values.getAllSame());
         auto mask = intermediate::LoadImmediate::fromLoadedValues(values, intermediate::LoadType::REPLICATE_INT32);
-        TEST_ASSERT_EQUALS(12345, mask);
+        TEST_ASSERT_EQUALS(12345u, mask);
 
         values = intermediate::LoadImmediate::toLoadedValues(0xFFFF0000u, intermediate::LoadType::PER_ELEMENT_SIGNED);
         TEST_ASSERT_EQUALS(Literal(-2), values.getAllSame());

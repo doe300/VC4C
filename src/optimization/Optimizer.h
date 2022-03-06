@@ -60,12 +60,12 @@ namespace vc4c
              * The optimizations are only run in parallel for different methods, so any access to the method is
              * thread-safe
              */
-            using Pass = FunctionPointer<bool(const Module&, Method&, const Configuration&)>;
+            using Pass = FunctionPointer<std::size_t(const Module&, Method&, const Configuration&)>;
 
             OptimizationPass(const std::string& name, const std::string& parameterName, const Pass& pass,
                 const std::string& description, OptimizationType type);
 
-            bool operator()(const Module& module, Method& method, const Configuration& config) const;
+            std::size_t operator()(const Module& module, Method& method, const Configuration& config) const;
 
             inline operator bool() const noexcept
             {

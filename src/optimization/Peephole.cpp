@@ -242,6 +242,7 @@ void optimizations::removeObsoleteInstructions(
     PROFILE_COUNTER(
         vc4c::profiler::COUNTER_OPTIMIZATION, "PeepholeRemoveInstructions (before)", kernel.countInstructions());
     PROFILE_START(PeepholeRemoveInstructions);
+    std::size_t numChanges = 0;
 
     auto it = kernel.walkAllInstructions();
     auto lastInstruction = it;
@@ -279,6 +280,7 @@ void optimizations::removeObsoleteInstructions(
                     << lastInstruction->to_string() << "' and '" << nextIt->to_string() << "': " << it->to_string()
                     << logging::endl);
             it.erase();
+            ++numChanges;
             continue;
         }
         if(it->isSimpleMove() && it->checkOutputLocal() && it->getMoveSource()->checkLocal())
@@ -292,6 +294,7 @@ void optimizations::removeObsoleteInstructions(
                     log << "Removing simple move with input and output mapped to the same register: " << it->to_string()
                         << " (register " << reg->to_string() << ')' << logging::endl);
                 it.erase();
+                ++numChanges;
                 continue;
             }
         }
@@ -330,6 +333,7 @@ void optimizations::removeObsoleteInstructions(
                             << outIt->second.to_string() << ')' << logging::endl);
                     it.erase();
                     nextIt->replaceLocal(moveOut, moveIn, LocalUse::Type::READER);
+                    ++numChanges;
                     continue;
                 }
                 auto readerIt =
@@ -349,6 +353,7 @@ void optimizations::removeObsoleteInstructions(
                             << outIt->second.to_string() << ')' << logging::endl);
                     it.erase();
                     readerIt->replaceLocal(moveOut, moveIn, LocalUse::Type::READER);
+                    ++numChanges;
                     continue;
                 }
             }
@@ -377,12 +382,14 @@ void optimizations::removeObsoleteInstructions(
                     auto tmp = std::move(combined->splitUp().second);
                     tmp->copyExtrasFrom(*combined);
                     it.reset(std::move(tmp));
+                    ++numChanges;
                 }
                 else if(combined->getSecondOp() == simpleMoveOp)
                 {
                     auto tmp = std::move(combined->splitUp().first);
                     tmp->copyExtrasFrom(*combined);
                     it.reset(std::move(tmp));
+                    ++numChanges;
                 }
             }
         }
@@ -393,6 +400,9 @@ void optimizations::removeObsoleteInstructions(
     PROFILE_END(PeepholeRemoveInstructions);
     PROFILE_COUNTER_WITH_PREV(
         vc4c::profiler::COUNTER_OPTIMIZATION, "PeepholeRemoveInstructions (after)", kernel.countInstructions());
+    {
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION, "PeepholeRemoveInstructions (changes)", numChanges);
+    }
 }
 
 void optimizations::combineRegisterMappedOperations(const Module& module, Method& kernel, const Configuration& config,
@@ -406,6 +416,7 @@ void optimizations::combineRegisterMappedOperations(const Module& module, Method
     PROFILE_COUNTER(
         vc4c::profiler::COUNTER_OPTIMIZATION, "PeepholeCombineInstructions (before)", kernel.countInstructions());
     PROFILE_START(PeepholeCombineInstructions);
+    std::size_t numChanges = 0;
 
     for(auto& block : kernel)
     {
@@ -449,8 +460,8 @@ void optimizations::combineRegisterMappedOperations(const Module& module, Method
                     conditionsMet = false;
             }
 
-            if(conditionsMet)
-                combineOperationsInner(it, nextIt);
+            if(conditionsMet && combineOperationsInner(it, nextIt))
+                ++numChanges;
 
             it.nextInBlock();
             nextIt = lookAheadInBlock(it);
@@ -459,4 +470,7 @@ void optimizations::combineRegisterMappedOperations(const Module& module, Method
     PROFILE_END(PeepholeCombineInstructions);
     PROFILE_COUNTER_WITH_PREV(
         vc4c::profiler::COUNTER_OPTIMIZATION, "PeepholeCombineInstructions (after)", kernel.countInstructions());
+    {
+        PROFILE_COUNTER(vc4c::profiler::COUNTER_OPTIMIZATION, "PeepholeCombineInstructions (changes)", numChanges);
+    }
 }

@@ -312,7 +312,7 @@ static void selectInstructions(analysis::DependencyGraph& graph, BasicBlock& blo
     }
 }
 
-bool optimizations::reorderInstructions(const Module& module, Method& kernel, const Configuration& config)
+std::size_t optimizations::reorderInstructions(const Module& module, Method& kernel, const Configuration& config)
 {
     for(BasicBlock& bb : kernel)
     {
@@ -330,5 +330,5 @@ bool optimizations::reorderInstructions(const Module& module, Method& kernel, co
         PROFILE_END(CalculateCriticalPath);
         selectInstructions(*dependencies, bb, successiveMandatoryDelays, successiveDelays);
     }
-    return false;
+    return kernel.countInstructions();
 }

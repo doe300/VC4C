@@ -183,7 +183,7 @@ static std::vector<Entry> allKernels = {
     Entry{PASSED, FAST, "./testing/CLTune/multiple_kernels_tiled.opencl",
         "-DVECTOR=16 -DWPTX=256 -DWPTY=64 -DTBX=2 -DTBY=2 -DUNROLL_FACTOR -Dfloatvec=float16 -DTS=8"},
 
-    Entry{PENDING_LLVM | PENDING_SPIRV, FAST, "./testing/bullet/jointSolver.cl", ""},
+    Entry{PASSED, FAST, "./testing/bullet/jointSolver.cl", ""},
     Entry{PENDING_WORK_GROUP_SIZE, FAST, "./testing/bullet/solveContact.cl", ""},
     Entry{PENDING_WORK_GROUP_SIZE, FAST, "./testing/bullet/solveFriction.cl", ""},
 

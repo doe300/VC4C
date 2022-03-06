@@ -6,6 +6,8 @@
 #ifndef VC4C_OPTIMIZATION_VECTORIZER
 #define VC4C_OPTIMIZATION_VECTORIZER
 
+#include <cstdint>
+
 namespace vc4c
 {
     class Method;
@@ -20,7 +22,7 @@ namespace vc4c
          * NOTE: Currently only works with "standard" for-range loops and needs to be enabled explicitly in the
          * Configuration
          */
-        bool vectorizeLoops(const Module& module, Method& method, const Configuration& config);
+        std::size_t vectorizeLoops(const Module& module, Method& method, const Configuration& config);
 
         /**
          * Tries to find and improve vector folding.
@@ -39,7 +41,7 @@ namespace vc4c
          * #insertFoldVector())
          *
          */
-        bool compactVectorFolding(const Module& module, Method& method, const Configuration& config);
+        std::size_t compactVectorFolding(const Module& module, Method& method, const Configuration& config);
 
         /**
          * Tries to find element-wise (single elements or masks) copies from and to the same vectors and combines them.
@@ -54,7 +56,7 @@ namespace vc4c
          *   register - = loadui <1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0> (setf )
          *   %out = %in (ifzc)
          */
-        bool combineVectorElementCopies(const Module& module, Method& method, const Configuration& config);
+        std::size_t combineVectorElementCopies(const Module& module, Method& method, const Configuration& config);
 
     } // namespace optimizations
 

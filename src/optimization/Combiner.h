@@ -61,7 +61,7 @@ namespace vc4c
          *   [...]
          *   label %105
          */
-        bool simplifyBranches(const Module& module, Method& method, const Configuration& config);
+        std::size_t simplifyBranches(const Module& module, Method& method, const Configuration& config);
 
         /**
          * Additional data to influence the merge condition checking and relay intermediate information between the
@@ -121,7 +121,7 @@ namespace vc4c
          * NOTE: As of this point, the instruction-type CombinedInstruction can occur within a basic block!
          * Also, only moves and ALU instructions are combined at the moment
          */
-        bool combineOperations(const Module& module, Method& method, const Configuration& config);
+        std::size_t combineOperations(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Combines the loading of the same constant value (e.g. literal or constant register) within a small range in a
@@ -153,12 +153,12 @@ namespace vc4c
          *   ...
          *   %8 = and %5, %6
          */
-        bool combineLoadingConstants(const Module& module, Method& method, const Configuration& config);
+        std::size_t combineLoadingConstants(const Module& module, Method& method, const Configuration& config);
         /**
          * Same as above, but uses the given set of "white-listed" instructions instead of checking for a limited
          * usage-range
          */
-        bool combineLoadingConstants(Method& method, const Configuration& config,
+        std::size_t combineLoadingConstants(Method& method, const Configuration& config,
             const FastSet<const intermediate::IntermediateInstruction*>& applicableInstructions);
 
         /*
@@ -189,7 +189,7 @@ namespace vc4c
          *
          * NOTE: This optimization currently only works for constant rotation offsets.
          */
-        bool combineVectorRotations(const Module& module, Method& method, const Configuration& config);
+        std::size_t combineVectorRotations(const Module& module, Method& method, const Configuration& config);
 
         /*
          * Combines arithmetic operations if the result of the first operation is used as the second operation and the
