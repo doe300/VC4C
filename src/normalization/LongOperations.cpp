@@ -6,6 +6,8 @@
 
 #include "LongOperations.h"
 
+#include "../Module.h"
+#include "../SIMDVector.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/TypeConversions.h"
 #include "../intermediate/VectorHelper.h"
@@ -602,14 +604,25 @@ void normalization::lowerLongOperation(
                 assign(it, call->getOutput().value()) = (src->lower->createReference(), call->decoration);
                 it.erase();
             }
-            else if(auto srcLit = call->assertArgument(0).getConstantValue() & &Value::getLiteralValue)
+            else if(auto srcConstant = call->assertArgument(0).getConstantValue())
             {
-                if(srcLit->type == LiteralType::LONG_LEADING_ONES)
-                    // simply cut off leading ones
-                    srcLit->type = LiteralType::INTEGER;
-                assign(it, call->getOutput().value()) =
-                    (Value(*srcLit, TYPE_INT32.toVectorType(call->assertArgument(0).type.getVectorWidth())),
-                        call->decoration);
+                auto truncateLeadingOnes = [](Literal lit) {
+                    if(lit.type == LiteralType::LONG_LEADING_ONES)
+                        // simply cut off leading ones
+                        lit.type = LiteralType::INTEGER;
+                    return lit;
+                };
+                if(auto srcLit = srcConstant->getLiteralValue())
+                    srcConstant = Value(truncateLeadingOnes(*srcLit), srcConstant->type);
+                else if(auto srcVector = srcConstant->checkVector())
+                    srcConstant = module.storeVector(srcVector->transform(truncateLeadingOnes), srcConstant->type);
+                srcConstant->type = TYPE_INT32.toVectorType(srcConstant->type.getVectorWidth());
+                assign(it, call->getOutput().value()) = (*srcConstant, call->decoration);
+                it.erase();
+            }
+            else if(call->assertArgument(0).isUndefined())
+            {
+                assign(it, call->getOutput().value()) = (UNDEFINED_VALUE, call->decoration);
                 it.erase();
             }
         }

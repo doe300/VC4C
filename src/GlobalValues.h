@@ -34,6 +34,9 @@ namespace vc4c
         {
         }
 
+        bool operator==(const CompoundConstant& other) const;
+        bool operator!=(const CompoundConstant& other) const;
+
         /*
          * Determines whether all elements of this container have the same value
          */

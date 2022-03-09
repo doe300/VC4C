@@ -27,6 +27,8 @@ const std::string intrinsics::FUNCTION_NAME_GROUP_ID = "vc4cl_group_id";
 const std::string intrinsics::FUNCTION_NAME_GLOBAL_OFFSET = "vc4cl_global_offset";
 const std::string intrinsics::FUNCTION_NAME_GLOBAL_SIZE = "vc4cl_global_size";
 const std::string intrinsics::FUNCTION_NAME_GLOBAL_ID = "vc4cl_global_id";
+const std::string intrinsics::FUNCTION_NAME_LOCAL_LINEAR_ID = "vc4cl_local_linear_id";
+const std::string intrinsics::FUNCTION_NAME_GLOBAL_LINEAR_ID = "vc4cl_global_linear_id";
 
 static InstructionDecorations getDimension(uint32_t dimension) noexcept
 {
@@ -203,6 +205,144 @@ static NODISCARD InstructionWalker intrinsifyReadLocalID(Method& method, Instruc
         add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT));
 }
 
+static NODISCARD InstructionWalker intrinsifyReadLocalLinearID(Method& method, InstructionWalker it,
+    Value* outLocalSizeX = nullptr, Value* outLocalSizeY = nullptr, Value* outLocalSizeZ = nullptr)
+{
+    if(method.metaData.getFixedWorkGroupSize() == 1u)
+    {
+        // if all the work-group sizes are 1, the ID is always 0 for all dimensions
+        if(outLocalSizeX)
+            *outLocalSizeX = 1_val;
+        if(outLocalSizeY)
+            *outLocalSizeY = 1_val;
+        if(outLocalSizeZ)
+            *outLocalSizeZ = 1_val;
+
+        it.reset(std::make_unique<MoveOperation>(it->getOutput().value(), INT_ZERO))
+            .addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT))
+            .addDecorations(intermediate::InstructionDecorations::DIMENSION_SCALAR);
+        return it;
+    }
+    // TODO can be optimized if we know the number of dimensions, i.e. can omit higher dimensions
+
+    // calculate the scalar local ID and size
+    auto localIdX = method.addNewLocal(TYPE_INT8, "%local_id_x");
+    it.emplace(std::make_unique<MethodCall>(
+        Value(localIdX), std::string(intrinsics::FUNCTION_NAME_LOCAL_ID), std::vector<Value>{0_val}));
+    it = intrinsifyReadLocalID(method, it, 0_val);
+    it.nextInBlock();
+    auto localIdY = method.addNewLocal(TYPE_INT8, "%local_id_y");
+    it.emplace(std::make_unique<MethodCall>(
+        Value(localIdY), std::string(intrinsics::FUNCTION_NAME_LOCAL_ID), std::vector<Value>{1_val}));
+    it = intrinsifyReadLocalID(method, it, 1_val);
+    it.nextInBlock();
+    auto localIdZ = method.addNewLocal(TYPE_INT8, "%local_id_z");
+    it.emplace(std::make_unique<MethodCall>(
+        Value(localIdZ), std::string(intrinsics::FUNCTION_NAME_LOCAL_ID), std::vector<Value>{2_val}));
+    it = intrinsifyReadLocalID(method, it, 2_val);
+    it.nextInBlock();
+    auto localSizeX = method.addNewLocal(TYPE_INT8, "%local_size_x");
+    it.emplace(std::make_unique<MethodCall>(
+        Value(localSizeX), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), std::vector<Value>{0_val}));
+    it = intrinsifyReadLocalSize(method, it, 0_val);
+    it.nextInBlock();
+    if(outLocalSizeX)
+        *outLocalSizeX = localSizeX;
+    auto localSizeY = method.addNewLocal(TYPE_INT8, "%local_size_y");
+    it.emplace(std::make_unique<MethodCall>(
+        Value(localSizeY), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), std::vector<Value>{1_val}));
+    it = intrinsifyReadLocalSize(method, it, 1_val);
+    it.nextInBlock();
+    if(outLocalSizeY)
+        *outLocalSizeY = localSizeY;
+    if(outLocalSizeZ)
+    {
+        *outLocalSizeZ = method.addNewLocal(TYPE_INT8, "%local_size_z");
+        it.emplace(std::make_unique<MethodCall>(
+            Value(*outLocalSizeZ), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), std::vector<Value>{2_val}));
+        it = intrinsifyReadLocalSize(method, it, 2_val);
+        it.nextInBlock();
+    }
+
+    // local_id_scalar = local_id_z * local_size_y * local_size_x + local_id_y * local_size_x + local_id_x
+    // => (local_id_z * local_size_y + local_id_y) * local_size_x + local_id_x
+    auto tmp = assign(it, TYPE_INT8, "%local_id_scalar") = mul24(localIdZ, localSizeY);
+    tmp = assign(it, TYPE_INT8, "%local_id_scalar") = tmp + localIdY;
+    tmp = assign(it, TYPE_INT8, "%local_id_scalar") = mul24(tmp, localSizeX);
+    it.reset(std::make_unique<Operation>(OP_ADD, it->getOutput().value(), tmp, localIdX))
+        .addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT,
+            InstructionDecorations::DIMENSION_SCALAR));
+    return it;
+}
+
+static NODISCARD InstructionWalker intrinsifyReadGlobalID(
+    Method& method, InstructionWalker it, const Value& arg, bool includeOffset = true)
+{
+    const Value tmpGroupID = method.addNewLocal(TYPE_INT32, "%group_id");
+    const Value tmpLocalSize = method.addNewLocal(TYPE_INT8, "%local_size");
+    const Value tmpGlobalOffset = method.addNewLocal(TYPE_INT32, "%global_offset");
+    const Value tmpLocalID = method.addNewLocal(TYPE_INT8, "%local_id");
+
+    // emplace dummy instructions to be replaced
+    it.emplace(std::make_unique<MoveOperation>(tmpGroupID, NOP_REGISTER));
+    it = intrinsifyReadWorkGroupInfo(method, it, arg,
+        {BuiltinLocal::Type::GROUP_ID_X, BuiltinLocal::Type::GROUP_ID_Y, BuiltinLocal::Type::GROUP_ID_Z}, INT_ZERO,
+        add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT,
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
+    it.nextInBlock();
+    it.emplace(std::make_unique<MoveOperation>(tmpLocalSize, NOP_REGISTER));
+    it = intrinsifyReadLocalSize(method, it, arg);
+    it.nextInBlock();
+    if(includeOffset)
+    {
+        it.emplace(std::make_unique<MoveOperation>(tmpGlobalOffset, NOP_REGISTER));
+        it = intrinsifyReadWorkGroupInfo(method, it, arg,
+            {BuiltinLocal::Type::GLOBAL_OFFSET_X, BuiltinLocal::Type::GLOBAL_OFFSET_Y,
+                BuiltinLocal::Type::GLOBAL_OFFSET_Z},
+            INT_ZERO,
+            add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT,
+                InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
+        it.nextInBlock();
+    }
+    it.emplace(std::make_unique<MoveOperation>(tmpLocalID, NOP_REGISTER));
+    it = intrinsifyReadLocalID(method, it, arg);
+    it.nextInBlock();
+    auto tmp = assign(it, TYPE_INT32, "%group_global_id") =
+        (mul24(tmpGroupID, tmpLocalSize), InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+    if(includeOffset)
+        tmp = assign(it, TYPE_INT32, "%group_global_id") =
+            (tmpGlobalOffset + tmp, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+
+    it.reset(createWithExtras<Operation>(*it.get(), OP_ADD, it->getOutput().value(), tmp, tmpLocalID))
+        .addDecorations(add_flag(
+            it->decoration, InstructionDecorations::BUILTIN_GLOBAL_ID, InstructionDecorations::UNSIGNED_RESULT))
+        .addDecorations(getDimension(arg));
+    return it;
+}
+
+static NODISCARD InstructionWalker intrinsifyReadGlobalSize(Method& method, InstructionWalker it, const Value& arg)
+{
+    const Value tmpLocalSize = method.addNewLocal(TYPE_INT8, "%local_size");
+    const Value tmpNumGroups = method.addNewLocal(TYPE_INT32, "%num_groups");
+    auto dimension = getDimension(arg);
+    // emplace dummy instructions to be replaced
+    it.emplace(std::make_unique<MoveOperation>(tmpLocalSize, NOP_REGISTER));
+    it = intrinsifyReadLocalSize(method, it, arg);
+    it.nextInBlock();
+    it.emplace(std::make_unique<MoveOperation>(tmpNumGroups, NOP_REGISTER));
+    it = intrinsifyReadWorkGroupInfo(method, it, arg,
+        {BuiltinLocal::Type::NUM_GROUPS_X, BuiltinLocal::Type::NUM_GROUPS_Y, BuiltinLocal::Type::NUM_GROUPS_Z}, INT_ONE,
+        add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT,
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
+    it.nextInBlock();
+    it.reset(createWithExtras<Operation>(*it.get(), OP_MUL24, it->getOutput().value(), tmpLocalSize, tmpNumGroups))
+        .addDecorations(add_flag(it->decoration,
+            add_flag(InstructionDecorations::BUILTIN_GLOBAL_SIZE, InstructionDecorations::UNSIGNED_RESULT,
+                InstructionDecorations::WORK_GROUP_UNIFORM_VALUE)))
+        .addDecorations(dimension);
+    return it;
+}
+
 bool intrinsics::intrinsifyWorkItemFunction(Method& method, TypedInstructionWalker<intermediate::MethodCall> inIt)
 {
     const auto& callSite = *inIt.get();
@@ -284,27 +424,7 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, TypedInstructionWalk
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying reading of global work-item sizes into: " << callSite.getOutput().to_string()
                 << logging::endl);
-
-        const Value tmpLocalSize = method.addNewLocal(TYPE_INT8, "%local_size");
-        const Value tmpNumGroups = method.addNewLocal(TYPE_INT32, "%num_groups");
-        auto dimension = getDimension(callSite.assertArgument(0));
-        // emplace dummy instructions to be replaced
-        it.emplace(std::make_unique<MoveOperation>(tmpLocalSize, NOP_REGISTER));
-        it = intrinsifyReadLocalSize(method, it, callSite.assertArgument(0));
-        it.nextInBlock();
-        it.emplace(std::make_unique<MoveOperation>(tmpNumGroups, NOP_REGISTER));
-        it = intrinsifyReadWorkGroupInfo(method, it, callSite.assertArgument(0),
-            {BuiltinLocal::Type::NUM_GROUPS_X, BuiltinLocal::Type::NUM_GROUPS_Y, BuiltinLocal::Type::NUM_GROUPS_Z},
-            INT_ONE,
-            add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT,
-                InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
-        it.nextInBlock();
-        it.reset(
-              createWithExtras<Operation>(callSite, OP_MUL24, callSite.getOutput().value(), tmpLocalSize, tmpNumGroups))
-            .addDecorations(add_flag(decoration,
-                add_flag(InstructionDecorations::BUILTIN_GLOBAL_SIZE, InstructionDecorations::UNSIGNED_RESULT,
-                    InstructionDecorations::WORK_GROUP_UNIFORM_VALUE)))
-            .addDecorations(dimension);
+        it = intrinsifyReadGlobalSize(method, it, callSite.assertArgument(0));
         return true;
     }
     if(callSite.methodName == FUNCTION_NAME_GLOBAL_ID && callSite.getArguments().size() == 1)
@@ -313,41 +433,64 @@ bool intrinsics::intrinsifyWorkItemFunction(Method& method, TypedInstructionWalk
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Intrinsifying reading of global work-item ids into: " << callSite.getOutput().to_string()
                 << logging::endl);
+        it = intrinsifyReadGlobalID(method, it, callSite.assertArgument(0));
+        return true;
+    }
+    if(callSite.methodName == FUNCTION_NAME_LOCAL_LINEAR_ID && callSite.getArguments().empty())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying reading of local linear work-item ids into: " << callSite.getOutput().to_string()
+                << logging::endl);
+        it = intrinsifyReadLocalLinearID(method, it);
+        return true;
+    }
+    if(callSite.methodName == FUNCTION_NAME_GLOBAL_LINEAR_ID && callSite.getArguments().empty())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Intrinsifying reading of global linear work-item ids into: " << callSite.getOutput().to_string()
+                << logging::endl);
 
-        const Value tmpGroupID = method.addNewLocal(TYPE_INT32, "%group_id");
-        const Value tmpLocalSize = method.addNewLocal(TYPE_INT8, "%local_size");
-        const Value tmpGlobalOffset = method.addNewLocal(TYPE_INT32, "%global_offset");
-        const Value tmpLocalID = method.addNewLocal(TYPE_INT8, "%local_id");
-        const Value tmpRes0 = method.addNewLocal(TYPE_INT32, "%group_global_id");
-        const Value tmpRes1 = method.addNewLocal(TYPE_INT32, "%group_global_id");
-        auto dimension = getDimension(callSite.assertArgument(0));
-        // emplace dummy instructions to be replaced
-        it.emplace(std::make_unique<MoveOperation>(tmpGroupID, NOP_REGISTER));
-        it = intrinsifyReadWorkGroupInfo(method, it, callSite.assertArgument(0),
-            {BuiltinLocal::Type::GROUP_ID_X, BuiltinLocal::Type::GROUP_ID_Y, BuiltinLocal::Type::GROUP_ID_Z}, INT_ZERO,
-            add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT,
-                InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
+        // TODO can be optimized if we know the number of dimensions, i.e. can omit higher dimensions
+        auto globalIdScalarZ = method.addNewLocal(TYPE_INT8, "%global_id_scalar");
+        it.emplace(std::make_unique<MethodCall>(
+            Value(globalIdScalarZ), std::string(intrinsics::FUNCTION_NAME_GLOBAL_ID), std::vector<Value>{2_val}));
+        it = intrinsifyReadGlobalID(method, it, 2_val, false);
         it.nextInBlock();
-        it.emplace(std::make_unique<MoveOperation>(tmpLocalSize, NOP_REGISTER));
-        it = intrinsifyReadLocalSize(method, it, callSite.assertArgument(0));
+        auto globalIdScalarY = method.addNewLocal(TYPE_INT8, "%global_id_scalar");
+        it.emplace(std::make_unique<MethodCall>(
+            Value(globalIdScalarY), std::string(intrinsics::FUNCTION_NAME_GLOBAL_ID), std::vector<Value>{1_val}));
+        it = intrinsifyReadGlobalID(method, it, 1_val, false);
         it.nextInBlock();
-        it.emplace(std::make_unique<MoveOperation>(tmpGlobalOffset, NOP_REGISTER));
-        it = intrinsifyReadWorkGroupInfo(method, it, callSite.assertArgument(0),
-            {BuiltinLocal::Type::GLOBAL_OFFSET_X, BuiltinLocal::Type::GLOBAL_OFFSET_Y,
-                BuiltinLocal::Type::GLOBAL_OFFSET_Z},
-            INT_ZERO,
-            add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT,
-                InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
+        auto globalIdScalarX = method.addNewLocal(TYPE_INT8, "%global_id_scalar");
+        it.emplace(std::make_unique<MethodCall>(
+            Value(globalIdScalarX), std::string(intrinsics::FUNCTION_NAME_GLOBAL_ID), std::vector<Value>{0_val}));
+        it = intrinsifyReadGlobalID(method, it, 0_val, false);
         it.nextInBlock();
-        it.emplace(std::make_unique<MoveOperation>(tmpLocalID, NOP_REGISTER));
-        it = intrinsifyReadLocalID(method, it, callSite.assertArgument(0));
+        auto globalSizeY = method.addNewLocal(TYPE_INT8, "%global_size_y");
+        it.emplace(std::make_unique<MethodCall>(
+            Value(globalSizeY), std::string(intrinsics::FUNCTION_NAME_GLOBAL_ID), std::vector<Value>{1_val}));
+        it = intrinsifyReadGlobalSize(method, it, 1_val);
         it.nextInBlock();
-        assign(it, tmpRes0) = (mul24(tmpGroupID, tmpLocalSize), InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
-        assign(it, tmpRes1) = (tmpGlobalOffset + tmpRes0, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
-        it.reset(createWithExtras<Operation>(callSite, OP_ADD, callSite.getOutput().value(), tmpRes1, tmpLocalID))
-            .addDecorations(add_flag(
-                decoration, InstructionDecorations::BUILTIN_GLOBAL_ID, InstructionDecorations::UNSIGNED_RESULT))
-            .addDecorations(dimension);
+        auto globalSizeX = method.addNewLocal(TYPE_INT8, "%global_size_x");
+        it.emplace(std::make_unique<MethodCall>(
+            Value(globalSizeX), std::string(intrinsics::FUNCTION_NAME_GLOBAL_ID), std::vector<Value>{0_val}));
+        it = intrinsifyReadGlobalSize(method, it, 0_val);
+        it.nextInBlock();
+
+        // global_linear_id = ((global_id(2) - global_offset(2)) * global_size(1) * global_size(0)) +
+        //                    ((global_id(1) - global_offset(1)) * global_size(0)) + (global_id(0) - global_offset(0))
+        //                  = ((global_id(2) - global_offset(2)) * global_size(1) + (global_id(1) - global_offset(1)) *
+        //                    global_size(0)) + (global_id(0) - global_offset(0))
+        //                  = (global_id_no_offset_z * global_size_y + global_id_no_offset_y) * global_size_x +
+        //                    global_id_no_offset_x
+        // XXX Is mul24 enough? Is more than 2^23 work-items realistic on VC4?
+        auto tmp = assign(it, TYPE_INT32, "%global_id_scalar") = mul24(globalIdScalarZ, globalSizeY);
+        tmp = assign(it, TYPE_INT32, "%global_id_scalar") = tmp + globalIdScalarY;
+        tmp = assign(it, TYPE_INT32, "%global_id_scalar") = mul24(tmp, globalSizeX);
+        it.reset(createWithExtras<Operation>(callSite, OP_ADD, callSite.getOutput().value(), tmp, globalIdScalarX))
+            .addDecorations(add_flag(decoration,
+                add_flag(InstructionDecorations::BUILTIN_GLOBAL_ID, InstructionDecorations::UNSIGNED_RESULT),
+                InstructionDecorations::DIMENSION_SCALAR));
         return true;
     }
     return false;
@@ -509,53 +652,23 @@ static void lowerBarrier(Method& method, InstructionWalker it,
     }
 
     // calculate the scalar local ID and size
-    auto localIdX = method.addNewLocal(TYPE_INT8, "%local_id_x");
-    it.emplace(std::make_unique<MethodCall>(
-        Value(localIdX), std::string(intrinsics::FUNCTION_NAME_LOCAL_ID), std::vector<Value>{0_val}));
-    it = intrinsifyReadLocalID(method, it, 0_val);
-    it.nextInBlock();
-    auto localIdY = method.addNewLocal(TYPE_INT8, "%local_id_y");
-    it.emplace(std::make_unique<MethodCall>(
-        Value(localIdY), std::string(intrinsics::FUNCTION_NAME_LOCAL_ID), std::vector<Value>{1_val}));
-    it = intrinsifyReadLocalID(method, it, 1_val);
-    it.nextInBlock();
-    auto localIdZ = method.addNewLocal(TYPE_INT8, "%local_id_z");
-    it.emplace(std::make_unique<MethodCall>(
-        Value(localIdZ), std::string(intrinsics::FUNCTION_NAME_LOCAL_ID), std::vector<Value>{2_val}));
-    it = intrinsifyReadLocalID(method, it, 2_val);
-    it.nextInBlock();
-    auto localSizeX = method.addNewLocal(TYPE_INT8, "%local_size_x");
-    it.emplace(std::make_unique<MethodCall>(
-        Value(localSizeX), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), std::vector<Value>{0_val}));
-    it = intrinsifyReadLocalSize(method, it, 0_val);
-    it.nextInBlock();
-    auto localSizeY = method.addNewLocal(TYPE_INT8, "%local_size_y");
-    it.emplace(std::make_unique<MethodCall>(
-        Value(localSizeY), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), std::vector<Value>{1_val}));
-    it = intrinsifyReadLocalSize(method, it, 1_val);
-    it.nextInBlock();
-    auto localSizeZ = method.addNewLocal(TYPE_INT8, "%local_size_z");
-    it.emplace(std::make_unique<MethodCall>(
-        Value(localSizeZ), std::string(intrinsics::FUNCTION_NAME_LOCAL_SIZE), std::vector<Value>{2_val}));
-    it = intrinsifyReadLocalSize(method, it, 2_val);
-    it.nextInBlock();
+    Value localSizeX = UNDEFINED_VALUE;
+    Value localSizeY = UNDEFINED_VALUE;
+    Value localSizeZ = UNDEFINED_VALUE;
 
-    // local_id_scalar = local_id_z * local_size_y * local_size_x + local_id_y * local_size_x + local_id_x
-    // => (local_id_z * local_size_y + local_id_y) * local_size_x + local_id_x
-    auto tmp = assign(it, TYPE_INT8, "%local_id_scalar") = mul24(localIdZ, localSizeY);
-    tmp = assign(it, TYPE_INT8, "%local_id_scalar") = tmp + localIdY;
-    tmp = assign(it, TYPE_INT8, "%local_id_scalar") = mul24(tmp, localSizeX);
-    auto localIdScalar = assign(it, TYPE_INT8, "%local_id_scalar") =
-        (tmp + localIdX, InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::BUILTIN_LOCAL_ID,
-            InstructionDecorations::DIMENSION_SCALAR);
+    auto localIdScalar = method.addNewLocal(TYPE_INT8, "%local_id_scalar");
+    it.emplace(std::make_unique<MethodCall>(
+        Value(localIdScalar), std::string(intrinsics::FUNCTION_NAME_LOCAL_LINEAR_ID), std::vector<Value>{}));
+    it = intrinsifyReadLocalLinearID(method, it, &localSizeX, &localSizeY, &localSizeZ);
+    it.nextInBlock();
 
     if(!localSizeScalar)
     {
         // local_size_scalar = local_size_z * local_size_y * local_size_x
-        tmp = assign(it, TYPE_INT8, "%local_size_scalar") = mul24(localSizeZ, localSizeY);
-        localSizeScalar = assign(it, TYPE_INT8, "%local_size_scalar") =
-            (mul24(tmp, localSizeX), InstructionDecorations::UNSIGNED_RESULT,
-                InstructionDecorations::BUILTIN_LOCAL_SIZE, InstructionDecorations::DIMENSION_SCALAR);
+        auto tmp = assign(it, TYPE_INT8, "%local_size_scalar") = mul24(localSizeZ, localSizeY);
+        localSizeScalar = assign(it, TYPE_INT8, "%local_size_scalar") = (mul24(tmp, localSizeX),
+            InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::BUILTIN_LOCAL_SIZE,
+            InstructionDecorations::DIMENSION_SCALAR, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
     }
 
     auto branchIt = it.copy().previousInBlock();
@@ -610,7 +723,7 @@ static void lowerBarrier(Method& method, InstructionWalker it,
     branchIt.emplace(std::make_unique<Branch>(otherLabel, cond.invert()));
 
     branchIt = otherBlock->walkEnd();
-    tmp = assign(branchIt, TYPE_INT8) = (*localSizeScalar ^ 1_val);
+    auto tmp = assign(branchIt, TYPE_INT8) = (*localSizeScalar ^ 1_val);
     std::tie(branchIt, cond) = insertBranchCondition(method, branchIt, tmp /* local size != 1 */);
     branchIt.emplace(std::make_unique<Branch>(primaryLabel, cond));
     branchIt.nextInBlock();

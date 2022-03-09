@@ -2692,7 +2692,7 @@ static Memory fillMemory(const StableList<Global>& globalData, const EmulationDa
         {
             for(const auto& word : *compound)
             {
-                *mem.getWordAddress(currentAddress) = word.getScalar()->unsignedInt();
+                *mem.getWordAddress(currentAddress) = word.getScalar().value().unsignedInt();
                 currentAddress += TYPE_INT32.getScalarBitCount() / 8;
             }
         }

@@ -10,6 +10,7 @@
 #include "../Method.h"
 #include "../intermediate/IntermediateInstruction.h"
 #include "../intermediate/VectorHelper.h"
+#include "../intrinsics/WorkItems.h"
 #include "log.h"
 
 #include "spirv/unified1/spirv.hpp11"
@@ -19,28 +20,34 @@ using namespace vc4c::spirv;
 
 // get_work_dim - scalar integer
 static const SPIRVBuiltin BUILTIN_WORK_DIMENSIONS{
-    TYPE_INT8, "%builtin_work_dimensions", std::make_pair("vc4cl_work_dimensions", false)};
+    TYPE_INT8, "%builtin_work_dimensions", std::make_pair(intrinsics::FUNCTION_NAME_NUM_DIMENSIONS, false)};
 // get_global_size - int3 vector
 static const SPIRVBuiltin BUILTIN_GLOBAL_SIZE{
-    TYPE_INT32.toVectorType(3), "%builtin_global_size", std::make_pair("vc4cl_global_size", true)};
+    TYPE_INT32.toVectorType(3), "%builtin_global_size", std::make_pair(intrinsics::FUNCTION_NAME_GLOBAL_SIZE, true)};
 // get_global_id - int3 vector
 static const SPIRVBuiltin BUILTIN_GLOBAL_ID{
-    TYPE_INT32.toVectorType(3), "%builtin_global_id", std::make_pair("vc4cl_global_id", true)};
+    TYPE_INT32.toVectorType(3), "%builtin_global_id", std::make_pair(intrinsics::FUNCTION_NAME_GLOBAL_ID, true)};
 // get_local_size - int3 vector
 static const SPIRVBuiltin BUILTIN_LOCAL_SIZE{
-    TYPE_INT8.toVectorType(3), "%builtin_local_size", std::make_pair("vc4cl_local_size", true)};
+    TYPE_INT8.toVectorType(3), "%builtin_local_size", std::make_pair(intrinsics::FUNCTION_NAME_LOCAL_SIZE, true)};
 // get_local_id - int3 vector
 static const SPIRVBuiltin BUILTIN_LOCAL_ID{
-    TYPE_INT8.toVectorType(3), "%builtin_local_id", std::make_pair("vc4cl_local_id", true)};
+    TYPE_INT8.toVectorType(3), "%builtin_local_id", std::make_pair(intrinsics::FUNCTION_NAME_LOCAL_ID, true)};
 // get_num_groups - int3 vector
 static const SPIRVBuiltin BUILTIN_NUM_GROUPS{
-    TYPE_INT32.toVectorType(3), "%builtin_num_groups", std::make_pair("vc4cl_num_groups", true)};
+    TYPE_INT32.toVectorType(3), "%builtin_num_groups", std::make_pair(intrinsics::FUNCTION_NAME_NUM_GROUPS, true)};
 // get_group_id - int3 vector
 static const SPIRVBuiltin BUILTIN_GROUP_ID{
-    TYPE_INT32.toVectorType(3), "%builtin_group_id", std::make_pair("vc4cl_group_id", true)};
+    TYPE_INT32.toVectorType(3), "%builtin_group_id", std::make_pair(intrinsics::FUNCTION_NAME_GROUP_ID, true)};
 // get_global_offset - int3 vector
-static const SPIRVBuiltin BUILTIN_GLOBAL_OFFSET{
-    TYPE_INT32.toVectorType(3), "%builtin_global_offset", std::make_pair("vc4cl_global_offset", true)};
+static const SPIRVBuiltin BUILTIN_GLOBAL_OFFSET{TYPE_INT32.toVectorType(3), "%builtin_global_offset",
+    std::make_pair(intrinsics::FUNCTION_NAME_GLOBAL_OFFSET, true)};
+// get_local_linear_id - scalar size_t
+static const SPIRVBuiltin BUILTIN_LOCAL_LINEAR_ID{
+    TYPE_INT32, "%builtin_local_linear_id", std::make_pair(intrinsics::FUNCTION_NAME_LOCAL_LINEAR_ID, false)};
+// get_global_linear_id - scalar size_t
+static const SPIRVBuiltin BUILTIN_GLOBAL_LINEAR_ID{
+    TYPE_INT32, "%builtin_global_linear_id", std::make_pair(intrinsics::FUNCTION_NAME_GLOBAL_LINEAR_ID, false)};
 
 std::string spirv::BUILTIN_INTRINSIC{"load_builtin"};
 
@@ -64,6 +71,10 @@ const SPIRVBuiltin* spirv::mapToBuiltinLocal(spv::BuiltIn builtin)
         return &BUILTIN_GROUP_ID;
     case spv::BuiltIn::GlobalOffset:
         return &BUILTIN_GLOBAL_OFFSET;
+    case spv::BuiltIn::LocalInvocationIndex:
+        return &BUILTIN_LOCAL_LINEAR_ID;
+    case spv::BuiltIn::GlobalLinearId:
+        return &BUILTIN_GLOBAL_LINEAR_ID;
     default:
         return nullptr;
     }

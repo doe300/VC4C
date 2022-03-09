@@ -55,6 +55,29 @@ static DataType getType(const uint32_t id, const TypeMapping& types, const Const
     return types.at(localTypes.at(id));
 }
 
+static Value getValue(const CompoundConstant& constant, Method& method)
+{
+    if(auto val = constant.toValue())
+        return *val;
+
+    if(constant.isUndefined())
+        return Value(constant.type);
+
+    if(auto compound = constant.getCompound())
+    {
+        std::vector<Value> elements;
+        elements.reserve(compound->size());
+        for(const auto& element : *compound)
+            elements.emplace_back(getValue(element, method));
+
+        auto dest = method.addNewLocal(constant.type, "%constant");
+        ignoreReturnValue(intermediate::insertAssembleVector(method.appendToEnd(), method, dest, elements));
+        return dest;
+    }
+
+    throw CompilationError(CompilationStep::LLVM_2_IR, "Unhandled constant to convert to Value", constant.to_string());
+}
+
 static Value getValue(const uint32_t id, Method& method, const TypeMapping& types, const ConstantMapping& constants,
     const LocalTypeMapping& localTypes, LocalMapping& localMapping)
 {
@@ -62,7 +85,7 @@ static Value getValue(const uint32_t id, Method& method, const TypeMapping& type
         return UNDEFINED_VALUE;
     auto cit = constants.find(id);
     if(cit != constants.end())
-        return cit->second.toValue().value_or(Value(cit->second.type));
+        return getValue(cit->second, method);
     auto it = localMapping.find(id);
     if(it != localMapping.end())
         return it->second->createReference();
@@ -1271,11 +1294,11 @@ Optional<Value> SPIRVSelect::precalculate(
     auto it = constants.find(condID);
     if(it != constants.end())
     {
-        if(it->second.getScalar()->isTrue() && constants.find(trueID) != constants.end())
+        if(it->second.getScalar().value().isTrue() && constants.find(trueID) != constants.end())
         {
             return constants.at(trueID).toValue();
         }
-        if(!it->second.getScalar()->isTrue() && constants.find(falseID) != constants.end())
+        if(!it->second.getScalar().value().isTrue() && constants.find(falseID) != constants.end())
         {
             return constants.at(falseID).toValue();
         }

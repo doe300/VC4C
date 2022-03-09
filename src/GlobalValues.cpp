@@ -13,6 +13,16 @@
 
 using namespace vc4c;
 
+bool CompoundConstant::operator==(const CompoundConstant& other) const
+{
+    return elements == other.elements;
+}
+
+bool CompoundConstant::operator!=(const CompoundConstant& other) const
+{
+    return elements != other.elements;
+}
+
 bool CompoundConstant::isAllSame() const
 {
     if(getScalar())
@@ -22,11 +32,15 @@ bool CompoundConstant::isAllSame() const
     {
         if(entries->size() < 2)
             return true;
-        auto firstEntry = (*entries)[0].getScalar();
-        return firstEntry && std::all_of(entries->begin(), entries->end(), [&](const CompoundConstant& entry) -> bool {
-            // if items are UNDEFINED, ignore them, since maybe the remaining items all have the same value
-            return entry.isUndefined() || entry.getScalar() == *firstEntry;
-        });
+        if(auto firstEntry = (*entries)[0].getScalar())
+        {
+            return std::all_of(entries->begin(), entries->end(), [&](const CompoundConstant& entry) -> bool {
+                // if items are UNDEFINED, ignore them, since maybe the remaining items all have the same value
+                return entry.isUndefined() || entry.getScalar() == *firstEntry;
+            });
+        }
+        return std::all_of(entries->begin(), entries->end(),
+            [&](const CompoundConstant& entry) -> bool { return entry == entries->front(); });
     }
     // undefined
     return true;

@@ -271,6 +271,8 @@ ParseResultCode SPIRVParserBase::parseDecoration(const ParsedInstruction& parsed
         case spv::BuiltIn::NumWorkgroups:
         case spv::BuiltIn::WorkgroupId:
         case spv::BuiltIn::GlobalOffset:
+        case spv::BuiltIn::LocalInvocationIndex:
+        case spv::BuiltIn::GlobalLinearId:
             decorationMappings[target].emplace_back(spv::Decoration::BuiltIn, value);
             return ParseResultCode::SUCCESS;
         default:
@@ -539,16 +541,16 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         if(executionMode == spv::ExecutionMode::LocalSizeId)
             //"Indicates the work-group size in the x, y, and z dimensions"
             metadataMappings[parsed_instruction.getWord(1)][MetaDataType::WORK_GROUP_SIZES] = {
-                constantMappings.at(parsed_instruction.getWord(3)).getScalar()->unsignedInt(),
-                constantMappings.at(parsed_instruction.getWord(4)).getScalar()->unsignedInt(),
-                constantMappings.at(parsed_instruction.getWord(5)).getScalar()->unsignedInt()};
+                constantMappings.at(parsed_instruction.getWord(3)).getScalar().value().unsignedInt(),
+                constantMappings.at(parsed_instruction.getWord(4)).getScalar().value().unsignedInt(),
+                constantMappings.at(parsed_instruction.getWord(5)).getScalar().value().unsignedInt()};
         else if(executionMode == spv::ExecutionMode::LocalSizeHintId)
             //"A hint to the compiler, which indicates the most likely to be used work-group size in the x, y, and z
             // dimensions"
             metadataMappings[parsed_instruction.getWord(1)][MetaDataType::WORK_GROUP_SIZES_HINT] = {
-                constantMappings.at(parsed_instruction.getWord(3)).getScalar()->unsignedInt(),
-                constantMappings.at(parsed_instruction.getWord(4)).getScalar()->unsignedInt(),
-                constantMappings.at(parsed_instruction.getWord(5)).getScalar()->unsignedInt()};
+                constantMappings.at(parsed_instruction.getWord(3)).getScalar().value().unsignedInt(),
+                constantMappings.at(parsed_instruction.getWord(4)).getScalar().value().unsignedInt(),
+                constantMappings.at(parsed_instruction.getWord(5)).getScalar().value().unsignedInt()};
         else
             throw CompilationError(CompilationStep::PARSER, "Invalid execution mode");
         return ParseResultCode::SUCCESS;
@@ -624,8 +626,8 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
     {
         DataType elementType = typeMappings.at(parsed_instruction.getWord(2));
         typeMappings.emplace(parsed_instruction.getWord(1),
-            module->createArrayType(elementType,
-                static_cast<unsigned>(constantMappings.at(parsed_instruction.getWord(3)).getScalar()->unsignedInt())));
+            module->createArrayType(
+                elementType, constantMappings.at(parsed_instruction.getWord(3)).getScalar().value().unsignedInt()));
         return ParseResultCode::SUCCESS;
     }
     case spv::Op::OpTypeStruct:
@@ -980,7 +982,7 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         // In this version, the decoration operands are not literals, but specified by their IDs
         return parseDecoration(parsed_instruction,
             parsed_instruction.getNumWords() > 3 ?
-                constantMappings.at(parsed_instruction.getWord(3)).getScalar()->unsignedInt() :
+                constantMappings.at(parsed_instruction.getWord(3)).getScalar().value().unsignedInt() :
                 UNDEFINED_SCALAR);
     case spv::Op::OpMemberDecorate:
         return UNSUPPORTED_INSTRUCTION("OpMemberDecorate");

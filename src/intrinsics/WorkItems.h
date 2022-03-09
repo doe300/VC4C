@@ -24,6 +24,8 @@ namespace vc4c
         extern const std::string FUNCTION_NAME_GLOBAL_OFFSET;
         extern const std::string FUNCTION_NAME_GLOBAL_SIZE;
         extern const std::string FUNCTION_NAME_GLOBAL_ID;
+        extern const std::string FUNCTION_NAME_LOCAL_LINEAR_ID;
+        extern const std::string FUNCTION_NAME_GLOBAL_LINEAR_ID;
 
         /**
          * Intrinsifies the call to one of the work-item intrinsic functions listed above
