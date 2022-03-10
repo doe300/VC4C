@@ -42,7 +42,7 @@ void TestCustomContainers::testFixedSortedPointerMap()
     std::map<void*, unsigned> reference = {{SOME_POINTER, 12}, {OTHER_POINTER, 13}};
     FixedSortedPointerMap<void*, unsigned, 3> map0 = {{SOME_POINTER, 12}, {OTHER_POINTER, 13}};
 
-    TEST_ASSERT_EQUALS(3, map0.max_size());
+    TEST_ASSERT_EQUALS(3u, map0.max_size());
     TEST_ASSERT(!map0.full());
     TEST_ASSERT(hasSameMapContent(reference, map0));
 

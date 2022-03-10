@@ -160,7 +160,7 @@ InstructionWalker periphery::insertFillLoweredRegister(Method& method, Instructi
             {
                 uint64_t value = srcLiteral->unsignedInt();
                 for(uint8_t typeWidth = src.type.getScalarBitCount();
-                    typeWidth < loweredRegister.type.getScalarBitCount(); typeWidth *= 2)
+                    typeWidth < loweredRegister.type.getScalarBitCount(); typeWidth *= 2u)
                 {
                     auto lower = value & ((uint64_t{1} << typeWidth) - 1u);
                     value = lower | (lower << typeWidth);
@@ -177,7 +177,7 @@ InstructionWalker periphery::insertFillLoweredRegister(Method& method, Instructi
             {
                 replicatedElement = src;
                 for(uint8_t typeWidth = src.type.getScalarBitCount();
-                    typeWidth < loweredRegister.type.getScalarBitCount(); typeWidth *= 2)
+                    typeWidth < loweredRegister.type.getScalarBitCount(); typeWidth *= 2u)
                 {
                     auto lower = assign(it, loweredRegister.type.getElementType()) =
                         replicatedElement & Value(Literal((1u << typeWidth) - 1u), TYPE_INT32);

@@ -1249,9 +1249,10 @@ std::size_t optimizations::combineVectorRotations(const Module& module, Method& 
                                  * - neither rotation has any side effects and
                                  * - both rotations are of the same type (full-vector or per-quad)
                                  */
-                                const uint8_t offset = (rot->getOffset().getRotationOffset().value() +
-                                                           firstRot->getOffset().getRotationOffset().value()) %
-                                    (!rot->getVectorRotation()->isFullRotationAllowed() ? 4 : 16);
+                                auto offset =
+                                    static_cast<uint8_t>((rot->getOffset().getRotationOffset().value() +
+                                                             firstRot->getOffset().getRotationOffset().value()) %
+                                        (!rot->getVectorRotation()->isFullRotationAllowed() ? 4u : 16u));
                                 if(offset == 0)
                                 {
                                     CPPLOG_LAZY(logging::Level::DEBUG,

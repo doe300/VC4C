@@ -2536,7 +2536,7 @@ void TestOptimizationSteps::testCombineVectorElementCopies()
     {
         auto inSrc = assign(inIt, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%src") = UNIFORM_REGISTER;
         auto inDest = inputMethod.addNewLocal(TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE), "%dest");
-        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; i += 4)
+        for(uint8_t i = 0; i < NATIVE_VECTOR_SIZE; i += 4u)
         {
             std::bitset<NATIVE_VECTOR_SIZE> mask{0xFu << i};
             auto cond = assignNop(inIt) = selectSIMDElements(mask);

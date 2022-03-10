@@ -842,7 +842,7 @@ struct RoundToEven
             // if the two highest bits are set, the next upper value is closer too
             // TODO is this check correct/exact enough?? E.g. what about 0b101111... ??
             bool nextIsCloser = mantissaRemainder & (1u << (remainderBits - 2u));
-            return (isOdd || nextIsCloser) ? (halfMantissa + 1u) : halfMantissa;
+            return (isOdd || nextIsCloser) ? static_cast<uint16_t>(halfMantissa + 1u) : halfMantissa;
         }
         return halfMantissa;
     }
@@ -855,7 +855,7 @@ struct RoundToPositiveInfinity
     static constexpr uint16_t round(
         bool isNegative, uint16_t halfMantissa, uint32_t mantissaRemainder, uint32_t remainderBits)
     {
-        return (!isNegative && mantissaRemainder != 0) ? halfMantissa + 1u : halfMantissa;
+        return (!isNegative && mantissaRemainder != 0) ? static_cast<uint16_t>(halfMantissa + 1u) : halfMantissa;
     }
 };
 
@@ -866,7 +866,7 @@ struct RoundToNegativeInfinity
     static constexpr uint16_t round(
         bool isNegative, uint16_t halfMantissa, uint32_t mantissaRemainder, uint32_t remainderBits)
     {
-        return (isNegative && mantissaRemainder != 0) ? halfMantissa + 1u : halfMantissa;
+        return (isNegative && mantissaRemainder != 0) ? static_cast<uint16_t>(halfMantissa + 1u) : halfMantissa;
     }
 };
 

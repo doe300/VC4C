@@ -195,10 +195,12 @@ static NODISCARD InstructionWalker intrinsifyReadLocalID(Method& method, Instruc
 {
     if(method.metaData.getFixedWorkGroupSize() == 1u)
     {
+        // Needs to be queried before the instruction is overwritten (and thus the argument is freed)
+        auto dimension = getDimension(arg);
         // if all the work-group sizes are 1, the ID is always 0 for all dimensions
         it.reset(std::make_unique<MoveOperation>(it->getOutput().value(), INT_ZERO))
             .addDecorations(add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT))
-            .addDecorations(getDimension(arg));
+            .addDecorations(dimension);
         return it;
     }
     return intrinsifyReadWorkItemInfo(method, it, arg, BuiltinLocal::Type::LOCAL_IDS,
@@ -313,10 +315,12 @@ static NODISCARD InstructionWalker intrinsifyReadGlobalID(
         tmp = assign(it, TYPE_INT32, "%group_global_id") =
             (tmpGlobalOffset + tmp, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
 
+    // Needs to be queried before the instruction is overwritten (and thus the argument is freed)
+    auto dimension = getDimension(arg);
     it.reset(createWithExtras<Operation>(*it.get(), OP_ADD, it->getOutput().value(), tmp, tmpLocalID))
         .addDecorations(add_flag(
             it->decoration, InstructionDecorations::BUILTIN_GLOBAL_ID, InstructionDecorations::UNSIGNED_RESULT))
-        .addDecorations(getDimension(arg));
+        .addDecorations(dimension);
     return it;
 }
 
@@ -324,6 +328,7 @@ static NODISCARD InstructionWalker intrinsifyReadGlobalSize(Method& method, Inst
 {
     const Value tmpLocalSize = method.addNewLocal(TYPE_INT8, "%local_size");
     const Value tmpNumGroups = method.addNewLocal(TYPE_INT32, "%num_groups");
+    // Needs to be queried before the instruction is overwritten (and thus the argument is freed)
     auto dimension = getDimension(arg);
     // emplace dummy instructions to be replaced
     it.emplace(std::make_unique<MoveOperation>(tmpLocalSize, NOP_REGISTER));
