@@ -273,6 +273,7 @@ ParseResultCode SPIRVParserBase::parseDecoration(const ParsedInstruction& parsed
         case spv::BuiltIn::GlobalOffset:
         case spv::BuiltIn::LocalInvocationIndex:
         case spv::BuiltIn::GlobalLinearId:
+        case spv::BuiltIn::EnqueuedWorkgroupSize:
             decorationMappings[target].emplace_back(spv::Decoration::BuiltIn, value);
             return ParseResultCode::SUCCESS;
         default:

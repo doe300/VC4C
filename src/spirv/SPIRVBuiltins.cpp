@@ -61,6 +61,10 @@ const SPIRVBuiltin* spirv::mapToBuiltinLocal(spv::BuiltIn builtin)
         return &BUILTIN_GLOBAL_SIZE;
     case spv::BuiltIn::GlobalInvocationId:
         return &BUILTIN_GLOBAL_ID;
+    case spv::BuiltIn::EnqueuedWorkgroupSize:
+        // get_enqueued_local_size(uint dim) - "Returns the same value as that returned by get_local_size(dimindx) if
+        // the kernel is executed with a uniform work-group size."
+        FALL_THROUGH
     case spv::BuiltIn::WorkgroupSize:
         return &BUILTIN_LOCAL_SIZE;
     case spv::BuiltIn::LocalInvocationId:
