@@ -148,9 +148,9 @@ static void printInfo()
     {
         if(auto tool_found = precompilation::findToolLocation(tool))
         {
+            std::string defaultPath = tool.defaultPath ? tool.defaultPath : "";
             std::cout << "\t" << tool.name << " in " << *tool_found << " (default"
-                      << (tool_found == std::string{tool.defaultPath} ? ")" :
-                                                                        (" '" + std::string{tool.defaultPath} + "')"))
+                      << (!defaultPath.empty() && tool_found == defaultPath ? ")" : (" '" + defaultPath + "')"))
                       << std::endl;
         }
         else
