@@ -351,6 +351,19 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         // initialize all values with the first index
         return intermediate::insertReplication(it, source0, destination);
     }
+    else if(auto lit = mask.getLiteralValue() | (check(mask.checkVector()) & &SIMDVector::getAllSame))
+    {
+        // initialize all elements with the nth element
+        auto indexValue = lit->signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
+            lit->signedInt() :
+            lit->signedInt() - static_cast<int32_t>(source0.type.getVectorWidth());
+        auto source = lit->signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ? source0 : source1;
+
+        auto tmp = method.addNewLocal(destination.type.getElementType(), "%vector_shuffle_splat");
+        it = insertVectorExtraction(it, method, source,
+            Value(SmallImmediate::fromInteger(static_cast<int8_t>(indexValue)).value(), TYPE_INT8), tmp);
+        return insertReplication(it, tmp, destination);
+    }
     else if(!mask.checkVector())
     {
         if(auto writer = mask.getSingleWriter())
@@ -393,28 +406,6 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
         }
         return it;
     }
-    if(auto elem = maskContainer.getAllSame())
-    {
-        const int32_t indexValue = elem->signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ?
-            elem->signedInt() :
-            elem->signedInt() - static_cast<int32_t>(source0.type.getVectorWidth());
-        const Value source =
-            elem->signedInt() < static_cast<int32_t>(source0.type.getVectorWidth()) ? source0 : source1;
-        // if all indices same, replicate
-        Value tmp(UNDEFINED_VALUE);
-        if(indexValue == 0)
-            tmp = source;
-        else
-        {
-            // if the index to be used is not 0, rotate to position 0
-            tmp = method.addNewLocal(source.type, "%vector_shuffle");
-            // allow per-quad rotation, since we only care about the 0th element, since we replicate this one
-            it = insertVectorRotation(it, source,
-                Value(SmallImmediate::fromInteger(static_cast<int8_t>(indexValue)).value(), TYPE_INT8), tmp,
-                Direction::DOWN, true);
-        }
-        return insertReplication(it, tmp, destination);
-    }
 
     // copy source(s) into destination
     // this allows us to skip extracting and inserting values from/to same index
@@ -422,7 +413,8 @@ InstructionWalker intermediate::insertVectorShuffle(InstructionWalker it, Method
     uint8_t numCorrespondingIndices = 0;
     if(destination.checkLocal() && !destination.local()->hasUsers(LocalUse::Type::WRITER))
     {
-        if(isSingleSource || source0.type.getVectorWidth() + source1.type.getVectorWidth() > NATIVE_VECTOR_SIZE)
+        if(isSingleSource || source0.type.getVectorWidth() + source1.type.getVectorWidth() > NATIVE_VECTOR_SIZE ||
+            destination.type.getVectorWidth() <= source0.type.getVectorWidth())
         {
             assign(it, destination) = source0;
             numCorrespondingIndices = source0.type.getVectorWidth();

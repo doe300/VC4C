@@ -1047,6 +1047,11 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
             *currentMethod, parsed_instruction.getTypeId(), parsed_instruction.getWord(4),
             parsed_instruction.getWord(3), parsed_instruction.parseArguments(5), true));
         return ParseResultCode::SUCCESS;
+    case spv::Op::OpExpectKHR:
+        // SPV_KHR_expect_assume extension - "This instruction behaves the same as OpCopyObject by making a copy of
+        // Value, except it also provides information to the optimizer that the most probable value of Value is
+        // ExpectedValue."
+        FALL_THROUGH
     case spv::Op::OpCopyObject:
         localTypes[parsed_instruction.getResultId()] = parsed_instruction.getTypeId();
         instructions.emplace_back(std::make_unique<SPIRVCopy>(parsed_instruction.getResultId(), *currentMethod,
@@ -1842,6 +1847,9 @@ ParseResultCode SPIRVParserBase::parseInstruction(const ParsedInstruction& parse
         return UNSUPPORTED_INSTRUCTION("OpAtomicFlagClear");
     case spv::Op::OpSizeOf:
         return UNSUPPORTED_INSTRUCTION("OpSizeOf");
+    case spv::Op::OpAssumeTrueKHR:
+        // SPV_KHR_expect_assume extension
+        return ParseResultCode::SUCCESS;
     default:
         // prevents warnings
         break;

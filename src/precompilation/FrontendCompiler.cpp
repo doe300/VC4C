@@ -68,13 +68,23 @@ static std::vector<std::string> buildClangCommand(const std::string& compiler, c
     // TODO spaces in "", e.g. in paths!
     {
         std::istringstream tmp{defaultOptions};
-        std::copy(
-            std::istream_iterator<std::string>{tmp}, std::istream_iterator<std::string>{}, std::back_inserter(command));
+        std::copy_if(std::istream_iterator<std::string>{tmp}, std::istream_iterator<std::string>{},
+            std::back_inserter(command), [](const std::string& arg) {
+                // This flag is not supported by clang and we can ignore it: "This option is ignored for single
+                // precision numbers if the device does not support single precision denormalized numbers i.e.
+                // CL_FP_DENORM bit is not set in CL_DEVICE_SINGLE_FP_CONFIG."
+                return arg != "-cl-denorms-are-zero";
+            });
     }
     {
         std::istringstream tmp{options};
-        std::copy(
-            std::istream_iterator<std::string>{tmp}, std::istream_iterator<std::string>{}, std::back_inserter(command));
+        std::copy_if(std::istream_iterator<std::string>{tmp}, std::istream_iterator<std::string>{},
+            std::back_inserter(command), [](const std::string& arg) {
+                // This flag is not supported by clang and we can ignore it: "This option is ignored for single
+                // precision numbers if the device does not support single precision denormalized numbers i.e.
+                // CL_FP_DENORM bit is not set in CL_DEVICE_SINGLE_FP_CONFIG."
+                return arg != "-cl-denorms-are-zero";
+            });
     }
 
     // append default options

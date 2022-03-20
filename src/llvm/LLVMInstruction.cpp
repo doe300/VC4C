@@ -313,6 +313,20 @@ bool CallSite::mapInstruction(Method& method)
         //"The ‘llvm.ctpop’ family of intrinsics counts the number of bits set in a value." -> popcount()
         methodName = "vc4cl_popcount";
     }
+    if(methodName.find("llvm.expect") == 0)
+    {
+        // Takes 2 arguments, the value which is returned and the most likely value for optimization purposes
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Intrinsifying llvm.expect with value copy" << logging::endl);
+        method.appendToEnd(std::make_unique<intermediate::MoveOperation>(std::move(output), arguments.at(0)))
+            .addDecorations(decorations);
+        return true;
+    }
+    if(methodName.find("llvm.assume") == 0)
+    {
+        // Is purely an optimization hint -> has no semantic meaning
+        CPPLOG_LAZY(logging::Level::DEBUG, log << "Dropping llvm.assume optimization hint" << logging::endl);
+        return true;
+    }
     if(methodName.find("shuffle2") == 0)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,

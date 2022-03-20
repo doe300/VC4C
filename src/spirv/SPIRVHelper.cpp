@@ -530,6 +530,8 @@ static std::string getCapabilityName(const spv::Capability cap)
         return "SubgroupBufferBlockIOINTEL";
     case spv::Capability::SubgroupImageBlockIOINTEL:
         return "SubgroupImageBlockIOINTEL";
+    case spv::Capability::ExpectAssumeKHR:
+        return "ExpectAssumeKHR";
     default:
         throw CompilationError(CompilationStep::LLVM_2_IR, "Invalid capability constant!");
     }
@@ -569,7 +571,9 @@ static const std::set<spv::Capability> supportedCapabilites = {
     //"generic" storage class, is never actually checked, so why not
     spv::Capability::GenericPointer,
     // support for half floating-point type only as pointer-type
-    spv::Capability::Float16Buffer, spv::Capability::Int64, spv::Capability::Float64};
+    spv::Capability::Float16Buffer, spv::Capability::Int64, spv::Capability::Float64,
+    // support for __builtin_expect and __builtin_assume
+    spv::Capability::ExpectAssumeKHR};
 
 ParseResultCode spirv::checkCapability(const spv::Capability cap)
 {

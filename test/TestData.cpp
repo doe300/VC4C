@@ -298,6 +298,15 @@ void test_data::registerGeneralTests()
     }
 
     {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
+            "expect_assume", test_expect_assume_cl_string, "test_expect_assume");
+        builder.setDimensions(12);
+        builder.allocateParameter<0>(12);
+        builder.setParameter<1>({13, 1, 2, 3, 13, 5, 6, 7, 13, 9, 10, 11});
+        builder.checkParameterEquals<0>({-1, 2, 4, 8, -1, 32, 64, 128, -1, 512, 1024, 2048});
+    }
+
+    {
         TestDataBuilder<Buffer<uint16_t>, Buffer<uint8_t>, uint32_t> builder("CRC16", test_hashes_cl_string, "crc16");
         builder.setFlags(DataFilter::COMPLEX_KERNEL);
         // output half-word
@@ -1004,6 +1013,43 @@ void test_data::registerGeneralTests()
     }
 
     {
+        TestDataBuilder<Buffer<int8_t>, Buffer<int8_t>> builder("OpenCL_CTS_shuffle_copy_char3_to_char16",
+            test_cts_regressions_cl_string, "relational_shuffle_copy_char3_to_char16");
+        builder.setFlags(DataFilter::VECTOR_OPERATIONS);
+        builder.setParameter<0>({19, 15, 13});
+        builder.allocateParameter<1>(2 * 16);
+        builder.checkParameterEquals<1>(
+            {0, 0, 19, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 19, 0, 0, 0, 0, 0, 0, 0, 15, 0, 0});
+    }
+
+    {
+        TestDataBuilder<Buffer<uint8_t>, Buffer<uint8_t>> builder("OpenCL_CTS_shuffle_copy_uchar1_to_uchar4",
+            test_cts_regressions_cl_string, "relational_shuffle_copy_uchar1_to_uchar4");
+        builder.setFlags(DataFilter::VECTOR_OPERATIONS);
+        builder.setParameter<0>({13});
+        builder.allocateParameter<1>(2 * 4);
+        builder.checkParameterEquals<1>({0, 0, 0, 13, 13, 0, 0, 0});
+    }
+
+    {
+        TestDataBuilder<Buffer<uint16_t>, Buffer<uint16_t>> builder("OpenCL_CTS_shuffle_copy_ushort4_to_ushort2",
+            test_cts_regressions_cl_string, "relational_shuffle_copy_ushort4_to_ushort2");
+        builder.setFlags(DataFilter::VECTOR_OPERATIONS);
+        builder.setParameter<0>({13, 15, 19, 21});
+        builder.allocateParameter<1>(2);
+        builder.checkParameterEquals<1>({15, 0});
+    }
+
+    {
+        TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>> builder("OpenCL_CTS_shuffle_copy_uint3_to_uint4",
+            test_cts_regressions_cl_string, "relational_shuffle_copy_uint3_to_uint4");
+        builder.setFlags(DataFilter::VECTOR_OPERATIONS);
+        builder.setParameter<0>({13, 15, 19});
+        builder.allocateParameter<1>(4);
+        builder.checkParameterEquals<1>({0, 19, 0, 0});
+    }
+
+    {
         TestDataBuilder<Buffer<uint8_t>, int8_t> builder(
             "OpenCL_CTS_sub_buffers_read", OpenCL_CTS_sub_buffers_read_write_cl_string, "readTest");
         builder.setDimensions(4, 1, 1, 2);
@@ -1034,6 +1080,47 @@ void test_data::registerGeneralTests()
         builder.setParameter<1>({1, 3, 2, 4});
         builder.allocateParameter<2>(4);
         builder.checkParameterEquals<2>({1, 3, 2, 4});
+    }
+
+    {
+        TestDataBuilder<Buffer<uint8_t>, Buffer<uint8_t>, Buffer<uint8_t>> builder(
+            "OpenCL_CTS_vload_local_uchar3", test_cts_regressions_cl_string, "basic_vload_local_uchar3");
+        builder.setFlags(DataFilter::ASYNC_BARRIER | DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(7, 1, 1, 2);
+        builder.allocateParameterRange<0>(0, 3 * 7 * 2);
+        builder.allocateParameter<1>(7 * 2);
+        builder.allocateParameter<2>(3 * 7 * 2);
+        builder.checkParameterEquals<2>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+            22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41});
+    }
+
+    {
+        // FIXME on hardware (clang-6) does not use memory copies, but TMU load, unaligned VPM accesses and DMA access
+        // unaligned VPM accesses seem wrong!
+        TestDataBuilder<Buffer<float>, Buffer<float>, Buffer<float>> builder(
+            "OpenCL_CTS_vload_local_float3", test_cts_regressions_cl_string, "basic_vload_local_float3");
+        builder.setFlags(DataFilter::ASYNC_BARRIER | DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(7, 1, 1, 2);
+        builder.allocateParameterRange<0>(0, 3 * 7 * 2);
+        builder.allocateParameter<1>(7 * 2);
+        builder.allocateParameter<2>(3 * 7 * 2);
+        builder.checkParameterEquals<2>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+            22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41});
+    }
+
+    {
+        TestDataBuilder<Buffer<int8_t>, Buffer<int8_t>, Buffer<uint32_t>, Buffer<int8_t>, uint32_t> builder(
+            "OpenCL_CTS_vstore_local_char3", test_cts_regressions_cl_string, "basic_vstore_local_char3");
+        builder.setFlags(DataFilter::ASYNC_BARRIER | DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(7, 1, 1, 2);
+        builder.allocateParameter<0>(3 * 7 * 2 + 6);
+        builder.allocateParameterRange<1>(0, 3 * 7 * 2);
+        builder.allocateParameter<2>(5); // unused
+        builder.allocateParameter<3>(3 * 7 * 2);
+        builder.setParameter<4>(0); // unused
+        builder.checkParameterEquals<2>({0, 0, 0, 0, 0});
+        builder.checkParameterEquals<3>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+            22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41});
     }
 
     ////
