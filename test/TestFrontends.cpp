@@ -68,23 +68,23 @@ TestFrontends::TestFrontends()
 
     // OpenCL -> XYZ conversions are already tested with #testCompilation, so don't run them again here
     TEST_ADD_TWO_ARGUMENTS(
-        TestFrontends::testFrontendConversions, std::string{"./example/fibonacci.ir"}, SourceType::LLVM_IR_BIN);
+        TestFrontends::testFrontendConversions, std::string{EXAMPLE_FILES "fibonacci.ir"}, SourceType::LLVM_IR_BIN);
     TEST_ADD_TWO_ARGUMENTS(
-        TestFrontends::testFrontendConversions, std::string{"./testing/formats/test.bc"}, SourceType::LLVM_IR_TEXT);
+        TestFrontends::testFrontendConversions, std::string{TESTING_FILES "formats/test.bc"}, SourceType::LLVM_IR_TEXT);
     if(precompilation::findToolLocation(SPIRV_LLVM_SPIRV_TOOL))
     {
         TEST_ADD_TWO_ARGUMENTS(
-            TestFrontends::testFrontendConversions, std::string{"./example/fibonacci.ir"}, SourceType::SPIRV_BIN);
+            TestFrontends::testFrontendConversions, std::string{EXAMPLE_FILES "fibonacci.ir"}, SourceType::SPIRV_BIN);
         TEST_ADD_TWO_ARGUMENTS(
-            TestFrontends::testFrontendConversions, std::string{"./example/fibonacci.ir"}, SourceType::SPIRV_TEXT);
+            TestFrontends::testFrontendConversions, std::string{EXAMPLE_FILES "fibonacci.ir"}, SourceType::SPIRV_TEXT);
+        TEST_ADD_TWO_ARGUMENTS(TestFrontends::testFrontendConversions, std::string{TESTING_FILES "formats/test.bc"},
+            SourceType::SPIRV_BIN);
+        TEST_ADD_TWO_ARGUMENTS(TestFrontends::testFrontendConversions, std::string{TESTING_FILES "formats/test.bc"},
+            SourceType::SPIRV_TEXT);
         TEST_ADD_TWO_ARGUMENTS(
-            TestFrontends::testFrontendConversions, std::string{"./testing/formats/test.bc"}, SourceType::SPIRV_BIN);
-        TEST_ADD_TWO_ARGUMENTS(
-            TestFrontends::testFrontendConversions, std::string{"./testing/formats/test.bc"}, SourceType::SPIRV_TEXT);
-        TEST_ADD_TWO_ARGUMENTS(
-            TestFrontends::testFrontendConversions, std::string{"./example/fibonacci.spt"}, SourceType::SPIRV_BIN);
-        TEST_ADD_TWO_ARGUMENTS(
-            TestFrontends::testFrontendConversions, std::string{"./testing/formats/test.spv"}, SourceType::SPIRV_TEXT);
+            TestFrontends::testFrontendConversions, std::string{EXAMPLE_FILES "fibonacci.spt"}, SourceType::SPIRV_BIN);
+        TEST_ADD_TWO_ARGUMENTS(TestFrontends::testFrontendConversions, std::string{TESTING_FILES "formats/test.spv"},
+            SourceType::SPIRV_TEXT);
     }
 
     TEST_ADD(TestFrontends::testCompilationDataSerialization);
@@ -124,9 +124,9 @@ void TestFrontends::testLinking()
     }
 
     std::vector<CompilationData> inputs{
-        CompilationData{"./testing/test_linking_0.cl"},
-        CompilationData{"./testing/test_linking_1.cl"},
-        CompilationData{"./testing/test_linking_2.cl"},
+        CompilationData{TESTING_FILES "test_linking_0.cl"},
+        CompilationData{TESTING_FILES "test_linking_1.cl"},
+        CompilationData{TESTING_FILES "test_linking_2.cl"},
     };
 
     // extra linking in std-lib tests handling of multiple times linking std-lib, since it will also be linked in for
@@ -155,55 +155,55 @@ void TestFrontends::testLinking()
 void TestFrontends::testSourceTypeDetection()
 {
     {
-        std::ifstream in{"./example/fibonacci.cl"};
+        std::ifstream in{EXAMPLE_FILES "fibonacci.cl"};
         TEST_ASSERT_EQUALS(SourceType::OPENCL_C, Precompiler::getSourceType(in))
     }
 
     {
-        std::ifstream in{"./example/fibonacci.ir"};
+        std::ifstream in{EXAMPLE_FILES "fibonacci.ir"};
         TEST_ASSERT_EQUALS(SourceType::LLVM_IR_TEXT, Precompiler::getSourceType(in))
     }
 
     {
-        std::ifstream in{"./testing/formats/test.bc"};
+        std::ifstream in{TESTING_FILES "formats/test.bc"};
         TEST_ASSERT_EQUALS(SourceType::LLVM_IR_BIN, Precompiler::getSourceType(in))
     }
 
     {
-        std::ifstream in{"./example/fibonacci.spt"};
+        std::ifstream in{EXAMPLE_FILES "fibonacci.spt"};
         TEST_ASSERT_EQUALS(SourceType::SPIRV_TEXT, Precompiler::getSourceType(in))
     }
 
     {
-        std::ifstream in{"./testing/formats/test.spv"};
+        std::ifstream in{TESTING_FILES "formats/test.spv"};
         TEST_ASSERT_EQUALS(SourceType::SPIRV_BIN, Precompiler::getSourceType(in))
     }
 
     {
-        std::ifstream in{"./testing/formats/test.hex"};
+        std::ifstream in{TESTING_FILES "formats/test.hex"};
         TEST_ASSERT_EQUALS(SourceType::QPUASM_HEX, Precompiler::getSourceType(in))
     }
 
     {
-        std::ifstream in{"./testing/formats/test.bin"};
+        std::ifstream in{TESTING_FILES "formats/test.bin"};
         TEST_ASSERT_EQUALS(SourceType::QPUASM_BIN, Precompiler::getSourceType(in))
     }
 
     {
-        std::ifstream in{"./testing/formats/test.txt"};
+        std::ifstream in{TESTING_FILES "formats/test.txt"};
         TEST_ASSERT_EQUALS(SourceType::OPENCL_C, Precompiler::getSourceType(in))
     }
 }
 
 void TestFrontends::testDisassembler()
 {
-    std::string inputFile{"./testing/formats/test.bin"};
+    std::string inputFile{TESTING_FILES "formats/test.bin"};
     vc4c::TemporaryFile tmp{};
     disassemble(inputFile, tmp.fileName, OutputMode::HEX);
 
     std::string originalContent;
     {
-        std::ifstream origFile{"./testing/formats/test_disassembled.hex"};
+        std::ifstream origFile{TESTING_FILES "formats/test_disassembled.hex"};
         std::stringstream tmp;
         tmp << origFile.rdbuf();
         originalContent = tmp.str();
@@ -238,7 +238,7 @@ static std::pair<CompilationData, SourceType> compile(
 
 void TestFrontends::testCompilation(vc4c::SourceType type)
 {
-    auto res = compile(CompilationData{"./example/fibonacci.cl", SourceType::OPENCL_C}, type);
+    auto res = compile(CompilationData{EXAMPLE_FILES "fibonacci.cl", SourceType::OPENCL_C}, type);
     TEST_ASSERT_EQUALS(type, res.second)
     testEmulation(res.first);
 }
@@ -331,7 +331,7 @@ void TestFrontends::testCompilationDataSerialization()
 {
     // Test serialization/deserialization round-trip for all compilation data types
     {
-        precompilation::FileCompilationData<SourceType::LLVM_IR_BIN> inData{"./testing/formats/test.bc"};
+        precompilation::FileCompilationData<SourceType::LLVM_IR_BIN> inData{TESTING_FILES "formats/test.bc"};
         precompilation::TemporaryFileCompilationData<SourceType::LLVM_IR_BIN> outData{};
 
         std::stringstream serializer;
@@ -346,7 +346,7 @@ void TestFrontends::testCompilationDataSerialization()
     }
 
     {
-        std::ifstream sourceStream{"./testing/formats/test.bc"};
+        std::ifstream sourceStream{TESTING_FILES "formats/test.bc"};
         precompilation::RawCompilationData<SourceType::LLVM_IR_BIN> inData{sourceStream, "inData"};
         TEST_ASSERT_EQUALS(4900U, inData.data.size());
         precompilation::RawCompilationData<SourceType::LLVM_IR_BIN> outData{"outData"};
@@ -367,7 +367,7 @@ void TestFrontends::testCompilationDataSerialization()
 
 #ifdef USE_LLVM_LIBRARY
     {
-        std::ifstream sourceStream{"./testing/formats/test.bc"};
+        std::ifstream sourceStream{TESTING_FILES "formats/test.bc"};
         auto memoryBuffer = llvm::MemoryBuffer::getMemBufferCopy(readIntoString(sourceStream));
         auto inModule = precompilation::loadLLVMModule(*memoryBuffer, nullptr, precompilation::LLVMModuleTag{});
 

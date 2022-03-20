@@ -28,15 +28,30 @@ namespace vc4c
     using AvailableExpressions =
         FastMap<std::shared_ptr<Expression>, std::pair<const intermediate::IntermediateInstruction*, unsigned>>;
 
-    // Using shared_ptr allows to copy expressions and also to share subexpressions
-    struct SubExpression : private Variant<VariantNamespace::monostate, Value, std::shared_ptr<Expression>>
+    struct DecoratedValue
     {
-        using Base = Variant<VariantNamespace::monostate, Value, std::shared_ptr<Expression>>;
+        Value value;
+        intermediate::InstructionDecorations decoration;
+
+        bool operator==(const DecoratedValue& other) const
+        {
+            return value == other.value && decoration == other.decoration;
+        }
+
+        bool operator!=(const DecoratedValue& other) const
+        {
+            return value != other.value || decoration != other.decoration;
+        }
+    };
+
+    // Using shared_ptr allows to copy expressions and also to share subexpressions
+    struct SubExpression : private Variant<VariantNamespace::monostate, DecoratedValue, std::shared_ptr<Expression>>
+    {
+        using Base = Variant<VariantNamespace::monostate, DecoratedValue, std::shared_ptr<Expression>>;
         explicit SubExpression() : Base(VariantNamespace::monostate{}) {}
-        SubExpression(const Value& val) : Base(val) {}
-        SubExpression(Value&& val) : Base(std::move(val)) {}
+        SubExpression(
+            const Value& val, intermediate::InstructionDecorations deco = intermediate::InstructionDecorations::NONE);
         SubExpression(const Optional<Value>& val);
-        SubExpression(Optional<Value>&& val);
         SubExpression(const std::shared_ptr<Expression>& child) : Base(child) {}
 
         explicit inline operator bool() const noexcept
@@ -56,8 +71,8 @@ namespace vc4c
 
         inline Optional<Value> checkValue() const
         {
-            if(auto val = VariantNamespace::get_if<Value>(this))
-                return *val;
+            if(auto val = VariantNamespace::get_if<DecoratedValue>(this))
+                return val->value;
             return NO_VALUE;
         }
 
@@ -70,8 +85,8 @@ namespace vc4c
 
         inline const Local* checkLocal() const
         {
-            if(auto val = VariantNamespace::get_if<Value>(this))
-                return val->checkLocal();
+            if(auto val = VariantNamespace::get_if<DecoratedValue>(this))
+                return val->value.checkLocal();
             return nullptr;
         }
 
@@ -80,12 +95,13 @@ namespace vc4c
 
         inline Optional<Literal> getLiteralValue() const
         {
-            if(auto val = VariantNamespace::get_if<Value>(this))
-                return val->getLiteralValue();
+            if(auto val = VariantNamespace::get_if<DecoratedValue>(this))
+                return val->value.getLiteralValue();
             return {};
         }
 
-        friend std::hash<vc4c::SubExpression>;
+        intermediate::InstructionDecorations getDecorations() const;
+        SubExpression& addDecorations(intermediate::InstructionDecorations newDeco);
     };
 
     /**
@@ -102,7 +118,10 @@ namespace vc4c
         // Stop at any built-in work-item and work-group value, e.g. local/global ids, work-group size.
         STOP_AT_BUILTINS = 2,
         // Recursively combine the expressions until it cannot be simplified anymore
-        RECURSIVE = 4
+        RECURSIVE = 4,
+        // Split some work-group built-ins (e.g. global ids) into work-group constant/dynamic parts, even if
+        // #STOP_AT_BUILTINS is set
+        SPLIT_GROUP_BUILTINS = 8
     };
 
     /**
@@ -270,19 +289,4 @@ namespace vc4c
         }
     } // namespace operators
 } /* namespace vc4c */
-
-namespace std
-{
-    template <>
-    struct hash<vc4c::SubExpression>
-    {
-        size_t operator()(const vc4c::SubExpression& expr) const noexcept;
-    };
-
-    template <>
-    struct hash<vc4c::Expression>
-    {
-        size_t operator()(const vc4c::Expression& expr) const noexcept;
-    };
-} /* namespace std */
 #endif /* VC4C_EXPRESSION_H */

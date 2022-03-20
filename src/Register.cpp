@@ -66,7 +66,7 @@ std::string Register::to_string(bool specialNames, bool readAccess) const
             if(num == 35)
                 return "varying";
             if(num == 36)
-                return "sfu_tmu_in";
+                return "sfu_tmu_out";
             if(num == 37)
                 return "rep";
             if(num == 38)

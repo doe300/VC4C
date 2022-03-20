@@ -242,7 +242,7 @@ const static std::vector<std::pair<std::string, NormalizationStep>> adjustmentSt
     {"HandleImmediates", wrapNormalizationStep<handleImmediate>},
     // prevents register-conflicts by moving long-living locals into temporaries before being used together with literal
     // values
-    {"HandleUseWithImmediate", wrapNormalizationStep<handleUseWithImmediate>},
+    {"HandleUseWithImmediate", handleUseWithImmediate},
     // moves all sources of vector-rotations to accumulators (if too large usage-range)
     {"MoveRotationSourcesToAccs", moveRotationSourcesToAccumulators},
     // inserts moves to splits up uses of locals fixes to a register-file (e.g. Unpack/Pack) together

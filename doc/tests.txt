@@ -63,7 +63,7 @@ test_for_each					PASSED
 test_function					PASSED
 test_function_input_iterator	PASSED
 test_functional_as				PASSED
-test_functional_bind			result mismatch ("transform_pow_two")
+test_functional_bind			PASSED
 test_functional_convert			PASSED
 test_functional_get				PASSED
 test_functional_hash			PASSED
@@ -81,7 +81,7 @@ test_inner_product				PASSED (fixed test case!!)
 test_inplace_merge				PASSED
 test_inplace_reduce				PASSED (fixed test case!!)
 test_insertion_sort				PASSED
-test_invoke						result mismatch (ULP, "invoke_builtin": result: inf expected: 256.f for function pow(2, 8))
+test_invoke						PASSED
 test_iota						PASSED
 test_is_permutation				PASSED
 test_is_sorted					PASSED
@@ -148,8 +148,8 @@ test_struct						PASSED
 test_svm_ptr					PASSED
 test_system						PASSED
 test_tabulate					PASSED
-test_threefry_engine			result mismatch (TODO fix + retest)
-test_transform					result mismatch ("transform_custom_function")
+test_threefry_engine			PASSED
+test_transform					PASSED
 test_transform_if				PASSED
 test_transform_iterator			PASSED
 test_transform_reduce			result mismatch ("mean_and_std_dev")
@@ -170,9 +170,9 @@ test_zip_iterator				PASSED
 
 piglit cl:
 skip:    87
-pass:    442
-fail:    173
-timeout: 7
+pass:    470
+fail:    151
+timeout: 1
 crash:   1
 
 pocl:
@@ -317,7 +317,7 @@ testeasycl.
   power2helper					PASSED
 testinout.
   main							PASSED
-SLOW_testintwrapper_huge.		
+SLOW_testintwrapper_huge.
   testreadnonwrapper			hangs/runs long
   testread						hangs/runs long
   testreadwrite
@@ -392,52 +392,52 @@ teststatefultimer.
   notiming						FAILED (invalid work-group size)
 
 CLBlast:
-clblast_client_xamax         
-clblast_client_xasum         
-clblast_client_xaxpy         
-clblast_client_xaxpybatched  
+clblast_client_xamax
+clblast_client_xasum
+clblast_client_xaxpy
+clblast_client_xaxpybatched
 clblast_client_xcopy			somehow fails to load the compiler
-clblast_client_xdot          
-clblast_client_xdotc         
-clblast_client_xdotu         
-clblast_client_xgbmv         
-clblast_client_xgemm         
-clblast_client_xgemmbatched  
-clblast_client_xgemv         
-clblast_client_xger          
-clblast_client_xgerc         
-clblast_client_xgeru         
-clblast_client_xhbmv         
-clblast_client_xhemm         
-clblast_client_xhemv    
-clblast_client_xher     
-clblast_client_xher2    
-clblast_client_xher2k   
-clblast_client_xherk    
-clblast_client_xhpmv    
-clblast_client_xhpr     
-clblast_client_xhpr2    
-clblast_client_xim2col  
-clblast_client_xnrm2      
-clblast_client_xomatcopy  
-clblast_client_xsbmv      
-clblast_client_xscal      
-clblast_client_xspmv      
-clblast_client_xspr       
-clblast_client_xspr2      
-clblast_client_xswap      
-clblast_client_xsymm      
-clblast_client_xsymv   
-clblast_client_xsyr    
-clblast_client_xsyr2   
-clblast_client_xsyr2k  
-clblast_client_xsyrk   
-clblast_client_xtbmv   
-clblast_client_xtpmv   
-clblast_client_xtrmm   
-clblast_client_xtrmv   
-clblast_client_xtrsm    
-clblast_client_xtrsv    
+clblast_client_xdot
+clblast_client_xdotc
+clblast_client_xdotu
+clblast_client_xgbmv
+clblast_client_xgemm
+clblast_client_xgemmbatched
+clblast_client_xgemv
+clblast_client_xger
+clblast_client_xgerc
+clblast_client_xgeru
+clblast_client_xhbmv
+clblast_client_xhemm
+clblast_client_xhemv
+clblast_client_xher
+clblast_client_xher2
+clblast_client_xher2k
+clblast_client_xherk
+clblast_client_xhpmv
+clblast_client_xhpr
+clblast_client_xhpr2
+clblast_client_xim2col
+clblast_client_xnrm2
+clblast_client_xomatcopy
+clblast_client_xsbmv
+clblast_client_xscal
+clblast_client_xspmv
+clblast_client_xspr
+clblast_client_xspr2
+clblast_client_xswap
+clblast_client_xsymm
+clblast_client_xsymv
+clblast_client_xsyr
+clblast_client_xsyr2
+clblast_client_xsyr2k
+clblast_client_xsyrk
+clblast_client_xtbmv
+clblast_client_xtpmv
+clblast_client_xtrmm
+clblast_client_xtrmv
+clblast_client_xtrsm
+clblast_client_xtrsv
 clblast_sample_cache_c
 clblast_sample_dgemv_c
 clblast_sample_haxpy_c

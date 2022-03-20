@@ -821,8 +821,8 @@ static InstructionWalker handleOperationWithImmediate(const Module& module, Meth
     return it;
 }
 
-InstructionWalker normalization::handleUseWithImmediate(
-    const Module& module, Method& method, InstructionWalker it, const Configuration& config)
+void normalization::handleUseWithImmediate(
+    Module& module, Method& method, InstructionWalker it, const Configuration& config)
 {
     if(auto op = it.get<intermediate::Operation>())
         it = handleOperationWithImmediate(module, method, it, *op, config);
@@ -833,8 +833,6 @@ InstructionWalker normalization::handleUseWithImmediate(
         if(auto op2 = op->getSecondOp())
             it = handleOperationWithImmediate(module, method, it, *op2, config);
     }
-
-    return it;
 }
 
 Optional<SmallImmediate> normalization::toImmediate(Literal lit)

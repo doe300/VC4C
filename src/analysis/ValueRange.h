@@ -97,8 +97,8 @@ namespace vc4c
                 return hasExplicitBoundaries();
             }
 
-            Optional<Value> getLowerLimit(DataType type) const;
-            Optional<Value> getUpperLimit(DataType type) const;
+            Optional<Literal> getLowerLimit(DataType type) const;
+            Optional<Literal> getUpperLimit(DataType type) const;
             constexpr Optional<double> getSingletonValue() const noexcept
             {
                 if(hasExplicitBoundaries() && minValue == maxValue)
@@ -115,7 +115,8 @@ namespace vc4c
             {
                 if(type == RangeType::INDETERMINATE)
                     return std::numeric_limits<double>::infinity();
-                return maxValue - minValue;
+                // both limits are inclusive
+                return maxValue - minValue + 1.0;
             }
 
             std::string to_string() const;

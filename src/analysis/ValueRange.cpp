@@ -141,10 +141,10 @@ bool ValueRange::fitsIntoType(DataType type, bool isSigned) const
     return false;
 }
 
-Optional<Value> ValueRange::getLowerLimit(DataType type) const
+Optional<Literal> ValueRange::getLowerLimit(DataType type) const
 {
     if(!hasExplicitBoundaries())
-        return NO_VALUE;
+        return {};
     ValueRange typeLimits;
     FunctionPointer<Literal(double)> conv;
     if(type.isFloatingType())
@@ -165,19 +165,19 @@ Optional<Value> ValueRange::getLowerLimit(DataType type) const
             conv = [](double d) -> Literal { return Literal(static_cast<uint32_t>(std::floor(d))); };
     }
     else
-        return NO_VALUE;
+        return {};
 
     if(minValue < typeLimits.minValue)
-        return NO_VALUE;
+        return {};
     if(minValue > typeLimits.maxValue)
-        return NO_VALUE;
-    return Value(conv(minValue), type);
+        return {};
+    return conv(minValue);
 }
 
-Optional<Value> ValueRange::getUpperLimit(DataType type) const
+Optional<Literal> ValueRange::getUpperLimit(DataType type) const
 {
     if(!hasExplicitBoundaries())
-        return NO_VALUE;
+        return {};
     ValueRange typeLimits;
     FunctionPointer<Optional<Literal>(double)> conv;
     if(type.isFloatingType())
@@ -208,15 +208,13 @@ Optional<Value> ValueRange::getUpperLimit(DataType type) const
             };
     }
     else
-        return NO_VALUE;
+        return {};
 
     if(maxValue < typeLimits.minValue)
-        return NO_VALUE;
+        return {};
     if(maxValue > typeLimits.maxValue)
-        return NO_VALUE;
-    if(auto lit = conv(maxValue))
-        return Value(*lit, type);
-    return NO_VALUE;
+        return {};
+    return conv(maxValue);
 }
 
 ValueRange ValueRange::toAbsoluteRange() const noexcept
@@ -572,12 +570,10 @@ void ValueRange::updateRecursively(const Local* currentLocal, Method* method, Fa
                             << "' for calculating convergence limit of: " << expr->to_string() << logging::endl);
 
                     limits.emplace(expr->getConvergenceLimit(
-                                           otherRange.getLowerLimit(expr->code.acceptsFloat ? TYPE_FLOAT : TYPE_INT32) &
-                                           &Value::getLiteralValue)
+                                           otherRange.getLowerLimit(expr->code.acceptsFloat ? TYPE_FLOAT : TYPE_INT32))
                                        .value_or(UNDEFINED_VALUE));
                     limits.emplace(expr->getConvergenceLimit(
-                                           otherRange.getUpperLimit(expr->code.acceptsFloat ? TYPE_FLOAT : TYPE_INT32) &
-                                           &Value::getLiteralValue)
+                                           otherRange.getUpperLimit(expr->code.acceptsFloat ? TYPE_FLOAT : TYPE_INT32))
                                        .value_or(UNDEFINED_VALUE));
                 }
 

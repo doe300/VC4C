@@ -1477,10 +1477,9 @@ analysis::ValueRange OpCode::operator()(
     if(firstRange.getSingletonValue() && (numOperands == 1 || secondRange.getSingletonValue()))
     {
         // if we can precalculate the single result, we also know the single result range
-        auto firstLiteral = firstRange.getLowerLimit(acceptsFloat ? TYPE_FLOAT : TYPE_INT32).value().literal();
-        auto secondLiteral = UNDEFINED_LITERAL;
-        if(auto secondValue = secondRange.getLowerLimit(acceptsFloat ? TYPE_FLOAT : TYPE_INT32))
-            secondLiteral = secondValue->literal();
+        auto firstLiteral = firstRange.getLowerLimit(acceptsFloat ? TYPE_FLOAT : TYPE_INT32).value();
+        auto secondLiteral =
+            secondRange.getLowerLimit(acceptsFloat ? TYPE_FLOAT : TYPE_INT32).value_or(UNDEFINED_LITERAL);
         if(auto result = calcLiteral(*this, firstLiteral, secondLiteral).first)
         {
             if(*this == OP_SHL)

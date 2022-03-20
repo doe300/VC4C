@@ -297,7 +297,7 @@ void TestOptimizations::testSHA1()
     const std::string sample("Hello World!");
     const std::vector<uint32_t> digest = {0x2ef7bde6, 0x08ce5404, 0xe97d5f04, 0x2f95f89f, 0x1c232871};
 
-    auto module = compileFile("./example/md5.cl", "", true);
+    auto module = compileFile(EXAMPLE_FILES "md5.cl", "", true);
 
     EmulationData data;
     data.kernelName = "sha1_crypt_kernel";
@@ -338,7 +338,7 @@ void TestOptimizations::testSHA256()
     const std::vector<uint32_t> digest = {
         0xf90a1ef4, 0x422350ca, 0x8c448530, 0xa7d5d0b2, 0x35054803, 0xf7b2a73d, 0x86f4b639, 0x4b1329a5};
 
-    auto module = compileFile("./example/SHA-256.cl", "", true);
+    auto module = compileFile(EXAMPLE_FILES "SHA-256.cl", "", true);
 
     EmulationData data;
     data.kernelName = "execute_sha256_cpu";

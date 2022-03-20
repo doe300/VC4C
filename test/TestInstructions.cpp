@@ -1953,14 +1953,14 @@ void TestInstructions::testValueRanges()
         TEST_ASSERT(range.fitsIntoType(TYPE_HALF))
         TEST_ASSERT(range.fitsIntoRange(ValueRange(0.0, 1.0)))
         TEST_ASSERT(!range.fitsIntoRange(ValueRange(0.0, 0.1)))
-        TEST_ASSERT_EQUALS(constant, range.getLowerLimit(TYPE_FLOAT))
-        TEST_ASSERT_EQUALS(constant, range.getUpperLimit(TYPE_FLOAT))
-        TEST_ASSERT_EQUALS(INT_ZERO, range.getLowerLimit(TYPE_INT32))
-        TEST_ASSERT_EQUALS(INT_ONE, range.getUpperLimit(TYPE_INT8))
+        TEST_ASSERT_EQUALS(constant.literal(), range.getLowerLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(constant.literal(), range.getUpperLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(INT_ZERO.literal(), range.getLowerLimit(TYPE_INT32))
+        TEST_ASSERT_EQUALS(INT_ONE.literal(), range.getUpperLimit(TYPE_INT8))
         TEST_ASSERT(!!range.getSingletonValue())
         TEST_ASSERT_ULP(0.5, *range.getSingletonValue(), 1)
         TEST_ASSERT_EQUALS(range, range.toAbsoluteRange())
-        TEST_ASSERT_EQUALS(0.0, range.getRange());
+        TEST_ASSERT_EQUALS(1.0, range.getRange());
     }
 
     // constant vector range
@@ -1973,12 +1973,12 @@ void TestInstructions::testValueRanges()
         TEST_ASSERT(range.fitsIntoType(TYPE_HALF))
         TEST_ASSERT(range.fitsIntoRange(ValueRange(-23.0, 18.0)))
         TEST_ASSERT(!range.fitsIntoRange(ValueRange(0.0, 0.1)))
-        TEST_ASSERT_EQUALS(Value(Literal(-16.4f), TYPE_FLOAT), range.getLowerLimit(TYPE_FLOAT))
-        TEST_ASSERT_EQUALS(Value(Literal(15.0f), TYPE_FLOAT), range.getUpperLimit(TYPE_FLOAT))
-        TEST_ASSERT_EQUALS(Value(Literal(-17), TYPE_INT32), range.getLowerLimit(TYPE_INT32))
-        TEST_ASSERT_EQUALS(Value(Literal(15), TYPE_INT8), range.getUpperLimit(TYPE_INT8))
+        TEST_ASSERT_EQUALS(Literal(-16.4f), range.getLowerLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(Literal(15.0f), range.getUpperLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(Literal(-17), range.getLowerLimit(TYPE_INT32))
+        TEST_ASSERT_EQUALS(Literal(15), range.getUpperLimit(TYPE_INT8))
         TEST_ASSERT(!range.getSingletonValue())
-        TEST_ASSERT_DELTA(15.0 + 16.4, range.getRange(), 0.0005);
+        TEST_ASSERT_DELTA(15.0 + 16.4 + 1.0, range.getRange(), 0.0005);
 
         vec = SIMDVector{};
         constant = Value(&vec, TYPE_INT32);
@@ -1997,14 +1997,14 @@ void TestInstructions::testValueRanges()
         TEST_ASSERT(!range.fitsIntoType(TYPE_VOID_POINTER))
         TEST_ASSERT(range.fitsIntoRange(ValueRange(-600000.0, 1.0)))
         TEST_ASSERT(!range.fitsIntoRange(ValueRange(0.0, 0.1)))
-        TEST_ASSERT_EQUALS(Value(Literal(-420000.0f), TYPE_FLOAT), range.getLowerLimit(TYPE_FLOAT))
-        TEST_ASSERT_EQUALS(Value(Literal(-17.0f), TYPE_FLOAT), range.getUpperLimit(TYPE_FLOAT))
-        TEST_ASSERT_EQUALS(Value(Literal(-420000), TYPE_INT32), range.getLowerLimit(TYPE_INT32))
-        TEST_ASSERT_EQUALS(Value(Literal(-17), TYPE_INT32), range.getUpperLimit(TYPE_INT8))
-        TEST_ASSERT_EQUALS(NO_VALUE, range.getLowerLimit(TYPE_VOID_POINTER))
+        TEST_ASSERT_EQUALS(Literal(-420000.0f), range.getLowerLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(Literal(-17.0f), range.getUpperLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(Literal(-420000), range.getLowerLimit(TYPE_INT32))
+        TEST_ASSERT_EQUALS(Literal(-17), range.getUpperLimit(TYPE_INT8))
+        TEST_ASSERT(!range.getLowerLimit(TYPE_VOID_POINTER))
         TEST_ASSERT(!range.getSingletonValue())
         TEST_ASSERT_EQUALS(ValueRange(17.0, 420000.0), range.toAbsoluteRange())
-        TEST_ASSERT_EQUALS(420000.0 - 17.0, range.getRange());
+        TEST_ASSERT_EQUALS(420000.0 - 17.0 + 1.0, range.getRange());
     }
 
     // signed range
@@ -2016,13 +2016,13 @@ void TestInstructions::testValueRanges()
         TEST_ASSERT(range.fitsIntoType(TYPE_INT16))
         TEST_ASSERT(range.fitsIntoRange(ValueRange(-60.0, 18.0)))
         TEST_ASSERT(!range.fitsIntoRange(ValueRange(0.0, 0.1)))
-        TEST_ASSERT_EQUALS(Value(Literal(-42.0f), TYPE_FLOAT), range.getLowerLimit(TYPE_FLOAT))
-        TEST_ASSERT_EQUALS(Value(Literal(17.0f), TYPE_FLOAT), range.getUpperLimit(TYPE_FLOAT))
-        TEST_ASSERT_EQUALS(Value(Literal(-42), TYPE_INT32), range.getLowerLimit(TYPE_INT32))
-        TEST_ASSERT_EQUALS(Value(Literal(17), TYPE_INT32), range.getUpperLimit(TYPE_INT8))
+        TEST_ASSERT_EQUALS(Literal(-42.0f), range.getLowerLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(Literal(17.0f), range.getUpperLimit(TYPE_FLOAT))
+        TEST_ASSERT_EQUALS(Literal(-42), range.getLowerLimit(TYPE_INT32))
+        TEST_ASSERT_EQUALS(Literal(17), range.getUpperLimit(TYPE_INT8))
         TEST_ASSERT(!range.getSingletonValue())
         TEST_ASSERT_EQUALS(ValueRange(0.0, 42.0), range.toAbsoluteRange())
-        TEST_ASSERT_EQUALS(17.0 + 42.0, range.getRange());
+        TEST_ASSERT_EQUALS(17.0 + 42.0 + 1.0, range.getRange());
     }
 
     TEST_ASSERT_EQUALS(

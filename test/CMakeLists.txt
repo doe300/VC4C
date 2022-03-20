@@ -2,6 +2,7 @@ add_executable(TestVC4C "")
 include(sources.list)
 target_link_libraries(TestVC4C VC4CC ${SYSROOT_LIBRARY_FLAGS})
 target_compile_options(TestVC4C PRIVATE ${VC4C_ENABLED_WARNINGS})
+target_compile_definitions(TestVC4C PRIVATE EXAMPLE_FILES="${PROJECT_SOURCE_DIR}/example/" TESTING_FILES="${PROJECT_SOURCE_DIR}/testing/")
 
 target_include_directories (TestVC4C PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_include_directories(TestVC4C PRIVATE ${variant_HEADERS})

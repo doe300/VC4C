@@ -77,7 +77,7 @@ struct BaseAndOffset
 static std::pair<SubExpression, SubExpression> findOffsets(const SubExpression& expr)
 {
     if(auto constantOffset = expr.getConstantExpression())
-        return std::make_pair(SubExpression{INT_ZERO}, SubExpression{*constantOffset});
+        return std::make_pair(SubExpression{INT_ZERO}, SubExpression{*constantOffset, expr.getDecorations()});
 
     if(auto otherExpr = expr.checkExpression())
         return otherExpr->splitIntoDynamicAndConstantPart(

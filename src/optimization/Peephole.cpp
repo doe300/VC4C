@@ -276,7 +276,7 @@ void optimizations::removeObsoleteInstructions(
              * anymore.
              */
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Remove NOP inserted for register-delay which is not needed between '"
+                log << "Removing NOP inserted for register-delay which is not needed between '"
                     << lastInstruction->to_string() << "' and '" << nextIt->to_string() << "': " << it->to_string()
                     << logging::endl);
             it.erase();

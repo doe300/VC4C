@@ -143,7 +143,7 @@ Optional<unsigned> InductionVariable::getIterationCount() const
 {
     Optional<uint32_t> distance;
     if(auto range = getRange())
-        distance = static_cast<uint32_t>(range->getRange()) + 1u /* both limits are within the range */;
+        distance = static_cast<uint32_t>(range->getRange());
     auto stepValue = getStep();
     if(!distance || !stepValue)
         return {};

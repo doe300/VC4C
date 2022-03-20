@@ -1206,7 +1206,7 @@ void TestExpressions::testAssociativeParts()
         auto expr = std::make_shared<Expression>(OP_ADD, innerExpr, maxExpression);
 
         auto parts = expr->getAssociativeParts();
-        TEST_ASSERT_EQUALS(4, parts.size());
+        TEST_ASSERT_EQUALS(4U, parts.size());
         TEST_ASSERT(std::find(parts.begin(), parts.end(), otherExpression) != parts.end());
         TEST_ASSERT(std::find(parts.begin(), parts.end(), maxExpression) != parts.end());
         TEST_ASSERT(std::find(parts.begin(), parts.end(), 17_val) != parts.end());
@@ -1218,7 +1218,7 @@ void TestExpressions::testAssociativeParts()
         auto expr = std::make_shared<Expression>(OP_MAX, innerExpr, maxExpression);
 
         auto parts = expr->getAssociativeParts();
-        TEST_ASSERT_EQUALS(3, parts.size());
+        TEST_ASSERT_EQUALS(3U, parts.size());
         TEST_ASSERT(std::find(parts.begin(), parts.end(), innerExpr) != parts.end());
         TEST_ASSERT(std::find(parts.begin(), parts.end(), loc0) != parts.end());
         TEST_ASSERT(std::find(parts.begin(), parts.end(), 42_val) != parts.end());

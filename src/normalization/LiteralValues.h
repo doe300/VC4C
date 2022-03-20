@@ -57,8 +57,7 @@ namespace vc4c
          * NOTE: Skipping this step results in many (possibly long-living and often-used) locals being forced to
          * physical register-file A, since the physical file B is used for the SmallImmediate
          */
-        InstructionWalker handleUseWithImmediate(
-            const Module& module, Method& method, InstructionWalker it, const Configuration& config);
+        void handleUseWithImmediate(Module& module, Method& method, InstructionWalker it, const Configuration& config);
 
         /**
          * Returns the small immediate representation of the given literal, if it can be represented as such
