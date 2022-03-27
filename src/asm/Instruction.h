@@ -74,7 +74,7 @@ namespace vc4c
             static std::string toOutputRegister(bool regFileA, Address reg);
             static std::string toExtrasString(Signaling sig, ConditionCode cond = COND_ALWAYS,
                 SetFlag flags = SetFlag::DONT_SET, Unpack unpack = UNPACK_NOP, Pack pack = PACK_NOP,
-                bool usesOutputA = true, bool usesInputAOrR4 = true);
+                bool usesOutputA = true, bool usesInputAOrR4 = true, bool readsFloat = false, bool writesFloat = false);
         };
 
         std::string toHexString(uint64_t code);

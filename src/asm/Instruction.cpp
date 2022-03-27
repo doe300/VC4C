@@ -112,7 +112,7 @@ std::string Instruction::toOutputRegister(bool regFileA, const Address reg)
 }
 
 std::string Instruction::toExtrasString(const Signaling sig, const ConditionCode cond, const SetFlag flags,
-    const Unpack unpack, const Pack pack, bool usesOutputA, bool usesInputAOrR4)
+    const Unpack unpack, const Pack pack, bool usesOutputA, bool usesInputAOrR4, bool readsFloat, bool writesFloat)
 {
     std::string result{};
     if(sig != SIGNAL_NONE && sig != SIGNAL_ALU_IMMEDIATE)
@@ -122,9 +122,9 @@ std::string Instruction::toExtrasString(const Signaling sig, const ConditionCode
     if(flags == SetFlag::SET_FLAGS)
         result += std::string(".") + toString(flags);
     if(usesInputAOrR4 && unpack.hasEffect())
-        result += std::string(".") + unpack.to_string();
+        result += std::string(".") + unpack.to_string(readsFloat);
     if(usesOutputA && pack.hasEffect())
-        result += std::string(".") + pack.to_string();
+        result += std::string(".") + pack.to_string(writesFloat);
     return result;
 }
 

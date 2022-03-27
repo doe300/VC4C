@@ -29,7 +29,7 @@ bool Literal::operator==(const Literal& other) const noexcept
     if(this == &other)
         return true;
     if(type == LiteralType::TOMBSTONE || other.type == LiteralType::TOMBSTONE)
-        // if either is tombstone, but must be tombstone
+        // if either is tombstone, other must be tombstone
         return type == other.type;
     if(type == LiteralType::LONG_LEADING_ONES || other.type == LiteralType::LONG_LEADING_ONES)
         return type == other.type && u == other.u;
@@ -431,9 +431,7 @@ bool Value::isUnsignedInteger() const
             });
     }
     if(auto vec = checkVector())
-    {
         return std::all_of(vec->begin(), vec->end(), [](const Literal& lit) -> bool { return lit.signedInt() > 0; });
-    }
     return false;
 }
 

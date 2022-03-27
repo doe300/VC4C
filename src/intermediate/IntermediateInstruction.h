@@ -8,10 +8,10 @@
 #define INTERMEDIATEINSTRUCTION_H
 
 #include "../Locals.h"
+#include "../Optional.h"
 #include "../Values.h"
 #include "../asm/OpCodes.h"
 #include "../performance.h"
-#include "../Optional.h"
 
 #include <functional>
 #include <memory>
@@ -395,7 +395,7 @@ namespace vc4c
             Value renameValue(
                 Method& method, const Value& orig, const std::string& prefix, InlineMapping& localMapping) const;
 
-            std::string createAdditionalInfoString() const;
+            std::string createAdditionalInfoString(bool readsFloat = false, bool writesFloat = false) const;
 
             Optional<Value> getPrecalculatedValueForArg(std::size_t argIndex, std::size_t numIterations) const;
 

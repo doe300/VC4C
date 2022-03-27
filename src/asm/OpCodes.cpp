@@ -160,7 +160,7 @@ bool Signaling::triggersReadOfR4() const noexcept
 }
 
 LCOV_EXCL_START
-std::string Unpack::to_string() const
+std::string Unpack::to_string(bool floatMode) const
 {
     // http://maazl.de/project/vc4asm/doc/extensions.html#pack
     switch(*this)
@@ -169,19 +169,19 @@ std::string Unpack::to_string() const
     case UNPACK_NOP_PM:
         return "";
     case UNPACK_16A_32:
-        return "sextLow16to32";
+        return floatMode ? "lowHalfToFloat" : "sextLow16to32";
     case UNPACK_16B_32:
-        return "sextHigh16to32";
+        return floatMode ? "highHalfToFloat" : "sextHigh16to32";
     case UNPACK_8888_32:
         return "replMSB";
     case UNPACK_8A_32:
-        return "zextByte0To32";
+        return floatMode ? "byte0ToFloat" : "zextByte0To32";
     case UNPACK_8B_32:
-        return "zextByte1To32";
+        return floatMode ? "byte1ToFloat" : "zextByte1To32";
     case UNPACK_8C_32:
-        return "zextByte2To32";
+        return floatMode ? "byte2ToFloat" : "zextByte2To32";
     case UNPACK_8D_32:
-        return "zextByte3To32";
+        return floatMode ? "byte3ToFloat" : "zextByte3To32";
     case UNPACK_R4_16A_32:
         return "r4HalfLowToFloat";
     case UNPACK_R4_16B_32:
@@ -252,42 +252,32 @@ static Literal unpackLiteral(Unpack mode, Literal literal, bool isFloatOperation
         FALL_THROUGH
     case UNPACK_8888_32:
     {
-        // unsigned cast required to guarantee cutting off the value
-        uint8_t lsb = static_cast<uint8_t>(literal.unsignedInt() >> 24u);
-        return Literal((static_cast<uint32_t>(lsb) << 24) | (static_cast<uint32_t>(lsb) << 16) |
-            (static_cast<uint32_t>(lsb) << 8) | lsb);
+        auto lsb = (literal.unsignedInt() >> 24u) & 0xFFu;
+        return Literal((lsb << 24) | (lsb << 16) | (lsb << 8) | lsb);
     }
     case UNPACK_8A_32:
     {
         if(isFloatOperation)
             return unpackLiteral(UNPACK_R4_COLOR0, literal, isFloatOperation);
-        // unsigned cast required to guarantee cutting off the value
-        uint8_t byte0 = static_cast<uint8_t>(literal.unsignedInt());
-        return Literal(static_cast<uint32_t>(byte0));
+        return Literal(literal.unsignedInt() & 0xFFu);
     }
     case UNPACK_8B_32:
     {
         if(isFloatOperation)
             return unpackLiteral(UNPACK_R4_COLOR1, literal, isFloatOperation);
-        // unsigned cast required to guarantee cutting off the value
-        uint8_t byte1 = static_cast<uint8_t>(literal.unsignedInt() >> 8);
-        return Literal(static_cast<uint32_t>(byte1));
+        return Literal(literal.unsignedInt() >> 8 & 0xFFu);
     }
     case UNPACK_8C_32:
     {
         if(isFloatOperation)
             return unpackLiteral(UNPACK_R4_COLOR2, literal, isFloatOperation);
-        // unsigned cast required to guarantee cutting off the value
-        uint8_t byte2 = static_cast<uint8_t>(literal.unsignedInt() >> 16);
-        return Literal(static_cast<uint32_t>(byte2));
+        return Literal(literal.unsignedInt() >> 16 & 0xFFu);
     }
     case UNPACK_8D_32:
     {
         if(isFloatOperation)
             return unpackLiteral(UNPACK_R4_COLOR3, literal, isFloatOperation);
-        // unsigned cast required to guarantee cutting off the value
-        uint8_t byte3 = static_cast<uint8_t>(literal.unsignedInt() >> 24);
-        return Literal(static_cast<uint32_t>(byte3));
+        return Literal(literal.unsignedInt() >> 24 & 0xFFu);
     }
     case UNPACK_R4_16A_32:
     {
@@ -303,25 +293,25 @@ static Literal unpackLiteral(Unpack mode, Literal literal, bool isFloatOperation
     {
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte0 = static_cast<uint8_t>(literal.unsignedInt());
-        return Literal(static_cast<float>(byte0) / 255.0f);
+        return Literal(RoundToZeroConversion<double, float>{}(static_cast<double>(byte0) / 255.0));
     }
     case UNPACK_R4_COLOR1:
     {
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte1 = static_cast<uint8_t>(literal.unsignedInt() >> 8);
-        return Literal(static_cast<float>(byte1) / 255.0f);
+        return Literal(RoundToZeroConversion<double, float>{}(static_cast<double>(byte1) / 255.0));
     }
     case UNPACK_R4_COLOR2:
     {
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte2 = static_cast<uint8_t>(literal.unsignedInt() >> 16);
-        return Literal(static_cast<float>(byte2) / 255.0f);
+        return Literal(RoundToZeroConversion<double, float>{}(static_cast<double>(byte2) / 255.0));
     }
     case UNPACK_R4_COLOR3:
     {
         // unsigned cast required to guarantee cutting off the value
         uint8_t byte3 = static_cast<uint8_t>(literal.unsignedInt() >> 24);
-        return Literal(static_cast<float>(byte3) / 255.0f);
+        return Literal(RoundToZeroConversion<double, float>{}(static_cast<double>(byte3) / 255.0));
     }
     }
     throw CompilationError(
@@ -337,13 +327,10 @@ Optional<Value> Unpack::operator()(const Value& val) const
     if(!val.type.isSimpleType())
         return NO_VALUE;
     if(auto vector = val.checkVector())
-    {
         // unpack vectors per element
-        auto elemType = val.type.toVectorType(1);
-        SIMDVector result = vector->transform(
-            [&](Literal lit) -> Literal { return unpackLiteral(*this, lit, elemType.isFloatingType()); });
-        return SIMDVectorHolder::storeVector(std::move(result), val.type, vector->getStorage());
-    }
+        return SIMDVectorHolder::storeVector(operator()(*vector, val.type.isFloatingType()), val.type,
+            vector->getStorage());
+
     // can only unpack literals
     if(auto lit = val.getLiteralValue())
         return Value(unpackLiteral(*this, *lit, val.type.isFloatingType()), val.type);
@@ -465,7 +452,7 @@ BitMask Unpack::operator()(BitMask mask, bool isFloatOperation) const
 }
 
 LCOV_EXCL_START
-std::string Pack::to_string() const
+std::string Pack::to_string(bool floatMode) const
 {
     // http://maazl.de/project/vc4asm/doc/extensions.html#pack
     switch(*this)
@@ -474,13 +461,13 @@ std::string Pack::to_string() const
     case PACK_NOP_PM:
         return "";
     case PACK_32_16A:
-        return "trunc32toLow16";
+        return floatMode ? "floatToLowHalf" : "trunc32toLow16";
     case PACK_32_16A_S:
-        return "sat16ToLow16";
+        return floatMode ? "floatToLowHalf" : "sat16ToLow16";
     case PACK_32_16B:
-        return "trunc32ToHigh16";
+        return floatMode ? "floatToHighHalf" : "trunc32ToHigh16";
     case PACK_32_16B_S:
-        return "sat16ToHigh16";
+        return floatMode ? "floatToHighHalf" : "sat16ToHigh16";
     case PACK_32_32:
         return "sat";
     case PACK_32_8888:
@@ -524,9 +511,17 @@ Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const Ele
     if(literal.isUndefined())
         return literal;
 
+    auto origLiteral = literal;
     if(mode.hasEffect() && mode != PACK_32_32 && !isFloatOperation && flags.overflow != FlagStatus::UNDEFINED)
         // Tests have shown that (at least for integer operations), all pack modes apply a 32-bit saturation first.
         literal = packLiteral(PACK_32_32, literal, false, flags);
+
+    // Saturating pack modes returns 0 if overflow and exactly one other flag is set
+    bool overloadAndNegativeXorCarry = flags.overflow == FlagStatus::SET &&
+        ((flags.carry == FlagStatus::SET && flags.negative == FlagStatus::CLEAR && flags.zero == FlagStatus::CLEAR) ||
+            (flags.carry == FlagStatus::CLEAR && flags.negative == FlagStatus::SET &&
+                flags.zero == FlagStatus::CLEAR) ||
+            (flags.carry == FlagStatus::CLEAR && flags.negative == FlagStatus::CLEAR && flags.zero == FlagStatus::SET));
 
     switch(mode)
     {
@@ -562,8 +557,11 @@ Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const Ele
         if(isFloatOperation)
             // TODO no saturation?
             return packLiteral(PACK_32_16A, literal, true, flags);
-        if(flags.overflow == FlagStatus::SET)
-            // On full 32-bit integer overflow, the return value is sometimes zero!
+        if(origLiteral.signedInt() == -2 && flags.carry == FlagStatus::CLEAR && flags.negative == FlagStatus::SET &&
+            flags.overflow == FlagStatus::SET)
+            // XXX special case for INT_MAX + INT_MAX, saturates to SHORT_MAX, but we cannot know that here
+            return Literal(0x7FFFu);
+        if(overloadAndNegativeXorCarry)
             return Literal(0u);
         return Literal(saturate<int16_t>(literal.signedInt()) & 0xFFFF);
     case PACK_32_16B:
@@ -582,14 +580,17 @@ Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const Ele
             (literal.unsignedInt() == 0x7FFFFFFFu || literal.unsignedInt() == 0x80000000u))
             // Tests have shown that for 32-bit overflow, the values 0x7FFFFFFF and 0x80000000 get truncated to 0x7FFF
             // and 0x8000 respectively
-            return literal.unsignedInt() == 0x7FFFFFFFu ? Literal(0x7FFF) : Literal(0x8000);
+            return literal.unsignedInt() == 0x7FFFFFFFu ? Literal(0x7FFF0000) : Literal(0x80000000);
         return Literal((literal.unsignedInt() & 0xFFFF) << 16);
     case PACK_32_16B_S:
         if(isFloatOperation)
             // TODO no saturation?
             return packLiteral(PACK_32_16B, literal, true, flags);
-        if(flags.overflow == FlagStatus::SET)
-            // On full 32-bit integer overflow, the return value is sometimes zero!
+        if(origLiteral.signedInt() == -2 && flags.carry == FlagStatus::CLEAR && flags.negative == FlagStatus::SET &&
+            flags.overflow == FlagStatus::SET)
+            // XXX special case for INT_MAX + INT_MAX, saturates to SHORT_MAX, but we cannot know that here
+            return Literal(0x7FFF0000u);
+        if(overloadAndNegativeXorCarry)
             return Literal(0u);
         // need to bitcast here, since left shifting negative values is undefined behavior
         return Literal(bit_cast<int32_t, uint32_t>(saturate<int16_t>(literal.signedInt())) << 16);
@@ -617,23 +618,33 @@ Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const Ele
         return Literal(((literal.unsignedInt() & 0xFF) << 24) | ((literal.unsignedInt() & 0xFF) << 16) |
             ((literal.unsignedInt() & 0xFF) << 8) | (literal.unsignedInt() & 0xFF));
     case PACK_32_8888_S:
+        if(overloadAndNegativeXorCarry)
+            return Literal(0u);
         return Literal((saturate<uint8_t>(literal.signedInt()) << 24) | (saturate<uint8_t>(literal.signedInt()) << 16) |
             (saturate<uint8_t>(literal.signedInt()) << 8) | saturate<uint8_t>(literal.signedInt()));
     case PACK_32_8A:
         return Literal(literal.unsignedInt() & 0xFF);
     case PACK_32_8A_S:
+        if(overloadAndNegativeXorCarry)
+            return Literal(0u);
         return Literal(saturate<uint8_t>(literal.signedInt()));
     case PACK_32_8B:
         return Literal((literal.unsignedInt() & 0xFF) << 8);
     case PACK_32_8B_S:
+        if(overloadAndNegativeXorCarry)
+            return Literal(0u);
         return Literal(saturate<uint8_t>(literal.signedInt()) << 8);
     case PACK_32_8C:
         return Literal((literal.unsignedInt() & 0xFF) << 16);
     case PACK_32_8C_S:
+        if(overloadAndNegativeXorCarry)
+            return Literal(0u);
         return Literal(saturate<uint8_t>(literal.signedInt()) << 16);
     case PACK_32_8D:
         return Literal((literal.unsignedInt() & 0xFF) << 24);
     case PACK_32_8D_S:
+        if(overloadAndNegativeXorCarry)
+            return Literal(0u);
         return Literal(saturate<uint8_t>(literal.signedInt()) << 24);
     case PACK_MUL_GRAY_REPLICATE:
     {
@@ -674,17 +685,8 @@ Optional<Value> Pack::operator()(const Value& val, const VectorFlags& flags) con
     if(!val.type.isSimpleType())
         return NO_VALUE;
     if(auto vector = val.checkVector())
-    {
-        // pack vectors per element
-        auto elemType = val.type.toVectorType(1);
-        SIMDVector result;
-        for(std::size_t i = 0; i < vector->size(); ++i)
-        {
-            auto elem = (*vector)[i];
-            result[i] = packLiteral(*this, elem, elemType.isFloatingType(), flags[i]);
-        }
-        return SIMDVectorHolder::storeVector(std::move(result), val.type, vector->getStorage());
-    }
+        return SIMDVectorHolder::storeVector(operator()(*vector, flags, val.type.isFloatingType()), val.type,
+            vector->getStorage());
     // can only pack literals
     if(auto lit = val.getLiteralValue())
         return Value(packLiteral(*this, *lit, val.type.isFloatingType(), flags[0]), val.type);
@@ -1022,9 +1024,6 @@ static_assert(rotate_right(0xDEAD, -4) == 0x000DEAD0, "");
 static std::pair<Optional<Literal>, ElementFlags> setFlags(Literal lit)
 {
     auto flags = ElementFlags::fromLiteral(lit);
-    // we don't know the flags for carry and 32-bit overflow here, since we don't actually have a plain literal, but an
-    // operation return value which might set those.
-    flags.carry = flags.overflow = FlagStatus::UNDEFINED;
     return std::make_pair(lit, flags);
 }
 

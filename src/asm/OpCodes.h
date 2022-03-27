@@ -268,7 +268,7 @@ namespace vc4c
     {
         explicit constexpr Unpack(unsigned char val) noexcept : InstructionPart(val) {}
 
-        std::string to_string() const;
+        std::string to_string(bool floatMode = false) const;
 
         Optional<Value> operator()(const Value& val) const;
         SIMDVector operator()(const SIMDVector& val, bool isFloatOperation) const;
@@ -385,7 +385,7 @@ namespace vc4c
     {
         explicit constexpr Pack(unsigned char val) noexcept : InstructionPart(val) {}
 
-        std::string to_string() const;
+        std::string to_string(bool floatMode = false) const;
 
         Optional<Value> operator()(const Value& val, const VectorFlags& flags) const;
         SIMDVector operator()(const SIMDVector& val, const VectorFlags& flags, bool isFloatOperation) const;

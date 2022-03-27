@@ -108,12 +108,12 @@ std::string ALUInstruction::toASMString() const
     }
     addPart = std::string(opAdd.name) +
         (toExtrasString(getSig(), getAddCondition(), getSetFlag(), getUnpack(), getPack(),
-             getWriteSwap() == WriteSwap::DONT_SWAP, addCanUnpack) +
+             getWriteSwap() == WriteSwap::DONT_SWAP, addCanUnpack, opAdd.acceptsFloat, opAdd.returnsFloat) +
             " ") +
         (opAdd != OP_NOP ? toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) : "") + addArgs;
     mulPart = std::string(opMul.name) +
         (toExtrasString(getSig(), getMulCondition(), getSetFlag(), getUnpack(), getPack(),
-             getWriteSwap() == WriteSwap::SWAP, mulCanUnpack) +
+             getWriteSwap() == WriteSwap::SWAP, mulCanUnpack, opMul.acceptsFloat, opMul.returnsFloat) +
             " ") +
         (opMul != OP_NOP ? toOutputRegister(getWriteSwap() == WriteSwap::SWAP, getMulOut()) : "") + mulArgs;
     if(isVectorRotation())

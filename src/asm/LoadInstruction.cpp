@@ -64,16 +64,18 @@ std::string LoadInstruction::toASMString() const
     {
         auto s = std::string("ldui") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
             ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") +
-                to_string<Literal, SIMDVector>(intermediate::LoadImmediate::toLoadedValues(
-                    getImmediateInt(), intermediate::LoadType::PER_ELEMENT_UNSIGNED)));
+                intermediate::LoadImmediate::toLoadedValues(
+                    getImmediateInt(), intermediate::LoadType::PER_ELEMENT_UNSIGNED)
+                    .to_string(true));
         return s;
     }
     if(getType() == OpLoad::LOAD_SIGNED)
     {
         auto s = std::string("ldsi") + (toExtrasString(SIGNAL_NONE, getAddCondition(), getSetFlag()) + " ") +
             ((toOutputRegister(getWriteSwap() == WriteSwap::DONT_SWAP, getAddOut()) + ", ") +
-                to_string<Literal, SIMDVector>(intermediate::LoadImmediate::toLoadedValues(
-                    getImmediateInt(), intermediate::LoadType::PER_ELEMENT_SIGNED)));
+                intermediate::LoadImmediate::toLoadedValues(
+                    getImmediateInt(), intermediate::LoadType::PER_ELEMENT_SIGNED)
+                    .to_string(true));
         return s;
     }
     std::string valString;

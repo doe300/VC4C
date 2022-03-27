@@ -409,15 +409,15 @@ Value IntermediateInstruction::renameValue(
 }
 
 LCOV_EXCL_START
-std::string IntermediateInstruction::createAdditionalInfoString() const
+std::string IntermediateInstruction::createAdditionalInfoString(bool readsFloat, bool writesFloat) const
 {
     std::string res("(");
     if(signal.hasSideEffects() && signal != SIGNAL_BRANCH)
         res.append(signal.to_string()).append(" ");
     if(hasUnpackMode())
-        res.append(unpackMode.to_string()).append(" ");
+        res.append(unpackMode.to_string(readsFloat)).append(" ");
     if(hasPackMode())
-        res.append(packMode.to_string()).append(" ");
+        res.append(packMode.to_string(writesFloat)).append(" ");
     if(hasConditionalExecution())
         res.append(conditional.to_string()).append(" ");
     if(setFlags != SetFlag::DONT_SET)

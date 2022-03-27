@@ -6,7 +6,9 @@
 
 #include "TestInstructions.h"
 
+#include "opcode_pack_test.h"
 #include "opcode_test.h"
+#include "unpack_test.h"
 
 #include "Bitfield.h"
 #include "GlobalValues.h"
@@ -18,6 +20,7 @@
 #include "asm/LoadInstruction.h"
 #include "asm/OpCodes.h"
 #include "intermediate/IntermediateInstruction.h"
+#include "intrinsics/Operators.h"
 #include "normalization/LiteralValues.h"
 
 #include <cmath>
@@ -55,6 +58,8 @@ TestInstructions::TestInstructions()
     TEST_ADD(TestInstructions::testInstructionEquality);
     TEST_ADD(TestInstructions::testSpecialInstructionMembers);
     TEST_ADD(TestInstructions::testOpCodeEmulation);
+    TEST_ADD(TestInstructions::testOpCodePackEmulation);
+    TEST_ADD(TestInstructions::testUnpackEmulation);
 }
 
 // out-of-line virtual destructor
@@ -153,7 +158,7 @@ void TestInstructions::testUnpackModes()
 {
     uint32_t halfOne = static_cast<uint16_t>(half_t{1.0f});
     uint32_t colorHalf = 0x7F;
-    Value floatHalf(Literal(127.0f / 255.0f), TYPE_FLOAT);
+    Value floatHalf(Literal(RoundToZeroConversion<double, float>{}(127.0 / 255.0)), TYPE_FLOAT);
 
     TEST_ASSERT_EQUALS(INT_MINUS_ONE, UNPACK_NOP(INT_MINUS_ONE))
     TEST_ASSERT_EQUALS(INT_ZERO, UNPACK_NOP(INT_ZERO))
@@ -229,28 +234,28 @@ void TestInstructions::testUnpackModes()
     TEST_ASSERT_EQUALS(FLOAT_ZERO, UNPACK_R4_COLOR0(INT_ZERO))
     TEST_ASSERT_EQUALS(FLOAT_ONE, UNPACK_R4_COLOR0(Value(Literal(0xFF), TYPE_INT8)))
     // 127/255 is not exactly 1/2!
-    TEST_ASSERT_EQUALS(Value(Literal(0x3efefeffu), TYPE_FLOAT), UNPACK_R4_COLOR0(Value(Literal(0x7F), TYPE_INT8)))
+    TEST_ASSERT_EQUALS(Value(Literal(0x3efefefeu), TYPE_FLOAT), UNPACK_R4_COLOR0(Value(Literal(0x7F), TYPE_INT8)))
     TEST_ASSERT_EQUALS(BitMask{0x000000FF}, UNPACK_R4_COLOR0.getInputMask())
     TEST_ASSERT_EQUALS(BITMASK_ALL, UNPACK_R4_COLOR0(BitMask{0x000000FF}, true))
     TEST_ASSERT_EQUALS(BITMASK_NONE, UNPACK_R4_COLOR0(BitMask{0xFFFFFF00}, true))
 
     TEST_ASSERT_EQUALS(FLOAT_ZERO, UNPACK_R4_COLOR1(INT_ZERO))
     TEST_ASSERT_EQUALS(FLOAT_ONE, UNPACK_R4_COLOR1(Value(Literal(0xFF12), TYPE_INT8)))
-    TEST_ASSERT_EQUALS(Value(Literal(0x3efefeffu), TYPE_FLOAT), UNPACK_R4_COLOR1(Value(Literal(0x7F12), TYPE_INT8)))
+    TEST_ASSERT_EQUALS(Value(Literal(0x3efefefeu), TYPE_FLOAT), UNPACK_R4_COLOR1(Value(Literal(0x7F12), TYPE_INT8)))
     TEST_ASSERT_EQUALS(BitMask{0x0000FF00}, UNPACK_R4_COLOR1.getInputMask())
     TEST_ASSERT_EQUALS(BITMASK_ALL, UNPACK_R4_COLOR1(BitMask{0x0000FF00}, true))
     TEST_ASSERT_EQUALS(BITMASK_NONE, UNPACK_R4_COLOR1(BitMask{0xFFFF00FF}, true))
 
     TEST_ASSERT_EQUALS(FLOAT_ZERO, UNPACK_R4_COLOR2(INT_ZERO))
     TEST_ASSERT_EQUALS(FLOAT_ONE, UNPACK_R4_COLOR2(Value(Literal(0xFF1234), TYPE_INT8)))
-    TEST_ASSERT_EQUALS(Value(Literal(0x3efefeffu), TYPE_FLOAT), UNPACK_R4_COLOR2(Value(Literal(0x7F1234), TYPE_INT8)))
+    TEST_ASSERT_EQUALS(Value(Literal(0x3efefefeu), TYPE_FLOAT), UNPACK_R4_COLOR2(Value(Literal(0x7F1234), TYPE_INT8)))
     TEST_ASSERT_EQUALS(BitMask{0x00FF0000}, UNPACK_R4_COLOR2.getInputMask())
     TEST_ASSERT_EQUALS(BITMASK_ALL, UNPACK_R4_COLOR2(BitMask{0x00FF0000}, true))
     TEST_ASSERT_EQUALS(BITMASK_NONE, UNPACK_R4_COLOR2(BitMask{0xFF00FFFF}, true))
 
     TEST_ASSERT_EQUALS(FLOAT_ZERO, UNPACK_R4_COLOR3(INT_ZERO))
     TEST_ASSERT_EQUALS(FLOAT_ONE, UNPACK_R4_COLOR3(Value(Literal(0xFF123456), TYPE_INT8)))
-    TEST_ASSERT_EQUALS(Value(Literal(0x3efefeffu), TYPE_FLOAT), UNPACK_R4_COLOR3(Value(Literal(0x7F123456), TYPE_INT8)))
+    TEST_ASSERT_EQUALS(Value(Literal(0x3efefefeu), TYPE_FLOAT), UNPACK_R4_COLOR3(Value(Literal(0x7F123456), TYPE_INT8)))
     TEST_ASSERT_EQUALS(BitMask{0xFF000000}, UNPACK_R4_COLOR3.getInputMask())
     TEST_ASSERT_EQUALS(BITMASK_ALL, UNPACK_R4_COLOR3(BitMask{0xFF000000}, true))
     TEST_ASSERT_EQUALS(BITMASK_NONE, UNPACK_R4_COLOR3(BitMask{0x00FFFFFF}, true))
@@ -2413,7 +2418,7 @@ void TestInstructions::testSpecialInstructionMembers()
 
 void TestInstructions::testOpCodeEmulation()
 {
-    std::map<OpCode, std::vector<TestEntry>> tests = {
+    const std::vector<std::pair<OpCode, std::vector<TestEntry>>> tests = {
         {OP_FADD, TEST_OP_FADD},
         {OP_FSUB, TEST_OP_FSUB},
         {OP_FMIN, TEST_OP_FMIN},
@@ -2426,14 +2431,12 @@ void TestInstructions::testOpCodeEmulation()
         {OP_ADD, TEST_OP_ADD},
         {OP_SUB, TEST_OP_SUB},
         {OP_SHR, TEST_OP_SHR},
-        // TODO ASR for 0x80000000 as first operand gives a strange result 338369608 iff offset & 31 == 0
-        // {OP_ASR, TEST_OP_ASR},
+        {OP_ASR, TEST_OP_ASR},
         {OP_ROR, TEST_OP_ROR},
         {OP_SHL, TEST_OP_SHL},
         {OP_MIN, TEST_OP_MIN},
         {OP_MAX, TEST_OP_MAX},
-        // TODO AND for 0x80000000 as first operand gives very strange results
-        // {OP_AND, TEST_OP_AND},
+        {OP_AND, TEST_OP_AND},
         {OP_OR, TEST_OP_OR},
         {OP_XOR, TEST_OP_XOR},
         {OP_NOT, TEST_OP_NOT},
@@ -2500,6 +2503,324 @@ void TestInstructions::testOpCodeEmulation()
             {
                 TEST_ASSERT_EQUALS(op.result, op.resultSaturated);
             }
+        }
+    }
+}
+
+void TestInstructions::testOpCodePackEmulation()
+{
+    const std::vector<std::pair<OpCode, std::vector<PackTestEntry>>> tests = {
+        {OP_FADD, TEST_PACK_FADD},
+        {OP_FSUB, TEST_PACK_FSUB},
+        {OP_FMIN, TEST_PACK_FMIN},
+        {OP_FMAX, TEST_PACK_FMAX},
+        {OP_FMINABS, TEST_PACK_FMINABS},
+        {OP_FMAXABS, TEST_PACK_FMAXABS},
+        {OP_FTOI, TEST_PACK_FTOI},
+        // TODO has rounding error in CI for RelWithDebInfo build (not for Debug build) with itof INT_MAX
+        // {OP_ITOF, TEST_PACK_ITOF},
+        {OP_ADD, TEST_PACK_ADD},
+        {OP_SUB, TEST_PACK_SUB},
+        {OP_SHR, TEST_PACK_SHR},
+        {OP_ASR, TEST_PACK_ASR},
+        {OP_ROR, TEST_PACK_ROR},
+        {OP_SHL, TEST_PACK_SHL},
+        {OP_MIN, TEST_PACK_MIN},
+        {OP_MAX, TEST_PACK_MAX},
+        {OP_AND, TEST_PACK_AND},
+        {OP_OR, TEST_PACK_OR},
+        {OP_XOR, TEST_PACK_XOR},
+        {OP_NOT, TEST_PACK_NOT},
+        {OP_CLZ, TEST_PACK_CLZ},
+        {OP_V8ADDS, TEST_PACK_V8ADDS},
+        {OP_V8SUBS, TEST_PACK_V8SUBS},
+        {OP_FMUL, TEST_PACK_FMUL},
+        {OP_MUL24, TEST_PACK_MUL24},
+        {OP_V8MULD, TEST_PACK_V8MULD},
+        {OP_V8MIN, TEST_PACK_V8MIN},
+        {OP_V8MAX, TEST_PACK_V8MAX},
+    };
+
+    const auto toResultError = [&](const OpCode& code, const Pack& pack, const PackTestEntry& entry,
+                                   int32_t result) -> std::string {
+        if(code.numOperands == 1)
+            return code.name + (" " + std::to_string(entry.firstOp)) + " = " + std::to_string(result) + " (" +
+                pack.to_string() + ")";
+        return std::to_string(entry.firstOp) + " " + code.name + " " + std::to_string(entry.secondOp) + " = " +
+            std::to_string(result) + " (" + pack.to_string(code.returnsFloat) + ")";
+    };
+
+    for(const auto& test : tests)
+    {
+        for(const auto& op : test.second)
+        {
+            auto resultType = test.first.returnsFloat ? TYPE_FLOAT : TYPE_INT32;
+
+            auto result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            if(op.result != result.first.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result),
+                    toResultError(
+                        test.first, PACK_NOP, op, result.first.value().getLiteralValue().value().signedInt()));
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            auto packedResult = PACK_32_32(result.first.value(), result.second);
+            if(op.result32BitSaturated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result32BitSaturated),
+                    toResultError(
+                        test.first, PACK_32_32, op, packedResult.value().getLiteralValue().value().signedInt()));
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            packedResult = PACK_32_16A_S(result.first.value(), result.second);
+            if(op.result16BitASaturated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result16BitASaturated),
+                    toResultError(
+                        test.first, PACK_32_16A_S, op, packedResult.value().getLiteralValue().value().signedInt()));
+                TEST_ASSERT_EQUALS(result.first->to_string(), result.second.to_string());
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            packedResult = PACK_32_16A(result.first.value(), result.second);
+            if(op.result16BitATruncated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result16BitATruncated),
+                    toResultError(
+                        test.first, PACK_32_16A, op, packedResult.value().getLiteralValue().value().signedInt()));
+                TEST_ASSERT_EQUALS(result.first->to_string(), result.second.to_string());
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            packedResult = PACK_32_16B_S(result.first.value(), result.second);
+            if(op.result16BitBSaturated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result16BitBSaturated),
+                    toResultError(
+                        test.first, PACK_32_16B_S, op, packedResult.value().getLiteralValue().value().signedInt()));
+                TEST_ASSERT_EQUALS(result.first->to_string(), result.second.to_string());
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            packedResult = PACK_32_16B(result.first.value(), result.second);
+            if(op.result16BitBTruncated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result16BitBTruncated),
+                    toResultError(
+                        test.first, PACK_32_16B, op, packedResult.value().getLiteralValue().value().signedInt()));
+                TEST_ASSERT_EQUALS(result.first->to_string(), result.second.to_string());
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            packedResult = PACK_32_8A_S(result.first.value(), result.second);
+            if(op.result8BitASaturated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result8BitASaturated),
+                    toResultError(
+                        test.first, PACK_32_8A_S, op, packedResult.value().getLiteralValue().value().signedInt()));
+                TEST_ASSERT_EQUALS(result.first->to_string(), result.second.to_string());
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            packedResult = PACK_32_8A(result.first.value(), result.second);
+            if(op.result8BitATruncated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result8BitATruncated),
+                    toResultError(
+                        test.first, PACK_32_8A, op, packedResult.value().getLiteralValue().value().signedInt()));
+                TEST_ASSERT_EQUALS(result.first->to_string(), result.second.to_string());
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            packedResult = PACK_32_8B_S(result.first.value(), result.second);
+            if(op.result8BitBSaturated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result8BitBSaturated),
+                    toResultError(
+                        test.first, PACK_32_8B_S, op, packedResult.value().getLiteralValue().value().signedInt()));
+                TEST_ASSERT_EQUALS(result.first->to_string(), result.second.to_string());
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            packedResult = PACK_32_8B(result.first.value(), result.second);
+            if(op.result8BitBTruncated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result8BitBTruncated),
+                    toResultError(
+                        test.first, PACK_32_8B, op, packedResult.value().getLiteralValue().value().signedInt()));
+                TEST_ASSERT_EQUALS(result.first->to_string(), result.second.to_string());
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            packedResult = PACK_32_8C_S(result.first.value(), result.second);
+            if(op.result8BitCSaturated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result8BitCSaturated),
+                    toResultError(
+                        test.first, PACK_32_8C_S, op, packedResult.value().getLiteralValue().value().signedInt()));
+                TEST_ASSERT_EQUALS(result.first->to_string(), result.second.to_string());
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            packedResult = PACK_32_8C(result.first.value(), result.second);
+            if(op.result8BitCTruncated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result8BitCTruncated),
+                    toResultError(
+                        test.first, PACK_32_8C, op, packedResult.value().getLiteralValue().value().signedInt()));
+                TEST_ASSERT_EQUALS(result.first->to_string(), result.second.to_string());
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            packedResult = PACK_32_8D_S(result.first.value(), result.second);
+            if(op.result8BitDSaturated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result8BitDSaturated),
+                    toResultError(
+                        test.first, PACK_32_8D_S, op, packedResult.value().getLiteralValue().value().signedInt()));
+                TEST_ASSERT_EQUALS(result.first->to_string(), result.second.to_string());
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            packedResult = PACK_32_8D(result.first.value(), result.second);
+            if(op.result8BitDTruncated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result8BitDTruncated),
+                    toResultError(
+                        test.first, PACK_32_8D, op, packedResult.value().getLiteralValue().value().signedInt()));
+                TEST_ASSERT_EQUALS(result.first->to_string(), result.second.to_string());
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            packedResult = PACK_32_8888_S(result.first.value(), result.second);
+            if(op.result8BitRepSaturated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result8BitRepSaturated),
+                    toResultError(
+                        test.first, PACK_32_8888_S, op, packedResult.value().getLiteralValue().value().signedInt()));
+                TEST_ASSERT_EQUALS(result.first->to_string(), result.second.to_string());
+            }
+
+            result = test.first(Literal(op.firstOp), Literal(op.secondOp), resultType);
+            packedResult = PACK_32_8888(result.first.value(), result.second);
+            if(op.result8BitRepTruncated != packedResult.value().getLiteralValue().value().signedInt())
+            {
+                TEST_ASSERT_EQUALS(std::to_string(op.result8BitRepTruncated),
+                    toResultError(
+                        test.first, PACK_32_8888, op, packedResult.value().getLiteralValue().value().signedInt()));
+                TEST_ASSERT_EQUALS(result.first->to_string(), result.second.to_string());
+            }
+        }
+    }
+}
+
+void TestInstructions::testUnpackEmulation()
+{
+    const auto toResultError = [&](const Unpack& unpack, bool floatMode, const UnpackTestEntry& entry,
+                                   int32_t result) -> std::string {
+        return std::to_string(entry.arg) + " = " + std::to_string(result) + " (" + unpack.to_string(floatMode) + ")";
+    };
+
+    for(const auto& test : TEST_UNPACK)
+    {
+        auto result = UNPACK_16A_32(Value(Literal(test.arg), TYPE_INT32));
+        if(test.result16BitASignExtended != result.value().getLiteralValue().value().signedInt())
+        {
+            TEST_ASSERT_EQUALS(std::to_string(test.result16BitASignExtended),
+                toResultError(UNPACK_16A_32, false, test, result.value().getLiteralValue().value().signedInt()));
+        }
+
+        result = UNPACK_16B_32(Value(Literal(test.arg), TYPE_INT32));
+        if(test.result16BitBSignExtended != result.value().getLiteralValue().value().signedInt())
+        {
+            TEST_ASSERT_EQUALS(std::to_string(test.result16BitBSignExtended),
+                toResultError(UNPACK_16B_32, false, test, result.value().getLiteralValue().value().signedInt()));
+        }
+
+        result = UNPACK_8888_32(Value(Literal(test.arg), TYPE_INT32));
+        if(test.result8BitReplicated != result.value().getLiteralValue().value().signedInt())
+        {
+            TEST_ASSERT_EQUALS(std::to_string(test.result8BitReplicated),
+                toResultError(UNPACK_8888_32, false, test, result.value().getLiteralValue().value().signedInt()));
+        }
+
+        result = UNPACK_8A_32(Value(Literal(test.arg), TYPE_INT32));
+        if(test.result8BitAZeroExtended != result.value().getLiteralValue().value().signedInt())
+        {
+            TEST_ASSERT_EQUALS(std::to_string(test.result8BitAZeroExtended),
+                toResultError(UNPACK_8A_32, false, test, result.value().getLiteralValue().value().signedInt()));
+        }
+
+        result = UNPACK_8B_32(Value(Literal(test.arg), TYPE_INT32));
+        if(test.result8BitBZeroExtended != result.value().getLiteralValue().value().signedInt())
+        {
+            TEST_ASSERT_EQUALS(std::to_string(test.result8BitBZeroExtended),
+                toResultError(UNPACK_8B_32, false, test, result.value().getLiteralValue().value().signedInt()));
+        }
+
+        result = UNPACK_8C_32(Value(Literal(test.arg), TYPE_INT32));
+        if(test.result8BitCZeroExtended != result.value().getLiteralValue().value().signedInt())
+        {
+            TEST_ASSERT_EQUALS(std::to_string(test.result8BitCZeroExtended),
+                toResultError(UNPACK_8C_32, false, test, result.value().getLiteralValue().value().signedInt()));
+        }
+
+        result = UNPACK_8D_32(Value(Literal(test.arg), TYPE_INT32));
+        if(test.result8BitDZeroExtended != result.value().getLiteralValue().value().signedInt())
+        {
+            TEST_ASSERT_EQUALS(std::to_string(test.result8BitDZeroExtended),
+                toResultError(UNPACK_8D_32, false, test, result.value().getLiteralValue().value().signedInt()));
+        }
+
+        result = UNPACK_16A_32(Value(Literal(test.arg), TYPE_FLOAT));
+        if(test.result16BitAFloatExtended != result.value().getLiteralValue().value().signedInt())
+        {
+            TEST_ASSERT_EQUALS(std::to_string(test.result16BitAFloatExtended),
+                toResultError(UNPACK_16A_32, true, test, result.value().getLiteralValue().value().signedInt()));
+        }
+
+        result = UNPACK_16B_32(Value(Literal(test.arg), TYPE_FLOAT));
+        if(test.result16BitBFloatExtended != result.value().getLiteralValue().value().signedInt())
+        {
+            TEST_ASSERT_EQUALS(std::to_string(test.result16BitBFloatExtended),
+                toResultError(UNPACK_16B_32, true, test, result.value().getLiteralValue().value().signedInt()));
+        }
+
+        result = UNPACK_8888_32(Value(Literal(test.arg), TYPE_FLOAT));
+        if(test.result8BitFloatReplicated != result.value().getLiteralValue().value().signedInt())
+        {
+            TEST_ASSERT_EQUALS(std::to_string(test.result8BitFloatReplicated),
+                toResultError(UNPACK_8888_32, true, test, result.value().getLiteralValue().value().signedInt()));
+        }
+
+        result = UNPACK_8A_32(Value(Literal(test.arg), TYPE_FLOAT));
+        if(test.result8BitAFloatExtended != result.value().getLiteralValue().value().signedInt())
+        {
+            TEST_ASSERT_EQUALS(std::to_string(test.result8BitAFloatExtended),
+                toResultError(UNPACK_8A_32, true, test, result.value().getLiteralValue().value().signedInt()));
+        }
+
+        result = UNPACK_8B_32(Value(Literal(test.arg), TYPE_FLOAT));
+        if(test.result8BitBFloatExtended != result.value().getLiteralValue().value().signedInt())
+        {
+            TEST_ASSERT_EQUALS(std::to_string(test.result8BitBFloatExtended),
+                toResultError(UNPACK_8B_32, true, test, result.value().getLiteralValue().value().signedInt()));
+        }
+
+        result = UNPACK_8C_32(Value(Literal(test.arg), TYPE_FLOAT));
+        if(test.result8BitCFloatExtended != result.value().getLiteralValue().value().signedInt())
+        {
+            TEST_ASSERT_EQUALS(std::to_string(test.result8BitCFloatExtended),
+                toResultError(UNPACK_8C_32, true, test, result.value().getLiteralValue().value().signedInt()));
+        }
+
+        result = UNPACK_8D_32(Value(Literal(test.arg), TYPE_FLOAT));
+        if(test.result8BitDFloatExtended != result.value().getLiteralValue().value().signedInt())
+        {
+            TEST_ASSERT_EQUALS(std::to_string(test.result8BitDFloatExtended),
+                toResultError(UNPACK_8D_32, true, test, result.value().getLiteralValue().value().signedInt()));
         }
     }
 }

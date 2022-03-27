@@ -61,7 +61,8 @@ LCOV_EXCL_START
 std::string Operation::to_string() const
 {
     return (getOutput()->to_string(true) + " = ") + (std::string(op.name) + " ") + getFirstArg().to_string() +
-        (getSecondArg() ? std::string(", ") + assertArgument(1).to_string() : "") + createAdditionalInfoString();
+        (getSecondArg() ? std::string(", ") + assertArgument(1).to_string() : "") +
+        createAdditionalInfoString(op.acceptsFloat, op.returnsFloat);
 }
 LCOV_EXCL_STOP
 

@@ -46,6 +46,8 @@ public:
     void testSpecialInstructionMembers();
 
     void testOpCodeEmulation();
+    void testOpCodePackEmulation();
+    void testUnpackEmulation();
 };
 
 #endif /* TEST_INSTRUCTIONS_H */
