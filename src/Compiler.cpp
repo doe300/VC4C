@@ -108,10 +108,15 @@ void CompilerInstance::parseInput(const CompilationData& input)
 
 void CompilerInstance::normalize(bool dropNonKernels)
 {
+    normalize({}, dropNonKernels);
+}
+
+void CompilerInstance::normalize(const std::set<std::string>& selectedSteps, bool dropNonKernels)
+{
     normalization::Normalizer norm(moduleConfig);
 
     PROFILE_START(Normalizer);
-    norm.normalize(module);
+    norm.normalize(module, selectedSteps);
     PROFILE_END(Normalizer);
 
     if(dropNonKernels)
@@ -128,12 +133,25 @@ void CompilerInstance::optimize()
     PROFILE_END(Optimizer);
 }
 
-void CompilerInstance::adjust()
+void CompilerInstance::optimize(const std::vector<std::string>& selectedPasses)
+{
+    Configuration optimizeConfig{moduleConfig};
+    optimizeConfig.optimizationLevel = OptimizationLevel::NONE;
+    optimizeConfig.additionalEnabledOptimizations.insert(selectedPasses.begin(), selectedPasses.end());
+
+    optimizations::Optimizer opt(optimizeConfig);
+
+    PROFILE_START(Optimizer);
+    opt.optimize(module);
+    PROFILE_END(Optimizer);
+}
+
+void CompilerInstance::adjust(const std::set<std::string>& selectedSteps)
 {
     normalization::Normalizer norm(moduleConfig);
 
     PROFILE_START(SecondNormalizer);
-    norm.adjust(module);
+    norm.adjust(module, selectedSteps);
     PROFILE_END(SecondNormalizer);
 
     // TODO could discard unused globals

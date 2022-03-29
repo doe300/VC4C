@@ -11,7 +11,9 @@
 #include "Module.h"
 
 #include <iostream>
+#include <set>
 #include <string>
+#include <vector>
 
 namespace vc4c
 {
@@ -35,8 +37,10 @@ namespace vc4c
         void precompileAndParseInput(const CompilationData& input, const std::string& options = "");
         void parseInput(const CompilationData& input);
         void normalize(bool dropNonKernels = true);
+        void normalize(const std::set<std::string>& selectedSteps, bool dropNonKernels = true);
         void optimize();
-        void adjust();
+        void optimize(const std::vector<std::string>& selectedPasses);
+        void adjust(const std::set<std::string>& selectedSteps = {});
         std::size_t generateCode(std::ostream& output);
         std::size_t generateCode(std::ostream& output, const std::vector<qpu_asm::RegisterFixupStep>& customSteps);
         std::pair<CompilationData, std::size_t> generateCode(const Optional<std::string>& outputFile = {});

@@ -11,6 +11,8 @@
 #include "config.h"
 
 #include <functional>
+#include <set>
+#include <string>
 
 namespace vc4c
 {
@@ -45,7 +47,7 @@ namespace vc4c
              *
              * NOTE: The normalization needs to be run BEFORE the optimizations
              */
-            void normalize(Module& module) const;
+            void normalize(Module& module, const std::set<std::string>& selectedSteps = {}) const;
 
             /*
              * Runs the second batch of normalization steps, trying to fix any possible issues with hardware limitations
@@ -54,7 +56,7 @@ namespace vc4c
              *
              * NOTE: The fix-up needs to be run AFTER the optimizations
              */
-            void adjust(Module& module) const;
+            void adjust(Module& module, const std::set<std::string>& selectedSteps = {}) const;
 
         private:
             Configuration config;
@@ -65,8 +67,8 @@ namespace vc4c
              * After this function has returned, it is guaranteed, that all remaining instructions within the method are
              * normalized (e.g. return true for #isNormalized()).
              */
-            void normalizeMethod(Module& module, Method& method) const;
-            void adjustMethod(Module& module, Method& method) const;
+            void normalizeMethod(Module& module, Method& method, const std::set<std::string>& selectedSteps) const;
+            void adjustMethod(Module& module, Method& method, const std::set<std::string>& selectedSteps) const;
         };
     } /* namespace normalization */
 } /* namespace vc4c */

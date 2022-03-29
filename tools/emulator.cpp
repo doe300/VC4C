@@ -45,7 +45,7 @@ void printValue(uint32_t val, BufferType type)
     }
     case BufferType::FLOAT:
     {
-        float f = bit_cast<uint32_t, float>(val);
+        float f = bit_cast<float>(val);
         std::cout << f;
         break;
     }
@@ -136,9 +136,9 @@ static std::vector<tools::Word> readDirectBuffer(const std::string& data)
             HexType tmp = 0;
             // read number as hexadecimal unsigned
             ss >> std::hex >> tmp >> std::dec;
-            t = bit_cast<HexType, T>(tmp);
+            t = bit_cast<T>(tmp);
         }
-        words.emplace_back(bit_cast<T, uint32_t>(t));
+        words.emplace_back(bit_cast<uint32_t>(t));
         while(ss.peek() == ' ')
             ss.get();
     }

@@ -269,7 +269,7 @@ static void runNormalizationStep(
     }
 }
 
-void Normalizer::normalize(Module& module) const
+void Normalizer::normalize(Module& module, const std::set<std::string>& selectedSteps) const
 {
     // 1. eliminate phi on all methods
     for(auto& method : module)
@@ -300,19 +300,19 @@ void Normalizer::normalize(Module& module) const
         PROFILE_COUNTER_WITH_PREV(vc4c::profiler::COUNTER_NORMALIZATION, "Inline (after)", kernel.countInstructions());
     }
     // 3. run other normalization steps on kernel functions
-    const auto f = [&module, this](Method* kernelFunc) -> void { normalizeMethod(module, *kernelFunc); };
+    const auto f = [&, this](Method* kernelFunc) -> void { normalizeMethod(module, *kernelFunc, selectedSteps); };
     ThreadPool::scheduleAll<Method*>("Normalization", kernels, f, THREAD_LOGGER.get());
 }
 
-void Normalizer::adjust(Module& module) const
+void Normalizer::adjust(Module& module, const std::set<std::string>& selectedSteps) const
 {
     // run adjustment steps on kernel functions
     auto kernels = module.getKernels();
-    const auto f = [&module, this](Method* kernelFunc) -> void { adjustMethod(module, *kernelFunc); };
+    const auto f = [&, this](Method* kernelFunc) -> void { adjustMethod(module, *kernelFunc, selectedSteps); };
     ThreadPool::scheduleAll<Method*>("Adjustment", kernels, f, THREAD_LOGGER.get());
 }
 
-void Normalizer::normalizeMethod(Module& module, Method& method) const
+void Normalizer::normalizeMethod(Module& module, Method& method, const std::set<std::string>& selectedSteps) const
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "-----" << logging::endl);
     CPPLOG_LAZY(logging::Level::INFO, log << "Running normalization passes for: " << method.name << logging::endl);
@@ -322,6 +322,8 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
 
     for(const auto& step : initialNormalizationSteps)
     {
+        if(!selectedSteps.empty() && selectedSteps.find(step.first) == selectedSteps.end())
+            continue;
         logging::debug() << logging::endl;
         logging::debug() << "Running pass: " << step.first << logging::endl;
         PROFILE_START_DYNAMIC(step.first);
@@ -331,19 +333,23 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
 
     // maps all memory-accessing instructions to intermediate memory access instructions.
     // this step is called extra, because it needs to be run over all instructions
-    logging::logLazy(logging::Level::DEBUG, []() {
-        logging::debug() << logging::endl;
-        logging::debug() << "Running pass: MapMemoryAccess" << logging::endl;
-    });
-    PROFILE_START(MapMemoryAccess);
-    mapMemoryAccess(module, method, config);
-    PROFILE_END(MapMemoryAccess);
+    if(selectedSteps.empty() || selectedSteps.find("MapMemoryAccess") != selectedSteps.end())
+    {
+        logging::logLazy(logging::Level::DEBUG, []() {
+            logging::debug() << logging::endl;
+            logging::debug() << "Running pass: MapMemoryAccess" << logging::endl;
+        });
+        PROFILE_SCOPE(MapMemoryAccess);
+        mapMemoryAccess(module, method, config);
+    }
 
     // calculate current/final stack offsets after lowering stack-accesses
     method.calculateStackOffsets();
 
     for(const auto& step : initialNormalizationSteps2)
     {
+        if(!selectedSteps.empty() && selectedSteps.find(step.first) == selectedSteps.end())
+            continue;
         logging::logLazy(logging::Level::DEBUG, [&]() {
             logging::debug() << logging::endl;
             logging::debug() << "Running pass: " << step.first << logging::endl;
@@ -354,13 +360,15 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
     }
 
     // adds the start- and stop-segments to the beginning and end of the kernel
-    logging::logLazy(logging::Level::DEBUG, []() {
-        logging::debug() << logging::endl;
-        logging::debug() << "Running pass: AddStartStopSegment" << logging::endl;
-    });
-    PROFILE_START(AddStartStopSegment);
-    optimizations::addStartStopSegment(module, method, config);
-    PROFILE_END(AddStartStopSegment);
+    if(selectedSteps.empty() || selectedSteps.find("AddStartStopSegment") != selectedSteps.end())
+    {
+        logging::logLazy(logging::Level::DEBUG, []() {
+            logging::debug() << logging::endl;
+            logging::debug() << "Running pass: AddStartStopSegment" << logging::endl;
+        });
+        PROFILE_SCOPE(AddStartStopSegment);
+        optimizations::addStartStopSegment(module, method, config);
+    }
 
     PROFILE_END(NormalizationPasses);
 
@@ -381,7 +389,7 @@ void Normalizer::normalizeMethod(Module& module, Method& method) const
     LCOV_EXCL_STOP
 }
 
-void Normalizer::adjustMethod(Module& module, Method& method) const
+void Normalizer::adjustMethod(Module& module, Method& method, const std::set<std::string>& selectedSteps) const
 {
     CPPLOG_LAZY(logging::Level::DEBUG, log << "-----" << logging::endl);
     CPPLOG_LAZY(logging::Level::INFO, log << "Running adjustment passes for: " << method.name << logging::endl);
@@ -392,6 +400,8 @@ void Normalizer::adjustMethod(Module& module, Method& method) const
 
     for(const auto& step : adjustmentSteps)
     {
+        if(!selectedSteps.empty() && selectedSteps.find(step.first) == selectedSteps.end())
+            continue;
         logging::logLazy(logging::Level::DEBUG, [&]() {
             logging::debug() << logging::endl;
             logging::debug() << "Running pass: " << step.first << logging::endl;
@@ -407,9 +417,12 @@ void Normalizer::adjustMethod(Module& module, Method& method) const
         logging::debug() << logging::endl;
         logging::debug() << "Running pass: ExtendBranches" << logging::endl;
     });
-    PROFILE_START(ExtendBranches);
-    extendBranches(module, method, config);
-    PROFILE_END(ExtendBranches);
+
+    if(selectedSteps.empty() || selectedSteps.find("ExtendBranches") != selectedSteps.end())
+    {
+        PROFILE_SCOPE(ExtendBranches);
+        extendBranches(module, method, config);
+    }
 
     PROFILE_END(AdjustmentPasses);
     LCOV_EXCL_START
