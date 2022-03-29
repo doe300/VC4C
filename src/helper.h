@@ -174,7 +174,7 @@ namespace vc4c
     /*
      * Bit-casts a value between two types with the same bit-width
      */
-    template <typename From, typename To>
+    template <typename To, typename From>
     CONST inline To bit_cast(From in) noexcept
     {
         static_assert(sizeof(From) == sizeof(To), "Can't convert types from different sizes!");

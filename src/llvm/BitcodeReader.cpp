@@ -1303,7 +1303,7 @@ Value BitcodeReader::toConstant(
                 std::to_string(constant->getSExtValue()));
         }
         if(constant->isNegative())
-            return Value(toLongLiteral(bit_cast<int64_t, uint64_t>(constant->getSExtValue())).value(), type);
+            return Value(toLongLiteral(bit_cast<uint64_t>(constant->getSExtValue())).value(), type);
         return Value(Literal(static_cast<uint32_t>(constant->getZExtValue())), type);
     }
     /*

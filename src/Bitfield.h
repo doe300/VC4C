@@ -124,8 +124,8 @@ namespace vc4c
             T val, UnderlyingType mask) const noexcept
         {
             using UT = typename std::make_unsigned<T>::type;
-            return static_cast<UnderlyingType>(mask & static_cast<UnderlyingType>(bit_cast<T, UT>(val))) ==
-                static_cast<UnderlyingType>(bit_cast<T, UT>(val));
+            return static_cast<UnderlyingType>(mask & static_cast<UnderlyingType>(bit_cast<UT>(val))) ==
+                static_cast<UnderlyingType>(bit_cast<UT>(val));
         }
 
 #define BITFIELD_ENTRY(name, Type, pos, length)                                                                        \

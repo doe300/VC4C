@@ -351,8 +351,8 @@ static CompoundConstant parseConstant(const ParsedInstruction& instruction, cons
 
             if(constant.type.isFloatingType())
                 // set correct type, just for cosmetic purposes
-                constant = CompoundConstant(typeMappings.at(instruction.getTypeId()),
-                    Literal(bit_cast<uint32_t, float>(static_cast<uint32_t>(val))));
+                constant = CompoundConstant(
+                    typeMappings.at(instruction.getTypeId()), Literal(bit_cast<float>(static_cast<uint32_t>(val))));
         }
         else
         {

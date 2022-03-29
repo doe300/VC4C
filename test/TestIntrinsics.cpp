@@ -1469,7 +1469,7 @@ void TestIntrinsicFunctions::testV8Max()
 void TestIntrinsicFunctions::testBitcastUnsignedChar()
 {
     auto func = [](int i) -> unsigned char {
-        return static_cast<unsigned char>(vc4c::bit_cast<int, unsigned>(i) & 0xFF);
+        return static_cast<unsigned char>(vc4c::bit_cast<unsigned>(i) & 0xFF);
     };
 
     std::string options = "-DFUNC=vc4cl_bitcast_uchar -DIN=int -DOUT=uchar -DDEFINE_PROTOTYPE";
@@ -1501,7 +1501,7 @@ void TestIntrinsicFunctions::testBitcastChar()
 void TestIntrinsicFunctions::testBitcastUnsignedShort()
 {
     auto func = [](int i) -> unsigned short {
-        return static_cast<unsigned short>(vc4c::bit_cast<int, unsigned>(i) & 0xFFFF);
+        return static_cast<unsigned short>(vc4c::bit_cast<unsigned>(i) & 0xFFFF);
     };
 
     std::string options = "-DFUNC=vc4cl_bitcast_ushort -DIN=int -DOUT=ushort -DDEFINE_PROTOTYPE";
@@ -1532,7 +1532,7 @@ void TestIntrinsicFunctions::testBitcastShort()
 }
 void TestIntrinsicFunctions::testBitcastUnsignedInt()
 {
-    auto func = [](int i) -> unsigned { return vc4c::bit_cast<int, unsigned>(i); };
+    auto func = vc4c::bit_cast<unsigned, int>;
 
     std::string options = "-DFUNC=vc4cl_bitcast_uint -DIN=int -DOUT=uint -DDEFINE_PROTOTYPE";
     auto code = compileBuffer(config, UNARY_FUNCTION, options);
@@ -1547,7 +1547,7 @@ void TestIntrinsicFunctions::testBitcastUnsignedInt()
 }
 void TestIntrinsicFunctions::testBitcastInt()
 {
-    auto func = [](unsigned i) -> int { return vc4c::bit_cast<unsigned, int>(i); };
+    auto func = vc4c::bit_cast<int, unsigned>;
 
     std::string options = "-DFUNC=vc4cl_bitcast_int -DIN=uint -DOUT=int -DDEFINE_PROTOTYPE";
     auto code = compileBuffer(config, UNARY_FUNCTION, options);
@@ -1577,7 +1577,7 @@ struct EqualNaN
 
 void TestIntrinsicFunctions::testBitcastFloat()
 {
-    auto func = [](int i) -> float { return vc4c::bit_cast<int, float>(i); };
+    auto func = vc4c::bit_cast<float, int>;
 
     std::string options = "-DFUNC=vc4cl_bitcast_float -DIN=int -DOUT=float -DDEFINE_PROTOTYPE";
     auto code = compileBuffer(config, UNARY_FUNCTION, options);

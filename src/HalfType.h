@@ -7,6 +7,8 @@
 #ifndef VC4C_HALF_TYPE_H
 #define VC4C_HALF_TYPE_H
 
+#include "helper.h"
+
 #include <cinttypes>
 #include <limits>
 #include <type_traits>
@@ -21,18 +23,16 @@ namespace vc4c
      */
     struct Binary16
     {
-        uint16_t fraction : 10;
-        uint16_t exponent : 5;
-        uint16_t sign : 1;
+        static constexpr uint16_t SIGN_MASK = 0x8000u;
+        static constexpr uint16_t EXPONENT_MASK = 0x7C00u;
+        static constexpr uint16_t MANTISSA_MASK = 0x03FFu;
 
-        constexpr explicit Binary16(uint16_t val = 0) :
-            fraction(static_cast<uint16_t>(val & 0x3FFu)), exponent(static_cast<uint16_t>((val & 0x7C00u) >> 10u)),
-            sign(static_cast<uint16_t>(val >> 15u))
-        {
-        }
+        uint16_t value;
+
+        constexpr explicit Binary16(uint16_t val = 0) : value(val) {}
 
         constexpr explicit Binary16(uint16_t sign, uint16_t exp, uint16_t mantissa) :
-            fraction(mantissa), exponent(exp), sign(sign)
+            value(static_cast<uint16_t>((sign << 15u) | ((exp << 10u) & EXPONENT_MASK) | (mantissa & MANTISSA_MASK)))
         {
         }
 
@@ -43,27 +43,27 @@ namespace vc4c
 
         explicit inline constexpr operator uint16_t() const
         {
-            return static_cast<uint16_t>((sign << 15u) | (exponent << 10u) | (fraction));
+            return value;
         }
 
         inline constexpr bool isZero() const
         {
-            return exponent == 0 && fraction == 0;
+            return (value & 0x7FFFu) == 0u;
         }
 
         inline constexpr bool isSubnormal() const
         {
-            return exponent == 0 && fraction != 0;
+            return (value & EXPONENT_MASK) == 0u && (value & MANTISSA_MASK) != 0u;
         }
 
         inline constexpr bool isInf() const
         {
-            return exponent == 0x1F && fraction == 0;
+            return (value & EXPONENT_MASK) == EXPONENT_MASK && (value & MANTISSA_MASK) == 0u;
         }
 
         inline constexpr bool isNaN() const
         {
-            return exponent == 0x1F && fraction != 0;
+            return (value & EXPONENT_MASK) == EXPONENT_MASK && (value & MANTISSA_MASK) != 0u;
         }
     };
 
@@ -81,6 +81,18 @@ namespace vc4c
     inline Binary16 operator""_h(long double val)
     {
         return Binary16(static_cast<float>(val));
+    }
+
+    template <>
+    inline Binary16 bit_cast(uint16_t in) noexcept
+    {
+        return Binary16{in};
+    }
+
+    template <>
+    inline uint16_t bit_cast(Binary16 in) noexcept
+    {
+        return in.value;
     }
 
     using half_t = Binary16;

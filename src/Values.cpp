@@ -56,7 +56,7 @@ std::string Literal::to_string() const
     case LiteralType::TOMBSTONE:
         return "undefined";
     case LiteralType::LONG_LEADING_ONES:
-        return std::to_string(bit_cast<uint64_t, int64_t>(uint64_t{0xFFFFFFFF00000000} | u));
+        return std::to_string(bit_cast<int64_t>(uint64_t{0xFFFFFFFF00000000} | u));
     }
     throw CompilationError(CompilationStep::GENERAL, "Unhandled literal type!");
 }
@@ -99,7 +99,7 @@ int32_t Literal::signedInt(DataType intType) const
     if(value >> (bitWidth - 1u))
         // sign-extend
         value |= 0xFFFFFFFFu & ~mask;
-    return bit_cast<uint32_t, int32_t>(value);
+    return bit_cast<int32_t>(value);
 }
 
 uint32_t Literal::unsignedInt() const noexcept

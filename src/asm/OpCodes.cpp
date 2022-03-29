@@ -222,17 +222,17 @@ static Literal unpackLiteral(Unpack mode, Literal literal, bool isFloatOperation
                 // is kept, no exponent fix-up is performed
                 uint32_t tmp = lowWord & 0x8000u ? 0x80000000u : 0u;
                 tmp |= (lowWord & 0x3FFu) << 13;
-                return Literal(bit_cast<uint32_t, float>(tmp));
+                return Literal(bit_cast<float>(tmp));
             }
             return Literal(static_cast<float>(half_t(lowWord)));
         }
-        int16_t lowWordSigned = bit_cast<uint16_t, int16_t>(lowWord);
-        return Literal(static_cast<int32_t>(lowWordSigned));
+        int16_t lowWordSigned = bit_cast<int16_t>(lowWord);
+        return Literal(lowWordSigned);
     }
     case UNPACK_16B_32:
     {
         // signed conversion -> truncate to unsigned short, bit-cast to signed short and sign-extend
-        uint16_t highWord = static_cast<uint16_t>(literal.unsignedInt() >> 16);
+        uint16_t highWord = truncate<uint16_t>(literal.unsignedInt() >> 16);
         if(isFloatOperation)
         {
             if((highWord & 0x7FFFu) != 0 && (highWord & 0x7C00) == 0)
@@ -241,12 +241,12 @@ static Literal unpackLiteral(Unpack mode, Literal literal, bool isFloatOperation
                 // is kept, no exponent fix-up is performed
                 uint32_t tmp = highWord & 0x8000u ? 0x80000000u : 0u;
                 tmp |= (highWord & 0x3FFu) << 13;
-                return Literal(bit_cast<uint32_t, float>(tmp));
+                return Literal(bit_cast<float>(tmp));
             }
             return Literal(static_cast<float>(half_t(highWord)));
         }
-        int16_t highWordSigned = bit_cast<uint16_t, int16_t>(highWord);
-        return Literal(static_cast<int32_t>(highWordSigned));
+        int16_t highWordSigned = bit_cast<int16_t>(highWord);
+        return Literal(highWordSigned);
     }
     case UNPACK_R4_ALPHA_REPLICATE:
         FALL_THROUGH
@@ -281,36 +281,36 @@ static Literal unpackLiteral(Unpack mode, Literal literal, bool isFloatOperation
     }
     case UNPACK_R4_16A_32:
     {
-        uint16_t lowWord = static_cast<uint16_t>(literal.unsignedInt());
-        return Literal(static_cast<float>(half_t(lowWord)));
+        uint16_t lowWord = truncate<uint16_t>(literal.unsignedInt());
+        return Literal(bit_cast<half_t>(lowWord).toFloat());
     }
     case UNPACK_R4_16B_32:
     {
-        uint16_t highWord = static_cast<uint16_t>(literal.unsignedInt() >> 16);
-        return Literal(static_cast<float>(half_t(highWord)));
+        uint16_t highWord = truncate<uint16_t>(literal.unsignedInt() >> 16);
+        return Literal(bit_cast<half_t>(highWord).toFloat());
     }
     case UNPACK_R4_COLOR0:
     {
         // unsigned cast required to guarantee cutting off the value
-        uint8_t byte0 = static_cast<uint8_t>(literal.unsignedInt());
+        uint8_t byte0 = truncate<uint8_t>(literal.unsignedInt());
         return Literal(RoundToZeroConversion<double, float>{}(static_cast<double>(byte0) / 255.0));
     }
     case UNPACK_R4_COLOR1:
     {
         // unsigned cast required to guarantee cutting off the value
-        uint8_t byte1 = static_cast<uint8_t>(literal.unsignedInt() >> 8);
+        uint8_t byte1 = truncate<uint8_t>(literal.unsignedInt() >> 8);
         return Literal(RoundToZeroConversion<double, float>{}(static_cast<double>(byte1) / 255.0));
     }
     case UNPACK_R4_COLOR2:
     {
         // unsigned cast required to guarantee cutting off the value
-        uint8_t byte2 = static_cast<uint8_t>(literal.unsignedInt() >> 16);
+        uint8_t byte2 = truncate<uint8_t>(literal.unsignedInt() >> 16);
         return Literal(RoundToZeroConversion<double, float>{}(static_cast<double>(byte2) / 255.0));
     }
     case UNPACK_R4_COLOR3:
     {
         // unsigned cast required to guarantee cutting off the value
-        uint8_t byte3 = static_cast<uint8_t>(literal.unsignedInt() >> 24);
+        uint8_t byte3 = truncate<uint8_t>(literal.unsignedInt() >> 24);
         return Literal(RoundToZeroConversion<double, float>{}(static_cast<double>(byte3) / 255.0));
     }
     }
@@ -593,7 +593,7 @@ Literal packLiteral(Pack mode, Literal literal, bool isFloatOperation, const Ele
         if(overloadAndNegativeXorCarry)
             return Literal(0u);
         // need to bitcast here, since left shifting negative values is undefined behavior
-        return Literal(bit_cast<int32_t, uint32_t>(saturate<int16_t>(literal.signedInt())) << 16);
+        return Literal(bit_cast<uint32_t>(saturate<int16_t>(literal.signedInt())) << 16);
     case PACK_32_32:
         // this depends on signed integer overflow (to determine overflow and then saturate)
         switch(flags.overflow)
