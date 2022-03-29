@@ -395,35 +395,11 @@ static MemoryAccessType getFallbackType(MemoryAccessType preferredType)
         std::to_string(static_cast<unsigned>(preferredType)));
 }
 
-static void addConditionalLocalMapping(const Local* loc, const ConditionalMemoryAccess& conditionalWrite,
-    FastMap<const ConditionalMemoryAccess*, MemoryAccess*>& conditionalAccesses,
-    FastMap<const Local*, FastSet<const Local*>>& conditionalLocalMappings, MemoryAccessMap& mapping)
+static FastMap<TypedInstructionWalker<intermediate::MemoryInstruction>, const Local*>* determineDirectMemoryAreaMapping(
+    MemoryAccessMap& mapping, const Local* local, Optional<TypedInstructionWalker<intermediate::MemoryInstruction>> it)
 {
-    auto mappingIt = mapping.find(loc);
-    if(mappingIt == mapping.end())
-        // TODO what to do if the memory area is not yet mapped (i.e. only accessed via phi-nodes)?
-        // Would need to run the checks/mappings recursive?!
-        throw CompilationError(CompilationStep::NORMALIZER,
-            "Memory which is only accessed via conditional address writes is not supported yet", loc->to_string());
-    conditionalAccesses.emplace(&conditionalWrite, &mappingIt->second);
-    conditionalLocalMappings[conditionalWrite.conditionalWrite->checkOutputLocal()].emplace(loc);
-}
-
-static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping,
-    TypedInstructionWalker<intermediate::MemoryInstruction> it, const Local* local,
-    FastMap<TypedInstructionWalker<intermediate::MemoryInstruction>,
-        std::pair<const Local*, FastSet<const ConditionalMemoryAccess*>>>& conditionalWrittenMemoryAccesses,
-    FastSet<ConditionalMemoryAccess>& conditionalAddressWrites)
-{
-    if(mapping.find(local) != mapping.end())
-    {
-        // local was already processed
-        mapping[local].accessInstructions.emplace(it, local);
-        return local;
-    }
     if(local->is<StackAllocation>())
     {
-        mapping[local].accessInstructions.emplace(it, local);
         if(local->type.isSimpleType() || convertSmallArrayToRegister(local))
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
@@ -450,14 +426,15 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping,
             mapping[local].preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
             mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
         }
+        return &mapping[local].accessInstructions;
     }
     else if(local->is<Global>())
     {
-        mapping[local].accessInstructions.emplace(it, local);
         if(isMemoryOnlyRead(local))
         {
             // global buffer
-            if(getConstantElementValue(it->getSource()) && it->getNumEntries().hasLiteral(1_lit))
+            if(it && it->has() && getConstantElementValue((*it)->getSource()) &&
+                (*it)->getNumEntries().hasLiteral(1_lit))
             {
                 CPPLOG_LAZY(logging::Level::DEBUG,
                     log << "Constant element of constant buffer '" << local->to_string()
@@ -500,6 +477,43 @@ static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping,
             mapping[local].preferred = MemoryAccessType::RAM_READ_WRITE_VPM;
             mapping[local].fallback = MemoryAccessType::RAM_READ_WRITE_VPM;
         }
+        return &mapping[local].accessInstructions;
+    }
+    return nullptr;
+}
+
+static void addConditionalLocalMapping(const Local* loc, const ConditionalMemoryAccess& conditionalWrite,
+    FastMap<const ConditionalMemoryAccess*, MemoryAccess*>& conditionalAccesses,
+    FastMap<const Local*, FastSet<const Local*>>& conditionalLocalMappings, MemoryAccessMap& mapping)
+{
+    auto mappingIt = mapping.find(loc);
+    if(mappingIt == mapping.end() && determineDirectMemoryAreaMapping(mapping, loc, {}))
+        mappingIt = mapping.find(loc);
+
+    if(mappingIt == mapping.end())
+        // TODO what to do if the memory area is not yet mapped (i.e. only accessed via phi-nodes)?
+        // Would need to run the checks/mappings recursive?!
+        throw CompilationError(CompilationStep::NORMALIZER,
+            "Memory which is only accessed via conditional address writes is not supported yet", loc->to_string());
+    conditionalAccesses.emplace(&conditionalWrite, &mappingIt->second);
+    conditionalLocalMappings[conditionalWrite.conditionalWrite->checkOutputLocal()].emplace(loc);
+}
+
+static const Local* determineSingleMemoryAreaMapping(MemoryAccessMap& mapping,
+    TypedInstructionWalker<intermediate::MemoryInstruction> it, const Local* local,
+    FastMap<TypedInstructionWalker<intermediate::MemoryInstruction>,
+        std::pair<const Local*, FastSet<const ConditionalMemoryAccess*>>>& conditionalWrittenMemoryAccesses,
+    FastSet<ConditionalMemoryAccess>& conditionalAddressWrites)
+{
+    if(mapping.find(local) != mapping.end())
+    {
+        // local was already processed
+        mapping[local].accessInstructions.emplace(it, local);
+        return local;
+    }
+    if(auto accessInstructions = determineDirectMemoryAreaMapping(mapping, local, it))
+    {
+        accessInstructions->emplace(it, local);
     }
     else if(auto conditonalWrites = checkAllWritersArePhiNodesOrSelections(local, {it.get()}))
     {

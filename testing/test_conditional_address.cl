@@ -96,18 +96,17 @@ __kernel void test_phi_copy_address_simple(__global int* mem0, __global int* mem
     }
 }
 
-// // More advanced case, addresses of different type (__local parameter vs. __local buffer) are accessed via selection
-// TODO not yet implemented
-// __kernel void test_select_write_address_local(const __global int* in, __local int* out0)
-// {
-//     // fits into VPM on purpose, will still be located in RAM, since the conditional accessed memory locations need
-//     // to be stored in the same memory type (VPM, RAM) for now.
-//     __local int out1[16];
-//     uint gid = (uint) get_global_id(0);
-//     __local int* ptr = (gid & 1) ? out1 : out0;
-//     int tmp = in[gid];
-//     ptr[gid] = tmp + 17;
-// }
+// More advanced case, addresses of different type (__local parameter vs. __local buffer) are accessed via selection
+__kernel void test_select_write_address_local(const __global int* in, __local int* out0)
+{
+    // fits into VPM on purpose, will still be located in RAM, since the conditional accessed memory locations need
+    // to be stored in the same memory type (VPM, RAM) for now.
+    __local int out1[16];
+    uint gid = (uint) get_global_id(0);
+    __local int* ptr = (gid & 1) ? out1 : out0;
+    int tmp = in[gid];
+    ptr[gid] = tmp + 17;
+}
 
 __kernel void test_select_read_address_local(__local int* in0, __global int* out)
 {

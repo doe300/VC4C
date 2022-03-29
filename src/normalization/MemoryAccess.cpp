@@ -182,61 +182,49 @@ static bool hasOnlyAddressesDerivateOfLocalId(const MemoryAccessRange& range, un
     // Be conservative, if there are no dynamic address parts in the container, don't assume that there are none, but
     // that we might have failed/skipped to determine them. Also if all work-items statically access the same index, we
     // do have a cross-item access.
-    return !range.dynamicAddressParts.empty() &&
-        std::all_of(range.dynamicAddressParts.begin(), range.dynamicAddressParts.end(),
-            [&, memWrite{range.addressWrite.get()}](
-                const std::pair<Value, intermediate::InstructionDecorations>& parts) -> bool {
-                if(checkIdDecoration(parts.second))
-                {
-                    // The offset is in number of elements
-                    minFactor = std::min(
-                        minFactor, static_cast<unsigned>(range.memoryObject->type.getElementType().getVectorWidth()));
-                    maxSize = std::max(
-                        maxSize, static_cast<unsigned>(range.memoryObject->type.getElementType().getVectorWidth()));
-                    return true;
-                }
-                if(!memWrite)
-                    return false;
-                std::shared_ptr<Expression> expression;
-                if(auto writer = parts.first.getSingleWriter())
-                    expression = Expression::createRecursiveExpression(*writer);
-                if(expression && expression->hasConstantOperand() &&
-                    (expression->code == Expression::FAKEOP_UMUL || expression->code == OP_MUL24 ||
-                        expression->code == OP_SHL))
-                {
-                    // E.g. something like %global_id * X is allowed as long as X >= number of elements accessed per
-                    // work-item. Also accept shl with constant, since this is also a multiplication.
-                    bool leftIsId = expression->arg0.checkExpression() &&
-                        checkIdDecoration(expression->arg0.checkExpression()->deco);
-                    bool rightIsId = expression->arg1.checkExpression() &&
-                        checkIdDecoration(expression->arg1.checkExpression()->deco);
-                    auto constantArg =
-                        leftIsId ? expression->arg1.getLiteralValue() : expression->arg0.getLiteralValue();
-                    if(constantArg && leftIsId != rightIsId)
-                    {
-                        // we have a multiplication (maybe presenting as a shift) of the global/local ID with a
-                        // constant, now we need to make sure the constant is at least the number of elements accessed.
+    auto memWrite = range.addressWrite.get();
+    if(checkIdDecoration(range.dynamicOffset.getDecorations()))
+    {
+        // The offset is in bytes
+        minFactor = std::min(minFactor, range.baseAddress->type.getElementType().getLogicalWidth());
+        maxSize = std::max(maxSize, range.baseAddress->type.getElementType().getLogicalWidth());
+        return true;
+    }
+    if(!memWrite)
+        return false;
+    auto expression = range.dynamicOffset.checkExpression();
+    if(expression && expression->hasConstantOperand() &&
+        (expression->code == Expression::FAKEOP_UMUL || expression->code == OP_MUL24 || expression->code == OP_SHL))
+    {
+        // E.g. something like %global_id * X is allowed as long as X >= number of elements accessed per
+        // work-item. Also accept shl with constant, since this is also a multiplication.
+        bool leftIsId = checkIdDecoration(expression->arg0.getDecorations());
+        bool rightIsId = checkIdDecoration(expression->arg1.getDecorations());
+        auto constantArg = leftIsId ? expression->arg1.getLiteralValue() : expression->arg0.getLiteralValue();
 
-                        auto factor = expression->code == OP_SHL ? (1u << constantArg->unsignedInt()) :
-                                                                   constantArg->unsignedInt();
-                        if(memWrite->op == MemoryOperation::READ)
-                        {
-                            minFactor = std::min(minFactor, factor);
-                            maxSize = std::max(
-                                maxSize, static_cast<unsigned>(memWrite->getDestinationElementType().getVectorWidth()));
-                            return true;
-                        }
-                        if(memWrite->op == MemoryOperation::WRITE)
-                        {
-                            minFactor = std::min(minFactor, factor);
-                            maxSize = std::max(
-                                maxSize, static_cast<unsigned>(memWrite->getSourceElementType().getVectorWidth()));
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            });
+        if(constantArg && leftIsId != rightIsId)
+        {
+            // we have a multiplication (maybe presenting as a shift) of the global/local ID with a
+            // constant, now we need to make sure the constant is at least the number of elements accessed.
+
+            auto factor = expression->code == OP_SHL ? (1u << constantArg->unsignedInt()) : constantArg->unsignedInt();
+            if(memWrite->op == MemoryOperation::READ)
+            {
+                minFactor = std::min(minFactor, factor);
+                maxSize = std::max(maxSize, memWrite->getDestinationElementType().getLogicalWidth());
+                return true;
+            }
+            if(memWrite->op == MemoryOperation::WRITE ||
+                (memWrite->op == MemoryOperation::COPY && memWrite->getNumEntries() == 1_val))
+            {
+                minFactor = std::min(minFactor, factor);
+                maxSize = std::max(maxSize, memWrite->getSourceElementType().getLogicalWidth());
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 static bool mayHaveCrossWorkItemMemoryDependency(const Local* memoryObject, const MemoryInfo& info)
@@ -299,7 +287,7 @@ static bool mayHaveCrossWorkItemMemoryDependency(const Local* memoryObject, cons
  * https://stackoverflow.com/questions/22471466/why-program-global-scope-variables-must-be-constant#22474119
  * https://stackoverflow.com/questions/17431941/how-to-use-arrays-in-program-global-scope-in-opencl
  *
- * 
+ *
  * Matrix of memory types and access ways:
  * compile-time memory: __constant buffer with values known at compile-time
  * constant memory: __constant or read-only __global/__local buffer/parameter
@@ -307,7 +295,7 @@ static bool mayHaveCrossWorkItemMemoryDependency(const Local* memoryObject, cons
  * read-write memory: any other __global/__local buffer/parameter
  *
  *                     |   optimization   |   location   |   read    |   write   |    copy from    |       copy to       | group | priority |
- * compile-time memory |     "normal"     |      GD      |    TMU    |     -     |    DMA/TMU(*)   |          -          |  (1)  |     2    |    
+ * compile-time memory |     "normal"     |      GD      |    TMU    |     -     |    DMA/TMU(*)   |          -          |  (1)  |     2    |
  *                     |   lowered load   |      QPU     | register  |     -     | VPM/register(*) |          -          |  (2)  |     1    |
  * constant memory     |     "normal"     |     GD/RAM   |    TMU    |     -     |    DMA/TMU(*)   |          -          |  (1)  |     2    |
  * private memory      |     "normal"     |      GD      |    DMA    |    DMA    |       DMA       |         DMA         |  (3)  |     3    |

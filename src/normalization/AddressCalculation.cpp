@@ -220,65 +220,42 @@ InstructionWalker normalization::insertAddressToElementOffset(InstructionWalker 
     return it;
 }
 
-static Optional<std::pair<Value, InstructionDecorations>> combineAdditions(
-    Method& method, InstructionWalker referenceIt, FastMap<Value, InstructionDecorations>& addedValues)
-{
-    if(addedValues.empty())
-        return std::make_pair(INT_ZERO, InstructionDecorations::UNSIGNED_RESULT);
-    Optional<std::pair<Value, InstructionDecorations>> prevResult;
-    auto valIt = addedValues.begin();
-    while(valIt != addedValues.end())
-    {
-        if(prevResult)
-        {
-            auto newFlags = intersect_flags(prevResult->second, valIt->second);
-            auto newResult = assign(referenceIt, prevResult->first.type) = (prevResult->first + valIt->first, newFlags);
-            prevResult = std::make_pair(newResult, newFlags);
-        }
-        else
-            prevResult = std::make_pair(valIt->first, valIt->second);
-        valIt = addedValues.erase(valIt);
-    }
-    return prevResult;
-}
-
 InstructionWalker normalization::insertAddressToWorkItemSpecificOffset(
     InstructionWalker it, Method& method, Value& out, analysis::MemoryAccessRange& range)
 {
-    auto dynamicParts = combineAdditions(method, it, range.dynamicAddressParts);
-    if(!dynamicParts)
+    if(!range.dynamicOffset)
+        out = INT_ZERO;
+    else if(auto val = range.dynamicOffset.getConstantExpression())
+        out = *val;
+    else if(auto expr = range.dynamicOffset.checkExpression())
     {
-        LCOV_EXCL_START
-        for(const auto& part : range.dynamicAddressParts)
-            logging::error() << part.first.to_string() << " - " << toString(part.second) << logging::endl;
+        out = method.addNewLocal(TYPE_INT32, "%address_work_item_offset");
+        if(!expr->insertInstructions(it, out, {}))
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Failed to calculate dynamic parts of work-item specific offset", range.to_string());
+    }
+    else
         throw CompilationError(CompilationStep::NORMALIZER,
             "Failed to calculate dynamic parts of work-item specific offset", range.to_string());
-        LCOV_EXCL_STOP
-    }
-    out = dynamicParts->first;
-    if(range.typeSizeShift)
-        out = assign(it, dynamicParts->first.type) =
-            (dynamicParts->first << range.typeSizeShift->assertArgument(1), dynamicParts->second);
     return it;
 }
 
 InstructionWalker normalization::insertAddressToWorkGroupUniformOffset(
     InstructionWalker it, Method& method, Value& out, MemoryAccessRange& range)
 {
-    auto uniformParts = combineAdditions(method, it, range.groupUniformAddressParts);
-    if(!uniformParts)
+    if(!range.groupUniformOffset)
+        out = INT_ZERO;
+    else if(auto val = range.groupUniformOffset.getConstantExpression())
+        out = *val;
+    else if(auto expr = range.groupUniformOffset.checkExpression())
     {
-        LCOV_EXCL_START
-        for(const auto& part : range.groupUniformAddressParts)
-            logging::error() << part.first.to_string() << " - " << toString(part.second) << logging::endl;
+        out = method.addNewLocal(TYPE_INT32, "%address_work_item_offset");
+        if(!expr->insertInstructions(it, out, {}))
+            throw CompilationError(CompilationStep::NORMALIZER,
+                "Failed to calculate uniform parts of work-group uniform offset", range.to_string());
+    }
+    else
         throw CompilationError(CompilationStep::NORMALIZER,
             "Failed to calculate uniform parts of work-group uniform offset", range.to_string());
-        LCOV_EXCL_STOP
-    }
-    out = uniformParts->first;
-    if(range.constantOffset)
-        out = assign(it, out.type) = out + *range.constantOffset;
-    if(range.typeSizeShift)
-        out = assign(it, out.type) = (out << range.typeSizeShift->assertArgument(1), uniformParts->second);
     return it;
 }

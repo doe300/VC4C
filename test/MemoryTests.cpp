@@ -523,6 +523,18 @@ void test_data::registerMemoryTests()
 
     {
         TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
+            "select_write_address_local", test_conditional_address_cl_string, "test_select_write_address_local");
+        builder.setFlags(DataFilter::MEMORY_ACCESS);
+        builder.setDimensions(10, 1, 1, 3, 1, 1);
+        builder.setParameter<0>(toRange(0, 30));
+        builder.allocateParameter<1>(30, 0x42);
+        builder.checkParameterEquals<1>({0 + 17, 0x42, 2 + 17, 0x42, 4 + 17, 0x42, 6 + 17, 0x42, 8 + 17, 0x42, 10 + 17,
+            0x42, 12 + 17, 0x42, 14 + 17, 0x42, 16 + 17, 0x42, 18 + 17, 0x42, 20 + 17, 0x42, 22 + 17, 0x42, 24 + 17,
+            0x42, 26 + 17, 0x42, 28 + 17, 0x42});
+    }
+
+    {
+        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
             "select_read_address_local", test_conditional_address_cl_string, "test_select_read_address_local");
         builder.setFlags(DataFilter::MEMORY_ACCESS);
         builder.setDimensions(10, 1, 1, 3, 1, 1);

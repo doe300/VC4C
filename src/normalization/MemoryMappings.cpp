@@ -998,7 +998,7 @@ static InstructionWalker insertWriteBackCode(
     auto memoryOffset = method.addNewLocal(memoryArea->type, "%cache_uniform_offset");
     std::vector<MemoryAccessRange> tmpRanges = info->ranges.value();
     auto tmp = analysis::checkWorkGroupUniformParts(tmpRanges);
-    if(!tmp.first)
+    if(!tmp)
         throw CompilationError(CompilationStep::NORMALIZER,
             "Cannot insert write-back code for cached local with different work-group uniform parts",
             memoryArea->to_string());

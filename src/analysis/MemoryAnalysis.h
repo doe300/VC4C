@@ -7,6 +7,7 @@
 #ifndef VC4C_MEMORY_ANALYSIS
 #define VC4C_MEMORY_ANALYSIS 1
 
+#include "../Expression.h"
 #include "../InstructionWalker.h"
 #include "../Values.h"
 #include "../performance.h"
@@ -16,8 +17,6 @@
 
 namespace vc4c
 {
-    struct Expression;
-
     namespace analysis
     {
         /**
@@ -25,39 +24,40 @@ namespace vc4c
          *
          * The final address is calculated as following:
          *
-         * A = groupUniformAddressParts + dynamicAddressParts
-         * B = typeSizeShift ? A << typeSizeShift : A
-         * C = baseAddressAdd + B
-         * D = constantOffset ? C + constantOffset : C
-         * addressWrite <- D
+         * A = groupUniformOffset + dynamicOffset
+         * B = baseAddress + A
+         * addressWrite <- B
          */
         struct MemoryAccessRange
         {
-            // the underlying memory object which is accessed
-            const Local* memoryObject = nullptr;
+            // the underlying memory object (or a conditionally written address variable) which is accessed
+            const Local* baseAddress = nullptr;
             // the instruction writing the address to VPR_ADDR or VPW_ADDR or the intermediate::MemoryInstruction
             TypedInstructionWalker<intermediate::MemoryInstruction> addressWrite{};
-            // the optional constant offset added after the base address was calculated, e.g. for element index
-            Optional<Value> constantOffset;
-            // the instruction adding the offset to the base pointer, could be the same as addressWrite
-            const intermediate::Operation* baseAddressAdd = nullptr;
-            // the instruction converting the address offset from element offset to byte offset
-            const intermediate::Operation* typeSizeShift = nullptr;
-            // the work-group uniform parts of which the address offset is calculated from
-            FastMap<Value, intermediate::InstructionDecorations> groupUniformAddressParts{};
-            // the dynamic parts (specific to the work-item) of which the address offset is calculated from
-            FastMap<Value, intermediate::InstructionDecorations> dynamicAddressParts{};
-            // the maximum range (in elements!) the memory is accessed in
-            Optional<analysis::ValueRange> offsetRange;
-            /*
-             * The optional expression calculating the memory address.
-             *
-             * If typeSizeShift is set, this is the input to that instruction (the address offset calculation in
-             * elements), otherwise if baseAddressAdd is set, this is the input to that instruction (the address offset
-             * calculation in bytes), otherwise this is the input to the addressWrite instruction (the full address
-             * calculation in bytes).
-             */
-            std::shared_ptr<Expression> addressExpression;
+            // the work-group uniform part of which the address offset is calculated from
+            SubExpression groupUniformOffset;
+            // the dynamic part (specific to the work-item) of which the address offset is calculated from
+            SubExpression dynamicOffset;
+            // the maximum range (in bytes!) the memory is actually accessed in (at a given offset)
+            Optional<analysis::ValueRange> accessRange;
+            // the element type of the access, this is used to calculate the access-range in elements
+            // NOTE: Elements do not have to be scalar, but can be of any type!
+            DataType accessElementType = TYPE_UNKNOWN;
+
+            // NOTE: This is the range of the dynamic offset (in bytes!) and thus does not regard the width of the
+            // access itself!
+            Optional<ValueRange> getDynamicOffsetRange() const;
+            // This is the range of the dynamic offset and access width (in bytes!) and thus the whole range (excluding
+            // any work-group uniform offset) of memory that is actually accessed.
+            Optional<ValueRange> getDynamicAccessByteRange() const;
+            Optional<ValueRange> getDynamicAccessElementRange() const;
+
+            // checks whether it is guaranteed that multiple "instances" of this memory access (e.g. by different
+            // work-items) do not access the same bits.
+            // NOTE: An identical "instance" of this memory access (e.g. using the same address-calculating values)
+            // obviously accesses the same bits!
+            bool hasNoOverlapBetweenAccesses() const;
+            bool mayOverlap(const MemoryAccessRange& other) const;
 
             std::string to_string() const;
         };
@@ -79,17 +79,24 @@ namespace vc4c
         FastAccessList<MemoryAccessRange> determineAccessRanges(Method& method, const Local* baseAddr,
             FastMap<TypedInstructionWalker<intermediate::MemoryInstruction>, const Local*>& accessInstructions);
 
+        struct IdenticalWorkGroupUniformPartsResult
+        {
+            ValueRange dynamicElementRange;
+            DataType elementType;
+        };
+
         /**
          * Checks whether all work-group uniform parts of the memory accesses are equal.
          *
          * If not, tries to convert the work-group uniform address offset parts to dynamic offsets and continues
          * determining the range of dynamic offsets.
          *
-         * Returns whether all work-group uniform parts of the address calculation are equal and the non-uniform access
-         * range. E.g. the memory location is accessed only in <group uniform parts> + [access range].
+         * Returns the non-uniform element access range and element types if all work-group uniform parts of the address
+         * calculation are equal. E.g. if the memory location is accessed only in <group uniform parts> + [access range]
+         * elements.
          */
-        std::pair<bool, analysis::ValueRange> checkWorkGroupUniformParts(
-            FastAccessList<MemoryAccessRange>& accessRanges, bool allowConstantOffsets = true);
+        Optional<IdenticalWorkGroupUniformPartsResult> checkWorkGroupUniformParts(
+            FastAccessList<MemoryAccessRange>& accessRanges);
 
         /**
          * Returns the single writer of a value (usually an address local).
