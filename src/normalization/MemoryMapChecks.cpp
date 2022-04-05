@@ -1368,17 +1368,15 @@ static const periphery::VPMArea* checkCacheMemoryAccessRanges(
         LCOV_EXCL_START
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Cannot cache memory location " << baseAddr->to_string()
-                << " in VPM, the accessed range is too big: " << offsetRange.to_string() << logging::endl);
+                << " in VPM, the accessed range is too big: " << checkResult->dynamicElementRange.to_string()
+                << logging::endl);
         LCOV_EXCL_STOP
         return nullptr;
     }
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Memory location " << baseAddr->to_string() << " is accessed via DMA in the dynamic range "
-            << offsetRange.to_string() << logging::endl);
-
-    // TODO correct type?? Shouldn't it be baseAddr->type.getElmentType().toArrayType(...??
-    auto accessedType = method.createArrayType(
-        baseAddr->type, static_cast<unsigned>(offsetRange.getRange() + 1 /* bounds of range are inclusive! */));
+        log << "Memory location " << baseAddr->to_string() << " is accessed via DMA with "
+            << checkResult->elementType.to_string() << " elements and dynamic element range "
+            << checkResult->dynamicElementRange.to_string() << logging::endl);
 
     // XXX the local is not correct, at least not if there is a work-group uniform offset, but since all work-items
     // use the same work-group offset, it doesn't matter
