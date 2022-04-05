@@ -317,6 +317,26 @@ namespace vc4c
             return it != edges.end() ? it->second : nullptr;
         }
 
+        inline EdgeType& assertEdge(NodeType* node)
+        {
+            auto it = edges.find(node);
+            if(it == edges.end())
+            {
+                throw CompilationError(CompilationStep::GENERAL, "Failed to find edge for neighbor");
+            }
+            return *it->second;
+        }
+
+        inline const EdgeType& assertEdge(const NodeType* node) const
+        {
+            auto it = edges.find(const_cast<NodeType*>(node));
+            if(it == edges.end())
+            {
+                throw CompilationError(CompilationStep::GENERAL, "Failed to find edge for neighbor");
+            }
+            return *it->second;
+        }
+
         /*
          * Executes the given predicate for all neighbors until it becomes false
          */

@@ -1113,7 +1113,7 @@ static NODISCARD bool fixSingleError(Method& method, ColoredGraph& graph, Colore
                     if(!otherLocalNode ||
                         !has_flag(otherLocalNode->possibleFiles,
                             fileACouldBeUsed ? RegisterFile::PHYSICAL_A : RegisterFile::PHYSICAL_B) ||
-                        !blocksLocal(otherLocalNode, node.getEdge(otherLocalNode)->data))
+                        !blocksLocal(otherLocalNode, node.assertEdge(otherLocalNode).data))
                         // other local exists, but does not block this local
                         continue;
                     auto& otherLocalUse = localUses.at(otherOutputLocal);

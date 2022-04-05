@@ -41,6 +41,11 @@ namespace vc4c
 
         operator float() const;
 
+        inline float toFloat() const
+        {
+            return operator float();
+        }
+
         explicit inline constexpr operator uint16_t() const
         {
             return value;
