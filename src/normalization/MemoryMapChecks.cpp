@@ -1362,7 +1362,7 @@ static const periphery::VPMArea* checkCacheMemoryAccessRanges(
         LCOV_EXCL_STOP
         return nullptr;
     }
-    if(offsetRange.getRange() >= maxNumVectors)
+    if(checkResult->dynamicElementRange.getRange() > maxNumVectors)
     {
         // this also checks for any over/underflow when converting the range to unsigned int in the next steps
         LCOV_EXCL_START
@@ -1382,12 +1382,20 @@ static const periphery::VPMArea* checkCacheMemoryAccessRanges(
 
     // XXX the local is not correct, at least not if there is a work-group uniform offset, but since all work-items
     // use the same work-group offset, it doesn't matter
-    auto vpmArea = method.vpm->addArea(baseAddr, accessedType, false, isCached);
+    const periphery::VPMArea* vpmArea = nullptr;
+    if(isCached)
+        vpmArea = method.vpm->addCacheArea(
+            *baseAddr, checkResult->elementType, static_cast<unsigned>(checkResult->dynamicElementRange.getRange()));
+    else
+        vpmArea = method.vpm->addSharedArea(
+            *baseAddr, checkResult->elementType, static_cast<unsigned>(checkResult->dynamicElementRange.getRange()));
+
     if(vpmArea == nullptr)
     {
         CPPLOG_LAZY(logging::Level::DEBUG,
             log << "Memory location " << baseAddr->to_string() << " with dynamic access range "
-                << offsetRange.to_string() << " cannot be cached in VPM, since it does not fit" << logging::endl);
+                << checkResult->dynamicElementRange.to_string() << " cannot be cached in VPM, since it does not fit"
+                << logging::endl);
         return nullptr;
     }
     return vpmArea;

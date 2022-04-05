@@ -995,7 +995,7 @@ static Optional<Value> getMostCommonElement(const std::vector<Value>& container)
             maxVal = it;
     }
     // if all are equal, default to first element
-    return maxVal->second == 1 ? NO_VALUE : maxVal->first;
+    return (maxVal == histogram.end() || maxVal->second == 1) ? NO_VALUE : maxVal->first;
 }
 
 NODISCARD static InstructionWalker insertAssembleVectorFallback(
