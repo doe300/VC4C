@@ -300,6 +300,7 @@ void test_data::registerGeneralTests()
     {
         TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
             "expect_assume", test_expect_assume_cl_string, "test_expect_assume");
+        builder.setFlags(DataFilter::SPIRV_DISABLED); // llvm-spirv in CI cannot translate expect/assume intrinsics
         builder.setDimensions(12);
         builder.allocateParameter<0>(12);
         builder.setParameter<1>({13, 1, 2, 3, 13, 5, 6, 7, 13, 9, 10, 11});

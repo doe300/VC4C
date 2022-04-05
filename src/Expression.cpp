@@ -6,6 +6,7 @@
 #include "analysis/MemoryAnalysis.h"
 #include "intermediate/Helper.h"
 #include "intermediate/operators.h"
+#include "intrinsics/Operators.h"
 #include "log.h"
 
 using namespace vc4c;
@@ -878,6 +879,15 @@ static std::shared_ptr<Expression> combineWithInner(
                 return std::make_shared<Expression>(FAKEOP_UMUL, mulFactors->first, mulFactors->second,
                     expression.unpackMode, expression.packMode, deco, outputValue);
         }
+
+        // x ^ -1 = 1 - x
+        if(code == OP_XOR &&
+            ((firstVal && firstVal->hasLiteral(Literal(-1))) || (secondVal && secondVal->hasLiteral(Literal(-1)))))
+        {
+            auto& otherArg = firstVal && firstVal->hasLiteral(Literal(-1)) ? arg1 : arg0;
+            return std::make_shared<Expression>(
+                OP_SUB, INT_ONE, otherArg, expression.unpackMode, expression.packMode, deco, outputValue);
+        }
     }
 
     // in any other case, just build an expression tree
@@ -1134,10 +1144,38 @@ std::unique_ptr<intermediate::IntermediateInstruction> Expression::toInstruction
     return inst;
 }
 
+static Optional<DataType> determineExpressionType(const Expression& expr)
+{
+    if(expr.outputValue)
+        return expr.outputValue->type;
+
+    DataType leftArgType = TYPE_UNKNOWN;
+    if(auto val = expr.arg0.checkValue())
+        leftArgType = val->type;
+    else if(auto loc = expr.arg0.checkLocal(true))
+        leftArgType = loc->type;
+
+    DataType rightArgType = TYPE_UNKNOWN;
+    if(auto val = expr.arg1.checkValue())
+        rightArgType = val->type;
+    else if(auto loc = expr.arg1.checkLocal(true))
+        rightArgType = loc->type;
+
+    if(leftArgType.isUnknown() || (expr.code.numOperands > 1 && rightArgType.isUnknown()))
+        return {};
+
+    auto type = expr.code.numOperands > 1 ? leftArgType.getUnionType(rightArgType) : leftArgType;
+    if(expr.code.acceptsFloat != expr.code.returnsFloat)
+        // check more than "returns float" to retain float e.g. for moves (which report returning non-float)
+        return expr.code.returnsFloat ? TYPE_FLOAT.toVectorType(type.getVectorWidth()) :
+                                        TYPE_INT32.toVectorType(type.getVectorWidth());
+    return type;
+}
+
 bool Expression::insertInstructions(
     InstructionWalker& it, const Value& out, const AvailableExpressions& existingExpressions) const
 {
-    if(code.opAdd > 32 || code.opMul > 32)
+    if(code != FAKEOP_UMUL && (code.opAdd > 32 || code.opMul > 32))
         // check for fake opcodes
         return false;
 
@@ -1149,38 +1187,59 @@ bool Expression::insertInstructions(
         // to not insert moves, but the moved-from data
         return arg0.checkExpression()->insertInstructions(it, out, existingExpressions);
 
-    // TODO this is only 0-level recursive, since we do not have the right locals for intermediate results
-
     auto leftVal = arg0.checkValue();
     if(auto leftExpr = arg0.checkExpression())
     {
+        auto exprIt = existingExpressions.find(leftExpr);
         if(leftExpr->outputValue)
             leftVal = leftExpr->outputValue->createReference();
-        else
-        {
-            auto exprIt = existingExpressions.find(leftExpr);
-            if(exprIt == existingExpressions.end())
-                return false;
+        else if(exprIt != existingExpressions.end())
             leftVal = exprIt->second.first->getOutput();
+        else if(auto type = determineExpressionType(*leftExpr))
+        {
+            auto tmp = it.getBasicBlock()->getMethod().addNewLocal(*type);
+            if(!leftExpr->insertInstructions(it, tmp, existingExpressions))
+                return false;
+            leftVal = tmp;
         }
+        else
+            return false;
     }
 
     auto rightVal = arg1.checkValue();
     if(auto rightExpr = arg1.checkExpression())
     {
+        auto exprIt = existingExpressions.find(rightExpr);
+
         if(rightExpr->outputValue)
             rightVal = rightExpr->outputValue->createReference();
-        else
-        {
-            auto exprIt = existingExpressions.find(rightExpr);
-            if(exprIt == existingExpressions.end())
-                return false;
+        else if(exprIt != existingExpressions.end())
             rightVal = exprIt->second.first->getOutput();
+        else if(auto type = determineExpressionType(*rightExpr))
+        {
+            auto tmp = it.getBasicBlock()->getMethod().addNewLocal(*type);
+            if(!rightExpr->insertInstructions(it, tmp, existingExpressions))
+                return false;
+            rightVal = tmp;
         }
+        else
+            return false;
     }
 
     if(!leftVal || (code.numOperands > 1 && !rightVal))
         return false;
+
+    if(code == FAKEOP_UMUL)
+    {
+        auto tmp = out;
+        it = intrinsics::insertMultiplication(it, it.getBasicBlock()->getMethod(), *leftVal, *rightVal, tmp, deco);
+        if(tmp != out)
+        {
+            it.emplace(std::make_unique<intermediate::MoveOperation>(out, tmp));
+            it.nextInBlock();
+        }
+        return true;
+    }
 
     if(auto inst = Expression{code, *leftVal, rightVal, unpackMode, packMode, deco}.toInstruction(out))
     {

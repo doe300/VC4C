@@ -262,7 +262,7 @@ static std::string toBoundString(double val)
 }
 
 LCOV_EXCL_START
-std::string ValueRange::to_string() const
+std::string ValueRange::to_string(bool singletonAsRange) const
 {
     switch(type)
     {
@@ -270,6 +270,8 @@ std::string ValueRange::to_string() const
         return "(indeterminate)";
     case RangeType::MAXIMUM:
     case RangeType::FIXED:
+        if(!singletonAsRange && getSingletonValue())
+            return toBoundString(*getSingletonValue());
         return std::string("[") + toBoundString(minValue) + ", " + toBoundString(maxValue) + "]";
     }
     throw CompilationError(
@@ -732,14 +734,15 @@ ValueRange ValueRange::getValueRangeRecursive(
     return range;
 }
 
-static Optional<analysis::ValueRange> getRange(const SubExpression& sub, const Method* method)
+ValueRange ValueRange::getValueRange(const SubExpression& sub, const Method* method)
 {
-    if(auto val = sub.checkValue())
-        return analysis::ValueRange::getValueRangeFlat(*val, true, method);
-
     if(auto expr = sub.checkExpression())
         return ValueRange::getValueRange(*expr, method);
-    return {};
+    if(auto range = ValueRange::getValueRange(sub.getDecorations(), method))
+        return *range;
+    if(auto val = sub.checkValue())
+        return analysis::ValueRange::getValueRangeFlat(*val, true, method);
+    return ValueRange{};
 }
 
 ValueRange ValueRange::getValueRange(const Expression& expr, const Method* method)
@@ -747,8 +750,8 @@ ValueRange ValueRange::getValueRange(const Expression& expr, const Method* metho
     if(auto range = getValueRange(expr.deco, method))
         return *range;
 
-    auto leftRange = ::getRange(expr.arg0, method).value_or(ValueRange{});
-    auto rightRange = (expr.code.numOperands > 1 ? ::getRange(expr.arg1, method) : ValueRange{}).value_or(ValueRange{});
+    auto leftRange = getValueRange(expr.arg0, method);
+    auto rightRange = (expr.code.numOperands > 1 ? getValueRange(expr.arg1, method) : ValueRange{});
     if(expr.unpackMode.hasEffect())
     {
         leftRange = expr.unpackMode(leftRange, expr.code.acceptsFloat);

@@ -8,6 +8,8 @@
 
 #include "../Expression.h"
 #include "../Profiler.h"
+#include "../analysis/MemoryAnalysis.h"
+#include "../analysis/ValueRange.h"
 #include "../intermediate/Helper.h"
 #include "../intermediate/VectorHelper.h"
 #include "../intermediate/operators.h"
@@ -18,6 +20,7 @@
 #include <iomanip>
 
 using namespace vc4c;
+using namespace vc4c::analysis;
 using namespace vc4c::periphery;
 using namespace vc4c::intermediate;
 using namespace vc4c::operators;
@@ -379,10 +382,10 @@ std::pair<DataType, uint32_t> periphery::getBestVectorSize(uint32_t numBytes)
 }
 
 InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const Value& dest, const VPMArea& area,
-    bool useMutex, const Value& inAreaOffset)
+    bool useMutex, const Value& inAreaByteOffset)
 {
     auto cacheType = getVPMStorageType(dest.type).toVectorType(dest.type.getVectorWidth());
-    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, cacheType, inAreaOffset);
+    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, cacheType, inAreaByteOffset);
 
     it = insertLockMutex(it, useMutex);
     it = insertReadVPM(method, it, dest, cacheEntry);
@@ -391,10 +394,10 @@ InstructionWalker VPM::insertReadVPM(Method& method, InstructionWalker it, const
 }
 
 InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, const Value& src, const VPMArea& area,
-    bool useMutex, const Value& inAreaOffset)
+    bool useMutex, const Value& inAreaByteOffset)
 {
     auto cacheType = getVPMStorageType(src.type).toVectorType(src.type.getVectorWidth());
-    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, cacheType, inAreaOffset);
+    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, cacheType, inAreaByteOffset);
 
     it = insertLockMutex(it, useMutex);
     it = insertWriteVPM(method, it, src, cacheEntry);
@@ -403,9 +406,9 @@ InstructionWalker VPM::insertWriteVPM(Method& method, InstructionWalker it, cons
 }
 
 InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress, DataType type,
-    const VPMArea& area, bool useMutex, const Value& inAreaOffset, const Value& numEntries)
+    const VPMArea& area, bool useMutex, const Value& inAreaByteOffset, const Value& numEntries)
 {
-    area.checkAreaSize(getVPMStorageType(type).getLogicalWidth());
+    area.checkAreaSize(type, numEntries.getLiteralValue().value_or(1_lit).unsignedInt());
 
     if(auto local = memoryAddress.checkLocal())
     {
@@ -417,7 +420,7 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
             param->decorations = add_flag(param->decorations, ParameterDecorations::INPUT);
     }
 
-    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, type, inAreaOffset);
+    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, type, inAreaByteOffset);
 
     it = insertLockMutex(it, useMutex);
     it = insertReadRAM(method, it, memoryAddress, cacheEntry, numEntries);
@@ -426,9 +429,9 @@ InstructionWalker VPM::insertReadRAM(Method& method, InstructionWalker it, const
 }
 
 InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress, DataType type,
-    const VPMArea& area, bool useMutex, const Value& inAreaOffset, const Value& numEntries)
+    const VPMArea& area, bool useMutex, const Value& inAreaByteOffset, const Value& numEntries)
 {
-    area.checkAreaSize(getVPMStorageType(type).getLogicalWidth());
+    area.checkAreaSize(type, numEntries.getLiteralValue().value_or(1_lit).unsignedInt());
 
     if(auto local = memoryAddress.checkLocal())
     {
@@ -440,7 +443,7 @@ InstructionWalker VPM::insertWriteRAM(Method& method, InstructionWalker it, cons
             param->decorations = add_flag(param->decorations, ParameterDecorations::OUTPUT);
     }
 
-    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, type, inAreaOffset);
+    auto cacheEntry = std::make_shared<VPMCacheEntry>(area, type, inAreaByteOffset);
 
     it = insertLockMutex(it, useMutex);
     it = insertWriteRAM(method, it, memoryAddress, cacheEntry, numEntries);
@@ -535,14 +538,14 @@ static uint8_t calculateQPUSideAddress(uint8_t scalarBitCount, unsigned char row
             std::to_string(static_cast<unsigned>(scalarBitCount)));
 }
 
-static NODISCARD InstructionWalker calculateElementOffsetInVPM(Method& method, InstructionWalker it,
-    DataType scalarType, const Value& vectorWidth, const Value& inAreaOffset, Value& elementOffset, bool dontPack)
+static NODISCARD InstructionWalker calculateVectorOffsetInVPM(Method& method, InstructionWalker it, DataType scalarType,
+    const Value& vectorWidth, const Value& inAreaByteOffset, Value& elementOffset, bool dontPack)
 {
-    // e.g. long4 type, 64 byte offset -> 4 32-bit element offset
-    // e.g. 32-bit type, 4 byte offset -> 1 32-bit element offset
-    // e.g. byte4 type, 4 byte offset -> 1 byte-element offset
-    // e.g. half-word8 type, 32 byte offset -> 2 half-word element offset
-    if(inAreaOffset == INT_ZERO)
+    // e.g. long4 type, 64 byte offset -> 4 32-bit vector offset
+    // e.g. 32-bit type, 4 byte offset -> 1 32-bit vector offset
+    // e.g. byte4 type, 4 byte offset -> 1 8-bit vector offset
+    // e.g. half-word8 type, 32 byte offset -> 2 16-bit vector offset
+    if(inAreaByteOffset == INT_ZERO)
         elementOffset = INT_ZERO;
     else if(scalarType.getScalarBitCount() > 32)
     {
@@ -551,7 +554,7 @@ static NODISCARD InstructionWalker calculateElementOffsetInVPM(Method& method, I
         // NOTE: This only works for in-memory-size is a power of 2!
         auto logMemorySize = assign(it, TYPE_INT8, "%memory_size") = clz(inMemorySize);
         logMemorySize = assign(it, TYPE_INT8, "%memory_size") = (31_val - logMemorySize);
-        elementOffset = assign(it, TYPE_INT16, "%vpm_element_offset") = as_unsigned{inAreaOffset} >> logMemorySize;
+        elementOffset = assign(it, TYPE_INT16, "%vpm_element_offset") = as_unsigned{inAreaByteOffset} >> logMemorySize;
     }
     else
     {
@@ -560,14 +563,14 @@ static NODISCARD InstructionWalker calculateElementOffsetInVPM(Method& method, I
         // NOTE: This only works for in-memory-size is a power of 2!
         auto logMemorySize = assign(it, TYPE_INT8, "%memory_size") = clz(inMemorySize);
         logMemorySize = assign(it, TYPE_INT8, "%memory_size") = (31_val - logMemorySize);
-        elementOffset = assign(it, TYPE_INT16, "%vpm_element_offset") = as_unsigned{inAreaOffset} >> logMemorySize;
+        elementOffset = assign(it, TYPE_INT16, "%vpm_element_offset") = as_unsigned{inAreaByteOffset} >> logMemorySize;
     }
 
     if(scalarType.getScalarBitCount() < 32 && dontPack)
         // If we disallow packing, make sure all addresses are aligned to a row. Thus, we make sure the address is a
         // multiple of 4(2) for 8-bit (16-bit) types.
-        // inAreaOffset = I * sizeof(<element-type * N>)
-        // (initial) elementOffset = inAreaOffset / sizeof(<element-type * N>) = I
+        // inAreaByteOffset = I * sizeof(<element-type * N>)
+        // (initial) elementOffset = inAreaByteOffset / sizeof(<element-type * N>) = I
         // For 8-bit types: (final) elementOffset = I * 4
         // For 16-bit types: (final) elementOffset = I * 2
         elementOffset = assign(it, TYPE_INT16, "%vpm_element_offset") =
@@ -755,73 +758,51 @@ InstructionWalker VPM::insertFillDMA(Method& method, InstructionWalker it, const
     return it;
 }
 
-void VPMArea::checkAreaSize(const unsigned requestedSize) const
+static uint32_t calculateNumRows(DataType elementType, uint32_t numElements, bool canPackVectors)
 {
-    if(requestedSize > (numRows * VPM_NUM_COLUMNS * VPM_WORD_WIDTH)) // TODO rewrite packed/not packed!
+    if(!canPackVectors)
+        return numElements;
+    uint32_t requestedSize = VPM::getVPMStorageType(elementType).getLogicalWidth() * numElements;
+    return requestedSize / (VPM_NUM_COLUMNS * VPM_WORD_WIDTH) +
+        (requestedSize % (VPM_NUM_COLUMNS * VPM_WORD_WIDTH) != 0);
+}
+
+static bool canPackMultipleVectorsInRow(
+    VPMUsage usageType, DataType vectorType, VPMAreaAccessFlags flags = VPMAreaAccessFlags::NONE)
+{
+    if(vectorType.isVectorType() && vectorType.getScalarBitCount() < 32 &&
+        vectorType.getVectorWidth() == NATIVE_VECTOR_SIZE &&
+        has_flag(flags, VPMAreaAccessFlags::QPU_ACCESS_FULL_VECTOR))
+        // there is no padding between 16-element vectors, so they can be accessed as one block in DMA
+        return true;
+    return false;
+}
+
+bool VPMArea::canBePackedIntoRow() const
+{
+    return canPackMultipleVectorsInRow(usageType, elementType, flags);
+}
+
+void VPMArea::checkAreaSize(DataType accessElementType, uint32_t numElements) const
+{
+    if(accessElementType.getScalarBitCount() > 32)
+        // 64-bit accesses need to be split into 2 32-bit accesses anyway
+        return checkAreaSize(TYPE_INT32, numElements * 2);
+    if(accessElementType.getLogicalWidth() > elementType.getLogicalWidth() ||
+        calculateNumRows(accessElementType, numElements, canBePackedIntoRow()) > numRows)
+    {
+        logging::error() << "Failed to accessed " << numElements << " elements of type "
+                         << accessElementType.to_string() << logging::endl;
         throw CompilationError(
-            CompilationStep::GENERAL, "VPM area has not enough space available", std::to_string(requestedSize));
+            CompilationStep::GENERAL, "Cannot access VPM area with larger type than the area", to_string());
+    }
+
+    // TODO check for element alignment, e.g. access element type bit-width <= stored element type bit-width?
 }
 
 bool VPMArea::operator<(const VPMArea& other) const
 {
     return rowOffset < other.rowOffset;
-}
-
-bool VPMArea::requiresSpacePerQPU() const
-{
-    return usageType == VPMUsage::REGISTER_SPILLING || usageType == VPMUsage::STACK;
-}
-
-DataType VPMArea::getElementType() const
-{
-    switch(usageType)
-    {
-    case VPMUsage::SCRATCH:
-        // is not known
-        return TYPE_UNKNOWN;
-    case VPMUsage::RAM_CACHE:
-    case VPMUsage::LOCAL_MEMORY:
-        // element-type of local assigned to this area
-        return originalAddress->type.getElementType();
-    case VPMUsage::REGISTER_SPILLING:
-        // all registers have the same size
-        return TYPE_INT32.toVectorType(16);
-    case VPMUsage::STACK:
-        // is not known
-        return TYPE_UNKNOWN;
-    }
-    return TYPE_UNKNOWN;
-}
-
-uint8_t VPMArea::getElementsInRow(DataType elementType) const
-{
-    DataType type = (elementType.isUnknown() ? getElementType() : elementType).toVectorType(1);
-    if(type.isUnknown())
-        throw CompilationError(
-            CompilationStep::GENERAL, "Cannot generate VPW setup for unknown type", elementType.to_string());
-
-    if(!canBePackedIntoRow())
-        // if we cannot pack multiple vectors into one row, a row holds 1 vector (16 elements)
-        return static_cast<uint8_t>(NATIVE_VECTOR_SIZE);
-    // otherwise, a row has 64 Bytes of data, so we can calculate the number of elements fitting
-    return static_cast<uint8_t>((VPM_NUM_COLUMNS * VPM_WORD_WIDTH * 8) / type.getScalarBitCount());
-}
-
-bool VPMArea::canBeAccessedViaDMA() const
-{
-    return usageType == VPMUsage::SCRATCH || usageType == VPMUsage::RAM_CACHE ||
-        getElementType().getVectorWidth() == NATIVE_VECTOR_SIZE;
-}
-
-bool VPMArea::canBePackedIntoRow() const
-{
-    // TODO proper calculation (or pass in constructor!)
-    // FIXME if we allow packing, QPU->VPM->RAM (simple) works, but RAM-> (single) VPM-> (all) RAM does not! If we
-    // disallow it, other way round
-    // FIXME also uses path for unaligned memory access which has a lot of overhead!
-    // return /* !canBeAccessedViaDMA() || */ getElementType().getVectorWidth() == NATIVE_VECTOR_SIZE &&
-    //     usageType != VPMUsage::RAM_CACHE;
-    return false;
 }
 
 static DataType simplifyComplexTypes(DataType type)
@@ -917,7 +898,7 @@ NODISCARD static InstructionWalker insertWriteDMASetup(InstructionWalker it, Val
         // if we have the row packed, we need to calculate the row-width from the maximum row-width and the number of
         // elements
         auto totalNumElements = assign(it, vectorWidth.type, "%vpm_num_elements") = mul24(vectorWidth, numRows);
-        const uint8_t elementsPerRow = area.getElementsInRow(scalarType);
+        auto elementsPerRow = (VPM_NUM_COLUMNS * VPM_WORD_WIDTH * 8) / scalarType.getScalarBitCount();
         auto needsMoreRows = assignNop(it) =
             as_signed{totalNumElements} > as_signed{Value(Literal(elementsPerRow), TYPE_INT8)};
         rowDepth = assign(it, TYPE_INT8, "%vpm_dma_depth") = (Value(Literal(elementsPerRow), TYPE_INT8), needsMoreRows);
@@ -1089,21 +1070,41 @@ static std::string toUsageString(VPMUsage usage, const Local* local)
         CompilationStep::GENERAL, "Unhandled VPM usage type", std::to_string(static_cast<unsigned>(usage)));
 }
 
+static std::string toString(VPMAreaAccessFlags flags)
+{
+    std::vector<std::string> parts;
+    if(has_flag(flags, VPMAreaAccessFlags::QPU_ACCESS_FULL_VECTOR))
+        parts.emplace_back("qpu_full_vector");
+    else if(has_flag(flags, VPMAreaAccessFlags::QPU_ACCESS_VECTOR_ALIGNED))
+        parts.emplace_back("qpu_vector_aligned");
+    else if(has_flag(flags, VPMAreaAccessFlags::QPU_ACCESS_ELEMENT_ALIGNED))
+        parts.emplace_back("qpu_element_aligned");
+    if(has_flag(flags, VPMAreaAccessFlags::QPU_ACCESS_SINGLE_VECTOR))
+        parts.emplace_back("qpu_single_vector");
+    if(has_flag(flags, VPMAreaAccessFlags::RAW_BYTES))
+        parts.emplace_back("raw_bytes");
+    if(parts.empty())
+        return "";
+    return " (" + to_string<std::string>(parts) + ")";
+}
+
 std::string VPMArea::to_string() const
 {
-    return toUsageString(usageType, originalAddress) + ", rows[" + std::to_string(static_cast<unsigned>(rowOffset)) +
-        ", " + std::to_string(static_cast<unsigned>(rowOffset + numRows)) + "[";
+    return toUsageString(usageType, originalAddress) + " with " + elementType.to_string() + " elements, rows[" +
+        std::to_string(static_cast<unsigned>(rowOffset)) + ", " +
+        std::to_string(static_cast<unsigned>(rowOffset + numRows)) + "[" + ::toString(flags) +
+        (canBePackedIntoRow() ? " (packed)" : "");
 }
 LCOV_EXCL_STOP
 
 // running counter, for visual distinction of the VPM cache entries only
 static std::atomic_uint vpmCacheEntryCounter{0};
 
-VPMCacheEntry::VPMCacheEntry(const VPMArea& area, DataType type, const Value& innerOffset) :
-    index(vpmCacheEntryCounter++), area(area), inAreaOffset(innerOffset), elementType(type),
+VPMCacheEntry::VPMCacheEntry(const VPMArea& area, DataType type, const Value& innerByteOffset) :
+    index(vpmCacheEntryCounter++), area(area), inAreaByteOffset(innerByteOffset), elementType(type),
     dynamicVectorWidth(Value(Literal(type.getVectorWidth()), TYPE_INT8))
 {
-    area.checkAreaSize(type.getLogicalWidth());
+    area.checkAreaSize(type, 1u);
 }
 
 VPMCacheEntry::~VPMCacheEntry() noexcept = default;
@@ -1113,14 +1114,14 @@ std::string VPMCacheEntry::to_string() const
 {
     return "VPM cache entry " + std::to_string(index) + " (" + elementType.to_string() +
         (!dynamicVectorWidth.isUndefined() ? " with " + dynamicVectorWidth.to_string() + " elements" : "") +
-        " and offset " + inAreaOffset.to_string() + " to base " + area.to_string() + ")";
+        " and offset " + inAreaByteOffset.to_string() + " bytes to base " + area.to_string() + ")";
 }
 LCOV_EXCL_STOP
 
 DataType VPMCacheEntry::getScalarType() const
 {
     if(elementType.isUnknown())
-        return simplifyComplexTypes(area.getElementType()).getElementType();
+        return simplifyComplexTypes(area.elementType).getElementType();
     return simplifyComplexTypes(elementType).getElementType();
 }
 
@@ -1155,7 +1156,8 @@ VPM::VPM(const unsigned totalVPMSize) : maximumVPMSize(std::min(VPM_DEFAULT_SIZE
 {
     // set a size of at least 2 row (for 64-bit data), so if no scratch is used, the first area has an offset of != 0
     // and therefore is different than the scratch-area
-    auto scratch = std::make_shared<VPMArea>(VPMUsage::SCRATCH, 0, 2, nullptr);
+    auto scratch = std::make_shared<VPMArea>(VPMUsage::SCRATCH, 0, 2, TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE),
+        add_flag(VPMAreaAccessFlags::QPU_ACCESS_VECTOR_ALIGNED, VPMAreaAccessFlags::QPU_ACCESS_SINGLE_VECTOR));
     areas[0] = areas[1] = scratch;
 }
 
@@ -1172,30 +1174,14 @@ const VPMArea* VPM::findArea(const Local* local)
     return nullptr;
 }
 
-const VPMArea* VPM::addArea(
-    const Local* local, DataType elementType, bool isStackArea, bool isMemoryCache, unsigned numStacks)
+static Optional<uint32_t> findFreeVPMRows(const std::vector<std::shared_ptr<VPMArea>>& rows, uint32_t numRows)
 {
-    // Since we can only read/write in packages of 16-element vectors on the QPU-side, we need to reserve enough space
-    // for 16-element vectors (even if we do not use all of the elements)
-    DataType inVPMType = getVPMStorageType(elementType);
-
-    unsigned requestedSize = inVPMType.getLogicalWidth() * (isStackArea ? numStacks : 1);
-    if(requestedSize > maximumVPMSize)
-        // does not fit, independent of packing of rows
-        return nullptr;
-    uint8_t numRows = static_cast<unsigned char>(
-        requestedSize / (VPM_NUM_COLUMNS * VPM_WORD_WIDTH) + (requestedSize % (VPM_NUM_COLUMNS * VPM_WORD_WIDTH) != 0));
-    const VPMArea* area = findArea(local);
-    if(area != nullptr && area->numRows >= numRows)
-        return area;
-
     // find free consecutive space in VPM with the requested size and return it
     // to keep the remaining space free for scratch, we start allocating space from the end of the VPM
-    Optional<unsigned> rowOffset;
-    uint8_t numFreeRows = 0;
-    for(auto i = areas.size() - 1; i > 0 /* index 0 is always reserved for scratch */; --i)
+    uint32_t numFreeRows = 0;
+    for(auto i = rows.size() - 1; i > 0 /* index 0 is always reserved for scratch */; --i)
     {
-        if(areas[i])
+        if(rows[i])
         {
             // row is already reserved
             numFreeRows = 0;
@@ -1204,63 +1190,194 @@ const VPMArea* VPM::addArea(
         else
             ++numFreeRows;
         if(numFreeRows >= numRows)
+            return static_cast<unsigned>(i);
+    }
+    return {};
+}
+
+const VPMArea* VPM::addSharedArea(const Local& baseAddress, const FastAccessList<MemoryAccessRange>& accessRanges)
+{
+    auto pointerType = baseAddress.type.getPointerType();
+    if(!pointerType)
+        throw CompilationError(
+            CompilationStep::GENERAL, "Can only add shared VPM area for memory locations", baseAddress.to_string());
+
+    if(accessRanges.empty())
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Cannot lower memory area without any known access ranges to VPM for memory address: "
+                << baseAddress.to_string() << logging::endl);
+        return nullptr;
+    }
+
+    uint32_t minAlignment = std::numeric_limits<uint32_t>::max();
+    auto largestSingleAccessRange = accessRanges.front().accessRange.value_or(ValueRange{});
+    Optional<DataType> uniformAccessedType = accessRanges.front().accessElementType;
+    Optional<DataType> uniformElementType = accessRanges.front().accessElementType.getElementType();
+
+    for(const auto& range : accessRanges)
+    {
+        auto alignment = range.getAccessAlignment(VPM_WORD_WIDTH * VPM_NUM_COLUMNS /* single row */);
+        if(minAlignment == std::numeric_limits<uint32_t>::max())
+            minAlignment = alignment;
+        else
+            minAlignment = gcd(minAlignment, alignment);
+        if(range.accessRange && largestSingleAccessRange &&
+            range.accessRange->maxValue > largestSingleAccessRange.maxValue)
+            largestSingleAccessRange = *range.accessRange;
+        if(uniformAccessedType && uniformAccessedType != range.accessElementType)
+            uniformAccessedType = {};
+        if(uniformElementType && uniformElementType != range.accessElementType.getElementType())
+            uniformElementType = {};
+    }
+    uint32_t typeSize = 0;
+    if(auto arrayContent = pointerType->elementType.getArrayType())
+        typeSize = arrayContent->elementType.getLogicalWidth() * arrayContent->size;
+    else if(pointerType->elementType.isSimpleType())
+        typeSize = pointerType->elementType.getLogicalWidth();
+    else
+    {
+        CPPLOG_LAZY(logging::Level::DEBUG,
+            log << "Failed to determine memory area type size to lower to shared VPM area for: "
+                << baseAddress.to_string() << logging::endl);
+        return nullptr;
+    }
+
+    // TODO if we can determine a small (dynamic) accessed area, we could also lower large buffers, as long as the
+    // actually accessed area fits into VPM. NOTE: In case this area does not start at an offset of 0 need to subtract
+    // the initial offset from all VPM accesses.
+    ValueRange accessedRange{0.0, static_cast<double>(typeSize) - 1.0 /* limit is inclusive */};
+
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Shared area for " << baseAddress.to_string() << " (with "
+            << (typeSize != 0 ? std::to_string(typeSize) : "unknown") << " bytes) is accessed with "
+            << (uniformAccessedType ?
+                       uniformAccessedType.to_string() :
+                       (uniformElementType ? "multiple " + uniformElementType.to_string() : "different types"))
+            << " in range of " << accessedRange.to_string() << " bytes, alignment of " << minAlignment
+            << " bytes and largest single access with " << largestSingleAccessRange.to_string(false) << " bytes"
+            << logging::endl);
+
+    if(uniformAccessedType && uniformAccessedType->isSimpleType())
+    {
+        // all accesses are the same (vector) type, thus we know there cannot be any sub-element access. Also if the
+        // alignment is at least than the vector type's size, only full vectors are ever accessed.
+        VPMAreaAccessFlags flags = VPMAreaAccessFlags::NONE;
+        if(minAlignment >= uniformAccessedType->getLogicalWidth())
+            flags = add_flag(flags, VPMAreaAccessFlags::QPU_ACCESS_FULL_VECTOR);
+        else if(minAlignment >= uniformAccessedType->getElementType().getLogicalWidth())
+            flags = add_flag(flags, VPMAreaAccessFlags::QPU_ACCESS_ELEMENT_ALIGNED);
+        uint32_t numVectors = static_cast<uint32_t>(accessedRange.getRange()) / uniformAccessedType->getLogicalWidth();
+        if(numVectors == 1u || minAlignment >= uniformAccessedType->getLogicalWidth())
+            flags = add_flag(flags, VPMAreaAccessFlags::QPU_ACCESS_SINGLE_VECTOR);
+        return addSharedArea(baseAddress, *uniformAccessedType, numVectors, flags);
+    }
+
+    if(uniformElementType && uniformElementType->isScalarType() && largestSingleAccessRange.maxValue > 0)
+    {
+        // all accesses are multiples of the same element type and we know the largest vector of the accessed element
+        // type, so there cannot be any sub-element access
+        auto numElements =
+            static_cast<uint32_t>(largestSingleAccessRange.maxValue) / uniformElementType->getLogicalWidth();
+        if(numElements <= NATIVE_VECTOR_SIZE)
         {
-            rowOffset = static_cast<unsigned>(i);
-            break;
+            auto vectorType = uniformElementType->toVectorType(static_cast<uint8_t>(numElements));
+            VPMAreaAccessFlags flags = VPMAreaAccessFlags::NONE;
+            if(minAlignment >= vectorType.getLogicalWidth())
+                flags = add_flag(flags, VPMAreaAccessFlags::QPU_ACCESS_VECTOR_ALIGNED);
+            else if(minAlignment >= uniformElementType->getLogicalWidth())
+                flags = add_flag(flags, VPMAreaAccessFlags::QPU_ACCESS_ELEMENT_ALIGNED);
+            uint32_t numVectors = static_cast<uint32_t>(accessedRange.getRange()) / vectorType.getLogicalWidth();
+            if(numVectors == 1u || minAlignment >= vectorType.getLogicalWidth())
+                flags = add_flag(flags, VPMAreaAccessFlags::QPU_ACCESS_SINGLE_VECTOR);
+            return addSharedArea(baseAddress, vectorType, numVectors, flags);
         }
     }
+
+    if(auto arrayContent = pointerType->elementType.getArrayType())
+        return addSharedArea(baseAddress, arrayContent->elementType, arrayContent->size);
+    return addSharedArea(baseAddress, pointerType->elementType, 1);
+}
+
+const VPMArea* VPM::addSharedArea(
+    const Local& baseAddress, DataType elementType, uint32_t numElements, VPMAreaAccessFlags flags)
+{
+    if(!elementType.isSimpleType() && !elementType.getPointerType())
+        throw CompilationError(CompilationStep::GENERAL,
+            "Cannot store complex type in shared VPM area for '" + baseAddress.to_string() + "'",
+            elementType.to_string());
+
+    // Since we can only read/write in packages of 16-element vectors on the QPU-side, we need to reserve enough space
+    // for 16-element vectors (even if we do not use all of the elements)
+    auto numRows = calculateNumRows(
+        elementType, numElements, canPackMultipleVectorsInRow(VPMUsage::LOCAL_MEMORY, elementType, flags));
+
+    const VPMArea* area = findArea(&baseAddress);
+    if(area && area->elementType == elementType && area->numRows >= numRows)
+        return area;
+
+    Optional<unsigned> rowOffset = findFreeVPMRows(areas, numRows);
+    if(!rowOffset)
+        // no more (big enough) free space on VPM
+        return nullptr;
+
+    auto ptr = std::make_shared<VPMArea>(
+        VPMUsage::LOCAL_MEMORY, static_cast<uint8_t>(rowOffset.value()), numRows, elementType, flags, &baseAddress);
+    for(auto i = rowOffset.value(); i < (rowOffset.value() + numRows); ++i)
+        areas[i] = ptr;
+    CPPLOG_LAZY(logging::Level::DEBUG,
+        log << "Allocating " << numRows << " rows of VPM cache starting at row " << rowOffset.value()
+            << " for local '" << baseAddress.to_string(false) << "' with " << numElements << " vectors of type "
+            << elementType.to_string() << logging::endl);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL, "VPM lowered RAM rows", numRows);
+    return ptr.get();
+}
+
+const VPMArea* VPM::addCacheArea(const Local& baseAddress, DataType elementType, uint32_t numElements)
+{
+    // Since we can only read/write in packages of 16-element vectors on the QPU-side, we need to reserve enough space
+    // for 16-element vectors (even if we do not use all of the elements)
+    auto numRows =
+        calculateNumRows(elementType, numElements, canPackMultipleVectorsInRow(VPMUsage::RAM_CACHE, elementType));
+    const VPMArea* area = findArea(&baseAddress);
+    if(area && area->elementType == elementType && area->numRows >= numRows)
+        return area;
+
+    Optional<unsigned> rowOffset = findFreeVPMRows(areas, numRows);
     if(!rowOffset)
         // no more (big enough) free space on VPM
         return nullptr;
 
     // for now align all new VPM areas at the beginning of a row
-    auto ptr = std::make_shared<VPMArea>(
-        isStackArea ? VPMUsage::STACK : (isMemoryCache ? VPMUsage::RAM_CACHE : VPMUsage::LOCAL_MEMORY),
-        static_cast<uint8_t>(rowOffset.value()), numRows, local);
+    auto ptr = std::make_shared<VPMArea>(VPMUsage::RAM_CACHE, static_cast<uint8_t>(rowOffset.value()), numRows,
+        elementType, VPMAreaAccessFlags::NONE, &baseAddress);
     for(auto i = rowOffset.value(); i < (rowOffset.value() + numRows); ++i)
         areas[i] = ptr;
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Allocating " << numRows << " rows (per 64 byte) of VPM cache starting at row " << rowOffset.value()
-            << " for local: " << local->to_string(false)
-            << (isStackArea ? std::string(" (") + std::to_string(numStacks) + " stacks)" : "") << logging::endl);
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL, "VPM cache size", requestedSize);
+        log << "Allocating " << numRows << " rows of VPM cache starting at row " << rowOffset.value()
+            << " for local '" << baseAddress.to_string(false) << "' as RAM cache with " << numElements
+            << " elements of type " << elementType.to_string() << logging::endl);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL, "VPM cache RAM rows", numRows);
     return ptr.get();
 }
 
 const VPMArea* VPM::addSpillArea(unsigned numQPUs)
 {
-    // find free consecutive space in VPM with the requested number of rows and return it
-    // to keep the remaining space free for scratch, we start allocating space from the end of the VPM
-    Optional<unsigned> rowOffset;
-    uint8_t numFreeRows = 0;
-    for(auto i = areas.size() - 1; i > 0 /* index 0 is always reserved for scratch */; --i)
-    {
-        if(areas[i])
-        {
-            // row is already reserved
-            numFreeRows = 0;
-            continue;
-        }
-        else
-            ++numFreeRows;
-        if(numFreeRows >= numQPUs)
-        {
-            rowOffset = static_cast<unsigned>(i);
-            break;
-        }
-    }
+    Optional<unsigned> rowOffset = findFreeVPMRows(areas, numQPUs);
     if(!rowOffset)
         // no more (big enough) free space on VPM
         return nullptr;
 
     // for now align all new VPM areas at the beginning of a row
-    auto ptr = std::make_shared<VPMArea>(VPMUsage::REGISTER_SPILLING, static_cast<uint8_t>(rowOffset.value()), numQPUs);
+    auto ptr = std::make_shared<VPMArea>(VPMUsage::REGISTER_SPILLING, static_cast<uint8_t>(rowOffset.value()), numQPUs,
+        TYPE_INT32.toVectorType(NATIVE_VECTOR_SIZE),
+        add_flag(VPMAreaAccessFlags::QPU_ACCESS_FULL_VECTOR, VPMAreaAccessFlags::QPU_ACCESS_SINGLE_VECTOR));
     for(auto i = rowOffset.value(); i < (rowOffset.value() + numQPUs); ++i)
         areas[i] = ptr;
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Allocating " << numQPUs << " rows (per 64 byte) of VPM spill cache starting at row "
-            << rowOffset.value() << logging::endl);
-    PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL, "VPM spill rows", numQPUs);
+        log << "Allocating " << numQPUs << " rows of VPM spill cache starting at row " << rowOffset.value()
+            << logging::endl);
+    PROFILE_COUNTER(vc4c::profiler::COUNTER_GENERAL, "VPM spill register rows", numQPUs);
     return ptr.get();
 }
 
@@ -1395,8 +1512,8 @@ NODISCARD static InstructionWalker lowerReadVPM(
     Method& method, InstructionWalker it, const CacheAccessInstruction& access, const VPMCacheEntry& cacheEntry)
 {
     // try to get constant offset value
-    auto internalOffset = getSourceValue(cacheEntry.inAreaOffset);
-    internalOffset = internalOffset.getConstantValue(true).value_or(internalOffset);
+    auto internalByteOffset = getSourceValue(cacheEntry.inAreaByteOffset);
+    internalByteOffset = internalByteOffset.getConstantValue(true).value_or(internalByteOffset);
 
     // 1) configure reading from VPM into QPU
     const auto& dataType = cacheEntry.getVectorType();
@@ -1410,10 +1527,11 @@ NODISCARD static InstructionWalker lowerReadVPM(
             genericSetup.genericSetup.setWordRow(static_cast<uint8_t>(genericSetup.genericSetup.getWordRow() + 1u));
     }
     Value outputValue = VPM_IO_REGISTER;
-    if(internalOffset == INT_ZERO)
+    if(internalByteOffset == INT_ZERO)
         assign(it, VPM_IN_SETUP_REGISTER) =
             (load(Literal(genericSetup.value)), InstructionDecorations::VPM_READ_CONFIGURATION);
-    else if(isUnalignedMemoryVPMAccess(internalOffset, dataType))
+    else if(!has_flag(cacheEntry.area.flags, VPMAreaAccessFlags::QPU_ACCESS_FULL_VECTOR) &&
+        isUnalignedMemoryVPMAccess(internalByteOffset, dataType))
     {
         // TODO if inAreaOffset guaranteed to lie within one row, skip loading of second?!
         // TODO 64-bit version
@@ -1435,8 +1553,8 @@ NODISCARD static InstructionWalker lowerReadVPM(
          * - Copy elements [N-R, N] from the second vector U into the result
          */
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, cacheEntry.getScalarType(), cacheEntry.getVectorWidth(),
-            internalOffset, elementOffset, !cacheEntry.area.canBePackedIntoRow());
+        it = calculateVectorOffsetInVPM(method, it, cacheEntry.getScalarType(), cacheEntry.getVectorWidth(),
+            internalByteOffset, elementOffset, !cacheEntry.area.canBePackedIntoRow());
         genericSetup.genericSetup.setNumber(2);
         assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
             InstructionDecorations::VPM_READ_CONFIGURATION);
@@ -1447,7 +1565,7 @@ NODISCARD static InstructionWalker lowerReadVPM(
         auto lowerPart = assign(it, dataType, "%vpm.unaligned.lower") = VPM_IO_REGISTER;
         // U = [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
         auto upperPart = assign(it, dataType, "%vpm.unaligned.upper") = VPM_IO_REGISTER;
-        auto rotationOffset = assign(it, TYPE_INT8) = internalOffset % Literal(dataType.getInMemoryWidth());
+        auto rotationOffset = assign(it, TYPE_INT8) = internalByteOffset % Literal(dataType.getInMemoryWidth());
         rotationOffset = assign(it, TYPE_INT8, "%vpm.unaligned.offset") =
             rotationOffset / Literal(dataType.getElementType().getInMemoryWidth());
         Value lowerRotated = method.addNewLocal(dataType, "%vpm.unaligned.lower");
@@ -1474,8 +1592,8 @@ NODISCARD static InstructionWalker lowerReadVPM(
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, cacheEntry.getScalarType(), cacheEntry.getVectorWidth(),
-            internalOffset, elementOffset, !cacheEntry.area.canBePackedIntoRow());
+        it = calculateVectorOffsetInVPM(method, it, cacheEntry.getScalarType(), cacheEntry.getVectorWidth(),
+            internalByteOffset, elementOffset, !cacheEntry.area.canBePackedIntoRow());
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
         assign(it, VPM_IN_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
@@ -1491,8 +1609,8 @@ NODISCARD static InstructionWalker lowerWriteVPM(
     Method& method, InstructionWalker it, const CacheAccessInstruction& access, const VPMCacheEntry& cacheEntry)
 {
     // try to get constant offset value
-    auto internalOffset = getSourceValue(cacheEntry.inAreaOffset);
-    internalOffset = internalOffset.getConstantValue(true).value_or(internalOffset);
+    auto internalByteOffset = getSourceValue(cacheEntry.inAreaByteOffset);
+    internalByteOffset = internalByteOffset.getConstantValue(true).value_or(internalByteOffset);
 
     // 1. configure writing from QPU into VPM
     const auto& dataType = cacheEntry.getVectorType();
@@ -1502,10 +1620,11 @@ NODISCARD static InstructionWalker lowerWriteVPM(
         if(access.upperWord)
             genericSetup.genericSetup.setWordRow(static_cast<uint8_t>(genericSetup.genericSetup.getWordRow() + 1u));
     }
-    if(internalOffset == INT_ZERO)
+    if(internalByteOffset == INT_ZERO)
         assign(it, VPM_OUT_SETUP_REGISTER) =
             (load(Literal(genericSetup.value)), InstructionDecorations::VPM_WRITE_CONFIGURATION);
-    else if(isUnalignedMemoryVPMAccess(internalOffset, dataType))
+    else if(!has_flag(cacheEntry.area.flags, VPMAreaAccessFlags::QPU_ACCESS_FULL_VECTOR) &&
+        isUnalignedMemoryVPMAccess(internalByteOffset, dataType))
     {
         // TODO if inAreaOffset guaranteed to lie within one row, skip loading of second?!
         // TODO 64-bit version
@@ -1530,8 +1649,8 @@ NODISCARD static InstructionWalker lowerWriteVPM(
          * - Write 2 <E16> vectors L and U into VPM address B and B + 1
          */
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, cacheEntry.getScalarType(), cacheEntry.getVectorWidth(),
-            internalOffset, elementOffset, !cacheEntry.area.canBePackedIntoRow());
+        it = calculateVectorOffsetInVPM(method, it, cacheEntry.getScalarType(), cacheEntry.getVectorWidth(),
+            internalByteOffset, elementOffset, !cacheEntry.area.canBePackedIntoRow());
         {
             VPRSetup genericReadSetup(toReadSetup(cacheEntry.area, cacheEntry.getScalarType()));
             // XXX this might lead to reading 64th (as in one-past-the-end) VPM row, if the original addressed row is
@@ -1549,7 +1668,7 @@ NODISCARD static InstructionWalker lowerWriteVPM(
         auto lowerPart = assign(it, dataType, "%vpm.unaligned.orig.lower") = VPM_IO_REGISTER;
         // U = [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
         auto upperPart = assign(it, dataType, "%vpm.unaligned.orig.upper") = VPM_IO_REGISTER;
-        auto rotationOffset = assign(it, TYPE_INT8) = internalOffset % Literal(dataType.getInMemoryWidth());
+        auto rotationOffset = assign(it, TYPE_INT8) = internalByteOffset % Literal(dataType.getInMemoryWidth());
         rotationOffset = assign(it, TYPE_INT8, "%vpm.unaligned.offset") =
             rotationOffset / Literal(dataType.getElementType().getInMemoryWidth());
         Value srcRotated = method.addNewLocal(dataType, "%vpm.unaligned.new");
@@ -1577,8 +1696,8 @@ NODISCARD static InstructionWalker lowerWriteVPM(
 
         // 1) convert offset in bytes to offset in elements (!! VPM stores vector-size of 16!!)
         Value elementOffset = UNDEFINED_VALUE;
-        it = calculateElementOffsetInVPM(method, it, cacheEntry.getScalarType(), cacheEntry.getVectorWidth(),
-            internalOffset, elementOffset, !cacheEntry.area.canBePackedIntoRow());
+        it = calculateVectorOffsetInVPM(method, it, cacheEntry.getScalarType(), cacheEntry.getVectorWidth(),
+            internalByteOffset, elementOffset, !cacheEntry.area.canBePackedIntoRow());
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         // 3) write setup with dynamic address
         assign(it, VPM_OUT_SETUP_REGISTER) = (Value(Literal(genericSetup.value), TYPE_INT32) + elementOffset,
@@ -1605,7 +1724,7 @@ NODISCARD static InstructionWalker lowerReadRAM(
     it = insertReadDMASetup(
         it, dmaSetupBits, cacheEntry.area, cacheEntry.getScalarType(), cacheEntry.getVectorWidth(), numEntries);
 
-    if(cacheEntry.inAreaOffset != INT_ZERO)
+    if(cacheEntry.inAreaByteOffset != INT_ZERO)
     {
         // this is the offset in byte -> calculate the offset in elements of destination-type
 
@@ -1613,9 +1732,9 @@ NODISCARD static InstructionWalker lowerReadRAM(
         Value elementOffset = UNDEFINED_VALUE;
         // If we cannot pack the row, the data accessed from the QPUs is aligned to the beginning of a separate row per
         // element. To also align the data transferred via DMA to that, we do not align to a row of the correct type in
-        // the call to #calculateElementOffsetInVPM, but instead below force alignment to 32-bit row.
-        it = calculateElementOffsetInVPM(method, it, cacheEntry.getScalarType(), cacheEntry.getVectorWidth(),
-            cacheEntry.inAreaOffset, elementOffset, true);
+        // the call to #calculateVectorOffsetInVPM, but instead below force alignment to 32-bit row.
+        it = calculateVectorOffsetInVPM(method, it, cacheEntry.getScalarType(), cacheEntry.getVectorWidth(),
+            cacheEntry.inAreaByteOffset, elementOffset, true);
         // 2) dynamically calculate new VPM address from base and offset (add offset to setup-value)
         if(!cacheEntry.area.canBePackedIntoRow())
             // need to modify offset to point to next row, not next element in same row
@@ -1664,7 +1783,7 @@ NODISCARD static InstructionWalker lowerWriteRAM(
     it = insertWriteDMASetup(
         it, dmaSetupBits, cacheEntry.area, cacheEntry.getScalarType(), cacheEntry.getVectorWidth(), numEntries);
 
-    if(cacheEntry.inAreaOffset != INT_ZERO)
+    if(cacheEntry.inAreaByteOffset != INT_ZERO)
     {
         // this is the offset in byte -> calculate the offset in elements of destination-type
 
@@ -1672,9 +1791,9 @@ NODISCARD static InstructionWalker lowerWriteRAM(
         Value elementOffset = UNDEFINED_VALUE;
         // If we cannot pack the row, the data accessed from the QPUs is aligned to the beginning of a separate row per
         // element. To also align the data transferred via DMA to that, we do not align to a row of the correct type in
-        // the call to #calculateElementOffsetInVPM, but instead below force alignment to 32-bit row.
-        it = calculateElementOffsetInVPM(method, it, cacheEntry.getScalarType(), cacheEntry.getVectorWidth(),
-            cacheEntry.inAreaOffset, elementOffset, true);
+        // the call to #calculateVectorOffsetInVPM, but instead below force alignment to 32-bit row.
+        it = calculateVectorOffsetInVPM(method, it, cacheEntry.getScalarType(), cacheEntry.getVectorWidth(),
+            cacheEntry.inAreaByteOffset, elementOffset, true);
         // 2) dynamically calculate new VPM address from base and offset (shift and add offset to setup-value)
         if(!cacheEntry.area.canBePackedIntoRow())
             // need to modify offset to point to next row, not next element in same row

@@ -3,6 +3,7 @@
 
 #include "../Expression.h"
 #include "../GlobalValues.h"
+#include "../Profiler.h"
 #include "log.h"
 
 #include <cmath>
@@ -11,22 +12,11 @@
 using namespace vc4c;
 using namespace vc4c::analysis;
 
-Optional<ValueRange> MemoryAccessRange::getDynamicOffsetRange() const
-{
-    if(auto expr = dynamicOffset.checkExpression())
-        return ValueRange::getValueRange(*expr);
-    if(auto range = ValueRange::getValueRange(dynamicOffset.getDecorations()))
-        return range;
-    if(auto val = dynamicOffset.checkValue())
-        return ValueRange::getValueRangeFlat(*val, true);
-    return {};
-}
-
 Optional<ValueRange> MemoryAccessRange::getDynamicAccessByteRange() const
 {
-    auto offsetRange = getDynamicOffsetRange();
-    if(offsetRange && accessRange)
-        return *offsetRange | (*offsetRange + *accessRange - 1.0 /* upper bound is inclusive */);
+    auto offsetRange = ValueRange::getValueRange(dynamicOffset);
+    if(accessRange)
+        return offsetRange | (offsetRange + *accessRange - 1.0 /* upper bound is inclusive */);
     return {};
 }
 
@@ -40,6 +30,41 @@ Optional<ValueRange> MemoryAccessRange::getDynamicAccessElementRange() const
         return ValueRange(std::floor(tmp.minValue), std::floor(tmp.maxValue));
     }
     return {};
+}
+
+static uint32_t getAlignment(const SubExpression& part)
+{
+    if(auto expr = part.checkExpression())
+    {
+        if(auto constant = expr->getConstantExpression() & &Value::getLiteralValue)
+            return constant.value_or(Literal(1)).unsignedInt();
+        if(expr->code == Expression::FAKEOP_UMUL)
+        {
+            auto constant = (expr->arg0.getConstantExpression() & &Value::getLiteralValue) |
+                (expr->arg1.getConstantExpression() & &Value::getLiteralValue);
+            return constant.value_or(Literal(1)).unsignedInt();
+        }
+    }
+    if(auto val = part.checkValue())
+        return val->getLiteralValue().value_or(Literal(1)).unsignedInt();
+
+    return 1;
+}
+
+uint32_t MemoryAccessRange::getAccessAlignment(uint32_t assumedBaseAlignment) const
+{
+    uint32_t baseAlignment =
+        assumedBaseAlignment != 0 ? assumedBaseAlignment : baseAddress->type.getElementType().getInMemoryAlignment();
+    uint32_t workGroupAlignment = getAlignment(groupUniformOffset);
+    uint32_t dynamicAlignment = getAlignment(dynamicOffset);
+
+    if(workGroupAlignment != 0 && dynamicAlignment != 0)
+        return gcd(baseAlignment, gcd(workGroupAlignment, dynamicAlignment));
+    if(workGroupAlignment != 0)
+        return gcd(baseAlignment, workGroupAlignment);
+    if(dynamicAlignment != 0)
+        return gcd(baseAlignment, dynamicAlignment);
+    return baseAlignment;
 }
 
 static bool hasNoOverlaps(const ValueRange& accessRange, const Expression& strideExpression)
@@ -89,15 +114,14 @@ std::string MemoryAccessRange::to_string() const
     else
         ss << " - access ";
 
-    if(auto singleton = accessRange & &ValueRange::getSingletonValue)
-        ss << static_cast<unsigned>(*singleton) << " bytes of ";
-    else if(accessRange)
-        ss << accessRange.to_string() << " bytes of ";
+    if(accessRange)
+        ss << accessRange->to_string(false) << " bytes of ";
 
     ss << baseAddress->to_string();
 
     if(!accessElementType.isUnknown())
-        ss << " (as " << accessElementType.to_string() << " elements)";
+        ss << " (as " << accessElementType.to_string()
+           << " elements, aligned at " + std::to_string(getAccessAlignment()) + " bytes)";
 
     if(groupUniformOffset)
         ss << " with work-group uniform offset " << groupUniformOffset.to_string();
@@ -344,6 +368,7 @@ static Optional<MemoryAccessRange> findAccessRange(Method& method, const Value& 
 FastAccessList<MemoryAccessRange> analysis::determineAccessRanges(Method& method, const Local* baseAddr,
     FastMap<TypedInstructionWalker<intermediate::MemoryInstruction>, const Local*>& accessInstructions)
 {
+    PROFILE_SCOPE(DetermineAccessRanges);
     // NOTE: If we cannot find one access range for a local, we cannot combine any other access ranges for this local!
     FastAccessList<MemoryAccessRange> result;
     FastMap<const Local*, ValueRange> knownRanges;
@@ -490,18 +515,14 @@ Optional<IdenticalWorkGroupUniformPartsResult> analysis::checkWorkGroupUniformPa
             // dynamic offsets
             for(auto& entry : accessRanges)
             {
-                auto entryParts = getAdditionParts(entry.groupUniformOffset);
-                auto it = entryParts.begin();
-                while(it != entryParts.end())
+                for(const auto& part : getAdditionParts(entry.groupUniformOffset))
                 {
-                    if(std::find(differingUniformParts.begin(), differingUniformParts.end(), *it) !=
+                    if(std::find(differingUniformParts.begin(), differingUniformParts.end(), part) !=
                         differingUniformParts.end())
                     {
-                        entry.dynamicOffset = combine(OP_ADD, entry.dynamicOffset, *it);
-                        entry.groupUniformOffset = combine(OP_SUB, entry.groupUniformOffset, *it);
+                        entry.dynamicOffset = combine(OP_ADD, entry.dynamicOffset, part);
+                        entry.groupUniformOffset = combine(OP_SUB, entry.groupUniformOffset, part);
                     }
-                    else
-                        ++it;
                 }
             }
             return checkWorkGroupUniformParts(accessRanges);

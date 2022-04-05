@@ -270,6 +270,19 @@ namespace vc4c
     static_assert(log2(0x0000000F) == 3, "");
     static_assert(log2(0x00000000) == 0, "");
 
+    CONST constexpr inline uint32_t gcd(uint32_t one, uint32_t other) noexcept
+    {
+        if(other == 0)
+            return one;
+        return gcd(other, one % other);
+    }
+
+    static_assert(gcd(7, 3) == 1, "");
+    static_assert(gcd(8, 2) == 2, "");
+    static_assert(gcd(15, 21) == 3, "");
+    static_assert(gcd(0, 1) == 1, "");
+    static_assert(gcd(48, 36) == 12, "");
+
     /*
      * To explicitly ignore return values of NODISCARD functions
      */

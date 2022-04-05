@@ -22,6 +22,11 @@ namespace vc4c
     const Value VPM_DMA_STORE_WAIT_REGISTER(REG_VPM_DMA_STORE_WAIT, TYPE_UNKNOWN);
     const Value VPM_IO_REGISTER(REG_VPM_IO, TYPE_UNKNOWN);
 
+    namespace analysis
+    {
+        struct MemoryAccessRange;
+    } // namespace analysis
+
     namespace periphery
     {
         struct VPMArea;
@@ -230,7 +235,7 @@ namespace vc4c
              * Example:
              * To write 4 vectors of 2 half-words each, each vector stored in ITS OWN row in VPM, set Depth to 2 and
              * Units to 4. The remaining content of the rows will be skipped.
-             * To write 4 vectors if 2 half-words each, all packed into A SINGLE row in VPM, a Depth of 8 and Units of 1
+             * To write 4 vectors of 2 half-words each, all packed into A SINGLE row in VPM, a Depth of 8 and Units of 1
              * needs to be used.
              */
             BITFIELD_ENTRY(Units, uint8_t, 23, Septuple)
@@ -711,7 +716,7 @@ namespace vc4c
          */
         struct VPMCacheEntry : CacheEntry
         {
-            VPMCacheEntry(const VPMArea& area, DataType type, const Value& innerOffset = INT_ZERO);
+            VPMCacheEntry(const VPMArea& area, DataType type, const Value& innerByteOffset = INT_ZERO);
             ~VPMCacheEntry() noexcept override;
 
             std::string to_string() const override;
@@ -741,7 +746,7 @@ namespace vc4c
             const VPMArea& area;
             // NOTE: This usage is not tracked, so any optimization removing unread local MUST not be run yet as long as
             // this cache entry is not lowered!
-            Value inAreaOffset;
+            Value inAreaByteOffset;
 
         private:
             DataType elementType;
@@ -750,13 +755,39 @@ namespace vc4c
             Value dynamicVectorWidth;
         };
 
+        /**
+         * Additional flags for VPM areas.
+         *
+         * This is a bitmask and the single flags can therefore be combined.
+         */
+        enum class VPMAreaAccessFlags : uint16_t
+        {
+            NONE,
+            // Access from QPUs is always aligned to the 8-, 16- or 32-bit element type specified in the VPM area, no
+            // sub-word offsets (e.g. no reading single bytes from 32-bit entries). "Unaligned" access within a vector
+            // is still possible, e.g. can address the 2nd element of a vector.
+            QPU_ACCESS_ELEMENT_ALIGNED = 1 << 0,
+            // Access from QPUs is always aligned to a full 8-, 16- or 32-bit vector, no sub-offsets within a vector
+            QPU_ACCESS_VECTOR_ALIGNED = 1 << 1 | QPU_ACCESS_ELEMENT_ALIGNED,
+            // Access from QPU always uses the full 8-, 16- or 32-bit vector, no partial vectors are written or read
+            QPU_ACCESS_FULL_VECTOR = 1 << 2 | QPU_ACCESS_VECTOR_ALIGNED,
+            // Only single 8-, 16- or 32-bit vectors are accessed from QPU, no QPU accessed across vector bounds
+            QPU_ACCESS_SINGLE_VECTOR = 1 << 3,
+            // The VPM are contains "raw" bytes and the element type is of no meaning (except providing the number
+            // of bytes per vector). This e.g. applies for temporary memcpy buffers.
+            RAW_BYTES = 1 << 8
+        };
+
         /*
          * An area of the VPM used for a specific purpose (e.g. cache, register spilling, etc.)
          */
         struct VPMArea
         {
-            VPMArea(VPMUsage usage, uint8_t rowOffset, uint8_t numRows, const Local* basePointer = nullptr) :
-                usageType(usage), rowOffset(rowOffset), numRows(numRows), originalAddress(basePointer)
+            VPMArea(VPMUsage usage, uint8_t rowOffset, uint8_t numRows, DataType elementType, VPMAreaAccessFlags flags,
+                const Local* basePointer = nullptr) :
+                usageType(usage),
+                rowOffset(rowOffset), numRows(numRows), originalAddress(basePointer), elementType(elementType),
+                flags(flags)
             {
             }
             VPMArea(const VPMArea&) = delete;
@@ -789,51 +820,41 @@ namespace vc4c
              */
             const Local* originalAddress;
 
-            void checkAreaSize(unsigned requestedSize) const;
-
-            bool operator<(const VPMArea& other) const;
-
-            bool requiresSpacePerQPU() const;
-
-            /*
-             * Returns the default element-type for data stored in this VPM area, depends on the usage-type of the area.
-             * For e.g. local-memory, this returns the element-type of the local memory assigned to this area,
-             * for register-spilling area, this returns "int16", since all registers have this size.
+            /**
+             * The element type of the data stored in this VPM area.
              *
-             * NOTE:
-             * This type is not necessarily accurate (e.g. for scratch, which contains elements of all sizes)
+             * The element type indicates the packed data, e.g. an element type of <8 * i32> indicates that 8 32-bit
+             * integer values are stored packed in one row in VPM, thus the second 8 32-bit integer values are located
+             * in the successive row.
+             *
+             * Second example: An element type of <3 x i16> packs 3 16-bit integers together in a half-row in VPM,
+             * whereas the next 3 16-bit integers are located in the second half of the same 64 Byte row. Accessing the
+             * first 6 8-bit integers (via the QPUs) does not require unaligned access, while accessing the first 4
+             * 32-bit integers does (reading 6 Byte from the first and 2 Byte form the second half-row).
+             *
+             * Whether this element type is scalar or a vector-type depends on the data and layout of the VPM area.
              */
-            DataType getElementType() const;
+            const DataType elementType;
 
-            /*
-             * Returns the number of scalar elements of the given type that fit into a single row.
-             * The data-type defaults to this area's element-type if undefined.
-             *
-             * NOTE:
-             * The number of elements is the number of SCALAR elements!
+            /**
+             * Additional information about accesses to this VPM area to be used to lower correct and faster access
+             * code.
              */
-            uint8_t getElementsInRow(DataType elementType) const;
+            const VPMAreaAccessFlags flags;
 
-            /*
-             * If we pack multiple values (value = byte/half-word/word vector of size 1 to 16) into a single row (e.g.
-             * up to 4 for bytes and 2 for half-words), we cannot write them to DMA unless the vector-width is 16
-             * elements.
-             *
-             * When writing into VPM, a QPU always writes vectors of 16 elements. Since the DMA configuration cannot set
-             * a stride of less than a row, we would not be able to transfer the second, third, etc. value without
-             * copying all the junk of the remaining (unset) vector-elements of the previous values.
-             *
-             * TODO is this true at all? What about DMA write stride setup "Blockmode" bit? And DAM read setup "VPitch"?
-             */
-            bool canBeAccessedViaDMA() const;
-
-            /*
+            /**
              * If we need this VPM area to be transferable via DMA, we cannot pack multiple values into a single row.
-             * 16-element vectors make the exception (can be transferred via DMA and packed to one row)
+             * 16-element vectors make the exception (can be transferred via DMA and packed to one row).
              *
-             * See #canBeAccessedViaDMA
+             * This is due to DMA not being able to address (with one transfer, would be possible with multiple
+             * transfers though) multiple distinct 8-/16-bit vectors in a single row (see VPWDMASetup#Depth). For
+             * 16-element vectors the area in VPM is contiguous and thus we can address it as one block-
              */
             bool canBePackedIntoRow() const;
+
+            void checkAreaSize(DataType accessElementType, uint32_t numElements) const;
+
+            bool operator<(const VPMArea& other) const;
 
             std::string to_string() const;
         };
@@ -860,8 +881,11 @@ namespace vc4c
 
             const VPMArea& getScratchArea() const;
             const VPMArea* findArea(const Local* local);
-            const VPMArea* addArea(const Local* local, DataType elementType, bool isStackArea = false,
-                bool isMemoryCache = false, unsigned numStacks = NUM_QPUS);
+            const VPMArea* addSharedArea(
+                const Local& baseAddress, const FastAccessList<analysis::MemoryAccessRange>& accessRanges);
+            const VPMArea* addSharedArea(const Local& baseAddress, DataType elementType, uint32_t numElements,
+                VPMAreaAccessFlags flags = VPMAreaAccessFlags::NONE);
+            const VPMArea* addCacheArea(const Local& baseAddress, DataType elementType, uint32_t numElements);
             const VPMArea* addSpillArea(unsigned numQPUs = NUM_QPUS);
 
             /*
@@ -873,30 +897,26 @@ namespace vc4c
 
             /*
              * Inserts a read from VPM into a QPU register
-             *
-             * NOTE: the inAreaOffset is the offset in bytes
              */
             NODISCARD InstructionWalker insertReadVPM(Method& method, InstructionWalker it, const Value& dest,
-                const VPMArea& area, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
+                const VPMArea& area, bool useMutex = true, const Value& inAreaByteOffset = INT_ZERO);
             /*
              * Inserts a write from a QPU register into VPM
-             *
-             * NOTE: the inAreaOffset is the offset in bytes
              */
             NODISCARD InstructionWalker insertWriteVPM(Method& method, InstructionWalker it, const Value& src,
-                const VPMArea& area, bool useMutex = true, const Value& inAreaOffset = INT_ZERO);
+                const VPMArea& area, bool useMutex = true, const Value& inAreaByteOffset = INT_ZERO);
 
             /*
              * Inserts a read from RAM into VPM via DMA
              */
             NODISCARD InstructionWalker insertReadRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-                DataType type, const VPMArea& area, bool useMutex = true, const Value& inAreaOffset = INT_ZERO,
+                DataType type, const VPMArea& area, bool useMutex = true, const Value& inAreaByteOffset = INT_ZERO,
                 const Value& numEntries = INT_ONE);
             /*
              * Inserts a write from VPM into RAM via DMA
              */
             NODISCARD InstructionWalker insertWriteRAM(Method& method, InstructionWalker it, const Value& memoryAddress,
-                DataType type, const VPMArea& area, bool useMutex = true, const Value& inAreaOffset = INT_ZERO,
+                DataType type, const VPMArea& area, bool useMutex = true, const Value& inAreaByteOffset = INT_ZERO,
                 const Value& numEntries = INT_ONE);
             /*
              * Inserts a copy from RAM via DMA and VPM into RAM

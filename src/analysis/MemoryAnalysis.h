@@ -39,18 +39,19 @@ namespace vc4c
             // the dynamic part (specific to the work-item) of which the address offset is calculated from
             SubExpression dynamicOffset;
             // the maximum range (in bytes!) the memory is actually accessed in (at a given offset)
+            // NOTE: This is the range of widths, e.g. if this value is 32, then the associated access is always 32
+            // bytes wide, if this value is [1, 32], then the associated access can access between 1 and 32 bytes!
             Optional<analysis::ValueRange> accessRange;
             // the element type of the access, this is used to calculate the access-range in elements
             // NOTE: Elements do not have to be scalar, but can be of any type!
             DataType accessElementType = TYPE_UNKNOWN;
 
-            // NOTE: This is the range of the dynamic offset (in bytes!) and thus does not regard the width of the
-            // access itself!
-            Optional<ValueRange> getDynamicOffsetRange() const;
             // This is the range of the dynamic offset and access width (in bytes!) and thus the whole range (excluding
             // any work-group uniform offset) of memory that is actually accessed.
             Optional<ValueRange> getDynamicAccessByteRange() const;
             Optional<ValueRange> getDynamicAccessElementRange() const;
+
+            uint32_t getAccessAlignment(uint32_t assumedBaseAlignment = 0) const;
 
             // checks whether it is guaranteed that multiple "instances" of this memory access (e.g. by different
             // work-items) do not access the same bits.

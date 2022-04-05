@@ -413,144 +413,233 @@ void test_data::registerMemoryTests()
             {0x0FF00001, 0x0FF00003, 0x0FF00005, 0x0FF00007, 0x0FF00009, 0x0FF0000B, 0x0FF0000D, 0x0FF0000F});
     }
 
+    for(const std::string& type : {"", "dynamic_offset", "static_offset"})
     {
-        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
-            "select_write_address", test_conditional_address_cl_string, "test_select_write_address_simple");
-        builder.setFlags(DataFilter::MEMORY_ACCESS);
-        builder.setDimensions(10, 1, 1, 3, 1, 1);
-        builder.setParameter<0>(toRange(0, 30));
-        builder.allocateParameter<1>(30, 0x42);
-        builder.allocateParameter<2>(30, 0x42);
-        builder.checkParameterEquals<1>({17, 0x42, 19, 0x42, 21, 0x42, 23, 0x42, 25, 0x42, 27, 0x42, 29, 0x42, 31, 0x42,
-            33, 0x42, 35, 0x42, 37, 0x42, 39, 0x42, 41, 0x42, 43, 0x42, 45, 0x42});
-        builder.checkParameterEquals<2>({0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26, 0x42, 28, 0x42, 30, 0x42, 32,
-            0x42, 34, 0x42, 36, 0x42, 38, 0x42, 40, 0x42, 42, 0x42, 44, 0x42, 46});
-    }
+        auto suffix = type.empty() ? "" : ("_" + type);
+        auto define = type.empty() ? "" : "-D" + type;
+        bool hasOffset = !type.empty();
 
-    {
-        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
-            "select_read_address", test_conditional_address_cl_string, "test_select_read_address_simple");
-        builder.setFlags(DataFilter::MEMORY_ACCESS);
-        builder.setDimensions(10, 1, 1, 3, 1, 1);
-        builder.setParameter<0>(toRange(0, 30));
-        builder.setParameter<1>(toRange(100, 130));
-        builder.allocateParameter<2>(30, 0x42);
-        builder.checkParameterEquals<2>({17, 118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29, 130, 31, 132, 33,
-            134, 35, 136, 37, 138, 39, 140, 41, 142, 43, 144, 45, 146});
-    }
+        {
+            TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, uint32_t> builder(
+                "select_write_address" + suffix, test_conditional_address_cl_string, "test_select_write_address_simple",
+                define);
+            builder.setFlags(DataFilter::MEMORY_ACCESS);
+            builder.setDimensions(10, 1, 1, 3, 1, 1);
+            builder.setParameter<0>(toRange(0, 30));
+            builder.allocateParameter<1>(30, 0x42);
+            builder.allocateParameter<2>(34, 0x42);
+            builder.setParameter<3>(3);
+            builder.checkParameterEquals<1>({17, 0x42, 19, 0x42, 21, 0x42, 23, 0x42, 25, 0x42, 27, 0x42, 29, 0x42, 31,
+                0x42, 33, 0x42, 35, 0x42, 37, 0x42, 39, 0x42, 41, 0x42, 43, 0x42, 45, 0x42});
+            if(hasOffset)
+                builder.checkParameterEquals<2>(
+                    {0x42, 0x42, 0x42, 0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26, 0x42, 28, 0x42, 30, 0x42, 32,
+                        0x42, 34, 0x42, 36, 0x42, 38, 0x42, 40, 0x42, 42, 0x42, 44, 0x42, 46, 0x42});
+            else
+                builder.checkParameterEquals<2>(
+                    {0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26, 0x42, 28, 0x42, 30, 0x42, 32, 0x42, 34, 0x42, 36,
+                        0x42, 38, 0x42, 40, 0x42, 42, 0x42, 44, 0x42, 46, 0x42, 0x42, 0x42, 0x42});
+        }
 
-    {
-        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
-            "select_read_write_address", test_conditional_address_cl_string, "test_select_read_write_address_simple");
-        builder.setFlags(DataFilter::MEMORY_ACCESS);
-        builder.setDimensions(10, 1, 1, 3, 1, 1);
-        builder.setParameter<0>(toRange(0, 30));
-        builder.setParameter<1>(toRange(100, 130));
-        builder.checkParameterEquals<0>({117, 1, 119, 3, 121, 5, 123, 7, 125, 9, 127, 11, 129, 13, 131, 15, 133, 17,
-            135, 19, 137, 21, 139, 23, 141, 25, 143, 27, 145, 29});
-        builder.checkParameterEquals<1>({100, 18, 102, 20, 104, 22, 106, 24, 108, 26, 110, 28, 112, 30, 114, 32, 116,
-            34, 118, 36, 120, 38, 122, 40, 124, 42, 126, 44, 128, 46});
-    }
+        {
+            TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, uint32_t> builder(
+                "select_read_address" + suffix, test_conditional_address_cl_string, "test_select_read_address_simple",
+                define);
+            builder.setFlags(DataFilter::MEMORY_ACCESS);
+            builder.setDimensions(10, 1, 1, 3, 1, 1);
+            builder.setParameter<0>(toRange(0, 30));
+            builder.setParameter<1>(toRange(100, 135));
+            builder.allocateParameter<2>(30, 0x42);
+            builder.setParameter<3>(3);
+            if(hasOffset)
+                builder.checkParameterEquals<2>({17, 121, 19, 123, 21, 125, 23, 127, 25, 129, 27, 131, 29, 133, 31, 135,
+                    33, 137, 35, 139, 37, 141, 39, 143, 41, 145, 43, 147, 45, 149});
+            else
+                builder.checkParameterEquals<2>({17, 118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29, 130, 31, 132,
+                    33, 134, 35, 136, 37, 138, 39, 140, 41, 142, 43, 144, 45, 146});
+        }
 
-    {
-        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
-            "select_copy_address", test_conditional_address_cl_string, "test_select_copy_address_simple");
-        builder.setFlags(DataFilter::MEMORY_ACCESS);
-        builder.setDimensions(10, 1, 1, 3, 1, 1);
-        builder.setParameter<0>(toRange(0, 30));
-        builder.setParameter<1>(toRange(100, 130));
-        builder.checkParameterEquals<0>({100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116, 17,
-            118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29});
-        builder.checkParameterEquals<1>({100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116, 17,
-            118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29});
-    }
+        {
+            TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, uint32_t> builder("select_read_write_address" + suffix,
+                test_conditional_address_cl_string, "test_select_read_write_address_simple", define);
+            builder.setFlags(DataFilter::MEMORY_ACCESS);
+            builder.setDimensions(10, 1, 1, 3, 1, 1);
+            builder.setParameter<0>(toRange(0, 30));
+            builder.setParameter<1>(toRange(100, 135));
+            builder.setParameter<2>(3);
+            if(hasOffset)
+            {
+                builder.checkParameterEquals<0>({120, 1, 122, 3, 124, 5, 126, 7, 128, 9, 130, 11, 132, 13, 134, 15, 136,
+                    17, 138, 19, 140, 21, 142, 23, 144, 25, 146, 27, 148, 29});
+                builder.checkParameterEquals<1>({100, 101, 102, 103, 18, 105, 20, 107, 22, 109, 24, 111, 26, 113, 28,
+                    115, 30, 117, 32, 119, 34, 121, 36, 123, 38, 125, 40, 127, 42, 129, 44, 131, 46, 133, 134});
+            }
+            else
+            {
+                builder.checkParameterEquals<0>({117, 1, 119, 3, 121, 5, 123, 7, 125, 9, 127, 11, 129, 13, 131, 15, 133,
+                    17, 135, 19, 137, 21, 139, 23, 141, 25, 143, 27, 145, 29});
+                builder.checkParameterEquals<1>({100, 18, 102, 20, 104, 22, 106, 24, 108, 26, 110, 28, 112, 30, 114, 32,
+                    116, 34, 118, 36, 120, 38, 122, 40, 124, 42, 126, 44, 128, 46, 130, 131, 132, 133, 134});
+            }
+        }
 
-    {
-        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
-            "phi_write_address", test_conditional_address_cl_string, "test_phi_write_address_simple");
-        builder.setFlags(DataFilter::MEMORY_ACCESS);
-        builder.setDimensions(5, 1, 1, 2, 1, 1);
-        builder.setParameter<0>(toRange(0, 30));
-        builder.allocateParameter<1>(30, 0x42);
-        builder.allocateParameter<2>(30, 0x42);
-        builder.setParameter<3>({3});
-        builder.checkParameterEquals<1>({17, 0x42, 19, 0x42, 21, 0x42, 23, 0x42, 25, 0x42, 17, 0x42, 19, 0x42, 21, 0x42,
-            23, 0x42, 25, 0x42, 17, 0x42, 19, 0x42, 21, 0x42, 23, 0x42, 25, 0x42});
-        builder.checkParameterEquals<2>({0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26, 0x42, 18, 0x42, 20, 0x42, 22,
-            0x42, 24, 0x42, 26, 0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26});
-    }
+        {
+            TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, uint32_t> builder("select_copy_address" + suffix,
+                test_conditional_address_cl_string, "test_select_copy_address_simple", define);
+            builder.setFlags(DataFilter::MEMORY_ACCESS);
+            builder.setDimensions(10, 1, 1, 3, 1, 1);
+            builder.setParameter<0>(toRange(0, 30));
+            builder.setParameter<1>(toRange(100, 135));
+            builder.setParameter<2>(3);
+            if(hasOffset)
+            {
+                builder.checkParameterEquals<0>({103, 1, 105, 3, 107, 5, 109, 7, 111, 9, 113, 11, 115, 13, 117, 15, 119,
+                    17, 121, 19, 123, 21, 125, 23, 127, 25, 129, 27, 131, 29});
+                builder.checkParameterEquals<1>({100, 101, 102, 103, 1, 105, 3, 107, 5, 109, 7, 111, 9, 113, 11, 115,
+                    13, 117, 15, 119, 17, 121, 19, 123, 21, 125, 23, 127, 25, 129, 27, 131, 29, 133, 134});
+            }
+            else
+            {
+                builder.checkParameterEquals<0>({100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116,
+                    17, 118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29});
+                builder.checkParameterEquals<1>({100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116,
+                    17, 118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29, 130, 131, 132, 133, 134});
+            }
+        }
 
-    {
-        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
-            "phi_read_address", test_conditional_address_cl_string, "test_phi_read_address_simple");
-        builder.setFlags(DataFilter::MEMORY_ACCESS);
-        builder.setDimensions(5, 1, 1, 2, 1, 1);
-        builder.setParameter<0>(toRange(0, 30));
-        builder.setParameter<1>(toRange(100, 130));
-        builder.allocateParameter<2>(30, 0x42);
-        builder.setParameter<3>({3});
-        builder.checkParameterEquals<2>({17, 118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29, 130, 31, 132, 33,
-            134, 35, 136, 37, 138, 39, 140, 41, 142, 43, 144, 45, 146});
-    }
+        {
+            TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, uint32_t> builder(
+                "phi_write_address" + suffix, test_conditional_address_cl_string, "test_phi_write_address_simple",
+                define);
+            builder.setFlags(DataFilter::MEMORY_ACCESS);
+            builder.setDimensions(5, 1, 1, 2, 1, 1);
+            builder.setParameter<0>(toRange(0, 30));
+            builder.allocateParameter<1>(30, 0x42);
+            builder.allocateParameter<2>(35, 0x42);
+            builder.setParameter<3>({3});
+            builder.setParameter<4>(3);
+            builder.checkParameterEquals<1>({17, 0x42, 19, 0x42, 21, 0x42, 23, 0x42, 25, 0x42, 17, 0x42, 19, 0x42, 21,
+                0x42, 23, 0x42, 25, 0x42, 17, 0x42, 19, 0x42, 21, 0x42, 23, 0x42, 25, 0x42});
+            if(hasOffset)
+                builder.checkParameterEquals<2>(
+                    {0x42, 0x42, 0x42, 0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26, 0x42, 18, 0x42, 20, 0x42, 22,
+                        0x42, 24, 0x42, 26, 0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26, 0x42, 0x42});
+            else
+                builder.checkParameterEquals<2>(
+                    {0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26, 0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26,
+                        0x42, 18, 0x42, 20, 0x42, 22, 0x42, 24, 0x42, 26, 0x42, 0x42, 0x42, 0x42, 0x42});
+        }
 
-    {
-        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
-            "phi_read_write_address", test_conditional_address_cl_string, "test_phi_read_write_address_simple");
-        builder.setFlags(DataFilter::MEMORY_ACCESS);
-        builder.setDimensions(5, 1, 1, 2, 1, 1);
-        builder.setParameter<0>(toRange(0, 30));
-        builder.setParameter<1>(toRange(100, 130));
-        builder.setParameter<2>({3});
-        builder.checkParameterEquals<0>({117, 1, 119, 3, 121, 5, 123, 7, 125, 9, 127, 11, 129, 13, 131, 15, 133, 17,
-            135, 19, 137, 21, 139, 23, 141, 25, 143, 27, 145, 29});
-        builder.checkParameterEquals<1>({100, 18, 102, 20, 104, 22, 106, 24, 108, 26, 110, 28, 112, 30, 114, 32, 116,
-            34, 118, 36, 120, 38, 122, 40, 124, 42, 126, 44, 128, 46});
-    }
+        {
+            TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, uint32_t> builder(
+                "phi_read_address" + suffix, test_conditional_address_cl_string, "test_phi_read_address_simple",
+                define);
+            builder.setFlags(DataFilter::MEMORY_ACCESS);
+            builder.setDimensions(5, 1, 1, 2, 1, 1);
+            builder.setParameter<0>(toRange(0, 30));
+            builder.setParameter<1>(toRange(100, 135));
+            builder.allocateParameter<2>(30, 0x42);
+            builder.setParameter<3>({3});
+            builder.setParameter<4>(3);
+            if(hasOffset)
+                builder.checkParameterEquals<2>({17, 121, 19, 123, 21, 125, 23, 127, 25, 129, 27, 131, 29, 133, 31, 135,
+                    33, 137, 35, 139, 37, 141, 39, 143, 41, 145, 43, 147, 45, 149});
+            else
+                builder.checkParameterEquals<2>({17, 118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29, 130, 31, 132,
+                    33, 134, 35, 136, 37, 138, 39, 140, 41, 142, 43, 144, 45, 146});
+        }
 
-    {
-        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>> builder(
-            "phi_copy_address", test_conditional_address_cl_string, "test_phi_copy_address_simple");
-        builder.setFlags(DataFilter::MEMORY_ACCESS);
-        builder.setDimensions(5, 1, 1, 2, 1, 1);
-        builder.setParameter<0>(toRange(0, 30));
-        builder.setParameter<1>(toRange(100, 130));
-        builder.setParameter<2>({3});
-        builder.checkParameterEquals<0>({100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116, 17,
-            118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29});
-        builder.checkParameterEquals<1>({100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116, 17,
-            118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29});
-    }
+        {
+            TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, uint32_t> builder(
+                "phi_read_write_address" + suffix, test_conditional_address_cl_string,
+                "test_phi_read_write_address_simple", define);
+            builder.setFlags(DataFilter::MEMORY_ACCESS);
+            builder.setDimensions(5, 1, 1, 2, 1, 1);
+            builder.setParameter<0>(toRange(0, 30));
+            builder.setParameter<1>(toRange(100, 135));
+            builder.setParameter<2>({3});
+            builder.setParameter<3>(3);
+            if(hasOffset)
+            {
+                builder.checkParameterEquals<0>({120, 1, 122, 3, 124, 5, 126, 7, 128, 9, 130, 11, 132, 13, 134, 15, 136,
+                    17, 138, 19, 140, 21, 142, 23, 144, 25, 146, 27, 148, 29});
+                builder.checkParameterEquals<1>({100, 101, 102, 103, 18, 105, 20, 107, 22, 109, 24, 111, 26, 113, 28,
+                    115, 30, 117, 32, 119, 34, 121, 36, 123, 38, 125, 40, 127, 42, 129, 44, 131, 46, 133, 134});
+            }
+            else
+            {
+                builder.checkParameterEquals<0>({117, 1, 119, 3, 121, 5, 123, 7, 125, 9, 127, 11, 129, 13, 131, 15, 133,
+                    17, 135, 19, 137, 21, 139, 23, 141, 25, 143, 27, 145, 29});
+                builder.checkParameterEquals<1>({100, 18, 102, 20, 104, 22, 106, 24, 108, 26, 110, 28, 112, 30, 114, 32,
+                    116, 34, 118, 36, 120, 38, 122, 40, 124, 42, 126, 44, 128, 46, 130, 131, 132, 133, 134});
+            }
+        }
 
-    {
-        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
-            "select_write_address_local", test_conditional_address_cl_string, "test_select_write_address_local");
-        builder.setFlags(DataFilter::MEMORY_ACCESS);
-        builder.setDimensions(10, 1, 1, 3, 1, 1);
-        builder.setParameter<0>(toRange(0, 30));
-        builder.allocateParameter<1>(30, 0x42);
-        builder.checkParameterEquals<1>({0 + 17, 0x42, 2 + 17, 0x42, 4 + 17, 0x42, 6 + 17, 0x42, 8 + 17, 0x42, 10 + 17,
-            0x42, 12 + 17, 0x42, 14 + 17, 0x42, 16 + 17, 0x42, 18 + 17, 0x42, 20 + 17, 0x42, 22 + 17, 0x42, 24 + 17,
-            0x42, 26 + 17, 0x42, 28 + 17, 0x42});
-    }
+        {
+            TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, Buffer<int32_t>, uint32_t> builder(
+                "phi_copy_address" + suffix, test_conditional_address_cl_string, "test_phi_copy_address_simple",
+                define);
+            builder.setFlags(DataFilter::MEMORY_ACCESS);
+            builder.setDimensions(5, 1, 1, 2, 1, 1);
+            builder.setParameter<0>(toRange(0, 30));
+            builder.setParameter<1>(toRange(100, 135));
+            builder.setParameter<2>({3});
+            builder.setParameter<3>(3);
+            if(hasOffset)
+            {
+                builder.checkParameterEquals<0>({103, 1, 105, 3, 107, 5, 109, 7, 111, 9, 113, 11, 115, 13, 117, 15, 119,
+                    17, 121, 19, 123, 21, 125, 23, 127, 25, 129, 27, 131, 29});
+                builder.checkParameterEquals<1>({100, 101, 102, 103, 1, 105, 3, 107, 5, 109, 7, 111, 9, 113, 11, 115,
+                    13, 117, 15, 119, 17, 121, 19, 123, 21, 125, 23, 127, 25, 129, 27, 131, 29, 133, 134});
+            }
+            else
+            {
+                builder.checkParameterEquals<0>({100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116,
+                    17, 118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29});
+                builder.checkParameterEquals<1>({100, 1, 102, 3, 104, 5, 106, 7, 108, 9, 110, 11, 112, 13, 114, 15, 116,
+                    17, 118, 19, 120, 21, 122, 23, 124, 25, 126, 27, 128, 29, 130, 131, 132, 133, 134});
+            }
+        }
 
-    {
-        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
-            "select_read_address_local", test_conditional_address_cl_string, "test_select_read_address_local");
-        builder.setFlags(DataFilter::MEMORY_ACCESS);
-        builder.setDimensions(10, 1, 1, 3, 1, 1);
-        builder.allocateParameter<0>(30, 0x42);
-        builder.allocateParameter<1>(30, 0x42);
-        builder.checkParameterEquals<1>(toRange(0 + 17, 30 + 17));
-    }
+        {
+            TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, uint32_t> builder("select_write_address_local" + suffix,
+                test_conditional_address_cl_string, "test_select_write_address_local", define);
+            builder.setFlags(DataFilter::MEMORY_ACCESS);
+            builder.setDimensions(10, 1, 1, 3, 1, 1);
+            builder.setParameter<0>(toRange(0, 30));
+            builder.allocateParameter<1>(30, 0x42);
+            builder.setParameter<2>(3);
+            builder.checkParameterEquals<1>({0 + 17, 0x42, 2 + 17, 0x42, 4 + 17, 0x42, 6 + 17, 0x42, 8 + 17, 0x42,
+                10 + 17, 0x42, 12 + 17, 0x42, 14 + 17, 0x42, 16 + 17, 0x42, 18 + 17, 0x42, 20 + 17, 0x42, 22 + 17, 0x42,
+                24 + 17, 0x42, 26 + 17, 0x42, 28 + 17, 0x42});
+        }
 
-    {
-        TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>> builder(
-            "select_read_address_private", test_conditional_address_cl_string, "test_select_read_address_private");
-        builder.setFlags(DataFilter::MEMORY_ACCESS);
-        builder.setDimensions(8, 1, 1, 2, 1, 1);
-        builder.setParameter<0>(toRange(0, 16));
-        builder.allocateParameter<1>(16, 0x42);
-        builder.checkParameterEquals<1>({17, 18, 19, 20, 21, 22, 23, 24, 59, 34, 59, 34, 59, 34, 59, 34});
+        {
+            TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, uint32_t> builder("select_read_address_local" + suffix,
+                test_conditional_address_cl_string, "test_select_read_address_local", define);
+            builder.setFlags(DataFilter::MEMORY_ACCESS);
+            builder.setDimensions(10, 1, 1, 3, 1, 1);
+            builder.allocateParameter<0>(30, 0x42);
+            builder.allocateParameter<1>(30, 0x42);
+            builder.setParameter<2>(3);
+            builder.checkParameterEquals<1>(toRange(0 + 17, 30 + 17));
+        }
+
+        {
+            TestDataBuilder<Buffer<int32_t>, Buffer<int32_t>, uint32_t> builder("select_read_address_private" + suffix,
+                test_conditional_address_cl_string, "test_select_read_address_private", define);
+            builder.setFlags(DataFilter::MEMORY_ACCESS);
+            builder.setDimensions(8, 1, 1, 2, 1, 1);
+            builder.setParameter<0>(toRange(-16, 0));
+            builder.allocateParameter<1>(16, 0x42);
+            builder.setParameter<2>(3);
+            if(hasOffset)
+                builder.checkParameterEquals<1>({45 + 17, 2, 47 + 17, 4, 49 + 17, 6, 51 + 17, 8, 53 + 17, 26 + 17,
+                    55 + 17, 28 + 17, 57 + 17, 30 + 17, 43 + 17 /* wrap! */, 32 + 17});
+            else
+                builder.checkParameterEquals<1>(
+                    {1, 2, 3, 4, 5, 6, 7, 8, 50 + 17, 26 + 17, 52 + 17, 28 + 17, 54 + 17, 30 + 17, 56 + 17, 32 + 17});
+        }
     }
 
     {

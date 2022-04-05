@@ -60,6 +60,8 @@ namespace vc4c
              * RAM_READ_WRITE_VPM access type.
              */
             bool canBeCachedInVPM = true;
+
+            Optional<std::vector<MemoryAccessRange>> ranges;
         };
 
         using GroupedAccessRanges =

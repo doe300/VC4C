@@ -323,10 +323,6 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
      * 3. lower per-QPU (private) buffers into VPM
      * 4. lower shared buffers (local) into VPM
      * 5. generate remaining instructions for RAM access via VPM scratch area
-     * TODO:
-     * 3.1 for memory located in RAM, try to group/queue reads/writes
-     * 3.2 also try to use VPM as cache (e.g. only write back into memory when VPM cache area full, prefetch into VPM)
-     * 4. final pass which actually converts VPM cache
      */
 
     // determine preferred and fall-back memory access type for each memory are
@@ -366,9 +362,6 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
         // synchronization barrier blocks, since there is no possible data races we need to guard against.
         method.flags = add_flag(method.flags, MethodFlags::NO_UNGUARDED_CROSS_ITEM_MEMORY_DEPENDENCIES);
 
-    // list of basic blocks where multiple VPM accesses could be combined
-    FastSet<BasicBlock*> affectedBlocks;
-
     // TODO sort locals by where to put them and then call 1. check of mapping and 2. mapping on all
     for(auto& memIt : memoryAccessInfo.accessInstructions)
     {
@@ -378,11 +371,6 @@ void normalization::mapMemoryAccess(const Module& module, Method& method, const 
 
         auto sourceInfos = getMemoryInfos(srcBaseLocal, infos, memoryAccessInfo.additionalAreaMappings);
         auto destInfos = getMemoryInfos(dstBaseLocal, infos, memoryAccessInfo.additionalAreaMappings);
-
-        auto checkVPMAccess = [](const MemoryInfo* info) { return info->type == MemoryAccessType::RAM_READ_WRITE_VPM; };
-        if(std::any_of(sourceInfos.begin(), sourceInfos.end(), checkVPMAccess) ||
-            std::any_of(destInfos.begin(), destInfos.end(), checkVPMAccess))
-            affectedBlocks.emplace(InstructionWalker{memIt}.getBasicBlock());
 
         mapMemoryAccess(method, memIt, const_cast<MemoryInstruction*>(mem), sourceInfos, destInfos);
 

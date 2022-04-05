@@ -25,6 +25,7 @@ namespace vc4c
     class Literal;
     class Method;
     struct Value;
+    struct SubExpression;
     struct Expression;
 
     namespace intermediate
@@ -119,7 +120,7 @@ namespace vc4c
                 return maxValue - minValue + 1.0;
             }
 
-            std::string to_string() const;
+            std::string to_string(bool singletonAsRange = true) const;
 
             static Optional<ValueRange> getValueRange(
                 intermediate::InstructionDecorations deco, const Method* method = nullptr);
@@ -129,6 +130,7 @@ namespace vc4c
                 const Value& val, bool indeterminateOnFullRange, const Method* method = nullptr);
             static ValueRange getValueRangeRecursive(
                 const Value& val, Method* method, FastMap<const Local*, ValueRange>& knownRanges);
+            static ValueRange getValueRange(const SubExpression& sub, const Method* method = nullptr);
             static ValueRange getValueRange(const Expression& expr, const Method* method = nullptr);
 
             ValueRange operator*(double val) const noexcept
