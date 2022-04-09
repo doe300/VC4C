@@ -13,25 +13,26 @@ using namespace vc4c;
 
 constexpr OpCode Expression::FAKEOP_UMUL;
 
-static intermediate::InstructionDecorations addWorkGroupUniformDecoration(
+static intermediate::InstructionDecorations extractValueDecorations(
     const Value& value, intermediate::InstructionDecorations deco = intermediate::InstructionDecorations::NONE)
 {
     auto local = value.checkLocal();
-    auto builtin = local ? local->as<BuiltinLocal>() : nullptr;
-    if((builtin && builtin->isWorkGroupUniform()) || value.getConstantValue())
-        return add_flag(deco, intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+    if(value.getConstantValue())
+        deco = add_flag(deco, intermediate::InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+    if(auto builtin = local ? local->as<BuiltinLocal>() : nullptr)
+        deco = add_flag(deco, builtin->getDecorations());
     return deco;
 }
 
 SubExpression::SubExpression(const Value& val, intermediate::InstructionDecorations deco) :
-    Base(DecoratedValue{val, addWorkGroupUniformDecoration(val, deco)})
+    Base(DecoratedValue{val, extractValueDecorations(val, deco)})
 {
 }
 
 SubExpression::SubExpression(const Optional<Value>& val) : Base(VariantNamespace::monostate{})
 {
     if(val)
-        Base::operator=(DecoratedValue{*val, addWorkGroupUniformDecoration(*val)});
+        Base::operator=(DecoratedValue{*val, extractValueDecorations(*val)});
 }
 
 bool SubExpression::operator==(const SubExpression& other) const
@@ -163,6 +164,8 @@ static SubExpression makeSubExpression(const Optional<Value>& value)
     {
         if(auto writer = value->getSingleWriter())
             deco = writer->decoration;
+        if(auto builtin = value->checkLocal()->as<BuiltinLocal>())
+            deco = add_flag(deco, builtin->getDecorations());
         return SubExpression{*value, deco};
     }
     return SubExpression{};

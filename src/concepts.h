@@ -141,6 +141,7 @@ namespace vc4c
     static_assert(std::is_destructible<SIMDVector>::value, "SIMDVector is not destructible!");
     static_assert(assert_hashable<SIMDVector>::value, "SIMDVector is not hashable!");
     static_assert(assert_trivial<SIMDVector>::value, "SIMDVector is not trivial");
+    static_assert(sizeof(SIMDVector) <= 16 * sizeof(Literal) + sizeof(void*), "SIMDVector is unnecessarily big");
 
     static_assert(!std::is_default_constructible<Value>::value, "Value is default constructible!");
     static_assert(assert_assignable<Value>::value, "Value is not assignable!");

@@ -104,7 +104,7 @@ static void generateStopSegment(Method& method)
     method.appendToEnd(std::make_unique<intermediate::Nop>(intermediate::DelayType::THREAD_END));
 }
 
-static const Local* isLocalUsed(Method& method, BuiltinLocal::Type type, bool forceUse = false)
+static const BuiltinLocal* isLocalUsed(Method& method, BuiltinLocal::Type type, bool forceUse = false)
 {
     if(forceUse)
         return method.findOrCreateBuiltin(type);
@@ -168,81 +168,79 @@ void optimizations::addStartStopSegment(const Module& module, Method& method, co
      */
     // initially set all implicit UNIFORMs to unused
     method.metaData.uniformsUsed.value = 0;
-    auto workInfoDecorations = add_flag(InstructionDecorations::UNSIGNED_RESULT,
-        InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::IDENTICAL_ELEMENTS);
+    auto splatDecoration = InstructionDecorations::IDENTICAL_ELEMENTS;
     bool isLocalInfoRequired = isLocalInformationRequired(config);
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::WORK_DIMENSIONS))
     {
         method.metaData.uniformsUsed.setWorkDimensionsUsed(true);
-        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT8), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT8), splatDecoration, loc->getDecorations());
     }
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::LOCAL_SIZES, isLocalInfoRequired))
     {
         method.metaData.uniformsUsed.setLocalSizesUsed(true);
-        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), splatDecoration, loc->getDecorations());
     }
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::LOCAL_IDS, isLocalInfoRequired))
     {
         method.metaData.uniformsUsed.setLocalIDsUsed(true);
-        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32),
-            remove_flag(workInfoDecorations, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE));
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), splatDecoration, loc->getDecorations());
     }
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::NUM_GROUPS_X))
     {
         method.metaData.uniformsUsed.setNumGroupsXUsed(true);
-        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), splatDecoration, loc->getDecorations());
     }
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::NUM_GROUPS_Y))
     {
         method.metaData.uniformsUsed.setNumGroupsYUsed(true);
-        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), splatDecoration, loc->getDecorations());
     }
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::NUM_GROUPS_Z))
     {
         method.metaData.uniformsUsed.setNumGroupsZUsed(true);
-        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), splatDecoration, loc->getDecorations());
     }
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GROUP_ID_X))
     {
         method.metaData.uniformsUsed.setGroupIDXUsed(true);
-        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), splatDecoration, loc->getDecorations());
     }
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GROUP_ID_Y))
     {
         method.metaData.uniformsUsed.setGroupIDYUsed(true);
-        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), splatDecoration, loc->getDecorations());
     }
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GROUP_ID_Z))
     {
         method.metaData.uniformsUsed.setGroupIDZUsed(true);
-        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), splatDecoration, loc->getDecorations());
     }
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GROUP_IDS))
     {
         method.metaData.uniformsUsed.setGroupIDXUsed(true);
         method.metaData.uniformsUsed.setGroupIDYUsed(true);
         method.metaData.uniformsUsed.setGroupIDZUsed(true);
-        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), splatDecoration, loc->getDecorations());
     }
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GLOBAL_OFFSET_X))
     {
         method.metaData.uniformsUsed.setGlobalOffsetXUsed(true);
-        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), splatDecoration, loc->getDecorations());
     }
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GLOBAL_OFFSET_Y))
     {
         method.metaData.uniformsUsed.setGlobalOffsetYUsed(true);
-        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), splatDecoration, loc->getDecorations());
     }
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GLOBAL_OFFSET_Z))
     {
         method.metaData.uniformsUsed.setGlobalOffsetZUsed(true);
-        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), splatDecoration, loc->getDecorations());
     }
     if(auto loc = isLocalUsed(method, BuiltinLocal::Type::GLOBAL_DATA_ADDRESS))
     {
         method.metaData.uniformsUsed.setGlobalDataAddressUsed(true);
-        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), workInfoDecorations);
+        assign(it, loc->createReference()) = (Value(REG_UNIFORM, TYPE_INT32), splatDecoration, loc->getDecorations());
     }
 
     // load arguments to locals (via reading from uniform)

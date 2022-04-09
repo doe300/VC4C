@@ -508,7 +508,12 @@ DataType BitcodeReader::toDataType(Module& module, const llvm::Type* type, Optio
         return it->second;
     if(type->isVectorTy())
     {
+#if LLVM_LIBRARY_VERSION >= 120
+        // we do not support dynamically sized vectors
+        const llvm::FixedVectorType* vec = llvm::cast<const llvm::FixedVectorType>(type);
+#else
         const llvm::VectorType* vec = llvm::cast<const llvm::VectorType>(type);
+#endif
         return toDataType(module, vec->getElementType())
             .toVectorType(static_cast<unsigned char>(vec->getNumElements()));
     }
@@ -637,7 +642,7 @@ static ParameterDecorations toParameterDecorations(const llvm::Argument& arg, Da
     {
         const llvm::StructType* str = llvm::cast<const llvm::StructType>(arg.getType()->getPointerElementType());
         if(str->getName().find("ro_t") != std::string::npos)
-            deco = add_flag(add_flag(deco, ParameterDecorations::READ_ONLY), ParameterDecorations::INPUT);
+            deco = add_flag(deco, ParameterDecorations::READ_ONLY, ParameterDecorations::INPUT);
         else if(str->getName().find("wo_t") != std::string::npos)
             deco = add_flag(deco, ParameterDecorations::OUTPUT);
     }
@@ -1740,8 +1745,13 @@ CompoundConstant BitcodeReader::toConstantGlobal(Module& module, const llvm::Val
     else if(auto constant = llvm::dyn_cast<const llvm::ConstantAggregateZero>(val))
     {
         std::vector<CompoundConstant> aggregate;
-        aggregate.reserve(constant->getNumElements());
-        for(unsigned i = 0; i < constant->getNumElements(); ++i)
+#if LLVM_LIBRARY_VERSION >= 130
+        auto numElements = constant->getElementCount().getFixedValue();
+#else
+        auto numElements = constant->getNumElements();
+#endif
+        aggregate.reserve(numElements);
+        for(unsigned i = 0; i < numElements; ++i)
         {
             aggregate.emplace_back(toConstantGlobal(module, constant->getElementValue(i)));
         }

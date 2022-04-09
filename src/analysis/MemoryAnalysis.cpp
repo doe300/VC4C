@@ -318,13 +318,32 @@ static Optional<MemoryAccessRange> determineAccessRange(Method& method,
     MemoryAccessRange range;
     range.addressWrite = memIt;
 
-    for(const auto& addPart : addressExpression->getAssociativeParts())
+    auto addParts = addressExpression->getAssociativeParts();
+    for(const auto& addPart : addParts)
     {
         auto loc = addPart.checkLocal(true);
         if((range.baseAddress = getBaseAddress(loc)))
         {
             // Subtract the base address to get the offset expression
-            addressExpression = std::make_shared<Expression>(OP_SUB, addressExpression, addPart)->combineWith({});
+            auto partIt = std::find(addParts.begin(), addParts.end(), addPart);
+            if(partIt != addParts.end())
+            {
+                addParts.erase(partIt);
+                while(addParts.size() > 1)
+                {
+                    addParts.front() =
+                        std::make_shared<Expression>(OP_ADD, addParts.front(), addParts.back())->combineWith({});
+                    addParts.pop_back();
+                }
+                if(auto expr = addParts.front().checkExpression())
+                    addressExpression = expr;
+                else
+                    addressExpression =
+                        std::make_shared<Expression>(OP_V8MIN, addParts.front(), addParts.front())->combineWith({});
+            }
+            else
+                addressExpression = std::make_shared<Expression>(OP_SUB, addressExpression, addPart)->combineWith({});
+
             break;
         }
     }

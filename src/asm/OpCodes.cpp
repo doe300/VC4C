@@ -202,6 +202,11 @@ std::string Unpack::to_string(bool floatMode) const
 }
 LCOV_EXCL_STOP
 
+float expandColor(uint8_t val)
+{
+    return RoundToZeroConversion<double, float>{}(static_cast<double>(val) / 255.0);
+}
+
 static Literal unpackLiteral(Unpack mode, Literal literal, bool isFloatOperation)
 {
     if(literal.isUndefined())
@@ -213,39 +218,39 @@ static Literal unpackLiteral(Unpack mode, Literal literal, bool isFloatOperation
     case UNPACK_16A_32:
     {
         // signed conversion -> truncate to unsigned short, bit-cast to signed short and sign-extend
-        uint16_t lowWord = truncate<uint16_t>(literal.unsignedInt());
+        auto lowWord = truncate<uint16_t>(literal.unsignedInt());
         if(isFloatOperation)
         {
-            if((lowWord & 0x7FFFu) != 0 && (lowWord & 0x7C00) == 0)
+            if(((lowWord & 0x7FFFu) != 0u) & ((lowWord & 0x7C00) == 0u))
             {
                 // subnormal values are converted wrong in VideoCore IV GPU, only the mantissa is shifted and the sign
                 // is kept, no exponent fix-up is performed
-                uint32_t tmp = lowWord & 0x8000u ? 0x80000000u : 0u;
+                auto tmp = lowWord & 0x8000u ? 0x80000000u : 0u;
                 tmp |= (lowWord & 0x3FFu) << 13;
                 return Literal(bit_cast<float>(tmp));
             }
             return Literal(static_cast<float>(half_t(lowWord)));
         }
-        int16_t lowWordSigned = bit_cast<int16_t>(lowWord);
+        auto lowWordSigned = bit_cast<int16_t>(lowWord);
         return Literal(lowWordSigned);
     }
     case UNPACK_16B_32:
     {
         // signed conversion -> truncate to unsigned short, bit-cast to signed short and sign-extend
-        uint16_t highWord = truncate<uint16_t>(literal.unsignedInt() >> 16);
+        auto highWord = truncate<uint16_t>(literal.unsignedInt() >> 16);
         if(isFloatOperation)
         {
-            if((highWord & 0x7FFFu) != 0 && (highWord & 0x7C00) == 0)
+            if(((highWord & 0x7FFFu) != 0u) & ((highWord & 0x7C00) == 0u))
             {
                 // subnormal values are converted wrong in VideoCore IV GPU, only the mantissa is shifted and the sign
                 // is kept, no exponent fix-up is performed
-                uint32_t tmp = highWord & 0x8000u ? 0x80000000u : 0u;
+                auto tmp = highWord & 0x8000u ? 0x80000000u : 0u;
                 tmp |= (highWord & 0x3FFu) << 13;
                 return Literal(bit_cast<float>(tmp));
             }
             return Literal(static_cast<float>(half_t(highWord)));
         }
-        int16_t highWordSigned = bit_cast<int16_t>(highWord);
+        auto highWordSigned = bit_cast<int16_t>(highWord);
         return Literal(highWordSigned);
     }
     case UNPACK_R4_ALPHA_REPLICATE:
@@ -281,37 +286,37 @@ static Literal unpackLiteral(Unpack mode, Literal literal, bool isFloatOperation
     }
     case UNPACK_R4_16A_32:
     {
-        uint16_t lowWord = truncate<uint16_t>(literal.unsignedInt());
+        auto lowWord = truncate<uint16_t>(literal.unsignedInt());
         return Literal(bit_cast<half_t>(lowWord).toFloat());
     }
     case UNPACK_R4_16B_32:
     {
-        uint16_t highWord = truncate<uint16_t>(literal.unsignedInt() >> 16);
+        auto highWord = truncate<uint16_t>(literal.unsignedInt() >> 16);
         return Literal(bit_cast<half_t>(highWord).toFloat());
     }
     case UNPACK_R4_COLOR0:
     {
         // unsigned cast required to guarantee cutting off the value
-        uint8_t byte0 = truncate<uint8_t>(literal.unsignedInt());
-        return Literal(RoundToZeroConversion<double, float>{}(static_cast<double>(byte0) / 255.0));
+        auto byte0 = truncate<uint8_t>(literal.unsignedInt());
+        return Literal(expandColor(byte0));
     }
     case UNPACK_R4_COLOR1:
     {
         // unsigned cast required to guarantee cutting off the value
-        uint8_t byte1 = truncate<uint8_t>(literal.unsignedInt() >> 8);
-        return Literal(RoundToZeroConversion<double, float>{}(static_cast<double>(byte1) / 255.0));
+        auto byte1 = truncate<uint8_t>(literal.unsignedInt() >> 8);
+        return Literal(expandColor(byte1));
     }
     case UNPACK_R4_COLOR2:
     {
         // unsigned cast required to guarantee cutting off the value
-        uint8_t byte2 = truncate<uint8_t>(literal.unsignedInt() >> 16);
-        return Literal(RoundToZeroConversion<double, float>{}(static_cast<double>(byte2) / 255.0));
+        auto byte2 = truncate<uint8_t>(literal.unsignedInt() >> 16);
+        return Literal(expandColor(byte2));
     }
     case UNPACK_R4_COLOR3:
     {
         // unsigned cast required to guarantee cutting off the value
-        uint8_t byte3 = truncate<uint8_t>(literal.unsignedInt() >> 24);
-        return Literal(RoundToZeroConversion<double, float>{}(static_cast<double>(byte3) / 255.0));
+        auto byte3 = truncate<uint8_t>(literal.unsignedInt() >> 24);
+        return Literal(expandColor(byte3));
     }
     }
     throw CompilationError(

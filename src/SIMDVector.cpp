@@ -98,7 +98,7 @@ BitMask SIMDVector::getBitMask() const noexcept
         [](BitMask mask, Literal lit) -> BitMask { return mask | lit.getBitMask(); });
 }
 
-SIMDVector SIMDVector::transform(const std::function<Literal(Literal)>& transformOp) const&
+SIMDVector SIMDVector::transform(const std::function<Literal(Literal)>& transformOp) const
 {
     SIMDVector copy;
     for(std::size_t i = 0; i < elements.size(); ++i)
@@ -106,12 +106,6 @@ SIMDVector SIMDVector::transform(const std::function<Literal(Literal)>& transfor
         copy.elements[i] = transformOp(elements[i]);
     }
     return copy;
-}
-
-SIMDVector SIMDVector::transform(const std::function<Literal(Literal)>& transformOp) &&
-{
-    std::transform(elements.begin(), elements.end(), elements.begin(), transformOp);
-    return std::move(*this);
 }
 
 SIMDVector SIMDVector::rotate(uint8_t offset) const&

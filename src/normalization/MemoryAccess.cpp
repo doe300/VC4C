@@ -227,6 +227,56 @@ static bool hasOnlyAddressesDerivateOfLocalId(const MemoryAccessRange& range, un
     return false;
 }
 
+static bool hasOnlyAddressesDerivateOfGroupId(const MemoryAccessRange& range, unsigned& minFactor, unsigned& maxSize)
+{
+    if(range.dynamicOffset != INT_ZERO)
+        // has dynamic offset and thus could have cross-item access.
+        return false;
+    auto memWrite = range.addressWrite.get();
+    if(has_flag(range.groupUniformOffset.getDecorations(), InstructionDecorations::BUILTIN_GROUP_ID))
+    {
+        // The offset is in bytes
+        minFactor = std::min(minFactor, range.baseAddress->type.getElementType().getLogicalWidth());
+        maxSize = std::max(maxSize, range.baseAddress->type.getElementType().getLogicalWidth());
+        return true;
+    }
+    if(!memWrite)
+        return false;
+    auto expression = range.groupUniformOffset.checkExpression();
+    if(expression && expression->hasConstantOperand() &&
+        (expression->code == Expression::FAKEOP_UMUL || expression->code == OP_MUL24 || expression->code == OP_SHL))
+    {
+        // E.g. something like %group_id * X is allowed as long as X >= number of elements accessed per
+        // work-group. Also accept shl with constant, since this is also a multiplication.
+        bool leftIsId = has_flag(expression->arg0.getDecorations(), InstructionDecorations::BUILTIN_GROUP_ID);
+        bool rightIsId = has_flag(expression->arg1.getDecorations(), InstructionDecorations::BUILTIN_GROUP_ID);
+        auto constantArg = leftIsId ? expression->arg1.getLiteralValue() : expression->arg0.getLiteralValue();
+
+        if(constantArg && leftIsId != rightIsId)
+        {
+            // we have a multiplication (maybe presenting as a shift) of the group ID with a
+            // constant, now we need to make sure the constant is at least the number of elements accessed.
+
+            auto factor = expression->code == OP_SHL ? (1u << constantArg->unsignedInt()) : constantArg->unsignedInt();
+            if(memWrite->op == MemoryOperation::READ)
+            {
+                minFactor = std::min(minFactor, factor);
+                maxSize = std::max(maxSize, memWrite->getDestinationElementType().getLogicalWidth());
+                return true;
+            }
+            if(memWrite->op == MemoryOperation::WRITE ||
+                (memWrite->op == MemoryOperation::COPY && memWrite->getNumEntries() == 1_val))
+            {
+                minFactor = std::min(minFactor, factor);
+                maxSize = std::max(maxSize, memWrite->getSourceElementType().getLogicalWidth());
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 static bool mayHaveCrossWorkItemMemoryDependency(const Local* memoryObject, const MemoryInfo& info)
 {
     // TODO to be precise, we need an alias check here too!
@@ -260,6 +310,18 @@ static bool mayHaveCrossWorkItemMemoryDependency(const Local* memoryObject, cons
             // If we manged to figure out the dynamic address parts to be (a derivation of) the local or global id, and
             // the maximum accessed vector size is not larger than the minimum accessed local/global id factor, then we
             // don't have data dependencies across different local ids.
+            return false;
+
+        minFactor = std::numeric_limits<unsigned>::max();
+        maxSize = 0;
+        if(std::all_of(info.ranges->begin(), info.ranges->end(),
+               [&](const MemoryAccessRange& range) -> bool {
+                   return hasOnlyAddressesDerivateOfGroupId(range, minFactor, maxSize);
+               }) &&
+            maxSize <= minFactor)
+            // If we manged to figure out the group uniform address parts to be (a derivation of) the group id (and
+            // there is no dynamic address part), and the maximum accessed vector size is not larger than the minimum
+            // accessed group id factor, then we don't have data dependencies across different work-groups.
             return false;
     }
 

@@ -317,6 +317,72 @@ bool BuiltinLocal::isWorkGroupUniform() const
         CompilationStep::GENERAL, "Unhandled built-in type", std::to_string(static_cast<unsigned>(builtinType)));
 }
 
+intermediate::InstructionDecorations BuiltinLocal::getDecorations() const
+{
+    return getDecorations(builtinType);
+}
+
+intermediate::InstructionDecorations BuiltinLocal::getDecorations(Type type)
+{
+    using namespace intermediate;
+    switch(type)
+    {
+    case Type::GLOBAL_DATA_ADDRESS:
+        return add_flag(InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+    case Type::GLOBAL_OFFSET_X:
+        return add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT,
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::DIMENSION_X);
+    case Type::GLOBAL_OFFSET_Y:
+        return add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT,
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::DIMENSION_Y);
+    case Type::GLOBAL_OFFSET_Z:
+        return add_flag(InstructionDecorations::BUILTIN_GLOBAL_OFFSET, InstructionDecorations::UNSIGNED_RESULT,
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::DIMENSION_Z);
+    case Type::GROUP_ID_X:
+        return add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT,
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::DIMENSION_X);
+    case Type::GROUP_ID_Y:
+        return add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT,
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::DIMENSION_Y);
+    case Type::GROUP_ID_Z:
+        return add_flag(InstructionDecorations::BUILTIN_GROUP_ID, InstructionDecorations::UNSIGNED_RESULT,
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::DIMENSION_Z);
+    case Type::GROUP_IDS:
+        return add_flag(InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+    case Type::LOCAL_SIZES:
+        return add_flag(InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+    case Type::MAX_GROUP_ID_X:
+        return add_flag(InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
+            InstructionDecorations::DIMENSION_X);
+    case Type::MAX_GROUP_ID_Y:
+        return add_flag(InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
+            InstructionDecorations::DIMENSION_Y);
+    case Type::MAX_GROUP_ID_Z:
+        return add_flag(InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE,
+            InstructionDecorations::DIMENSION_Z);
+    case Type::NUM_GROUPS_X:
+        return add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT,
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::DIMENSION_X);
+    case Type::NUM_GROUPS_Y:
+        return add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT,
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::DIMENSION_Y);
+    case Type::NUM_GROUPS_Z:
+        return add_flag(InstructionDecorations::BUILTIN_NUM_GROUPS, InstructionDecorations::UNSIGNED_RESULT,
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE, InstructionDecorations::DIMENSION_Z);
+    case Type::UNIFORM_ADDRESS:
+        return add_flag(InstructionDecorations::UNSIGNED_RESULT, InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+    case Type::WORK_DIMENSIONS:
+        return add_flag(InstructionDecorations::BUILTIN_WORK_DIMENSIONS, InstructionDecorations::UNSIGNED_RESULT,
+            InstructionDecorations::WORK_GROUP_UNIFORM_VALUE);
+    case Type::LOCAL_IDS:
+        return add_flag(InstructionDecorations::BUILTIN_LOCAL_ID, InstructionDecorations::UNSIGNED_RESULT);
+    case Type::NUM_ENTRIES:
+        return InstructionDecorations::NONE;
+    }
+    throw CompilationError(
+        CompilationStep::GENERAL, "Unhandled built-in type", std::to_string(static_cast<unsigned>(type)));
+}
+
 MultiRegisterData::MultiRegisterData(const Local* lowerPart, const Local* upperPart) :
     lower(lowerPart), upper(upperPart)
 {

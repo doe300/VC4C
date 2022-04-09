@@ -152,8 +152,7 @@ namespace vc4c
          */
         BitMask getBitMask() const noexcept;
 
-        SIMDVector transform(const std::function<Literal(Literal)>& transformOp) const&;
-        SIMDVector transform(const std::function<Literal(Literal)>& transformOp) &&;
+        SIMDVector transform(const std::function<Literal(Literal)>& transformOp) const;
 
         /*
          * Rotates the elements of this vector UPWARDS by the given offset.

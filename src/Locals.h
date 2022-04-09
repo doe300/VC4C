@@ -24,6 +24,7 @@ namespace vc4c
 
     namespace intermediate
     {
+        enum class InstructionDecorations : uint32_t;
         class IntermediateInstruction;
     } /* namespace intermediate */
 
@@ -510,6 +511,9 @@ namespace vc4c
         const Type builtinType;
 
         bool isWorkGroupUniform() const;
+
+        intermediate::InstructionDecorations getDecorations() const;
+        static intermediate::InstructionDecorations getDecorations(Type type);
     };
 
     /**
