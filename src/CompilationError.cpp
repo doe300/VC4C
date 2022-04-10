@@ -42,8 +42,6 @@ static std::string to_string(const CompilationStep step)
         return "Label/Register Mapping";
     case CompilationStep::CODE_GENERATION:
         return "Code Generation";
-    case CompilationStep::VERIFIER:
-        return "Verifier";
     default:
         return "Other";
     }

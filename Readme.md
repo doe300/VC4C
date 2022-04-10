@@ -20,7 +20,6 @@ The following configuration variables can be set in CMake:
 
 - `BUILD_TESTING` toggles building of test program
 - `CMAKE_BUILD_TYPE` set to *Debug*, *Release*, *RelWithDebInfo*, *asan*, *tsan* or *usbsan* to build for the given debug/release mode or with sanitizers enabled
-- `VERIFY_OUTPUT` toggles the usage of [vc4asm](https://github.com/maazl/vc4asm) to validate the generated machine code
 - `VC4CL_STDLIB_DIR` specifies an optional folder where the development headers for the GPU-side [VC4CLStdLib](https://github.com/doe300/VC4CLStdLib) are located, by default looks in `../VC4CLStdLib/include/`
 - `CROSS_COMPILE` toggles whether to cross-compile for the Raspberry Pi. NOTE: The [Raspberry Pi cross-compiler](https://github.com/raspberrypi/tools) is no longer supported, since it is based on an ancient GCC 4.9
 - `CROSS_COMPILER_PATH` sets the root path to the cross compiler to use

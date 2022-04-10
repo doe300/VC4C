@@ -23,7 +23,7 @@ if(NOT SPIRV_CLANG_FOUND AND CLANG_FOUND)
 endif()
 
 set(CPACK_GENERATOR "DEB")
-# Install per-component to not install the dependencies (vc4asm, variant) and also to enable packaging the test-data into a separate package
+# Install per-component to not install the dependencies (e.g. variant) and also to enable packaging the test-data into a separate package
 set(CPACK_DEB_COMPONENT_INSTALL ON)
 set(CPACK_PACKAGING_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 set(CPACK_PACKAGE_NAME "vc4c")

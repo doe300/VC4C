@@ -2,10 +2,10 @@ if(DEPENDENCIES_USE_FETCH_CONTENT)
 	include(FetchContent)
 	FetchContent_Declare(variant GIT_REPOSITORY https://github.com/mpark/variant.git)
 	FetchContent_MakeAvailable(variant)
-	FetchContent_GetProperties(variant SOURCE_DIR VC4ASM_SOURCE_DIR)
+	FetchContent_GetProperties(variant SOURCE_DIR VARIANT_SOURCE_DIR)
 
 	add_library(variant-dependencies STATIC IMPORTED)
-	set(variant_HEADERS "${VC4ASM_SOURCE_DIR}/include")
+	set(variant_HEADERS "${VARIANT_SOURCE_DIR}/include")
 else()
 	ExternalProject_Add( variant-project
 		PREFIX 				${CMAKE_BINARY_DIR}/variant

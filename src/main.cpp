@@ -118,9 +118,6 @@ static void printInfo()
 #ifdef SPIRV_TOOLS_FRONTEND
         "SPIR-V linker",
 #endif
-#ifdef VERIFIER_HEADER
-        "vc4asm verification",
-#endif
 #ifdef USE_CLANG_LIBRARY
         "compilation with clang library"
 #endif

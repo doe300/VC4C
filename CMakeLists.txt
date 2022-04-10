@@ -8,8 +8,6 @@ cmake_policy(SET CMP0026 OLD)
 ####
 # Option to enable/disable test-program
 option(BUILD_TESTING "Build testing program" ON)
-# Option whether to verify the output (using vc4asm)
-option(VERIFY_OUTPUT "uses the external library vc4asm to verify the output" ON)
 # Option to enable/disable cross compilation
 option(CROSS_COMPILE "Cross compile for Raspbian" OFF)
 # Option whether to include the SPIR-V Tools front-end
@@ -132,9 +130,6 @@ if(NOT SPIRV_CLANG_FOUND AND NOT CLANG_FOUND)
 	message(FATAL_ERROR "No supported OpenCL compiler found!")
 endif()
 
-if(VERIFY_OUTPUT)
-	include(cmake/vc4asm.cmake)
-endif()
 include(cmake/cpplog.cmake)
 # Variant backport for C++ < 17
 include(cmake/variant.cmake)

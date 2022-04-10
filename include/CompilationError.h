@@ -55,11 +55,7 @@ namespace vc4c
         /*
          * Error in pre-compilation (OpenCL to SPIR-V/LLVM IR)
          */
-        PRECOMPILATION,
-        /*
-         * Error thrown in the vc4asm verifier, error in the generated code
-         */
-        VERIFIER
+        PRECOMPILATION
     };
 
     /*

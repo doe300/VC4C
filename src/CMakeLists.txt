@@ -87,13 +87,6 @@ if(VC4C_ENABLE_LIBCLANG)
 	target_include_directories(${VC4C_LIBRARY_NAME} SYSTEM PRIVATE ${LIBCLANG_INCLUDE_PATH})
 endif(VC4C_ENABLE_LIBCLANG)
 
-if(VERIFY_OUTPUT)
-	add_dependencies(${VC4C_LIBRARY_NAME} vc4asm-dependencies)
-	target_link_libraries(${VC4C_LIBRARY_NAME} ${vc4asm_LIBS})
-	target_compile_definitions(${VC4C_LIBRARY_NAME} PRIVATE VERIFIER_HEADER="${vc4asm_HEADER}")
-	target_compile_definitions(${VC4C_PROGRAM_NAME} PRIVATE VERIFIER_HEADER="${vc4asm_HEADER}")
-endif()
-
 # Download mpark/variant library as dependency
 add_dependencies(${VC4C_LIBRARY_NAME} variant-dependencies)
 target_include_directories(${VC4C_LIBRARY_NAME} SYSTEM PRIVATE ${variant_HEADERS})
