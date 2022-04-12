@@ -56,6 +56,8 @@ public:
     void testVectorizations(std::string passParamName);
     void testStructTypeHandling(std::string passParamName);
 
+    void testVstoreAlias(std::string passParamName);
+
     void checkTestQuality();
 
 private:

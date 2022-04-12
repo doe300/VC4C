@@ -79,45 +79,6 @@ namespace vc4c
         std::size_t reorderBasicBlocks(const Module& module, Method& method, const Configuration& config);
 
         /**
-         * Simplifies selected conditional control-flow patterns (e.g. if-else, switch-case) by rewriting the control
-         * flow to conditional execution.
-         *
-         * Example:
-         *   - = xor.setf %a, 15
-         *   br.ifz %1
-         *   - = xor.setf %a, 42
-         *   br.ifz %2
-         *   br %3
-         *   [...]
-         *   label: %1
-         *   %c = 13
-         *   br %4
-         *   label: %2
-         *   %b = ...
-         *   %c = mul24 %b, 112
-         *   br %4
-         *   label: %3
-         *   [...]
-         *   %c = 42
-         *   br %4
-         *   [...]
-         *   label: %4
-         *
-         * is converted to:
-         *   [...]
-         *   %c = 42
-         *   - = xor.setf %a, 15
-         *   %c = 13 (ifz)
-         *   - = xor.setf %a, 42
-         *   %b = ...
-         *   %c = mul24.ifz %b, 112
-         *   br %4
-         *   [...]
-         *   label: %4
-         */
-        std::size_t simplifyConditionalBlocks(const Module& module, Method& method, const Configuration& config);
-
-        /**
          * Extends kernel code to be able to run for all work-groups without the need to return to host-code.
          *
          * Inserts a control-flow loop per dimension (X, Y, Z) of the group id around the kernel code. Depending on the

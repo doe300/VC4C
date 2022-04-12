@@ -266,9 +266,6 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         "merges all work-group executions into a single kernel execution", OptimizationType::INITIAL),
     OptimizationPass("ReorderBasicBlocks", "reorder-blocks", reorderBasicBlocks,
         "reorders basic blocks to eliminate as many explicit branches as possible", OptimizationType::INITIAL),
-    OptimizationPass("SimplifyConditionalBlocks", "simplify-conditionals", simplifyConditionalBlocks,
-        "simplifies selected if-else and switch-case blocks by replacing the control-flow with conditional execution",
-        OptimizationType::INITIAL),
     OptimizationPass("SimplifyBranches", "simplify-branches", simplifyBranches,
         "combines successive branches to the same label and replaces unnecessary branches with fall-through",
         OptimizationType::INITIAL),
@@ -304,10 +301,6 @@ const std::vector<OptimizationPass> Optimizer::ALL_PASSES = {
         OptimizationType::REPEAT),
     OptimizationPass("EliminateMoves", "eliminate-moves", eliminateRedundantMoves,
         "Replaces moves with the operation producing their source", OptimizationType::REPEAT),
-    // executed after eliminate-moves to not have to rewrite simple moves with the more complex expression rewrite
-    OptimizationPass("CommonSubexpressionElimination", "eliminate-common-subexpressions", eliminateCommonSubexpressions,
-        "eliminates repetitive calculations of common expressions by re-using previous results (WIP, slow)",
-        OptimizationType::REPEAT),
     OptimizationPass("EliminateBitOperations", "eliminate-bit-operations", eliminateRedundantBitOp,
         "Rewrites redundant bit operations", OptimizationType::REPEAT),
     OptimizationPass("PropagateMoves", "copy-propagation", propagateMoves,
@@ -358,9 +351,6 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
     case OptimizationLevel::FULL:
         passes.emplace("vectorize-loops");
         passes.emplace("schedule-instructions");
-        // XXX move CSE to medium? Need to profile performance and re-check all emulation tests with CSE enabled
-        passes.emplace("eliminate-common-subexpressions");
-        passes.emplace("simplify-conditionals");
         FALL_THROUGH
     case OptimizationLevel::MEDIUM:
         passes.emplace("merge-blocks");

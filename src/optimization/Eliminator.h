@@ -183,25 +183,6 @@ namespace vc4c
         std::size_t propagateMoves(const Module& module, Method& method, const Configuration& config);
 
         /*
-         * Common Subexpression Elimination (CSE)
-         *
-         * Iterates over each basic block and looks for instructions calculating the same value and combines them, if
-         * possible.
-         *
-         * Example:
-         *   %a = add %b, %c
-         *   [...]
-         *   %d = add %b, %c
-         *
-         * becomes:
-         *   %a = add %b, %c
-         *   [...]
-         *   %d = %a
-         *
-         */
-        std::size_t eliminateCommonSubexpressions(const Module& module, Method& method, const Configuration& config);
-
-        /*
          * Replaces calls to the SFU registers with constant input to a move of the result
          *
          * Example:

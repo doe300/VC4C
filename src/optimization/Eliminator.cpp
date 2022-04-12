@@ -8,7 +8,6 @@
 
 #include "../InstructionWalker.h"
 #include "../Profiler.h"
-#include "../analysis/AvailableExpressionAnalysis.h"
 #include "../normalization/LiteralValues.h"
 #include "../periphery/SFU.h"
 #include "log.h"
@@ -1011,83 +1010,6 @@ std::size_t optimizations::eliminateRedundantBitOp(const Module& module, Method&
         it.nextInMethod();
     }
 
-    return numChanges;
-}
-
-std::size_t optimizations::eliminateCommonSubexpressions(
-    const Module& module, Method& method, const Configuration& config)
-{
-    std::size_t numChanges = 0;
-    for(auto& block : method)
-    {
-        // we do not run the whole analysis in front, but only the next step to save on memory usage
-        // For that purpose, we also override the previous expressions on every step
-        analysis::AvailableExpressionAnalysis::Cache cache{};
-        AvailableExpressions expressions{};
-        FastMap<const Local*, std::shared_ptr<Expression>> calculatingExpressions{};
-
-        for(auto it = block.walk(); !it.isEndOfBlock(); it.nextInBlock())
-        {
-            if(!it.has())
-                continue;
-            std::shared_ptr<Expression> expr;
-            std::tie(expressions, expr) = analysis::AvailableExpressionAnalysis::analyzeAvailableExpressions(
-                it.get(), expressions, cache, config.additionalOptions.maxCommonExpressionDinstance);
-            if(expr)
-            {
-                auto newExpr = expr;
-                if(auto out = it->checkOutputLocal())
-                    // remove from cache before using the result for the expression not to depend on itself
-                    calculatingExpressions.erase(out);
-
-                auto exprIt = expressions.find(expr);
-                // replace instruction with matching expression, if the expression is not constant (no use replacing
-                // loading of constants with copies of a local initialized with a constant)
-                if(exprIt != expressions.end() && exprIt->second.first != it.get() && !expr->getConstantExpression())
-                {
-                    CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Found common subexpression: " << it->to_string() << " is the same as "
-                            << exprIt->second.first->to_string() << logging::endl);
-                    it.reset(std::make_unique<intermediate::MoveOperation>(
-                        it->getOutput().value(), exprIt->second.first->getOutput().value()));
-                    ++numChanges;
-                }
-                else if(*(newExpr = expr->combineWith(calculatingExpressions)) != *expr)
-                {
-                    if(newExpr->insertInstructions(it, it->getOutput().value(), expressions))
-                    {
-                        CPPLOG_LAZY(logging::Level::DEBUG,
-                            log << "Rewriting expression '" << expr->to_string() << "' to '" << newExpr->to_string()
-                                << "'" << logging::endl);
-
-                        if(exprIt != expressions.end() && exprIt->second.first == it.get())
-                            // reset this expression, since the mapped instruction will be overwritten
-                            expressions.erase(exprIt);
-
-                        // remove original instruction
-                        it.erase();
-                        it.previousInBlock();
-                        if(auto loc = it->checkOutputLocal())
-                            calculatingExpressions.emplace(loc, newExpr);
-                        ++numChanges;
-                        expressions.emplace(newExpr, std::make_pair(it.get(), 0));
-                    }
-                }
-
-                if(auto out = it->checkOutputLocal())
-                    // add to cache after using the result for the expression not to depend on itself
-                    // NOTE: not overwriting the above emplace is on purpose
-                    calculatingExpressions.emplace(out, expr);
-            }
-            else if(auto loc = it->checkOutputLocal())
-            {
-                // if we failed to create an expression for an output local (e.g. because of conditional access, etc.),
-                // need to reset the expression for that local, since any previous expression might no longer be
-                // accurate.
-                calculatingExpressions.erase(loc);
-            }
-        }
-    }
     return numChanges;
 }
 

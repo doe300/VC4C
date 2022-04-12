@@ -54,6 +54,7 @@ TestOptimizations::TestOptimizations(const vc4c::Configuration& config) : TestEm
     TEST_ADD_WITH_STRING(TestOptimizations::testIntGlobalStorage, "");
     TEST_ADD_WITH_STRING(TestOptimizations::testVectorizations, "");
     TEST_ADD_WITH_STRING(TestOptimizations::testStructTypeHandling, "");
+    TEST_ADD_WITH_STRING(TestOptimizations::testVstoreAlias, "");
 
     for(const auto& pass : optimizations::Optimizer::ALL_PASSES)
     {
@@ -89,6 +90,7 @@ TestOptimizations::TestOptimizations(const vc4c::Configuration& config) : TestEm
         TEST_ADD_WITH_STRING(TestOptimizations::testIntGlobalStorage, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testVectorizations, pass.parameterName);
         TEST_ADD_WITH_STRING(TestOptimizations::testStructTypeHandling, pass.parameterName);
+        TEST_ADD_WITH_STRING(TestOptimizations::testVstoreAlias, pass.parameterName);
         counterNames.emplace(pass.name);
     }
     TEST_ADD(TestOptimizations::checkTestQuality);
@@ -479,6 +481,17 @@ void TestOptimizations::testStructTypeHandling(std::string passParamName)
     config.optimizationLevel = OptimizationLevel::NONE;
 
     TestEmulator::runTestData("boost_user_defined_types", false);
+}
+
+void TestOptimizations::testVstoreAlias(std::string passParamName)
+{
+    config.additionalEnabledOptimizations = {std::move(passParamName), requiredOptimization};
+    config.optimizationLevel = OptimizationLevel::NONE;
+
+    FastMap<std::string, CompilationData> cache{};
+    // These trigger e.g. GroupLoweredRegisterAccess optimization
+    TestEmulator::runTestData("vstore_alias_private_register_char_to_int", cache);
+    TestEmulator::runTestData("vstore_alias_private_register_strided_char_to_int", cache);
 }
 
 void TestOptimizations::checkTestQuality()
