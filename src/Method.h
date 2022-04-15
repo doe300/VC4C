@@ -321,6 +321,8 @@ namespace vc4c
         DataType createImageType(
             uint8_t dimensions, bool isImageArray = false, bool isImageBuffer = false, bool isSampled = false);
 
+        std::string to_string() const;
+
     private:
         /*
          * The list of basic blocks

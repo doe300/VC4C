@@ -81,7 +81,7 @@ DataType MethodCall::getReturnType() const
     return getOutput()->type;
 }
 
-bool MethodCall::matchesSignature(const Method& method) const
+bool MethodCall::matchesSignature(const Method& method, bool exactMatchOnly) const
 {
     if(methodName != method.name)
     {
@@ -97,10 +97,10 @@ bool MethodCall::matchesSignature(const Method& method) const
     }
     for(std::size_t i = 0; i < method.parameters.size(); ++i)
     {
-        if(!(method.parameters[i].type.containsType(assertArgument(i).type)))
-        {
+        if(exactMatchOnly && method.parameters[i].type != assertArgument(i).type)
             return false;
-        }
+        if(!(method.parameters[i].type.containsType(assertArgument(i).type)))
+            return false;
     }
 
     return true;

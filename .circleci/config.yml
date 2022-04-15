@@ -91,6 +91,19 @@ jobs:
             - build/vc4c-0.4-Linux.deb
             - build/vc4cl-stdlib-0.4-Linux.deb
             - build/vc4c_testdata-0.4-Linux.deb
+  test-generic:
+    docker:
+      - image: doe300/native
+    steps:
+      - attach_workspace:
+          at: /root/project
+      - run: dpkg -i build/vc4cl-stdlib-0.4-Linux.deb
+      - run: dpkg -i build/vc4c-0.4-Linux.deb
+      - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
+      - run: ldconfig
+      - run: build/test/TestVC4C --output=plain --mode=verbose --test-container --test-expressions --test-graph --test-instructions --test-operators --test-optimization-steps --test-patterns
+      - run: dpkg -r vc4c
+      - run: dpkg -r vc4cl-stdlib
   test-llvm:
     docker:
       - image: doe300/native
@@ -101,7 +114,7 @@ jobs:
       - run: dpkg -i build/vc4c-0.4-Linux.deb
       - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: ldconfig
-      - run: build/test/TestVC4C --output=plain --llvm  --mode=verbose --test-instructions --test-operators --test-emulator --test-graph --test-patterns --test-frontend --test-expressions --test-optimization-steps --test-intrinsics --test-container --test-analyses --regressions
+      - run: build/test/TestVC4C --output=plain --mode=verbose --llvm  --test-emulator --test-frontend --test-intrinsics --test-analyses --regressions
       - run: dpkg -r vc4c
       - run: dpkg -r vc4cl-stdlib
   test-spirv:
@@ -114,7 +127,7 @@ jobs:
       - run: dpkg -i build/vc4c-0.4-Linux.deb
       - run: ln -s `pwd`/build/cpptest-lite/src/cpptest-lite-project-build/libcpptest-lite.so.0.9 /usr/lib/libcpptest-lite.so.1.1.2
       - run: ldconfig
-      - run: build/test/TestVC4C --output=plain --spirv --mode=verbose --test-instructions --test-operators --test-emulator --test-graph --test-patterns --test-frontend --test-expressions --test-optimization-steps                   --test-container --test-analyses --regressions
+      - run: build/test/TestVC4C --output=plain --mode=verbose --spirv --test-emulator --test-frontend                   --test-analyses --regressions
       - run: dpkg -r vc4c
       - run: dpkg -r vc4cl-stdlib
 workflows:
@@ -124,6 +137,9 @@ workflows:
       - check-code-style
       - build
       - cross
+      - test-generic:
+          requires:
+            - build
       - test-llvm:
           requires:
             - build

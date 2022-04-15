@@ -7,6 +7,7 @@
 #include "Eliminator.h"
 
 #include "../InstructionWalker.h"
+#include "../Method.h"
 #include "../Profiler.h"
 #include "../normalization/LiteralValues.h"
 #include "../periphery/SFU.h"

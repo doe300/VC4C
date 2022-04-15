@@ -548,6 +548,11 @@ DataType Method::createImageType(uint8_t dimensions, bool isImageArray, bool isI
     return DataType(module.createImageType(dimensions, isImageArray, isImageBuffer, isSampled));
 }
 
+std::string Method::to_string() const
+{
+    return returnType.to_string() + " " + name + "(" + vc4c::to_string<Parameter>(parameters) + ")";
+}
+
 BasicBlock* Method::getNextBlockAfter(const BasicBlock* block)
 {
     bool returnNext = false;

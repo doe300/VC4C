@@ -21,11 +21,21 @@ static Method* matchSignatures(
 {
     for(const auto& m : methods)
     {
-        if(callSignature->matchesSignature(*m))
+        if(callSignature->matchesSignature(*m, true /* exact match */))
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Found method matching " << m->returnType.to_string() << ' ' << m->name << " with "
-                    << m->parameters.size() << " arguments" << logging::endl);
+                log << "Found method matching " << callSignature->to_string() << " : " << m->to_string()
+                    << logging::endl);
+            return m.get();
+        }
+    }
+    for(const auto& m : methods)
+    {
+        if(callSignature->matchesSignature(*m, false /* approximate match */))
+        {
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Found method matching " << callSignature->to_string() << " : " << m->to_string()
+                    << logging::endl);
             return m.get();
         }
     }

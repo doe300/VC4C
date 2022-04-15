@@ -528,7 +528,7 @@ namespace vc4c
 
             DataType getReturnType() const;
 
-            bool matchesSignature(const Method& method) const;
+            bool matchesSignature(const Method& method, bool exactMatchOnly) const;
 
             std::string methodName;
 

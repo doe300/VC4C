@@ -695,7 +695,7 @@ void SPIRVConversion::mapInstruction(TypeMapping& types, ConstantMapping& consta
             Value(dest), std::string(functionName), std::vector<Value>{source}));
         dummyCall->addDecorations(decorations);
         if(std::count_if(methods.begin(), methods.end(), [&dummyCall, &functionName](const auto& pair) -> bool {
-               return pair.second.method->name == functionName && dummyCall->matchesSignature(*pair.second.method);
+               return pair.second.method->name == functionName && dummyCall->matchesSignature(*pair.second.method, true);
            }) == 1)
         {
             // To be on the safe side, only go this way if we found exactly a single matching function

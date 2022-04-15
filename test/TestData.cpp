@@ -106,6 +106,62 @@ void test_data::registerGeneralTests()
     }
 
     {
+        TestDataBuilder<Buffer<float>, uint32_t, uint32_t, Buffer<uint32_t>, float, float> builder(
+            "histogram_single_min_max", histogram_cl_string, "histogram_single_min_max",
+            "-DFLOATING_TYPE=1 -DTYPE=float -DMIN_VALUE=16 -DMAX_VALUE=0");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.setParameter<0>(
+            {2.1f, 1.7f, 6.4f, 7.8f, 14.7f, 15.7f, 1.1f, 0.4f, 3.7f, 9.9f, 10.01f, 13.3f, 11.11f, 0.0f, 15.0f, 9.0f});
+        builder.setParameter<1>(16u);
+        builder.setParameter<2>(8u);
+        builder.allocateParameter<3>(8u);
+        builder.setParameter<4>(0.0f);
+        builder.setParameter<5>(16.0f);
+        builder.checkParameterEquals<3>({4, 2, 0, 2, 2, 2, 1, 3});
+    }
+
+    {
+        TestDataBuilder<Buffer<float>, uint32_t, uint32_t, Buffer<uint32_t>> builder("histogram_single",
+            histogram_cl_string, "histogram_single", "-DFLOATING_TYPE=1 -DTYPE=float -DMIN_VALUE=16 -DMAX_VALUE=0");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC);
+        builder.setParameter<0>(
+            {2.1f, 1.7f, 6.4f, 7.8f, 14.7f, 15.7f, 1.1f, 0.4f, 3.7f, 9.9f, 10.01f, 13.3f, 11.11f, 0.0f, 15.0f, 9.0f});
+        builder.setParameter<1>(16u);
+        builder.setParameter<2>(8u);
+        builder.allocateParameter<3>(8u);
+        builder.checkParameterEquals<3>({4, 2, 0, 2, 2, 2, 1, 3});
+    }
+
+    {
+        TestDataBuilder<Buffer<float>, uint32_t, uint32_t, Buffer<uint32_t>, float, float> builder(
+            "histogram_parallel_min_max", histogram_cl_string, "histogram_parallel_min_max",
+            "-DFLOATING_TYPE=1 -DTYPE=float -DMIN_VALUE=16 -DMAX_VALUE=0");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC | DataFilter::ATOMIC_FUNCTIONS);
+        builder.setDimensions(4, 1, 1, 2, 1, 1);
+        builder.setParameter<0>(
+            {2.1f, 1.7f, 6.4f, 7.8f, 14.7f, 15.7f, 1.1f, 0.4f, 3.7f, 9.9f, 10.01f, 13.3f, 11.11f, 0.0f, 15.0f, 9.0f});
+        builder.setParameter<1>(16u);
+        builder.setParameter<2>(8u);
+        builder.allocateParameter<3>(8u);
+        builder.setParameter<4>(0.0f);
+        builder.setParameter<5>(16.0f);
+        builder.checkParameterEquals<3>({4, 2, 0, 2, 2, 2, 1, 3});
+    }
+
+    {
+        TestDataBuilder<Buffer<float>, uint32_t, uint32_t, Buffer<uint32_t>> builder("histogram_parallel",
+            histogram_cl_string, "histogram_parallel", "-DFLOATING_TYPE=1 -DTYPE=float -DMIN_VALUE=16 -DMAX_VALUE=0");
+        builder.setFlags(DataFilter::FLOAT_ARITHMETIC | DataFilter::ASYNC_BARRIER);
+        builder.setDimensions(8);
+        builder.setParameter<0>(
+            {2.1f, 1.7f, 6.4f, 7.8f, 14.7f, 15.7f, 1.1f, 0.4f, 3.7f, 9.9f, 10.01f, 13.3f, 11.11f, 0.0f, 15.0f, 9.0f});
+        builder.setParameter<1>(16u);
+        builder.setParameter<2>(8u);
+        builder.allocateParameter<3>(8u);
+        builder.checkParameterEquals<3>({4, 2, 0, 2, 2, 2, 1, 3});
+    }
+
+    {
         TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>, Buffer<uint8_t>, Buffer<uint32_t>> builder(
             "SHA1", md5_cl_string, "sha1_crypt_kernel");
         builder.setFlags(DataFilter::DISABLED | DataFilter::COMPLEX_KERNEL);
@@ -205,6 +261,40 @@ void test_data::registerGeneralTests()
         builder.setParameter<3>(7);
         // the __local arg might be lowered to VPM
         builder.checkParameterEquals<2>(toRange(0u, 7u * 16u));
+    }
+
+    for(const auto& entry : std::vector<std::pair<std::string, unsigned>>{
+            {"atomic_add", 17000 + 3 * 4 * 2 * 2 * 2},
+            {"atomic_sub", 17000 - 3 * 4 * 2 * 2 * 2},
+            {"atomic_xchg", 3},
+            {"atomic_min", 3},
+            {"atomic_max", 17000},
+            {"atomic_and", 17000 & 3},
+            {"atomic_or", 17000 | 3},
+            {"atomic_xor", 17000}, // even number of XORs cancel each other out
+            {"atomic_xchg_float", 3},
+        })
+    {
+        TestDataBuilder<Buffer<uint32_t>, uint32_t> builder(
+            std::string{entry.first}, test_atomic_cl_string, "test_" + entry.first);
+        builder.setFlags(DataFilter::ATOMIC_FUNCTIONS);
+        builder.setDimensions(4, 2, 1, 1, 2, 2);
+        builder.setParameter<0>({17000});
+        builder.setParameter<1>(3);
+        builder.checkParameterEquals<0>({entry.second});
+    }
+
+    for(const auto& entry : std::vector<std::pair<std::string, unsigned>>{
+            {"atomic_inc", 17000 + 4 * 2 * 2 * 2},
+            {"atomic_dec", 17000 - 4 * 2 * 2 * 2},
+        })
+    {
+        TestDataBuilder<Buffer<uint32_t>> builder(
+            std::string{entry.first}, test_atomic_cl_string, "test_" + entry.first);
+        builder.setFlags(DataFilter::ATOMIC_FUNCTIONS);
+        builder.setDimensions(4, 2, 1, 1, 2, 2);
+        builder.setParameter<0>({17000});
+        builder.checkParameterEquals<0>({entry.second});
     }
 
     {

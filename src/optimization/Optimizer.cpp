@@ -349,7 +349,6 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
     switch(level)
     {
     case OptimizationLevel::FULL:
-        passes.emplace("vectorize-loops");
         passes.emplace("schedule-instructions");
         FALL_THROUGH
     case OptimizationLevel::MEDIUM:
@@ -365,6 +364,7 @@ std::set<std::string> Optimizer::getPasses(OptimizationLevel level)
         passes.emplace("prefetch-loads");
         passes.emplace("compact-vector-folding");
         passes.emplace("combine-vector-element-copies");
+        passes.emplace("vectorize-loops");
         FALL_THROUGH
     case OptimizationLevel::BASIC:
         passes.emplace("reorder-blocks");

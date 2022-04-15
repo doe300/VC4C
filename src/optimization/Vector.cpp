@@ -20,7 +20,6 @@
 #include "../normalization/LiteralValues.h"
 #include "../periphery/TMU.h"
 #include "../periphery/VPM.h"
-#include "Eliminator.h"
 #include "log.h"
 
 #include <algorithm>
@@ -990,6 +989,91 @@ static unsigned fixLCSSAElementMask(Method& method, ControlFlowLoop& loop,
     return numModified;
 }
 
+/**
+ * Fold vectorized version into "scalar" version by applying the accumulation function
+ * NOTE: The "scalar" version is not required to be actual scalar (vector-width of 1), could just be some other smaller
+ * vector-width.
+ */
+static void foldVectorizedLocal(ControlFlowLoop& loop, Method& method, unsigned vectorizationFactor,
+    FastMap<const intermediate::IntermediateInstruction*, uint8_t>& openInstructions,
+    FastSet<const intermediate::IntermediateInstruction*>& closedInstructions, const IntermediateInstruction* inst,
+    AccumulationInfo& info)
+{
+    const Local* matchingLocal = nullptr;
+    for(auto* loc : info.outputLocals)
+    {
+        if(inst->readsLocal(loc))
+        {
+            if(matchingLocal)
+                throw CompilationError(CompilationStep::OPTIMIZER,
+                    "Folding instructions with multiple arguments depending on same folding local is not yet "
+                    "supported",
+                    inst->to_string());
+            matchingLocal = loc;
+        }
+    }
+    if(matchingLocal)
+    {
+        auto arg = matchingLocal->createReference();
+        // since we are in the process of vectorization, the local type is already updated, but the argument
+        // type is pending. For the next steps, we need to update the argument type.
+        arg.type = arg.local()->type;
+        auto origVectorType = arg.type;
+        if(arg.type.getVectorWidth() >= vectorizationFactor)
+            origVectorType =
+                arg.type.toVectorType(static_cast<uint8_t>(arg.type.getVectorWidth() / vectorizationFactor));
+
+        Optional<InstructionWalker> it;
+        if(auto succ = loop.findSuccessor())
+        {
+            it = succ->key->findWalkerForInstruction(inst);
+            while(!it && (succ = succ->getSingleSuccessor()))
+                it = succ->key->findWalkerForInstruction(inst);
+        }
+        if(it)
+        {
+            // insert folding or argument, heed original vector width
+            auto newArg = method.addNewLocal(origVectorType, "%vector_fold");
+            CPPLOG_LAZY(logging::Level::DEBUG,
+                log << "Folding vectorized local " << arg.to_string() << " into " << newArg.to_string()
+                    << " for: " << inst->to_string() << logging::endl);
+            auto insertIt = insertFoldVector(*it, method, newArg, arg, info.op, closedInstructions);
+            if(auto initial = info.initialValue)
+            {
+                // since the initial value setter will be set for all vector-elements and therefore applied too
+                // often, disable it (but leave the the instruction to have an unconditional local setter).
+                if(auto move = dynamic_cast<MoveOperation*>(info.initialWriter))
+                    move->setSource(info.op.getLeftIdentity().value());
+                else if(auto load = dynamic_cast<LoadImmediate*>(info.initialWriter))
+                    load->setImmediate(info.op.getLeftIdentity().value().literal());
+                else
+                    throw CompilationError(CompilationStep::OPTIMIZER,
+                        "Unhandled initial value writer for folding accumulation as part of loop vectorization",
+                        info.initialWriter->to_string());
+                // ... and instead fold it back in at the very end
+                auto tmp = method.addNewLocal(origVectorType, "%vector_fold");
+                insertIt.emplace(std::make_unique<Operation>(info.op, tmp, newArg, *initial));
+                closedInstructions.emplace(insertIt.get());
+                insertIt.nextInBlock();
+                newArg = tmp;
+            }
+
+            // replace argument with folded version
+            const_cast<IntermediateInstruction*>(inst)->replaceValue(arg, newArg, LocalUse::Type::READER);
+            openInstructions.erase(inst);
+            // remove tracking of this folding for this parameter, so a second folding into the same instruction chooses
+            // the other accumulation info (and not this one which will not work anymore, since the argument has already
+            // been replaced by the folded version).
+            info.toBeFolded.erase(inst);
+            return;
+        }
+    }
+
+    throw CompilationError(CompilationStep::OPTIMIZER,
+        "Vector folding for this operation '" + std::string{info.op.name} + "' and instruction is not yet implemented",
+        inst->to_string());
+}
+
 /*
  * Approach:
  * - set the iteration variable (local) to vector
@@ -997,7 +1081,7 @@ static unsigned fixLCSSAElementMask(Method& method, ControlFlowLoop& loop,
  * - update TMU/VPM configuration and address calculation
  */
 static std::size_t vectorize(ControlFlowLoop& loop, const Local* startLocal, Method& method,
-    unsigned vectorizationFactor, const FastMap<const Local*, AccumulationInfo>& accumulationsToFold,
+    unsigned vectorizationFactor, FastMap<const Local*, AccumulationInfo>& accumulationsToFold,
     const Optional<Value>& dynamicElementCount,
     FastSet<const intermediate::IntermediateInstruction*>& closedInstructions)
 {
@@ -1023,94 +1107,30 @@ static std::size_t vectorize(ControlFlowLoop& loop, const Local* startLocal, Met
                 dynamicElementCount, closedInstructions);
             ++numVectorized;
         }
-        else if((inst->isSimpleMove() || dynamic_cast<const LoadImmediate*>(inst)) && inst->checkOutputLocal())
-        {
-            // follow all simple moves to other locals (to find the instruction we really care about)
-            CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Local is accessed outside of loop: " << inst->to_string() << logging::endl);
-            vectorizeInstruction(const_cast<intermediate::IntermediateInstruction*>(inst), method, openInstructions,
-                vectorizationFactor, loop, instIt->second, dynamicElementCount, closedInstructions);
-            ++numVectorized;
-        }
         else
         {
             CPPLOG_LAZY(logging::Level::DEBUG,
-                log << "Local is accessed outside of loop: " << inst->to_string() << logging::endl);
+                log << "Vectorized local is accessed outside of loop: " << inst->to_string() << logging::endl);
 
             auto foldIt =
                 std::find_if(accumulationsToFold.begin(), accumulationsToFold.end(), [&](const auto& entry) -> bool {
                     return entry.second.toBeFolded.find(inst) != entry.second.toBeFolded.end();
                 });
-            if(foldIt == accumulationsToFold.end())
+            if(foldIt != accumulationsToFold.end())
+                foldVectorizedLocal(
+                    loop, method, vectorizationFactor, openInstructions, closedInstructions, inst, foldIt->second);
+
+            else if((inst->isSimpleMove() || dynamic_cast<const LoadImmediate*>(inst)) && inst->checkOutputLocal())
+            {
+                // follow all simple moves to other locals (to find the instruction we really care about)
+                vectorizeInstruction(const_cast<intermediate::IntermediateInstruction*>(inst), method, openInstructions,
+                    vectorizationFactor, loop, instIt->second, dynamicElementCount, closedInstructions);
+                ++numVectorized;
+            }
+            else
                 throw CompilationError(CompilationStep::OPTIMIZER,
                     "Non-folding access of vectorized locals outside of the loop is not yet implemented",
                     inst->to_string());
-
-            // fold vectorized version into "scalar" version by applying the accumulation function
-            // NOTE: The "scalar" version is not required to be actual scalar (vector-width of 1), could just be
-            // some other smaller vector-width
-            const Local* matchingLocal = nullptr;
-            for(auto* loc : foldIt->second.outputLocals)
-            {
-                if(inst->readsLocal(loc))
-                {
-                    if(matchingLocal)
-                        throw CompilationError(CompilationStep::OPTIMIZER,
-                            "Folding instructions with multiple arguments depending on same folding local is not yet "
-                            "supported",
-                            inst->to_string());
-                    matchingLocal = loc;
-                }
-            }
-            if(matchingLocal)
-            {
-                auto arg = matchingLocal->createReference();
-                // since we are in the process of vectorization, the local type is already updated, but the argument
-                // type is pending. For the next steps, we need to update the argument type.
-                arg.type = arg.local()->type;
-                auto origVectorType =
-                    arg.type.toVectorType(static_cast<uint8_t>(arg.type.getVectorWidth() / vectorizationFactor));
-
-                Optional<InstructionWalker> it;
-                if(auto succ = loop.findSuccessor())
-                    it = succ->key->findWalkerForInstruction(inst);
-                if(it)
-                {
-                    // insert folding or argument, heed original vector width
-                    auto newArg = method.addNewLocal(origVectorType, "%vector_fold");
-                    CPPLOG_LAZY(logging::Level::DEBUG,
-                        log << "Folding vectorized local " << arg.to_string() << " into " << newArg.to_string()
-                            << " for: " << inst->to_string() << logging::endl);
-                    auto insertIt = insertFoldVector(*it, method, newArg, arg, foldIt->second.op, closedInstructions);
-                    if(auto initial = foldIt->second.initialValue)
-                    {
-                        // since the initial value setter will be set for all vector-elements and therefore applied too
-                        // often, disable it (but leave the the instruction to have an unconditional local setter).
-                        if(auto move = dynamic_cast<MoveOperation*>(foldIt->second.initialWriter))
-                            move->setSource(foldIt->second.op.getLeftIdentity().value());
-                        else if(auto load = dynamic_cast<LoadImmediate*>(foldIt->second.initialWriter))
-                            load->setImmediate(foldIt->second.op.getLeftIdentity().value().literal());
-                        else
-                            throw CompilationError(CompilationStep::OPTIMIZER,
-                                "Unhandled initial value writer for folding accumulation as part of loop vectorization",
-                                foldIt->second.initialWriter->to_string());
-                        // ... and instead fold it back in at the very end
-                        auto tmp = method.addNewLocal(origVectorType, "%vector_fold");
-                        insertIt.emplace(std::make_unique<Operation>(foldIt->second.op, tmp, newArg, *initial));
-                        closedInstructions.emplace(insertIt.get());
-                        insertIt.nextInBlock();
-                        newArg = tmp;
-                    }
-
-                    // replace argument with folded version
-                    const_cast<IntermediateInstruction*>(inst)->replaceValue(arg, newArg, LocalUse::Type::READER);
-                    openInstructions.erase(inst);
-                    continue;
-                }
-            }
-
-            throw CompilationError(CompilationStep::OPTIMIZER,
-                "Vector folding for this instruction is not yet implemented", inst->to_string());
         }
     }
 
@@ -1128,7 +1148,7 @@ static std::size_t vectorize(ControlFlowLoop& loop, const Local* startLocal, Met
  * - calculate dynamic element count
  */
 static void vectorize(ControlFlowLoop& loop, InductionVariable& inductionVariable, Method& method,
-    unsigned vectorizationFactor, Literal stepValue, const FastMap<const Local*, AccumulationInfo>& accumulationsToFold,
+    unsigned vectorizationFactor, Literal stepValue, FastMap<const Local*, AccumulationInfo>& accumulationsToFold,
     const Optional<Value>& dynamicElementCount)
 {
     FastSet<const intermediate::IntermediateInstruction*> closedInstructions;
@@ -1362,8 +1382,10 @@ static Optional<AccumulationInfo> determineAccumulation(const Local* loc, const 
     }
 
     CPPLOG_LAZY(logging::Level::DEBUG,
-        log << "Local '" << loc->to_string() << "' is accumulated with operation '" << op->op.name
-            << "' in: " << vc4c::to_string<const LocalUser*>(toBeFolded) << logging::endl);
+        log << "Local '" << loc->to_string() << "' is accumulated with operation '" << op->op.name << "' into {"
+            << vc4c::to_string<const Local*>(outputLocals) << "}"
+            << (toBeMasked.empty() ? "" : (" (masked in " + to_string<const Local*>(toBeMasked) + ")"))
+            << " in: " << vc4c::to_string<const LocalUser*>(toBeFolded) << logging::endl);
 
     return AccumulationInfo{loc, op->op, std::move(outputLocals), std::move(toBeFolded), std::move(toBeMasked),
         initialValue, const_cast<IntermediateInstruction*>(initialWrite)};
@@ -1373,9 +1395,7 @@ std::size_t optimizations::vectorizeLoops(const Module& module, Method& method, 
 {
     if(method.empty())
         return 0u;
-    // try to merge some induction variable locals with their phi-node locals
-    if(propagateMoves(module, method, config))
-        eliminateDeadCode(module, method, config);
+
     // 1. find loops
     auto& cfg = method.getCFG();
     auto loops = cfg.findLoops(false);

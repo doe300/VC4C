@@ -68,12 +68,11 @@ static std::vector<Entry> allKernels = {
     Entry{EMULATED | PENDING_SPIRV_PRECOMPILER, FAST, EXAMPLE_FILES "md5.cl", ""},
     Entry{EMULATED | PENDING_SPIRV_PRECOMPILER, FAST, EXAMPLE_FILES "SHA-256.cl", ""},
     Entry{PASSED, FAST, EXAMPLE_FILES "test_cl.cl", ""},
-    Entry{PASSED, FAST, EXAMPLE_FILES "histogram.cl", "-DTYPE=char -DMAX_VALUE=127 -DMIN_VALUE=-128"},
-    Entry{PASSED, FAST, EXAMPLE_FILES "histogram.cl", "-DTYPE=uchar -DMAX_VALUE=255 -DMIN_VALUE=0"},
+    Entry{EMULATED, FAST, EXAMPLE_FILES "histogram.cl", "-DFLOATING_TYPE=1 -DTYPE=float -DMIN_VALUE=16 -DMAX_VALUE=0"},
     Entry{PASSED, FAST, EXAMPLE_FILES "histogram.cl", "-DTYPE=short -DMAX_VALUE=32767 -DMIN_VALUE=-32768"},
 
     Entry{EMULATED, FAST, TESTING_FILES "test_async_copy.cl", ""},
-    Entry{PASSED, FAST, TESTING_FILES "test_atomic.cl", ""},
+    Entry{EMULATED, FAST, TESTING_FILES "test_atomic.cl", ""},
     Entry{PASSED, FAST, TESTING_FILES "test_barrier_fence.cl", ""},
     Entry{EMULATED, FAST, TESTING_FILES "test_barrier.cl", ""},
     Entry{EMULATED, FAST, TESTING_FILES "test_branches.cl", ""},
@@ -106,7 +105,7 @@ static std::vector<Entry> allKernels = {
     Entry{PASSED, FAST, TESTING_FILES "deepCL/activate.cl", "-DLINEAR"},
     Entry{PASSED, FAST, TESTING_FILES "deepCL/addscalar.cl", ""},
     Entry{PASSED, FAST, TESTING_FILES "deepCL/applyActivationDeriv.cl", ""},
-    Entry{PENDING_SPIRV_PRECOMPILER, SLOW, TESTING_FILES "deepCL/backpropweights.cl",
+    Entry{PENDING_SPIRV_PRECOMPILER, FAST, TESTING_FILES "deepCL/backpropweights.cl",
         "-DgNumFilters=4 -DgInputPlanes=2 -DgOutputPlanes=2 -DgOutputSize=16 -DgInputSize=16 -DgFilterSize=4 "
         "-DgFilterSizeSquared=16 -DgMargin=1"},
     Entry{EMULATED, FAST, TESTING_FILES "deepCL/copy.cl", ""},
@@ -187,7 +186,7 @@ static std::vector<Entry> allKernels = {
     Entry{PENDING_WORK_GROUP_SIZE, FAST, TESTING_FILES "bullet/solveContact.cl", ""},
     Entry{PENDING_WORK_GROUP_SIZE, FAST, TESTING_FILES "bullet/solveFriction.cl", ""},
 
-    Entry{PASSED, SLOW, TESTING_FILES "clpeak/compute_integer_kernels.cl", ""},
+    Entry{PASSED, FAST, TESTING_FILES "clpeak/compute_integer_kernels.cl", ""},
     Entry{PASSED, FAST, TESTING_FILES "clpeak/compute_sp_kernels.cl", ""},
     // XXX Entry{PASSED, FAST, TESTING_FILES "clpeak/compute_hp_kernels.cl", "-DHALF_AVAILABLE"},
     Entry{PASSED, FAST, TESTING_FILES "clpeak/global_bandwidth_kernels.cl", ""},
@@ -201,7 +200,7 @@ static std::vector<Entry> allKernels = {
     Entry{PENDING_IMAGE, FAST, TESTING_FILES "gputools/bilateral2.cl", ""},
     Entry{PENDING_IMAGE, FAST, TESTING_FILES "gputools/bilateral3.cl", ""},
     Entry{PENDING_IMAGE, FAST, TESTING_FILES "gputools/bilateralAdapt.cl", ""},
-    Entry{PASSED, FAST, TESTING_FILES "gputools/bilateral_shared.cl", ""},
+    Entry{PENDING_IMAGE, FAST, TESTING_FILES "gputools/bilateral_shared.cl", ""},
     Entry{PASSED, FAST, TESTING_FILES "gputools/convolve.cl", ""},
     Entry{PENDING_IMAGE, FAST, TESTING_FILES "gputools/convolve1.cl", ""},
     Entry{PENDING_IMAGE, FAST, TESTING_FILES "gputools/convolve2.cl", ""},
@@ -246,12 +245,11 @@ static std::vector<Entry> allKernels = {
     Entry{PASSED, FAST, TESTING_FILES "HandBrake/vscale_fast_opencl.cl", ""},
     Entry{PENDING_LLVM_CI, FAST, TESTING_FILES "HandBrake/yaif_filter.cl", ""},
 
-    Entry{PENDING_LLVM | PENDING_SPIRV, SLOW, TESTING_FILES "bfgminer/diablo.cl", "-DWORKSIZE=8"},
+    Entry{PENDING_SPIRV_CI, SLOW, TESTING_FILES "bfgminer/diablo.cl", "-DWORKSIZE=8"},
     Entry{PENDING_SPIRV_CI, SLOW, TESTING_FILES "bfgminer/diakgcn.cl", "-DWORKSIZE=8"},
     Entry{PENDING_LLVM | PENDING_SPIRV, SLOW, TESTING_FILES "bfgminer/keccak.cl", "-DWORKSIZE=8"},
     Entry{PASSED, SLOW, TESTING_FILES "bfgminer/phatk.cl", "-DWORKSIZE=8"},
     Entry{PASSED, SLOW, TESTING_FILES "bfgminer/poclbm.cl", "-DWORKSIZE=8"},
-    // FIXME SEGFAULTs (stack overflow in #markDepthFirst())
     Entry{PENDING_LLVM | PENDING_SPIRV, SLOW, TESTING_FILES "bfgminer/psw.cl",
         "-DWORKSIZE=8 -DCONCURRENT_THREADS=1 -DLOOKUP_GAP=0"},
     Entry{PENDING_LLVM | PENDING_SPIRV, SLOW, TESTING_FILES "bfgminer/scrypt.cl",
@@ -269,9 +267,6 @@ static std::vector<Entry> allKernels = {
         "-DKEYLEN=16 -DSALTLEN=32 -DOUTLEN=16"},
     Entry{PENDING_LLVM | PENDING_SPIRV, SLOW, TESTING_FILES "JohnTheRipper/bf_kernel.cl", "-DWORK_GROUP_SIZE=8"},
     Entry{PENDING_LLVM | PENDING_SPIRV, SLOW, TESTING_FILES "JohnTheRipper/bitlocker_kernel.cl", ""},
-    // FIXME SEGFAULTs in memory mappings, since VPM dynamic copy inserts loop and therefore labels which invalidates
-    // instruction walkers reused for second memory location accessed by copy in normalization::mapMemoryAccess
-    // (iteration over memoryAccessInfo.accessInstructions)
     Entry{PENDING_LLVM | PENDING_SPIRV_PRECOMPILER, FAST, TESTING_FILES "JohnTheRipper/cryptmd5_kernel.cl",
         "-DPLAINTEXT_LENGTH=32"},
     Entry{PASSED, FAST, TESTING_FILES "JohnTheRipper/DES_bs_finalize_keys_kernel.cl", "-DITER_COUNT=4"},

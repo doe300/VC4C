@@ -71,6 +71,7 @@ std::size_t optimizations::simplifyBranches(const Module& module, Method& method
                     CPPLOG_LAZY(logging::Level::DEBUG,
                         log << "Removing branch to next instruction: " << thisBranch->to_string() << logging::endl);
                     it = it.erase();
+                    ++numChanges;
                     // don't skip next instruction
                     it.previousInMethod();
                     // skip second part below

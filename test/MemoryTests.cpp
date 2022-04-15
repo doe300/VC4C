@@ -413,7 +413,7 @@ void test_data::registerMemoryTests()
             {0x0FF00001, 0x0FF00003, 0x0FF00005, 0x0FF00007, 0x0FF00009, 0x0FF0000B, 0x0FF0000D, 0x0FF0000F});
     }
 
-    for(const std::string& type : {"", "dynamic_offset", "static_offset"})
+    for(std::string type : {"", "dynamic_offset", "static_offset"})
     {
         auto suffix = type.empty() ? "" : ("_" + type);
         auto define = type.empty() ? "" : "-D" + type;

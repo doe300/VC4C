@@ -140,6 +140,6 @@ int main(int argc, char** argv)
         }, "custom-test-data");
     }
 
-    return Test::runSuites(int(args.size()), args.data());
+    return Test::runSuites(int(args.size()), args.data(), [](const std::string&) -> bool { return false; });
 }
 

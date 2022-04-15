@@ -314,6 +314,7 @@ static void selectInstructions(analysis::DependencyGraph& graph, BasicBlock& blo
 
 std::size_t optimizations::reorderInstructions(const Module& module, Method& kernel, const Configuration& config)
 {
+    auto prevInstructions = kernel.countInstructions();
     for(BasicBlock& bb : kernel)
     {
         auto dependencies = analysis::DependencyGraph::createGraph(bb);
@@ -330,5 +331,5 @@ std::size_t optimizations::reorderInstructions(const Module& module, Method& ker
         PROFILE_END(CalculateCriticalPath);
         selectInstructions(*dependencies, bb, successiveMandatoryDelays, successiveDelays);
     }
-    return kernel.countInstructions();
+    return prevInstructions - kernel.countInstructions();
 }

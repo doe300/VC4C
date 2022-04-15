@@ -1,6 +1,3 @@
-void vc4cl_mutex_lock(void);
-void vc4cl_mutex_unlock(void);
-
 __attribute__((reqd_work_group_size(1,1,1)))
 __kernel void histogram_single_min_max(__global const TYPE* src, const uint num_elements, const uint num_buckets, __global uint* res, const TYPE minimum, const TYPE maximum)
 {
@@ -43,7 +40,7 @@ __kernel void histogram_parallel_min_max(__global const TYPE* src, const uint nu
 	for(uint i = execution_index * elements_per_execution; i < (execution_index + 1) * elements_per_execution; ++i)
 	{
 #ifdef FLOATING_TYPE
-		atomic_inc(&res[convert_int(trunc(src[i] / range_per_bucket)]);
+		atomic_inc(&res[convert_int(src[i] / range_per_bucket)]);
 #else
 		atomic_inc(&res[src[i] / range_per_bucket]);
 #endif
@@ -76,10 +73,9 @@ __kernel void histogram_parallel(__global const TYPE* src, const uint num_elemen
 
 	//2. calculate total minimum and maximum
 	barrier(CLK_LOCAL_MEM_FENCE);
-	vc4cl_mutex_lock();
 	total_minimum = min(total_minimum, minimum);
 	total_maximum = max(total_maximum, maximum);
-	vc4cl_mutex_unlock();
+	barrier(CLK_LOCAL_MEM_FENCE);
 
 	//3. for each entry, determine bucket and increment
 	histogram_parallel_min_max(src, num_elements, num_buckets, res, total_minimum, total_maximum);
