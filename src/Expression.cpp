@@ -164,7 +164,7 @@ static SubExpression makeSubExpression(const Optional<Value>& value)
     {
         if(auto writer = value->getSingleWriter())
             deco = writer->decoration;
-        if(auto builtin = value->checkLocal()->as<BuiltinLocal>())
+        if(auto builtin = check(value->checkLocal()) & &Local::as<BuiltinLocal>)
             deco = add_flag(deco, builtin->getDecorations());
         return SubExpression{*value, deco};
     }

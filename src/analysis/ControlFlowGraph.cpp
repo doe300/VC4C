@@ -103,9 +103,11 @@ CFGNode& ControlFlowGraph::getEndOfControlFlow()
         {
             if(candidate != nullptr)
             {
+                LCOV_EXCL_START
                 logging::error() << "Candidate: " << candidate->key->to_string() << logging::endl;
                 logging::error() << "Candidate: " << node.key->to_string() << logging::endl;
                 throw CompilationError(CompilationStep::GENERAL, "Found more than one CFG node without successors!");
+                LCOV_EXCL_STOP
             }
             candidate = &node;
         }
@@ -414,12 +416,14 @@ void ControlFlowGraph::updateOnBlockInsertion(Method& method, BasicBlock& newBlo
             {
                 if(fallThroughEdge)
                 {
+                    LCOV_EXCL_START
                     logging::error() << fallThroughEdge->data.getPredecessor(prevNode.key)->to_string()
                                      << logging::endl;
                     logging::error() << edge.data.getPredecessor(prevNode.key)->to_string() << logging::endl;
 
                     throw CompilationError(CompilationStep::GENERAL, "Multiple implicit branches from basic block",
                         prevNode.key->to_string());
+                    LCOV_EXCL_STOP
                 }
                 fallThroughEdge = &edge;
             }
@@ -466,12 +470,14 @@ void ControlFlowGraph::updateOnBlockRemoval(Method& method, BasicBlock& oldBlock
                 oldBlock.to_string());
         else if(fallThroughEdge)
         {
+            LCOV_EXCL_START
             logging::error()
                 << fallThroughEdge->data.getPredecessor(fallThroughEdge->getOtherNode(*nodePtr).key)->to_string()
                 << logging::endl;
             logging::error() << edge.data.getPredecessor(predecessor.key)->to_string() << logging::endl;
             throw CompilationError(
                 CompilationStep::GENERAL, "Multiple implicit branches to basic block", oldBlock.to_string());
+            LCOV_EXCL_STOP
         }
         else
             fallThroughEdge = &edge;
@@ -527,11 +533,13 @@ void ControlFlowGraph::updateOnBranchInsertion(Method& method, InstructionWalker
         {
             if(fallThroughEdge)
             {
+                LCOV_EXCL_START
                 logging::error() << fallThroughEdge->data.getPredecessor(node.key)->to_string() << logging::endl;
                 logging::error() << edge.data.getPredecessor(node.key)->to_string() << logging::endl;
 
                 throw CompilationError(
                     CompilationStep::GENERAL, "Multiple implicit branches from basic block", node.key->to_string());
+                LCOV_EXCL_STOP
             }
             fallThroughEdge = &edge;
         }

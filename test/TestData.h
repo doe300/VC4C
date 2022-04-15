@@ -129,9 +129,11 @@ namespace test_data
         // Tests some special type handling (e.g. literal vector parameters, structs, etc.)
         TYPE_HANDLING = 0x1 << 0xD,
         // Focuses on relational/comparison functions/operators
-        COMPARISONS = 0x1 < 0xE,
+        COMPARISONS = 0x1 << 0xE,
         // Focuses on type conversions
-        TYPE_CONVERSIONS = 0x1 < 0xF,
+        TYPE_CONVERSIONS = 0x1 << 0xF,
+        // Reads/Writes __local buffers which is actually not supported on the real implementation
+        ACCESSES_LOCAL_BUFFER = 0x1 << 0x10,
         // Disabled test, since the SPIR-V front-end does not support parts of it
         SPIRV_DISABLED = 0x40000000,
         // Disabled test, since it does not work right now
