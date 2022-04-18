@@ -156,6 +156,22 @@ InstructionWalker intermediate::insertReplication(InstructionWalker it, const Va
     return it;
 }
 
+InstructionWalker intermediate::insertVectorReplication(
+    InstructionWalker it, Method& method, const Value& src, const Value& dest)
+{
+    if(src.type.isScalarType() || src.type.getPointerType())
+        // scalar to vector -> simply replicate across all
+        return insertReplication(it, src, dest);
+
+    // append the source vector until we have the desired destination vector width
+    auto numSourceElements = static_cast<uint8_t>(src.type.isSimpleType() ? src.type.getVectorWidth() : 1u);
+    assign(it, dest) = src;
+    for(uint32_t i = numSourceElements; i < dest.type.getVectorWidth(); i += numSourceElements)
+        it = insertVectorInsertion(it, method, dest, Value(Literal(i), TYPE_INT8), src);
+
+    return it;
+}
+
 InstructionWalker intermediate::insertVectorExtraction(
     InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& dest)
 {

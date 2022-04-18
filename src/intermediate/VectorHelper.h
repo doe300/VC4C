@@ -22,7 +22,23 @@ namespace vc4c
         NODISCARD InstructionWalker insertVectorRotation(InstructionWalker it, const Value& src, const Value& offset,
             const Value& dest, Direction direction = Direction::UP, bool isSingleElementMoveFromToZero = false);
 
+        /**
+         * Inserts code to replicate the (first/single element of the) source across all elements of the destination.
+         *
+         * E.g. dest = [src0, src0, src0, ..., src0]
+         */
         NODISCARD InstructionWalker insertReplication(InstructionWalker it, const Value& src, const Value& dest);
+
+        /**
+         * Inserts code to replicate the source vector across all elements of the destination vector.
+         *
+         * This is functionally equivalent to appending the source to the (initially empty) destination until the
+         * desired destination vector width is reached.
+         *
+         * E.g. dest = [src0, src1, src2, src0, src1, src2, ..., src2]
+         */
+        NODISCARD InstructionWalker insertVectorReplication(
+            InstructionWalker it, Method& method, const Value& src, const Value& dest);
 
         NODISCARD InstructionWalker insertVectorExtraction(
             InstructionWalker it, Method& method, const Value& container, const Value& index, const Value& dest);

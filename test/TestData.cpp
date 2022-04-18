@@ -1238,6 +1238,78 @@ void test_data::registerGeneralTests()
     }
 
     {
+        TestDataBuilder<uint32_t, Buffer<uint32_t>, Buffer<int32_t>> builder(
+            "boost_count_int_equal", boost_compute_test_count_cl_string, "serial_count_if_int_equal");
+        builder.setParameter<0>(16);
+        builder.allocateParameter<1>(1);
+        builder.setParameter<2>({17, 15, 45, 65, 3, 2, 7, 9, 11, 1300, 12, 6, 8, 200, 2, 2});
+        builder.checkParameterEquals<1>({3});
+    }
+
+    {
+        TestDataBuilder<uint32_t, Buffer<uint32_t>, Buffer<int32_t>> builder(
+            "boost_count_int_equal_offset", boost_compute_test_count_cl_string, "serial_count_if_int_equal_offset");
+        builder.setParameter<0>(16);
+        builder.allocateParameter<1>(1);
+        builder.setParameter<2>({17, 15, 45, 65, 3, 2, 7, 9, 11, 1300, 12, 6, 8, 200, 2, 2, 3});
+        builder.checkParameterEquals<1>({3});
+    }
+
+    {
+        TestDataBuilder<uint32_t, Buffer<uint32_t>, Buffer<int32_t>> builder(
+            "boost_count_vector_equal", boost_compute_test_count_cl_string, "serial_count_if_vector_equal");
+        builder.setParameter<0>(5);
+        builder.allocateParameter<1>(1);
+        builder.setParameter<2>({17, 15, 45, 65, 3, 0, 1, 2, 0, 1, 2, 3, 11, 1300, 12, 6, 0, 1, 2, 3});
+        builder.checkParameterEquals<1>({2});
+    }
+
+    {
+        TestDataBuilder<uint32_t, Buffer<uint32_t>, Buffer<char>> builder(
+            "boost_count_char_equal", boost_compute_test_count_cl_string, "serial_count_if_char_equal");
+        builder.setParameter<0>(16);
+        builder.allocateParameter<1>(1);
+        builder.setParameter<2>({'H', 'e', 'l', 'l', 'o', '\n', 'W', 'o', 'r', 'l', 'd', '\n', '!', '!', '!', '\n'});
+        builder.checkParameterEquals<1>({3});
+    }
+
+    {
+        TestDataBuilder<uint32_t, Buffer<uint32_t>, Buffer<uint8_t>> builder(
+            "boost_count_uchar_equal", boost_compute_test_count_cl_string, "serial_count_if_uchar_equal");
+        builder.setParameter<0>(16);
+        builder.allocateParameter<1>(1);
+        builder.setParameter<2>({17, 15, 45, 65, 3, 0, 1, 2, 0, 1, 2, 3, 11, 100, 12, 6});
+        builder.checkParameterEquals<1>({0});
+    }
+
+    {
+        TestDataBuilder<uint32_t, Buffer<uint32_t>, Buffer<int32_t>> builder(
+            "boost_count_int_element_less", boost_compute_test_count_cl_string, "serial_count_if_element_less");
+        builder.setParameter<0>(8);
+        builder.allocateParameter<1>(1);
+        builder.setParameter<2>({17, 15, 45, 65, 3, 0, 1, 2, 0, 1, 2, 3, 11, 100, 12, 6});
+        builder.checkParameterEquals<1>({4});
+    }
+
+    {
+        TestDataBuilder<uint32_t, Buffer<uint32_t>, Buffer<float>> builder(
+            "boost_count_float_greater", boost_compute_test_count_cl_string, "serial_count_if_float_greater");
+        builder.setParameter<0>(16);
+        builder.allocateParameter<1>(1);
+        builder.setParameter<2>({17, 15, 45, 65, 3, 0, 1, 2, 0, 1, 2, 3, 11, 100, 12, 6});
+        builder.checkParameterEquals<1>({10});
+    }
+
+    {
+        TestDataBuilder<uint32_t, Buffer<uint32_t>, Buffer<int32_t>> builder("boost_count_vector_equal_offset",
+            boost_compute_test_count_cl_string, "serial_count_if_vector_equal_offset");
+        builder.setParameter<0>(5);
+        builder.allocateParameter<1>(1);
+        builder.setParameter<2>({1, 2, 3, 4, 3, 0, 1, 2, 1, 2, 3, 4, 1300, 12, 6, 0, 1, 2, 3, 4});
+        builder.checkParameterEquals<1>({3});
+    }
+
+    {
         TestDataBuilder<Buffer<uint32_t>, Buffer<uint32_t>> builder(
             "boost_find_extrema_min", boost_compute_test_extrema_cl_string, "find_extrema_min_max");
         builder.setDimensions(7, 1, 1, 2, 1, 1);
@@ -1363,6 +1435,18 @@ void test_data::registerGeneralTests()
         builder.allocateParameter<3>(1);
         builder.setParameter<4>(0);
         builder.checkParameterEquals<3>({1 + 5 + 9 + 13 + 17});
+    }
+
+    {
+        TestDataBuilder<uint32_t, uint32_t, Buffer<int32_t>, uint32_t, Buffer<int32_t>> builder(
+            "boost_reduce_min", boost_compute_test_reduce_cl_string, "extra_serial_reduce_min_int");
+        builder.setFlags(DataFilter::CONTROL_FLOW);
+        builder.setParameter<0>(8);                                    // count
+        builder.setParameter<1>(1);                                    // offset
+        builder.allocateParameter<2>(2, 0x42);                         // output
+        builder.setParameter<3>(1);                                    // output_offset
+        builder.setParameter<4>({-21, 7, 19, 15, -1, -4, -19, 21, 3}); // input
+        builder.checkParameterEquals<2>({0x42, -19});
     }
 
     {

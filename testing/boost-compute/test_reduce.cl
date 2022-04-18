@@ -16,7 +16,7 @@ __local int scratch[TPB];
 int sum = 0;
 for(uint i = 0; i < VPT; i++){
     if(block_offset + lid + i*TPB < count){
-        sum = sum + block[lid+i*TPB]; 
+        sum = sum + block[lid+i*TPB];
     }
 }
 scratch[lid] = sum;
@@ -85,11 +85,20 @@ if(lid == 0){
 
 }
 
-__kernel void extra_serial_reduce(uint count, uint offset, __global float2* output, uint output_offset, __global float2* _buf0)
+__kernel void extra_serial_reduce_as_float(uint count, uint offset, __global float2* output, uint output_offset, __global float2* _buf0)
 {
 float2 result = _buf0[offset];
 for(uint i = offset + 1; i < count; i++)
     result = (float2)(result.x*_buf0[i].x-result.y*_buf0[i].y,result.y*_buf0[i].x+result.x*_buf0[i].y);
+output[output_offset] = result;
+
+}
+
+__kernel void extra_serial_reduce_min_int(uint count, uint offset, __global int* output, uint output_offset, __global int* _buf0)
+{
+int result = _buf0[offset];
+for(uint i = offset + 1; i < count; i++)
+    result = min(result, _buf0[i]);
 output[output_offset] = result;
 
 }
