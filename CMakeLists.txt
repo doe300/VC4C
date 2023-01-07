@@ -143,6 +143,7 @@ include(cmake/sanitizers.cmake)
 # Main files
 ####
 #build all from ./src into ./build
+add_definitions(-Dlogging=cpplog)
 add_subdirectory(src)
 add_subdirectory(tools)
 

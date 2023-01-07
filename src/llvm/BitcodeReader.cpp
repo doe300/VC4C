@@ -1042,7 +1042,11 @@ void BitcodeReader::parseInstruction(
     {
         const llvm::CallInst* call = llvm::cast<const llvm::CallInst>(&inst);
         std::vector<Value> args;
+#if LLVM_LIBRARY_VERSION >= 140
+        for(unsigned i = 0; i < call->arg_size(); ++i)
+#else
         for(unsigned i = 0; i < call->getNumArgOperands(); ++i)
+#endif
         {
             args.emplace_back(toValue(method, call->getArgOperand(i), &instructions));
         }

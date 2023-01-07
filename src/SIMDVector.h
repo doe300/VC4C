@@ -12,6 +12,7 @@
 #include "performance.h"
 
 #include <algorithm>
+#include <array>
 #include <mutex>
 
 namespace std
@@ -48,7 +49,7 @@ namespace vc4c
         {
         }
 
-        constexpr SIMDVector(std::initializer_list<Literal> list) noexcept : SIMDVector()
+        SIMDVector(std::initializer_list<Literal> list) noexcept : SIMDVector()
         {
             std::copy_n(list.begin(), std::min(NATIVE_VECTOR_SIZE, list.size()), elements.begin());
         }
